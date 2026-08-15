@@ -5,6 +5,8 @@ build/
 .flutter-plugins-dependencies
 *.iml
 .idea/
+# Unrelated helper scratch kept out of the repo backup
+.freebuff/
 .flutter_web_server.log
 *.log
 
@@ -35,3 +37,6 @@ Thumbs.db
 *.keystore
 *.jks
 key.properties
+# scratch pngs at project root
+*.png
+
