@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <!-- Полноцветная иконка = аватарка со сплэша (кремовый квадрат с логотипом).
+         Монохром-слой = та же ёлочка силуэтом: Android 12+ тонирует её цветом
+         обоев (как у Ataraxy) — иконка адаптируется под фон, не меняя дизайн. -->
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+    <monochrome>
+        <inset
+            android:drawable="@drawable/ic_launcher_monochrome"
+            android:inset="16%" />
+    </monochrome>
+</adaptive-icon>

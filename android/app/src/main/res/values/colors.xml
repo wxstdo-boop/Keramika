@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фирменный персиковый фон приложения — окно Android во время
+         холодного старта (до первого кадра Flutter) показывает ЕГО,
+         а не серый `?android:colorBackground` (на MIUI это серый). -->
+    <color name="brand_background">#FFF0F5</color>
+    <color name="brand_background_night">#17181C</color>
+    <!-- Фон adaptive icon (персиковый) -->
+    <color name="ic_launcher_background">#F4F0E8</color>
+</resources>

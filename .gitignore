@@ -1,0 +1,37 @@
+# Flutter / Dart build outputs
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.flutter_web_server.log
+*.log
+
+# Debug / scratch output (project keeps analyzers & build logs at root)
+analyze*.txt
+analyze_err.txt
+analyze_out.txt
+final_analyze.txt
+full_analyze.txt
+full_check.txt
+full_check2.txt
+build_apk*.txt
+build_apk*.log
+clean.log
+flutter_apk_build.log
+flutter_build.log
+flutter_run_release.log
+flutter_web_server.log
+ocr_*.txt
+SCC_log.txt
+nul
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Android signing (secret)
+*.keystore
+*.jks
+key.properties

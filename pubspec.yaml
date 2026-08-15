@@ -1,0 +1,45 @@
+name: keramika
+description: "FOSS alarm clock with tasks — Material You design."
+publish_to: 'none'
+version: 1.3.0+7029
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+  dynamic_color: ^1.7.0
+  shared_preferences: ^2.5.0
+  uuid: ^4.5.1
+  audioplayers: ^6.1.0
+  file_picker: ^10.0.0
+  flutter_local_notifications: ^17.2.1
+  timezone: ^0.9.0
+  url_launcher: ^6.3.1
+  android_intent_plus: ^6.1.0
+
+  path_provider: ^2.1.0
+  # Локальный форк: регистрирует плагины в оверлейном движке
+  # (иначе в мини-окошке нет prefs/path_provider — история пустая,
+  # ИИ не отвечает) и убирает текст уведомления.
+  flutter_overlay_window:
+    path: third_party/flutter_overlay_window
+  flutter_keyboard_visibility: ^6.0.0
+  http: ^1.2.0
+  share_plus: ^12.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sounds/
+    - assets/keramika.png
+    - web/favicon.png
