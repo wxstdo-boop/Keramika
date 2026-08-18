@@ -123,15 +123,9 @@ public class FlutterOverlayWindowPlugin implements
             result.success(OverlayService.getCurrentPosition());
         } else if (call.method.equals("closeOverlay")) {
             if (OverlayService.isRunning) {
-                // Сразу помечаем как неактивный — main app при resume
-                // сразу увидит isActive() == false и вернёт значок ИИ.
-                // stopService() вызовет onDestroy позже.
-                OverlayService.isRunning = false;
                 final Intent i = new Intent(context, OverlayService.class);
                 context.stopService(i);
                 result.success(true);
-            } else {
-                result.success(false);
             }
             return;
         } else {

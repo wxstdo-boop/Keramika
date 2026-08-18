@@ -17,6 +17,7 @@ class SettingsService {
   static const _keyAiTracking = 'setting_ai_tracking';
   static const _keyPerfectionism = 'perfectionism_mode';
   static const _keyBerserk = 'berserk_mode';
+  static const _keyTaskNotes = 'task_quick_notes_mode';
   static const _settingsFile = 'app_settings';
 
   /// Безопасное чтение bool из SharedPreferences: принимает true/false
@@ -208,6 +209,30 @@ class SettingsService {
     map[_keyBerserk] = value;
     await _saveSettings(map);
     berserkEnabled.value = value;
+  }
+
+  /// «Вспомнил, что использую…» — зажатие задачи (5 сек) открывает меню
+  /// быстрого списка с красивой заметкой до 150 символов. Общий живой флаг
+  /// для настроек и экрана задач.
+  static final ValueNotifier<bool> taskNotesEnabled = ValueNotifier<bool>(
+    false,
+  );
+
+  static Future<bool> loadTaskNotes() async {
+    final map = await _loadSettings();
+    final value = _bool(
+      map[_keyTaskNotes],
+      globalPrefs.getBool(_keyTaskNotes) ?? false,
+    );
+    taskNotesEnabled.value = value;
+    return value;
+  }
+
+  static Future<void> saveTaskNotes(bool value) async {
+    final map = await _loadSettings();
+    map[_keyTaskNotes] = value;
+    await _saveSettings(map);
+    taskNotesEnabled.value = value;
   }
 
   static Future<bool> loadAutoExport() async {

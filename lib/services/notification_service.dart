@@ -343,10 +343,14 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
     // Если включили fullscreen — открываем настройки отображения
     // поверх других приложений (SYSTEM_ALERT_WINDOW), которое нужно
-    // для fullScreenIntent на Android 14+.
+    // для fullScreenIntent на Android 14+ — НО только если разрешение
+    // ещё не выдано (иначе при каждом включении вылезает окно настроек).
     if (value && _isAndroid) {
       try {
-        await android_settings.openFullScreenNotifSettings();
+        final canUse = await android_settings.canUseFullScreenIntent();
+        if (!canUse) {
+          await android_settings.openFullScreenNotifSettings();
+        }
       } catch (_) {}
     }
   }

@@ -16,11 +16,15 @@ class SmoothKeyboardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(bottom: bottom),
-      child: child,
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    return ColoredBox(
+      color: bg,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.only(bottom: bottom),
+        child: child,
+      ),
     );
   }
 }

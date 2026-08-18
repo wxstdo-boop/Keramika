@@ -43,9 +43,13 @@ class NutritionService extends ChangeNotifier {
 
   /// Видимые приёмы пищи — только последние 7 дней (история), закреплённые
   /// сортируются первыми. Единый фильтр для списка И калорий, чтобы счётчик
-  /// сверху всегда совпадал с тем, что показано в истории.
-  static bool _withinHistory(Meal m) =>
-      DateTime.now().difference(m.date).inDays < 7;
+  /// сверху всегда совпадал с тем, что показано в истории. Записи с датой
+  /// В БУДУЩЕМ (часовые пояса/битые данные) не считаются — иначе было
+  /// «приёмов нет, а калории висят».
+  static bool _withinHistory(Meal m) {
+    final diff = DateTime.now().difference(m.date).inDays;
+    return diff >= 0 && diff < 7;
+  }
 
   int get totalCalories =>
       _meals.where(_withinHistory).fold(0, (sum, m) => sum + m.calories);

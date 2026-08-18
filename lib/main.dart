@@ -13,6 +13,7 @@ import 'utils/android_settings.dart' show setSecureWindow;
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/wake_task_screen.dart';
+import 'widgets/mutilated_overlay.dart';
 import 'l10n/locale_provider.dart';
 import 'l10n/translations.dart';
 import 'services/pin_service.dart';
@@ -436,6 +437,47 @@ Future<void> _rescheduleAllOnStart() async {
     } catch (e) {
       debugPrint('[ada-tracking] catch-up error: $e');
     }
+  }
+  // Пуши Ада-трекинга: в 08:00 и 21:00 приходят РЕАЛЬНЫЕ ответы Ады
+  // (утренний план и вечерний разбор), сгенерированные при последнем
+  // старте/возврате из фона. Не блокирует запуск (фоновый unawaited).
+  unawaited(_scheduleAdaTrackingNotifs());
+}
+
+/// Планирует утренний (08:00) и вечерний (21:00) пуши Ада-трекинга с
+/// живым текстом отчётов. Если трекинг выключен — снимает оба.
+Future<void> _scheduleAdaTrackingNotifs() async {
+  try {
+    final tracking = await SettingsService.loadAiTracking();
+    if (!tracking) {
+      await notificationService.cancelReminder(90);
+      await notificationService.cancelReminder(91);
+      return;
+    }
+    final lang = await SettingsService.loadLanguageCode();
+    final morningTitle = switch (lang) {
+      'ru' => 'Ада ☀️ Доброе утро!',
+      'fr' => 'Ada ☀️ Bonjour !',
+      _ => 'Ada ☀️ Good morning!',
+    };
+    final eveningTitle = switch (lang) {
+      'ru' => 'Ада 🌙 Вечерний разбор',
+      'fr' => 'Ada 🌙 Bilan du soir',
+      _ => 'Ada 🌙 Evening review',
+    };
+    final morning = await AiGuideService.morningReportText(lang);
+    final evening = await AiGuideService.eveningReportText(lang);
+    await notificationService.scheduleDailyReminder(
+      90, 8, 0, morningTitle, morning,
+      payload: 'ada_morning',
+    );
+    await notificationService.scheduleDailyReminder(
+      91, 21, 0, eveningTitle, evening,
+      payload: 'ada_evening',
+    );
+    debugPrint('[ada-tracking] daily pushes scheduled');
+  } catch (e) {
+    debugPrint('[ada-tracking] push scheduling error: $e');
   }
 }
 
@@ -959,6 +1001,7 @@ class KeramikaAppState extends State<KeramikaApp>
       // Ада-трекинг: догоняем пропущенный отчёт (приложение лежало в фоне)
       // и перезаводим таймер на ближайшие 08:00/21:00.
       unawaited(_adaTrackTick());
+      unawaited(_scheduleAdaTrackingNotifs());
       // Автоэкспорт «догоняет» пропущенный час, пока приложение было
       // закрыто или в фоне — Dart-таймер там не срабатывает.
       maybeCatchUpAutoExport();
@@ -988,7 +1031,10 @@ class KeramikaAppState extends State<KeramikaApp>
     final built = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      fontFamily: 'Avenir Next',
+      // 'Avenir Next' НЕ подключён в pubspec (нет секции fonts:) — на Android
+      // Flutter фолбэчил на системный шрифт, а курсивные глифы кириллицы
+      // рендерились со «следами пробелов» между буквами. Дефолтный шрифт
+      // (Roboto) рендерит и обычный, и курсивный текст без артефактов.
       scaffoldBackgroundColor: scheme.surface,
       appBarTheme: const AppBarTheme(
         elevation: 0,
@@ -1275,6 +1321,10 @@ class KeramikaAppState extends State<KeramikaApp>
             isGrokStyle: isGrokStyle,
           ),
           themeMode: themeMode,
+          // Плавная смена темы: цвета интерфейса (фон, карточки, тексты)
+          // перетекают за 420 мс вместо резкого мгновенного переключения.
+          themeAnimationDuration: const Duration(milliseconds: 420),
+          themeAnimationCurve: Curves.easeOutCubic,
           home: _locked
               ? LockScreen(onUnlock: () => unlock())
               : SplashScreen(
@@ -1295,7 +1345,30 @@ class KeramikaAppState extends State<KeramikaApp>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
+                    // Контент (Navigator) — всегда ОДИН слой, без анимации:
+                    // раньше AnimatedSwitcher оборачивал и контент, и пятна,
+                    // поэтому при смене темы ВЕСЬ экран «вспыхивал» (fade
+                    // контента + дубль двух subtree).
                     child!,
+                    // Пятна крови темы MUTILATED — ОТДЕЛЬНЫЙ слой поверх
+                    // Navigator (включая drag-прокси при перетаскивании).
+                    // Анимируется ТОЛЬКО слой пятен: плавно проявляются при
+                    // включении темы и гаснут при выключении (450 мс).
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 450),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, anim) =>
+                          FadeTransition(opacity: anim, child: child),
+                      child: _themeKey == 'mutilated'
+                          ? const MutilatedSplatter(
+                              key: ValueKey('splatter'),
+                              child: SizedBox.expand(),
+                            )
+                          : const SizedBox.shrink(
+                              key: ValueKey('no_splatter'),
+                            ),
+                    ),
                     // Плавающее мини-окошко Ады — поверх всех экранов.
                     // На Android сворачивание чата показывает СИСТЕМНЫЙ
                     // оверлей (вне приложения), поэтому внутренний пузырь

@@ -221,11 +221,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               switchOutCurve: Curves.easeInCubic,
               transitionBuilder: (child, animation) => FadeTransition(
                 opacity: animation,
-                child: SizeTransition(
-                  sizeFactor: animation,
-                  alignment: AlignmentDirectional.topCenter,
-                  child: child,
-                ),
+                child: child,
               ),
               child: !_loaded
                   ? const SizedBox(key: ValueKey('meals_loading'))

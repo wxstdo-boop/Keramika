@@ -601,20 +601,23 @@ class _OverlayChatState extends State<_OverlayChat>
   Widget _buildHeader(ColorScheme cs) {
     return GestureDetector(
       onPanUpdate: _onHeaderDrag,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Ручка-таб сверху по центру — как у главного чата.
+          Container(
+            margin: const EdgeInsets.only(top: 5),
+            width: 34,
+            height: 3.5,
+            decoration: BoxDecoration(
+              color: cs.outlineVariant.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Container(
+        padding: const EdgeInsets.fromLTRB(10, 5, 10, 8),
         child: Row(
           children: [
-            Container(
-              width: 3,
-              height: 24,
-              margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                color: cs.onSurfaceVariant.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
             GestureDetector(
               onTap: _cycleAvatar,
               child: _OverlayAvatar(size: 32, variant: _avatarVariant),
@@ -684,6 +687,8 @@ class _OverlayChatState extends State<_OverlayChat>
             ),
           ],
         ),
+        ),
+        ],
       ),
     );
   }
@@ -722,7 +727,27 @@ class _OverlayChatState extends State<_OverlayChat>
           return _TypingBubble(avatar: _avatarVariant);
         }
         final m = _messages[i];
-        return _MiniBubble(message: m, avatar: _avatarVariant, colorScheme: cs);
+        // Плавное появление: fade + мягкий scale (как у пузырей главного
+        // чата) — без сдвига, чтобы не двоилось движение при скролле.
+        final last3 = i >= _messages.length - 3;
+        return TweenAnimationBuilder<double>(
+          key: ValueKey('mini_bubble_$i'),
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: Duration(milliseconds: last3 ? 300 : 1),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.scale(
+              scale: 0.97 + 0.03 * t,
+              child: child,
+            ),
+          ),
+          child: _MiniBubble(
+            message: m,
+            avatar: _avatarVariant,
+            colorScheme: cs,
+          ),
+        );
       },
     );
   }

@@ -146,6 +146,8 @@ class Translations {
       'remindAt': 'Remind at',
       'remindOffHint': 'Will remind about the habit at the chosen time',
       'remindOnHint': 'Every day or on selected days',
+      'remindCustomText': 'Reminder text (max 60 chars)',
+      'remindCustomHint': 'E.g.: Time to drink water',
       'habitDaysHint': 'Empty = every day',
       'everyDay': 'Every day',
       'habitNotesBtn': 'Status',
@@ -377,7 +379,12 @@ class Translations {
       'aiChipAlarm': 'Alarm',
       'aiChipRC': 'Reality check',
       'aiChipMeal': 'Meal',
+      'aiWebSearch': 'Web search',
+      'aiWebSearchOn': 'Web search ON',
+      'adaEmptyChat': 'Ada will pave the way ―\neither there, or there',
       'aiGuideHint': 'Ask me',
+      'aiComposing': 'Composing',
+      'aiEmptyAnswer': 'Hmm, I could not craft an answer. Try again!',
       'share': 'Share',
       'aiGuideToggle': 'Enable AI guide',
       'aiGuideDesc':
@@ -703,6 +710,16 @@ class Translations {
       'berserkCardTitle': 'MAXIMUM BERSERK LEVEL UPGRADE',
       'berserkCardSubtitle':
           'Hold the “+” on any screen — a mode of personal power and focus opens.',
+      'taskNotesTitle': 'I remembered what I use it for…',
+      'taskNotesSubtitle':
+          'Hold a task for 5 seconds — a quick note up to 150 characters, kept right on the task.',
+      'taskNoteSheetTitle': 'I remembered what I use it for…',
+      'taskNoteSheetSubtitle':
+          'Write a short note up to 150 characters — it stays on the task.',
+      'taskNoteHint': 'Why do I keep this task? What is it for?',
+      'clearNote': 'Clear',
+      'taskNoteCleared': 'Note cleared',
+      'taskNoteSaved': 'Note saved',
       'berserkTitle': 'MAXIMUM BERSERK\nLEVEL UPGRADE',
       'berserkSubtitle':
           'A short power mode: focus, composure, action. Hold the “+” anywhere — and it opens.',
@@ -866,6 +883,8 @@ class Translations {
       'remindAt': 'Напоминать в',
       'remindOffHint': 'Напомнит о привычке в выбранное время',
       'remindOnHint': 'Каждый день или по выбранным дням',
+      'remindCustomText': 'Текст напоминания (до 60 симв.)',
+      'remindCustomHint': 'Например: Пора пить воду',
       'habitDaysHint': 'Пусто = каждый день',
       'everyDay': 'Каждый день',
       'habitNotesBtn': 'Статус',
@@ -1099,7 +1118,12 @@ class Translations {
       'aiChipAlarm': 'Будильник',
       'aiChipRC': 'Проверка',
       'aiChipMeal': 'Еда',
+      'aiWebSearch': 'Веб-поиск',
+      'aiWebSearchOn': 'Веб-поиск ВКЛ',
+      'adaEmptyChat': 'Ада проложит путь ―\nлибо туда, либо туда',
       'aiGuideHint': 'Спроси меня',
+      'aiComposing': 'Сочиняю',
+      'aiEmptyAnswer': 'Хм, я не смогла собрать ответ. Попробуй ещё раз!',
       'share': 'Поделиться',
       'aiGuideToggle': 'Включить проводника',
       'aiGuideDesc':
@@ -1428,6 +1452,16 @@ class Translations {
       'berserkCardTitle': 'МАКСИМАЛЬНЫЙ АПГРЕЙД УРОВНЯ BERSERK',
       'berserkCardSubtitle':
           'Зажми «плюс» на любом экране — откроется режим личной силы и фокуса.',
+      'taskNotesTitle': 'Вспомнил, что использую…',
+      'taskNotesSubtitle':
+          'Зажми задачу на 5 секунд — откроется быстрый список с заметкой до 150 символов, которая останется прямо на задаче.',
+      'taskNoteSheetTitle': 'Вспомнил, что использую…',
+      'taskNoteSheetSubtitle':
+          'Запиши короткую заметку до 150 символов — она сохранится на задаче.',
+      'taskNoteHint': 'Зачем я держу эту задачу? Для чего она?',
+      'clearNote': 'Очистить',
+      'taskNoteCleared': 'Заметка очищена',
+      'taskNoteSaved': 'Заметка сохранена',
       'berserkTitle': 'МАКСИМАЛЬНЫЙ АПГРЕЙД\nУРОВНЯ BERSERK',
       'berserkSubtitle':
           'Короткий режим силы: внимание, выдержка, действие. Держи «плюс» на любом экране — и он открыт.',
@@ -1595,6 +1629,8 @@ class Translations {
       'remindAt': 'Rappeler à',
       'remindOffHint': 'Rappellera l’habitude à l’heure choisie',
       'remindOnHint': 'Chaque jour ou les jours sélectionnés',
+      'remindCustomText': 'Texte du rappel (max 60 car.)',
+      'remindCustomHint': 'Ex: Il est temps de boire de l’eau',
       'habitDaysHint': 'Vide = tous les jours',
       'everyDay': 'Tous les jours',
       'habitNotesBtn': 'Statut',
@@ -1829,7 +1865,12 @@ class Translations {
       'aiChipAlarm': 'Alarme',
       'aiChipRC': 'Vérif. réalité',
       'aiChipMeal': 'Repas',
+      'aiWebSearch': 'Recherche web',
+      'aiWebSearchOn': 'Recherche web ACTIVE',
+      'adaEmptyChat': 'Ada ouvrira la voie ―\npar ici, ou par là',
       'aiGuideHint': 'Demande-moi',
+      'aiComposing': 'J’écris',
+      'aiEmptyAnswer': 'Hmm, je n’ai pas pu formuler de réponse. Réessaie !',
       'share': 'Partager',
       'aiGuideToggle': 'Activer le guide IA',
       'aiGuideDesc':
@@ -2181,6 +2222,16 @@ class Translations {
       'berserkCardTitle': 'MISE À NIVEAU MAXIMALE DU NIVEAU BERSERK',
       'berserkCardSubtitle':
           'Maintenez le « + » sur n’importe quel écran — un mode de force personnelle et de concentration s’ouvre.',
+      'taskNotesTitle': 'Je me suis souvenu pourquoi je l’utilise…',
+      'taskNotesSubtitle':
+          'Maintenez une tâche pendant 5 secondes — une note rapide de 150 caractères max, conservée directement sur la tâche.',
+      'taskNoteSheetTitle': 'Je me suis souvenu pourquoi je l’utilise…',
+      'taskNoteSheetSubtitle':
+          'Écrivez une courte note de 150 caractères max — elle restera sur la tâche.',
+      'taskNoteHint': 'Pourquoi je garde cette tâche ? À quoi sert-elle ?',
+      'clearNote': 'Effacer',
+      'taskNoteCleared': 'Note effacée',
+      'taskNoteSaved': 'Note enregistrée',
       'berserkTitle': 'MISE À NIVEAU MAXIMALE\nDU NIVEAU BERSERK',
       'berserkSubtitle':
           'Un mode de force court : attention, sang-froid, action. Maintenez le « + » n’importe où — et il s’ouvre.',
@@ -2299,6 +2350,12 @@ class Translations {
   static String repeatOf(BuildContext context) => _lookup('repeat', context);
   static String russianOf(BuildContext context) => _lookup('russian', context);
   static String saveOf(BuildContext context) => _lookup('save', context);
+  static String clearNoteOf(BuildContext context) =>
+      _lookup('clearNote', context);
+  static String taskNoteClearedOf(BuildContext context) =>
+      _lookup('taskNoteCleared', context);
+  static String taskNoteSavedOf(BuildContext context) =>
+      _lookup('taskNoteSaved', context);
   static String setPinOf(BuildContext context) => _lookup('setPin', context);
   static String settingsOf(BuildContext context) =>
       _lookup('settings', context);

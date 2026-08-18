@@ -9,6 +9,7 @@ class Task {
   int iconCodePoint;
   String category;
   int priority;
+  String note;
   DateTime createdAt;
 
   Task({
@@ -18,6 +19,7 @@ class Task {
     this.iconCodePoint = 58830,
     this.category = '',
     this.priority = 0,
+    this.note = '',
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -30,6 +32,7 @@ class Task {
     'iconCodePoint': iconCodePoint,
     'category': category,
     'priority': priority,
+    'note': note,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -44,6 +47,7 @@ class Task {
     iconCodePoint: json['iconCodePoint'] as int? ?? 58830,
     category: json['category'] as String? ?? '',
     priority: json['priority'] as int? ?? 0,
+    note: json['note'] as String? ?? '',
     createdAt:
         DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
   );

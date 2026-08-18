@@ -42,4 +42,3 @@ flutter:
   assets:
     - assets/sounds/
     - assets/keramika.png
-    - web/favicon.png

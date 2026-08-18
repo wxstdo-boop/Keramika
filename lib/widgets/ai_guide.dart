@@ -209,11 +209,20 @@ final ValueNotifier<int> adaAvatarVariant = ValueNotifier<int>(
 /// навсегда (переживает перезапуск). Вызывается из шапки, пузырей и
 /// плавающего окошка.
 void cycleAdaAvatar() {
+  // Переключаем только на УНИКАЛЬНЫЙ значок: вариант с той же иконкой,
+  // что у текущего, пропускаем — раньше могли «выпадать» дубли.
+  final cur = _adaVariants[adaAvatarVariant.value];
   var next = adaAvatarVariant.value;
   var guard = 0;
-  while (next == adaAvatarVariant.value && guard < _adaVariants.length) {
+  while (guard < _adaVariants.length * 3) {
     next = math.Random().nextInt(_adaVariants.length);
+    final v = _adaVariants[next];
+    if (v.icon != cur.icon) break;
     guard++;
+  }
+  // Вырожденный случай (не нашли с первого захода) — соседний индекс.
+  if (next == adaAvatarVariant.value) {
+    next = (adaAvatarVariant.value + 1) % _adaVariants.length;
   }
   adaAvatarVariant.value = next;
   globalPrefs.setInt('ada_avatar_variant', next);
@@ -310,13 +319,13 @@ Future<void> showAiGuideChat(BuildContext context) {
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    // Пружинный выезд: лёгкий перелёт easeOutBack вверх и плавный возврат.
-    // Закрытие — короче и без пружины, чтобы не «болталось».
+    // Плавный выезд без пружины: easeOutQuart — максимально мягкий старт.
+    // Закрытие — плавный easeInQuart, без резких остановок.
     sheetAnimationStyle: AnimationStyle(
-      curve: Curves.easeOutBack,
-      duration: const Duration(milliseconds: 400),
-      reverseCurve: Curves.easeInCubic,
-      reverseDuration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutQuart,
+      duration: const Duration(milliseconds: 600),
+      reverseCurve: Curves.easeInQuart,
+      reverseDuration: const Duration(milliseconds: 450),
     ),
     // Отделяем тяжёлую ленту чата в отдельный composited layer: во время
     // выезда bottom sheet Android двигает готовый слой, а не перерисовывает
@@ -351,6 +360,9 @@ class _AiChatSheetState extends State<_AiChatSheet>
   bool _busy = false;
   bool _error = false;
   String _errorMsg = '';
+  // Веб-поиск: значок перед быстрыми чипами плавно включает режим,
+  // при котором Ада реально ищет в интернете (DuckDuckGo + Wikipedia).
+  bool _webSearch = false;
   // Плавная передача эстафеты «печатает…» → ответ: индикатор сначала
   // гаснет, и только потом ответ всплывает — без резкого щелчка.
   bool _typingFade = false;
@@ -383,17 +395,27 @@ class _AiChatSheetState extends State<_AiChatSheet>
     // Открытый чат слушает доставку и перечитывает историю — отчёт
     // появляется в ленте в момент доставки, без переоткрытия.
     AiGuideService.adaReportTick.addListener(_onAdaReportTick);
-    SettingsService.loadLanguageCode().then((c) {
-      if (!mounted) return;
-      setState(() => _lang = c);
-      _claimRewards();
-    });
-    AiGuideService.hfRemainingToday().then((n) {
-      if (mounted) setState(() => _quotaLeft = n);
-    });
-    AiGuideService.currentModelLabel().then((m) {
-      if (mounted) setState(() => _modelLabel = m);
-    });
+    SettingsService.loadLanguageCode()
+        .then((c) {
+          if (!mounted) return;
+          setState(() => _lang = c);
+          _claimRewards();
+        })
+        .catchError((_) {});
+    AiGuideService.hfRemainingToday()
+        .then((n) {
+          if (mounted) setState(() => _quotaLeft = n);
+        })
+        .catchError((_) {});
+    AiGuideService.currentModelLabel()
+        .then((m) {
+          if (mounted) setState(() => _modelLabel = m);
+        })
+        .catchError((_) {});
+    // Веб-поиск: запоминаем, был ли он включён — переживает перезапуск.
+    try {
+      _webSearch = globalPrefs.getBool('ai_web_search') ?? false;
+    } catch (_) {}
   }
 
   /// Догоняет пропущенный отчёт Ады (если время наступило) и подхватывает
@@ -411,9 +433,11 @@ class _AiChatSheetState extends State<_AiChatSheet>
   }
 
   void _refreshModelLabel() {
-    AiGuideService.currentModelLabel().then((m) {
-      if (mounted && m != _modelLabel) setState(() => _modelLabel = m);
-    });
+    AiGuideService.currentModelLabel()
+        .then((m) {
+          if (mounted && m != _modelLabel) setState(() => _modelLabel = m);
+        })
+        .catchError((_) {});
   }
 
   void _cycleAvatar() {
@@ -527,6 +551,11 @@ class _AiChatSheetState extends State<_AiChatSheet>
       }
     });
     _saveLiked();
+    // Ада «запоминает» стиль/содержание лайкнутого ответа и подстраивается
+    // под него в следующих сообщениях (паттерн живёт в системном промпте).
+    if (!m.isUser) {
+      AiGuideService.rememberLikedPattern(m.text);
+    }
     Haptics.select();
   }
 
@@ -617,6 +646,72 @@ class _AiChatSheetState extends State<_AiChatSheet>
   }
 
   /// Отправляет сообщение. [text] — если null, берём из поля ввода.
+  /// Мелкий круглый значок веб-поиска: листается вместе с таблетками
+  /// (вставлен первым элементом в горизонтальный список), включается и
+  /// выключается плавно — заливается фирменным цветом, появляется
+  /// свечение, иконка мягко меняется (fade + лёгкий scale БЕЗ перелёта).
+  /// Фон свой (нейтральный), НЕ таблетный — значок всегда различим.
+  Widget _buildWebSearchToggle(BuildContext context, ThemeData theme) {
+    final cs = theme.colorScheme;
+    return Tooltip(
+      message: Translations.t(
+        _webSearch ? 'aiWebSearchOn' : 'aiWebSearch',
+        context,
+        _webSearch ? 'Web search ON' : 'Web search',
+      ),
+      waitDuration: const Duration(milliseconds: 400),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Haptics.light();
+          setState(() {
+            _webSearch = !_webSearch;
+            try {
+              globalPrefs.setBool('ai_web_search', _webSearch);
+            } catch (_) {}
+          });
+        },
+        child: ClipOval(
+          // ClipOval: иконка при анимации НИКОГДА не вылезает за круг.
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              // Чёткий круг БЕЗ boxShadow: размытая тень выглядела
+              // «размазанно-таблетной» вместо круглого значка.
+              shape: BoxShape.circle,
+              color: _webSearch ? cs.primary : cs.surface,
+              border: Border.all(
+                color: _webSearch
+                    ? cs.primary
+                    : cs.outline.withValues(alpha: 0.45),
+                width: 1.4,
+              ),
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              // Только fade, БЕЗ scale: иконка не увеличивается и не
+              // «заезжает за границы» при переключении.
+              transitionBuilder: (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
+              child: Icon(
+                _webSearch ? Icons.travel_explore : Icons.public,
+                key: ValueKey('web_toggle_icon_$_webSearch'),
+                size: 19,
+                color: _webSearch ? cs.onPrimary : cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// [keepUserBubble] — true при повторной отправке с плашки «ИИ на курорте»:
   /// сообщение уже на экране, дубликат не добавляем.
   Future<void> _send({String? text, bool keepUserBubble = false}) async {
@@ -641,6 +736,7 @@ class _AiChatSheetState extends State<_AiChatSheet>
         userText: message,
         history: _messages.take(_messages.length - 1).toList(),
         languageCode: _lang,
+        useWebSearch: _webSearch,
       );
       if (!mounted) return;
       // Эстафета «печатает…» → ответ: индикатор плавно гаснет, и только
@@ -650,7 +746,16 @@ class _AiChatSheetState extends State<_AiChatSheet>
       await Future.delayed(const Duration(milliseconds: 210));
       if (!mounted) return;
       setState(() {
-        _messages.add(AiMessage(isUser: false, text: answer));
+        // Пустой ответ («три точки») никогда не показываем — вместо него
+        // запасная фраза, чтобы не выглядело, будто Ада «промолчала».
+        final finalText = answer.trim().isEmpty
+            ? Translations.t(
+                'aiEmptyAnswer',
+                context,
+                'Хм, я не смогла собрать ответ. Попробуй ещё раз!',
+              )
+            : answer;
+        _messages.add(AiMessage(isUser: false, text: finalText));
         if (_messages.length > 1000) {
           _messages.removeRange(0, _messages.length - 1000);
         }
@@ -801,15 +906,19 @@ class _AiChatSheetState extends State<_AiChatSheet>
   /// Награды Ады (стрики, все задачи выполнены) появляются в чате первым
   /// сообщением при открытии. Каждая награда выдаётся только один раз.
   Future<void> _claimRewards() async {
-    final rewards = await AiGuideService.collectRewards(_lang);
-    if (!mounted || rewards.isEmpty) return;
-    setState(() {
-      for (final r in rewards) {
-        _messages.add(AiMessage(isUser: false, text: r));
-      }
-    });
-    _saveHistory();
-    _scrollToBottom();
+    try {
+      final rewards = await AiGuideService.collectRewards(_lang);
+      if (!mounted || rewards.isEmpty) return;
+      setState(() {
+        for (final r in rewards) {
+          _messages.add(AiMessage(isUser: false, text: r));
+        }
+      });
+      _saveHistory();
+      _scrollToBottom();
+    } catch (_) {
+      // Награды — не критично: сбой не должен ронять чат.
+    }
   }
 
   @override
@@ -817,13 +926,12 @@ class _AiChatSheetState extends State<_AiChatSheet>
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final media = MediaQuery.of(context);
-    final maxHeight = media.size.height * 0.72;
     // Клавиатура: лист плавно ПОДНИМАЕТСЯ над ней (AnimatedPadding),
     // а высота ужимается, чтобы шапка не уходила за экран. Поле ввода
-    // всегда видно.
+    // всегда видно. Лист на весь экран — нет «белой полосы» снизу.
     final insets = media.viewInsets.bottom;
-    final available = media.size.height - insets - 16.0;
-    final sheetHeight = maxHeight.clamp(260.0, available);
+    final available = media.size.height - insets;
+    final sheetHeight = available.clamp(260.0, available);
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 220),
@@ -1012,70 +1120,91 @@ class _AiChatSheetState extends State<_AiChatSheet>
                 animation: _clearCtrl,
                 builder: (context, child) =>
                     Opacity(opacity: 1.0 - _clearCtrl.value, child: child),
-                child: ListView.builder(
-                  controller: _scrollCtrl,
-                  // reverse:true — индекс 0 это НИЗ чата: открытие сразу
-                  // показывает последние сообщения, никаких прыжков.
-                  reverse: true,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  itemCount: _messages.length + (_busy ? 1 : 0),
-                  itemBuilder: (context, i) {
-                    if (_busy && i == 0) {
-                      // «Печатает…» — самый нижний элемент, прямо у поля.
-                      // AnimatedOpacity: при ответе индикатор плавно гаснет,
-                      // а не выпадает резко (см. _typingFade в _send).
-                      return AnimatedOpacity(
-                        opacity: _typingFade ? 0.0 : 1.0,
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeOutCubic,
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 280),
-                          curve: Curves.easeOutCubic,
-                          builder: (context, t, child) => Opacity(
-                            opacity: t,
-                            child: Transform.scale(
-                              scale: 0.7 + 0.3 * t,
-                              child: child,
-                            ),
-                          ),
-                          child: _TypingIndicator(animation: _dotsCtrl),
-                        ),
-                      );
-                    }
-                    // Индекс в исходном массиве (0 = последнее сообщение).
-                    final mi = _busy
-                        ? _messages.length - i
-                        : _messages.length - 1 - i;
-                    final m = _messages[mi];
-                    // Сосед ВЫШЕ в ленте (следующий по истории).
-                    final above = mi + 1 < _messages.length
-                        ? _messages[mi + 1]
-                        : null;
-                    // Анимация входа — ТОЛЬКО у свежих сообщений (последние 3).
-                    // Раньше каждый пузырь анимировался при появлении в кадре
-                    // во время скролла большого чата — отсюда дёрганье.
-                    return RepaintBoundary(
-                      key: ValueKey('msg_layer_$mi'),
-                      child: _MessageBubble(
-                        key: ValueKey('msg_$mi'),
-                        message: m,
-                        firstInGroup: above == null || above.isUser != m.isUser,
-                        animate: mi >= _messages.length - 3,
-                        liked: _liked.contains(_msgKey(m)),
-                        pinned: _isPinned(m),
-                        onToggleLike: () => _toggleLike(m),
-                        onCopy: () => _copyMessage(m),
-                        // Зажать аватарку Ады — закрепить/открепить (до 10).
-                        onLongPress: m.isUser ? null : () => _togglePin(m),
-                        onTogglePin: m.isUser ? null : () => _togglePin(m),
-                        onCycleAvatar: _cycleAvatar,
+                // Stack: лента ВСЕГДА на месте, подсказка поверх с
+                // AnimatedOpacity. БЕЗ AnimatedSwitcher — при стирании чата
+                // и при первом сообщении не мигает (не было двойного fade
+                // «лента гаснет + подсказка вспыхивает»).
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ListView.builder(
+                      controller: _scrollCtrl,
+                      // reverse:true — индекс 0 это НИЗ чата: открытие сразу
+                      // показывает последние сообщения, никаких прыжков.
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
                       ),
-                    );
-                  },
+                      itemCount: _messages.length + (_busy ? 1 : 0),
+                      itemBuilder: (context, i) {
+                        if (_busy && i == 0) {
+                          // «Печатает…» — самый нижний элемент, прямо у поля.
+                          // AnimatedOpacity: при ответе индикатор плавно гаснет,
+                          // а не выпадает резко (см. _typingFade в _send).
+                          return AnimatedOpacity(
+                            opacity: _typingFade ? 0.0 : 1.0,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            child: TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0, end: 1),
+                              duration: const Duration(milliseconds: 280),
+                              curve: Curves.easeOutCubic,
+                              builder: (context, t, child) => Opacity(
+                                opacity: t,
+                                child: Transform.scale(
+                                  scale: 0.7 + 0.3 * t,
+                                  child: child,
+                                ),
+                              ),
+                              child: _TypingIndicator(animation: _dotsCtrl),
+                            ),
+                          );
+                        }
+                        // Индекс в исходном массиве (0 = последнее сообщение).
+                        final mi = _busy
+                            ? _messages.length - i
+                            : _messages.length - 1 - i;
+                        final m = _messages[mi];
+                        // Сосед ВЫШЕ в ленте (следующий по истории).
+                        final above = mi + 1 < _messages.length
+                            ? _messages[mi + 1]
+                            : null;
+                        // Анимация входа — ТОЛЬКО у свежих сообщений (последние 3).
+                        // Раньше каждый пузырь анимировался при появлении в кадре
+                        // во время скролла большого чата — отсюда дёрганье.
+                        return RepaintBoundary(
+                          key: ValueKey('msg_layer_$mi'),
+                          child: _MessageBubble(
+                            key: ValueKey('msg_$mi'),
+                            message: m,
+                            firstInGroup:
+                                above == null || above.isUser != m.isUser,
+                            animate: mi >= _messages.length - 3,
+                            liked: _liked.contains(_msgKey(m)),
+                            pinned: _isPinned(m),
+                            onToggleLike: () => _toggleLike(m),
+                            onCopy: () => _copyMessage(m),
+                            // Зажать аватарку Ады — закрепить/открепить (до 10).
+                            onLongPress: m.isUser ? null : () => _togglePin(m),
+                            onTogglePin: m.isUser ? null : () => _togglePin(m),
+                            onCycleAvatar: _cycleAvatar,
+                          ),
+                        );
+                      },
+                    ),
+                    // Подсказка пустого чата: плавно появляется, когда
+                    // сообщений нет, и гаснет при первом сообщении.
+                    AnimatedOpacity(
+                      opacity: _messages.isEmpty && !_busy ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      child: IgnorePointer(
+                        ignoring: !(_messages.isEmpty && !_busy),
+                        child: const _EmptyChatPlaceholder(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1088,6 +1217,9 @@ class _AiChatSheetState extends State<_AiChatSheet>
             // Быстрые действия: чип заполняет поле ввода шаблоном — дальше
             // локальный парсер выполнит команду мгновенно, без сети.
             _QuickChips(
+              // Значок веб-поиска — первый элемент списка, листается
+              // вместе с таблетками (не приклеен столбом слева).
+              leading: _buildWebSearchToggle(context, theme),
               onTap: (template) {
                 _inputCtrl.text = template;
                 _inputCtrl.selection = TextSelection.collapsed(
@@ -1109,14 +1241,34 @@ class _AiChatSheetState extends State<_AiChatSheet>
                     ),
                     const SizedBox(width: 4),
                     Expanded(
-                      child: Text(
-                        Translations.t(
-                          'adaQuota',
-                          context,
-                          'Ada: N free left today',
-                        ).replaceFirst('N', '$_quotaLeft'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
+                      child: ClipRect(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final t = Curves.easeOutCubic.transform(
+                              animation.value,
+                            );
+                            return FadeTransition(
+                              opacity: animation,
+                              child: Transform.translate(
+                                offset: Offset(0, 10 * (1 - t)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Text(
+                            Translations.t(
+                              'adaQuota',
+                              context,
+                              'Ada: N free left today',
+                            ).replaceFirst('N', '$_quotaLeft'),
+                            key: ValueKey('quota_$_quotaLeft'),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -1191,41 +1343,11 @@ class _AiChatSheetState extends State<_AiChatSheet>
                         ),
                         child: Stack(
                           children: [
-                            // Живой предпросмотр markdown ПОД настоящим полем:
-                            // *курсив* и **жирный** видны прямо в вводе как
-                            // стилизованный текст, а не «звёздочками».
-                            Positioned.fill(
-                              child: ClipRect(
-                                child: IgnorePointer(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 12,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.topLeft,
-                                      child: AnimatedBuilder(
-                                        animation: _inputCtrl,
-                                        builder: (context, _) {
-                                          final t = _inputCtrl.text;
-                                          if (t.isEmpty) {
-                                            return const SizedBox.shrink();
-                                          }
-                                          return buildMarkdownText(
-                                            t,
-                                            TextStyle(
-                                              fontSize: 16,
-                                              height: 1.4,
-                                              color: cs.onSurface,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                            // Предпросмотр markdown убран: прозрачный
+                            // TextField + RichText давали «разъехавшиеся
+                            // буквы» (шрифт Avenir Next недоступен на Android
+                            // и фолбэк рендерил слои со сдвигом). Теперь
+                            // текст обычный, видимый, без артефактов.
                             // Настоящее поле СВЕРХУ: текст прозрачный (его
                             // рисует предпросмотр), но каретка, выделение и
                             // клавиатура работают как обычно.
@@ -1239,14 +1361,19 @@ class _AiChatSheetState extends State<_AiChatSheet>
                               minLines: 1,
                               maxLines: 4,
                               maxLength: 13000,
+                              // Отключаем автоподсказки/автокоррекцию клавиатуры:
+                              // Gboard/MIUI добавляет свой автопробел после
+                              // выбранного слова — отсюда «пробел в конце».
+                              enableSuggestions: false,
+                              autocorrect: false,
                               // Меню при зажатии: только Копировать/Вставить/
                               // Вырезать/Курсив — без «Поделиться», «Спросить
                               // Copilot» и лишних пунктов системного меню.
                               contextMenuBuilder: minimalContextMenuBuilder,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 height: 1.4,
-                                color: Colors.transparent,
+                                color: cs.onSurface,
                               ),
                               cursorColor: cs.primary,
                               decoration: InputDecoration(
@@ -1274,6 +1401,31 @@ class _AiChatSheetState extends State<_AiChatSheet>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Подсказка в пустом чате: ПО ЦЕНТРУ, две строки жирным, с переводом.
+class _EmptyChatPlaceholder extends StatelessWidget {
+  const _EmptyChatPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+        child: Text(
+          Translations.t('adaEmptyChat', context),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            height: 1.35,
+            fontWeight: FontWeight.w800,
+            color: cs.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -1441,19 +1593,20 @@ class _MessageBubble extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       // Анимируется один раз при первом появлении пузыря; у старых
       // сообщений анимация отключена (animate: false) — скролл большого
-      // чата не дёргается. Мягкое появление: пузырь «всплывает» снизу
-      // (подъём 14px + проявление) — это маскирует мгновенный сдвиг
-      // списка в reverse-ленте и выглядит плавно.
+      // чата не дёргается. Только fade + лёгкий scale — БЕЗ подъёма:
+      // в reverse-ленте новое сообщение вставляется снизу и список сам
+      // сдвигается вниз; одновременный подъём пузыря давал «дёрганое»
+      // двойное движение на слабом устройстве.
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 480),
       curve: Curves.easeOutCubic,
-      builder: (context, t, child) => Opacity(
-        opacity: Curves.easeOut.transform(t),
-        child: Transform.translate(
-          offset: Offset(0, (1 - t) * 14),
-          child: child,
-        ),
-      ),
+      builder: (context, t, child) {
+        final e = Curves.easeOutCubic.transform(t);
+        return Opacity(
+          opacity: e,
+          child: Transform.scale(scale: 0.97 + 0.03 * e, child: child),
+        );
+      },
       child: bubble,
     );
   }
@@ -1593,28 +1746,58 @@ class _TypingIndicator extends StatelessWidget {
                 bottomRight: Radius.circular(18),
               ),
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) {
-                return AnimatedBuilder(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // «Сочиняю» — плавно появляется над точками и мягко
+                // пульсирует в такт тиканью троеточия.
+                AnimatedBuilder(
                   animation: animation,
                   builder: (context, _) {
-                    final t = ((animation.value * 3 - i) % 3).clamp(0.0, 1.0);
-                    final scale = 0.6 + 0.6 * t;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Transform.scale(
-                        scale: scale,
-                        child: Icon(
-                          Icons.circle,
-                          size: 7,
+                    final pulse =
+                        0.7 + 0.3 * ((animation.value * 2) % 1).clamp(0.0, 1.0);
+                    return Opacity(
+                      opacity: pulse,
+                      child: Text(
+                        Translations.t('aiComposing', context),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
                           color: cs.onSurfaceVariant,
                         ),
                       ),
                     );
                   },
-                );
-              }),
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(3, (i) {
+                    return AnimatedBuilder(
+                      animation: animation,
+                      builder: (context, _) {
+                        final t = ((animation.value * 3 - i) % 3).clamp(
+                          0.0,
+                          1.0,
+                        );
+                        final scale = 0.6 + 0.6 * t;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Transform.scale(
+                            scale: scale,
+                            child: Icon(
+                              Icons.circle,
+                              size: 7,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }),
+                ),
+              ],
             ),
           ),
         ],
@@ -1721,33 +1904,42 @@ class _AnimatedErrorPlaque extends StatelessWidget {
 /// мгновенно и без сети).
 class _QuickChips extends StatelessWidget {
   final ValueChanged<String> onTap;
-  const _QuickChips({required this.onTap});
+
+  /// Необязательный элемент в начале списка (например, значок веб-поиска).
+  /// Листается горизонтально вместе с таблетками, а не приклеен столбом.
+  final Widget? leading;
+  const _QuickChips({required this.onTap, this.leading});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Шаблоны БЕЗ пробела в конце: раньше trailing-пробел вставлялся
+    // в поле ввода и выглядел как «странный пробел в конце сообщения».
     final chips = <(String, String)>[
-      (Translations.t('aiChipHabit', context, 'Привычка'), 'создай привычку '),
-      (Translations.t('aiChipTask', context, 'Задача'), 'создай задачу '),
+      (Translations.t('aiChipHabit', context, 'Привычка'), 'создай привычку'),
+      (Translations.t('aiChipTask', context, 'Задача'), 'создай задачу'),
       (
         Translations.t('aiChipAlarm', context, 'Будильник'),
-        'поставь будильник на ',
+        'поставь будильник на',
       ),
       (
         Translations.t('aiChipRC', context, 'Проверка'),
-        'создай проверку реальности ',
+        'создай проверку реальности',
       ),
-      (Translations.t('aiChipMeal', context, 'Еда'), 'запиши приём пищи '),
+      (Translations.t('aiChipMeal', context, 'Еда'), 'запиши приём пищи'),
     ];
+    // Первый элемент — значок веб-поиска (если задан), дальше таблетки.
+    final hasLeading = leading != null;
     return SizedBox(
       height: 34,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        itemCount: chips.length,
+        itemCount: hasLeading ? chips.length + 1 : chips.length,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (context, i) {
-          final (label, template) = chips[i];
+          if (hasLeading && i == 0) return leading!;
+          final (label, template) = hasLeading ? chips[i - 1] : chips[i];
           return GestureDetector(
             onTap: () => onTap(template),
             child: AnimatedContainer(
@@ -1810,38 +2002,48 @@ class _SendButtonState extends State<_SendButton>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return GestureDetector(
-      onTap: widget.busy ? null : widget.onTap,
+      onTap: widget.busy
+          ? null
+          : () {
+              Haptics.light();
+              widget.onTap();
+            },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 46,
-        height: 46,
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFFF8FB3), Color(0xFFB06AB3)],
+            colors: [
+              cs.primary,
+              Color.lerp(cs.primary, cs.secondary, 0.6) ?? cs.secondary,
+            ],
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFB06AB3).withValues(alpha: 0.35),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+              color: cs.primary.withValues(alpha: 0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+              spreadRadius: 1,
             ),
           ],
         ),
-        // Плавный переход иконок: стрелка ↔ сплеш-спиннер (rotate + fade).
+        // Плавный переход иконок: стрелка ↔ сплеш-спиннер.
+        // Без RotationTransition (на слабом GPU поворот при каждой смене
+        // «дёргал» переход) — мягкий scale + fade, без overshoot.
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          switchInCurve: Curves.easeOutBack,
-          switchOutCurve: Curves.easeIn,
-          transitionBuilder: (child, animation) => RotationTransition(
-            turns: Tween<double>(begin: 0.25, end: 0).animate(animation),
-            child: ScaleTransition(
-              scale: animation,
-              child: FadeTransition(opacity: animation, child: child),
-            ),
+          duration: const Duration(milliseconds: 300),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => ScaleTransition(
+            scale: Tween<double>(begin: 0.82, end: 1).animate(animation),
+            child: FadeTransition(opacity: animation, child: child),
           ),
           child: widget.busy
               ? AnimatedBuilder(
@@ -1849,18 +2051,14 @@ class _SendButtonState extends State<_SendButton>
                   animation: _spin,
                   builder: (context, _) => Transform.rotate(
                     angle: _spin.value * 2 * 3.14159,
-                    child: const Icon(
-                      Icons.autorenew,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+                    child: Icon(Icons.autorenew, color: cs.onPrimary, size: 26),
                   ),
                 )
-              : const Icon(
-                  Icons.arrow_upward,
-                  key: ValueKey('send_arrow'),
-                  color: Colors.white,
-                  size: 22,
+              : Icon(
+                  Icons.arrow_upward_rounded,
+                  key: const ValueKey('send_arrow'),
+                  color: cs.onPrimary,
+                  size: 24,
                 ),
         ),
       ),
@@ -2215,8 +2413,10 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
           // а не весь чат на каждый кадр. Раньше на Redmi Note 12 каждый
           // тик 260-мс анимации перестраивал весь ListView — тормозило.
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 340),
-            curve: Curves.easeOutBack,
+            // easeOutBack давал overshoot — окошко «перелетало» размер
+            // и дёргалось при разворачивании. Плавная easeOutCubic.
+            duration: const Duration(milliseconds: 360),
+            curve: Curves.easeOutCubic,
             width: _collapsed ? _collapsedSize : w,
             height: _collapsed ? _collapsedSize : _expandedHeight,
             decoration: _bubbleDecoration(cs, _collapsed),
@@ -2225,13 +2425,15 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
               fit: StackFit.expand,
               children: [
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
+                  duration: const Duration(milliseconds: 320),
                   switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeIn,
+                  switchOutCurve: Curves.easeInCubic,
                   transitionBuilder: (child, anim) => FadeTransition(
                     opacity: anim,
+                    // Меньше «сжатости» при разворачивании: чат больше не
+                    // вылезает из «сжатой» 0.9-копии, а мягко проявляется.
                     child: ScaleTransition(
-                      scale: Tween(begin: 0.9, end: 1.0).animate(anim),
+                      scale: Tween(begin: 0.965, end: 1.0).animate(anim),
                       child: child,
                     ),
                   ),
@@ -2432,40 +2634,9 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
               Expanded(
                 child: Stack(
                   children: [
-                    // Живой markdown-предпросмотр под полем: *курсив* виден
-                    // сразу, а не «звёздочками».
-                    Positioned.fill(
-                      child: ClipRect(
-                        child: IgnorePointer(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: AnimatedBuilder(
-                                animation: _inputCtrl,
-                                builder: (context, _) {
-                                  final t = _inputCtrl.text;
-                                  if (t.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return buildMarkdownText(
-                                    t,
-                                    TextStyle(
-                                      fontSize: 13,
-                                      height: 1.3,
-                                      color: cs.onSurface,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Предпросмотр markdown убран (тот же артефакт
+                    // «разъехавшихся букв», что и в основном чате).
+                    // Текст обычный и видимый.
                     TextField(
                       magnifierConfiguration:
                           TextMagnifierConfiguration.disabled,
@@ -2475,10 +2646,13 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                       maxLines: 2,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
-                      style: const TextStyle(
+                      // Автопробел клавиатуры — убираем подсказки.
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      style: TextStyle(
                         fontSize: 13,
                         height: 1.3,
-                        color: Colors.transparent,
+                        color: cs.onSurface,
                       ),
                       cursorColor: cs.primary,
                       decoration: InputDecoration(
@@ -2524,7 +2698,10 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                       )
                     : IconButton.filled(
                         key: const ValueKey('send'),
-                        onPressed: _send,
+                        onPressed: () {
+                          Haptics.light();
+                          _send();
+                        },
                         icon: const Icon(Icons.arrow_upward_rounded, size: 17),
                         style: IconButton.styleFrom(
                           backgroundColor: cs.primary,
@@ -2620,7 +2797,7 @@ class _MiniBubble extends StatelessWidget {
     final cs = colorScheme;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 340),
       curve: Curves.easeOutCubic,
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -2649,13 +2826,16 @@ class _MiniBubble extends StatelessWidget {
           ),
         ),
       ),
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 8 * (1 - value)),
-          child: child,
-        ),
-      ),
+      builder: (context, value, child) {
+        final e = Curves.easeOutCubic.transform(value);
+        return Opacity(
+          opacity: e,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - e)),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }

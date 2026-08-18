@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/haptics.dart';
 import '../models/reality_check.dart';
 import '../main.dart';
@@ -10,7 +11,6 @@ import '../widgets/smooth_hover.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/volumetric_switch.dart';
-import '../widgets/stagger_in.dart';
 import '../widgets/manual_time_dialog.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
@@ -123,7 +123,17 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     }
   }
 
+  DateTime? _lastCheckTap;
+
   void _doCheck(RealityCheck check) async {
+    // Защита от двойного срабатывания: второй tap в течение 500 мс
+    // игнорируется — значок не мигает туда-обратно.
+    final now = DateTime.now();
+    if (_lastCheckTap != null &&
+        now.difference(_lastCheckTap!) < const Duration(milliseconds: 500)) {
+      return;
+    }
+    _lastCheckTap = now;
     // Приятный тактильный отклик на отметку проверки.
     Haptics.light();
     await _service.doCheck(check.id);
@@ -336,11 +346,9 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
         itemCount: checks.length,
         itemBuilder: (context, i) {
           final check = checks[i];
-          return StaggerIn(
+          return SwipeToDelete(
             key: ValueKey('item_rc_${check.id}'),
-            index: i,
-            child: SwipeToDelete(
-              dismissKey: ValueKey('dismiss_${check.id}'),
+            dismissKey: ValueKey('dismiss_${check.id}'),
               confirmDismiss: (_) async {
                 return await showDialog<bool>(
                   context: context,
@@ -388,10 +396,12 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                             children: [
                               // Кружок-галка: внутри — ВЫБРАННЫЙ значок проверки
                               // (раньше был «пальчик»), при отметке — галочка.
+                              // сжимается (scale 0.9) — без мигания.
                               GestureDetector(
+  behavior: HitTestBehavior.opaque,
                                 onTap: () => _doCheck(check),
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
+                                  duration: const Duration(milliseconds: 260),
                                   width: 36,
                                   height: 36,
                                   decoration: BoxDecoration(
@@ -471,8 +481,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                   ),
                 ),
               ),
-            ),
-          );
+            );
         },
       ),
     ];

@@ -17,6 +17,13 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- Skia вместо Impeller: на бюджетных GPU (Adreno 610 у Redmi
+             Note 12) Vulkan-рендерер Impeller подтормаживает и рисует
+             текст (особенно курсив) с артефактами-зазорами между глифами.
+             Вид и анимации НЕ меняются — только движок отрисовки. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

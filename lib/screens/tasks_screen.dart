@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'dart:async';
 import '../services/haptics.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -83,9 +85,18 @@ class _TasksScreenState extends State<TasksScreen>
 
   /// Отметить/снять задачу. При выполнении Ада «реально» выдаёт награду —
   /// снекбаром, когда достигнута новая веха (все сделано / N всего / стрик).
-  /// Сохраняем `wasDone` ДО toggle: после возврата из сервиса у задачи
-  /// уже инвертирован .done — иначе легко ошибиться и награждать за снятие.
+  /// Защита от двойного срабатывания: палец на слабом экране может
+  /// «дрогнуть» и GestureDetector выдаст второй tap — значок мигал бы
+  /// туда-обратно. Повторный toggle в течение 500 мс игнорируется.
+  DateTime? _lastTaskTap;
+
   Future<void> _toggleTask(Task task) async {
+    final now = DateTime.now();
+    if (_lastTaskTap != null &&
+        now.difference(_lastTaskTap!) < const Duration(milliseconds: 500)) {
+      return;
+    }
+    _lastTaskTap = now;
     // Приятный тактильный отклик: лёгкий «клик» при отметке задачи.
     Haptics.select();
     final wasDone = task.done;
@@ -164,6 +175,7 @@ class _TasksScreenState extends State<TasksScreen>
                         );
                         setSt(() {});
                         _service.removeCategory(c);
+                        FocusManager.instance.primaryFocus?.unfocus();
                       }
                     },
                   ),
@@ -338,17 +350,29 @@ class _TasksScreenState extends State<TasksScreen>
                     ),
                   Expanded(
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 320),
+                      // Плавнее и красивее переключение категорий: новый
+                      // список «всплывает» снизу (slide 28px + fade +
+                      // лёгкий scale), старый плавно гаснет.
+                      duration: const Duration(milliseconds: 460),
                       switchInCurve: Curves.easeOutCubic,
                       switchOutCurve: Curves.easeInCubic,
                       transitionBuilder: (child, animation) => FadeTransition(
                         opacity: animation,
-                        child: ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.98,
-                            end: 1.0,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.035),
+                            end: Offset.zero,
                           ).animate(animation),
-                          child: child,
+                          child: ScaleTransition(
+                            scale: Tween<double>(begin: 0.985, end: 1.0)
+                                .animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ),
+                                ),
+                            child: child,
+                          ),
                         ),
                       ),
                       child: hasTasks
@@ -380,7 +404,10 @@ class _TasksScreenState extends State<TasksScreen>
                     child: GestureDetector(
                       onLongPress: () => showBerserkSheet(context),
                       child: FloatingActionButton(
-                        onPressed: _addTask,
+                        onPressed: () {
+                          Haptics.light();
+                          _addTask();
+                        },
                         child: const Icon(Icons.add),
                       ),
                     ),
@@ -403,7 +430,10 @@ class _TasksScreenState extends State<TasksScreen>
       advice: Translations.t('emptyTaskAdvice', context),
       actionLabel: Translations.t('newTask', context),
       accent: const Color(0xFF5E8FB5),
-      onPressed: _addTask,
+      onPressed: () {
+        Haptics.light();
+        _addTask();
+      },
     );
   }
 
@@ -444,10 +474,8 @@ class _TasksScreenState extends State<TasksScreen>
         if (newGlobal == oldGlobal) return;
         _service.reorder(oldGlobal, newGlobal);
       },
-      itemBuilder: (context, i) => StaggerIn(
+      itemBuilder: (context, i) => KeyedSubtree(
         key: ValueKey('item_task_${tasks[i].id}'),
-        index: i,
-        extraDelay: const Duration(milliseconds: 320),
         child: _buildTaskCard(context, theme, tasks[i], i),
       ),
     );
@@ -486,127 +514,140 @@ class _TasksScreenState extends State<TasksScreen>
       },
       onDismissed: (_) => _service.remove(task.id),
       child: SmoothHover(
-        child: Card(
-          key: ValueKey(task.id),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            children: [
-              // Drag handle слева — ReorderableDragStartListener включает
-              // перетаскивание (как в привычках).
-              ReorderableDragStartListener(
-                index: index,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(
-                    Icons.drag_indicator,
-                    size: 24,
-                    color: Colors.grey,
+        child: _TaskHoldNote(
+          onHold: () => _showTaskNote(task),
+          child: Card(
+            key: ValueKey(task.id),
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                // Drag handle слева — ReorderableDragStartListener включает
+                // перетаскивание (как в привычках).
+                ReorderableDragStartListener(
+                  index: index,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.drag_indicator,
+                      size: 24,
+                      color: Colors.grey,
+                    ),
                   ),
                 ),
-              ),
-              // Чекбокс в левой колонке, как в привычках (уже, чтобы
-              // больше ширины оставалось тексту)
-              SizedBox(
-                width: 46,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: () => _toggleTask(task),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: task.done
-                              ? theme.colorScheme.primary
-                              : Colors.transparent,
-                          border: Border.all(
+                // Чекбокс в левой колонке, как в привычках: колонка уже (40)
+                // и значок крупнее (23) — иконка ближе к драг-хэндлу слева.
+                SizedBox(
+                  width: 40,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // (scale 0.9) — «чуть выделяется», без мигания и
+                      // вспышек. Иконка меняется сразу (фон заливается
+                      // плавно AnimatedContainer'ом).
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _toggleTask(task),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 260),
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
                             color: task.done
                                 ? theme.colorScheme.primary
-                                : theme.colorScheme.outline,
-                            width: 2,
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: task.done
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.outline,
+                              width: 2,
+                            ),
                           ),
+                          child: task.done
+                              ? const Icon(
+                                  Icons.check,
+                                  size: 23,
+                                  color: Colors.white,
+                                )
+                              : Icon(
+                                  task.icon,
+                                  size: 23,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                         ),
-                        child: task.done
-                            ? const Icon(
-                                Icons.check,
-                                size: 20,
-                                color: Colors.white,
-                              )
-                            : Icon(
-                                task.icon,
-                                size: 20,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              // Основное содержимое
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 12, 12, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Строка заголовка: текст задачи + компактная кнопка редактирования
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            // Плавное зачёркивание: линия «рисуется» по тексту
-                            // при отметке и «стирается» при снятии (см.
-                            // AnimatedStrikeText) — вместо мгновенного
-                            // TextDecoration.lineThrough.
-                            child: AnimatedStrikeText(
-                              text: task.title,
-                              style: theme.textTheme.titleMedium!.copyWith(
-                                height: 1.25,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                              struck: task.done,
-                              struckColor: theme.colorScheme.onSurfaceVariant,
-                              strikeColor: theme.colorScheme.outline,
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => _editTask(task),
-                            icon: Icon(
-                              Icons.edit_outlined,
-                              size: 20,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 32,
-                              minHeight: 32,
-                            ),
-                            style: IconButton.styleFrom(
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Приоритет (если есть)
-                      if (task.priority > 0) ...[
-                        const SizedBox(height: 8),
-                        _priorityPill(task.priority, theme, context),
-                      ],
                     ],
                   ),
                 ),
-              ),
-            ],
+                // Основное содержимое
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 12, 12, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Строка заголовка: текст задачи + компактная кнопка редактирования
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              // Плавное зачёркивание: линия «рисуется» по тексту
+                              // при отметке и «стирается» при снятии (см.
+                              // AnimatedStrikeText) — вместо мгновенного
+                              // TextDecoration.lineThrough.
+                              child: AnimatedStrikeText(
+                                text: task.title,
+                                style: theme.textTheme.titleMedium!.copyWith(
+                                  height: 1.25,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                                struck: task.done,
+                                struckColor: theme.colorScheme.onSurfaceVariant,
+                                strikeColor: theme.colorScheme.outline,
+                                maxLines: 6,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => _editTask(task),
+                              icon: Icon(
+                                Icons.edit_outlined,
+                                size: 20,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              style: IconButton.styleFrom(
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Приоритет (всегда показываем, включая low=0)
+                        if (task.priority >= 0) ...[
+                          const SizedBox(height: 8),
+                          _priorityPill(task.priority, theme, context),
+                        ],
+                        // Заметка «Вспомнил, что использую…» — красивая
+                        // плашка внизу карточки.
+                        if (task.note.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _noteChip(task.note, theme, context),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -618,6 +659,18 @@ class _TasksScreenState extends State<TasksScreen>
     ThemeData theme,
     Animation<double> animation,
   ) {
+    // ТО ЖЕ, что buildDragProxy: перетаскиваемый элемент монтируется
+    // в оверлее ЗАНОВО, поэтому без подавления входной каскад StaggerIn
+    // проигрывался бы прямо во время драга — текст «прыгал» и менял
+    // положение, а после приземления возвращался. Плюс без инкремента
+    // SmoothHover.dragProxyCount живая карточка не узнавала о драге,
+    // оставалась увеличенной и «дублировалась» рядом с прокси.
+    StaggerIn.suppressEntrance = true;
+    SmoothHover.dragProxyCount.value++;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      StaggerIn.suppressEntrance = false;
+      SmoothHover.dragProxyCount.value--;
+    });
     return AnimatedBuilder(
       animation: animation,
       builder: (context, _) {
@@ -631,7 +684,10 @@ class _TasksScreenState extends State<TasksScreen>
             borderRadius: BorderRadius.circular(20),
             color: theme.colorScheme.surface,
             child: Container(
-              decoration: BoxDecoration(
+              // foregroundDecoration — обводка ПОВЕРХ, не участвует в layout
+              // (как в buildDragProxy): размеры прокси = размеры карточки,
+              // текст не перетекает на другие строки при драге.
+              foregroundDecoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: theme.colorScheme.primary.withValues(
@@ -648,37 +704,148 @@ class _TasksScreenState extends State<TasksScreen>
     );
   }
 
+  /// Цвет приоритета: ярче и контрастнее.
   Color _priorityColor(int p, ThemeData theme) {
     switch (p) {
       case 2:
-        return Colors.red.shade300;
+        return Colors.red.shade400;
       case 1:
-        return Colors.amber.shade400;
+        return Colors.orange.shade500;
       default:
-        return theme.colorScheme.onSurfaceVariant;
+        return Colors.green.shade500;
     }
   }
 
+  /// Иконка приоритета: визуальный маркер.
+  IconData _priorityIcon(int p) {
+    switch (p) {
+      case 2:
+        return Icons.warning_amber_rounded;
+      case 1:
+        return Icons.hourglass_empty_rounded;
+      default:
+        return Icons.push_pin_rounded;
+    }
+  }
+
+  /// Таблетка приоритета: градиентный фон, иконка + текст, плавное
+  /// появление при добавлении задачи.
   Widget _priorityPill(int p, ThemeData theme, BuildContext context) {
     final color = _priorityColor(p, theme);
+    final icon = _priorityIcon(p);
     final label = switch (p) {
       2 => Translations.t('priorityHigh', context),
       1 => Translations.t('priorityMedium', context),
       _ => Translations.t('priorityLow', context),
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(10),
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('priority_pill_$p'),
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(scale: 0.95 + 0.05 * t, child: child),
       ),
-      child: Text(
-        label,
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: color,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              color.withValues(alpha: 0.25),
+              color.withValues(alpha: 0.15),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  /// Плашка заметки «Вспомнил, что использую…»: лавандовый градиент,
+  /// иконка-лампочка и текст до 3 строк с многоточием.
+  Widget _noteChip(String note, ThemeData theme, BuildContext context) {
+    final lavender = const Color(0xFF9C6ADE);
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('note_chip'),
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(scale: 0.96 + 0.04 * t, child: child),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              lavender.withValues(alpha: 0.22),
+              const Color(0xFFFFB08A).withValues(alpha: 0.14),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: lavender.withValues(alpha: 0.35), width: 1),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(
+                Icons.lightbulb_outline_rounded,
+                size: 14,
+                color: Color(0xFF9C6ADE),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                note,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Меню быстрого списка «Вспомнил, что использую…»: красивое окно снизу
+  /// с полем заметки до 150 символов. Открывается долгим зажатием задачи
+  /// (5 секунд), когда режим включён в разработке.
+  void _showTaskNote(Task task) {
+    Haptics.medium();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _TaskNoteSheet(task: task, service: _service),
     );
   }
 
@@ -698,6 +865,315 @@ class _TasksScreenState extends State<TasksScreen>
           const SizedBox(width: 4),
           Icon(Icons.favorite, size: 14, color: Colors.pink[300]),
         ],
+      ),
+    );
+  }
+}
+
+/// Долгое зажатие задачи (5 секунд): плавный прогресс-кружок вокруг
+/// карточки и открытие меню быстрого списка «Вспомнил, что использую…».
+/// Работает только когда режим включён (SettingsService.taskNotesEnabled).
+class _TaskHoldNote extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onHold;
+  const _TaskHoldNote({required this.child, required this.onHold});
+
+  @override
+  State<_TaskHoldNote> createState() => _TaskHoldNoteState();
+}
+
+class _TaskHoldNoteState extends State<_TaskHoldNote>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 5),
+  );
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    if (!SettingsService.taskNotesEnabled.value) return;
+    if (_timer != null) return;
+    _ctrl.value = 0;
+    _ctrl.forward();
+    _timer = Timer(const Duration(seconds: 5), () {
+      _timer = null;
+      if (mounted) {
+        Haptics.medium();
+        widget.onHold();
+      }
+    });
+  }
+
+  void _cancel() {
+    _timer?.cancel();
+    _timer = null;
+    _ctrl.stop();
+    _ctrl.value = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (_) => _start(),
+      onLongPressEnd: (_) => _cancel(),
+      onLongPressCancel: _cancel,
+      child: Stack(
+        children: [
+          widget.child,
+          // Плавный прогресс-кружок, рисуется только во время зажатия.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (context, _) {
+                  final v = _ctrl.value;
+                  if (v <= 0.005) return const SizedBox.shrink();
+                  return DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.black.withValues(alpha: 0.22 * v),
+                    ),
+                    child: Center(
+                      child: SizedBox(
+                        width: 46,
+                        height: 46,
+                        child: CircularProgressIndicator(
+                          value: v,
+                          strokeWidth: 3.5,
+                          color: const Color(0xFFFFD54F),
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Красивое окно заметки «Вспомнил, что использую…» (до 150 символов).
+class _TaskNoteSheet extends StatefulWidget {
+  final Task task;
+  final TaskService service;
+  const _TaskNoteSheet({required this.task, required this.service});
+
+  @override
+  State<_TaskNoteSheet> createState() => _TaskNoteSheetState();
+}
+
+class _TaskNoteSheetState extends State<_TaskNoteSheet> {
+  late final TextEditingController _ctrl = TextEditingController(
+    text: widget.task.note,
+  );
+  late final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final note = _ctrl.text.trim();
+    if (note == widget.task.note) {
+      Navigator.pop(context);
+      return;
+    }
+    widget.task.note = note;
+    await widget.service.update(widget.task);
+    if (mounted) {
+      Navigator.pop(context);
+      showBeautifulSnackBar(
+        context,
+        message: note.isEmpty
+            ? Translations.taskNoteClearedOf(context)
+            : Translations.taskNoteSavedOf(context),
+        icon: note.isEmpty
+            ? Icons.delete_outline
+            : Icons.lightbulb_outline_rounded,
+        iconColor: const Color(0xFF9C6ADE),
+      );
+    }
+  }
+
+  void _clear() {
+    _ctrl.clear();
+    _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final lavender = const Color(0xFF9C6ADE);
+    final peach = const Color(0xFFFFB08A);
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.surfaceContainerHigh,
+              Color.lerp(cs.surfaceContainerHigh, lavender, 0.10)!,
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 30,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Верхняя шапка: градиент + лампочка.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color.lerp(lavender, const Color(0xFF4A3A7A), 0.4)!,
+                    Color.lerp(peach, lavender, 0.55)!,
+                  ],
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        width: 1.4,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.lightbulb_outline_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    Translations.t('taskNoteSheetTitle', context),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black38,
+                          blurRadius: 8,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    Translations.t('taskNoteSheetSubtitle', context),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                maxLength: 150,
+                maxLines: 4,
+                minLines: 2,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: Translations.t('taskNoteHint', context),
+                  filled: true,
+                  fillColor: cs.surfaceContainerLowest.withValues(alpha: 0.7),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  counterStyle: TextStyle(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Row(
+                children: [
+                  if (widget.task.note.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: _clear,
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: Text(Translations.clearNoteOf(context)),
+                      style: TextButton.styleFrom(foregroundColor: cs.error),
+                    ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: lavender,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Text(
+                      Translations.saveOf(context),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

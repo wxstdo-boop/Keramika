@@ -185,11 +185,29 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              '${(pct * 100).toInt()}%',
-              style: theme.textTheme.headlineLarge?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.bold,
+            ClipRect(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final t = Curves.easeOutCubic.transform(animation.value);
+                  return FadeTransition(
+                    opacity: animation,
+                    child: Transform.translate(
+                      offset: Offset(0, 12 * (1 - t)),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Text(
+                  '${(pct * 100).toInt()}%',
+                  key: ValueKey('overall_${(pct * 100).toInt()}'),
+                  style: theme.textTheme.headlineLarge?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
@@ -225,11 +243,29 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  '$done / $total',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
+                ClipRect(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      final t = Curves.easeOutCubic.transform(animation.value);
+                      return FadeTransition(
+                        opacity: animation,
+                        child: Transform.translate(
+                          offset: Offset(0, 12 * (1 - t)),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Text(
+                      '$done / $total',
+                      key: ValueKey('count_$done/$total'),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],

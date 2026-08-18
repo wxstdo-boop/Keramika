@@ -18,7 +18,6 @@ import '../utils/android_settings.dart';
 import '../services/prefs.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/animated_blur_title.dart';
-import '../widgets/mutilated_overlay.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -292,7 +291,6 @@ class _HomeScreenState extends State<HomeScreen>
         RepaintBoundary(child: RealityChecksScreen(onExit: () => _onTabTap(0))),
     ];
 
-    final isMutilated = KeramikaApp.of(context).themeKey == 'mutilated';
     final content = Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -474,9 +472,9 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
-    if (isMutilated) {
-      return MutilatedSplatter(child: content);
-    }
+    // Пятна крови темы MUTILATED теперь рисуются ГЛОБАЛЬНО в корневом
+    // builder (main.dart) — поверх Navigator, включая drag-прокси при
+    // перетаскивании. Здесь Splatter больше не нужен (избегаем двойных пятен).
     return content;
   }
 }

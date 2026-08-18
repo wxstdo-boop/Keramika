@@ -187,6 +187,7 @@ class AiGuideService {
             'Chinese, Japanese or any other foreign language.',
     };
     final context = withContext ? _userContext() : '';
+    final liked = _likedPatternsSection();
     return '$lang\n\nТы — Ада, живая девушка и проводница по приложению Keramika. '
         'Keramika — это приложение для привычек, будильников, задач, проверок '
         'реальности и приёмов пищи. Название «Keramika» — просто бренд: '
@@ -200,7 +201,7 @@ class AiGuideService {
         'Response:», «### Instruction:» и любой служебный мусор. Пиши '
         'грамотно, следи за орфографией и пунктуацией. Одно-два уместных '
         'эмодзи, не больше.\n'
-        'УМ и ТЕПЛО: ты умная, наблюдательная и заботливая. Отвечай по сути, '
+        'УМ И ТЕПЛО: ты умная, наблюдательная и заботливая. Отвечай по сути, '
         'а не шаблонно; зеркаль манеру пользователя (коротко — отвечай '
         'коротко, подробно — развёрнуто, шутит — поддержи шутку, грустит — '
         'поддержи). Всегда говори о себе в женском роде: «поняла», «сделала», '
@@ -210,7 +211,50 @@ class AiGuideService {
         'используй инструмент (create_habit / create_task / create_alarm / '
         'create_reality_check / create_meal / delete_item) и коротко подтверди. '
         'Если время будильника словами («на 7 утра») — переведи в 07:00. '
-        '$context';
+        '$context$liked';
+  }
+
+  /// Ключ хранения «понравившихся» ответов Ады — паттерны, которым Ада
+  /// подстраивается, когда пользователь ставит лайк её сообщению.
+  static const _likedPatternsKey = 'ai_liked_patterns';
+
+  /// Сохраняет лайкнутый ответ Ады как «любимый паттерн» (до 6, каждый
+  /// обрезан до ~500 символов). Учим Аду подстраиваться под стиль/содержание,
+  /// которое пользователь отметил сердечком.
+  static void rememberLikedPattern(String text) {
+    try {
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) return;
+      final cut = trimmed.length > 500 ? trimmed.substring(0, 500) : trimmed;
+      final list = globalPrefs.getStringList(_likedPatternsKey) ?? <String>[];
+      list.remove(cut);
+      list.add(cut);
+      if (list.length > 6) {
+        list.removeRange(0, list.length - 6);
+      }
+      globalPrefs.setStringList(_likedPatternsKey, list);
+    } catch (_) {}
+  }
+
+  /// Текст-вставка для системного промпта: «пользователю нравится такой
+  /// стиль — следуй ему». Пусто, если лайков ещё не было.
+  static String _likedPatternsSection() {
+    try {
+      final list = globalPrefs.getStringList(_likedPatternsKey);
+      if (list == null || list.isEmpty) return '';
+      final buf = StringBuffer(
+        '\nТВОЙ ЛЮБИМЫЙ СТИЛЬ (пользователь лайкнул эти твои ответы — '
+        'подстраивайся под такую манеру и глубину):\n',
+      );
+      for (final p in list) {
+        buf.write('— ');
+        buf.write(p);
+        buf.write('\n');
+      }
+      return buf.toString();
+    } catch (_) {
+      return '';
+    }
   }
 
   /// Сводка о данных пользователя (для «дико умной» Ады): полные списки
@@ -400,6 +444,7 @@ class AiGuideService {
     required String userText,
     required List<AiMessage> history,
     required String languageCode,
+    bool useWebSearch = false,
   }) async {
     // 'system' (язык устройства) резолвим в конкретный код — иначе
     // промпт и награды могут оказаться на английском при русском UI.
@@ -408,21 +453,272 @@ class AiGuideService {
     }
     // 0. Локальный парсер команд — мгновенно, оффлайн, без лимита.
     //    Распознаёт явные «создай/запиши/удали …» и выполняет сам.
+    //    Локальные команды в веб-поиск НЕ уходят — они и так мгновенны.
     final parsed = await _tryParseCommand(userText, languageCode);
     if (parsed != null) return parsed;
+
+    // 0.5 Реальный веб-поиск: если включён — «роем» интернет (DuckDuckGo +
+    // Wikipedia, без ключей) и подмешиваем найденные факты в запрос,
+    // чтобы Ада отвечала по свежим данным, а не по своим знаниям.
+    var effectiveText = userText;
+    if (useWebSearch) {
+      try {
+        final ctx = await webSearch(userText, languageCode);
+        if (ctx.isNotEmpty) {
+          effectiveText =
+              'ВЕБ-ПОИСК по запросу пользователя включён.\n'
+              'Отвечай ПО ЭТИМ ДАННЫМ (они свежие и точные), коротко и '
+              'по делу. В конце перечисли источники жирным markdown '
+              '(**домен**):\n'
+              '$ctx\n\n'
+              'Вопрос пользователя: $userText';
+        }
+      } catch (_) {
+        // Поиск упал (сеть/таймаут) — отвечаем как обычно, без контекста.
+      }
+    }
 
     // Жёсткий лимит на ВСЮ цепочку: 25 секунд — больше ждать нельзя,
     // иначе «Ада думает минуту» и сообщение кажется потерянным. Каждый
     // провайдер внутри ограничен своим бюджетом и уходит в кулдаун при
     // падении, поэтому на повторных сообщениях ответ приходит быстро.
     try {
-      return await _sendChain(
-        userText,
+      var answer = await _sendChain(
+        effectiveText,
         history,
         languageCode,
       ).timeout(const Duration(seconds: 25));
+      // Маленькая модель могла «подавиться» веб-контекстом и вернуть
+      // пустоту («три точки»). Повторяем ЧИСТЫЙ запрос без контекста —
+      // так ответ почти всегда приходит.
+      if (useWebSearch && answer.trim().isEmpty) {
+        answer = await _sendChain(
+          userText,
+          history,
+          languageCode,
+        ).timeout(const Duration(seconds: 20));
+      }
+      return answer;
     } on TimeoutException {
       throw Exception('timeout');
+    }
+  }
+
+  /// Реальный веб-поиск без ключей: Bing (HTML — настоящие веб-результаты)
+  /// + DuckDuckGo Instant Answer + Wikipedia (на языке пользователя).
+  /// Параллельно, с быстрыми таймаутами. Собираем до 8 фактов в компактный
+  /// текст для контекста ИИ.
+  /// Возвращает пустую строку, если ничего найти не удалось.
+  static Future<String> webSearch(String query, String languageCode) async {
+    final results = <String>[];
+    const ua = {'User-Agent': 'Mozilla/5.0 (Linux; Android 13) Keramika/1.3'};
+
+    /// Простое декодирование HTML-сущностей для заголовков/сниппетов.
+    String clean(String s) => s
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#039;', "'")
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAllMapped(RegExp(r'&#(\d+);'), (Match m) {
+          final code = int.tryParse(m.group(1) ?? '');
+          if (code == null) return m.group(0)!;
+          return String.fromCharCode(code);
+        })
+        .trim();
+
+    /// Bing: настоящие результаты веб-поиска из HTML. DuckDuckGo Lite
+    /// начал отдавать бот-челлендж вместо выдачи (парсер молча возвращал
+    /// пусто — Ада отвечала «из головы», веб-поиск не работал). Bing
+    /// отдаёт обычный HTML с блоками <li class="b_algo">.
+    Future<void> bingSearch() async {
+      try {
+        final resp = await http
+            .get(
+              Uri.parse(
+                'https://www.bing.com/search'
+                '?q=${Uri.encodeQueryComponent(query)}'
+                '&count=10'
+                '&setlang=${languageCode == 'ru' ? 'ru' : 'en'}'
+                '&cc=${languageCode == 'ru' ? 'RU' : 'US'}',
+              ),
+              headers: {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': languageCode == 'ru'
+                    ? 'ru-RU,ru;q=0.9'
+                    : 'en-US,en;q=0.9',
+              },
+            )
+            .timeout(const Duration(seconds: 6));
+        if (resp.statusCode != 200) return;
+        final body = utf8.decode(resp.bodyBytes, allowMalformed: true);
+        // Бот-челлендж: если блоков результатов нет — выходим тихо.
+        if (!body.contains('b_algo')) return;
+        final blockRe = RegExp(
+          r'<li class="b_algo"[^>]*>.*?</li>',
+          dotAll: true,
+        );
+        final titleRe = RegExp(r'<h2[^>]*>\s*<a[^>]*>(.*?)</a>', dotAll: true);
+        final hrefRe = RegExp(r'<h2[^>]*>\s*<a[^>]*href="([^"]+)"');
+        final snipRe = RegExp(r'<p[^>]*>(.*?)</p>', dotAll: true);
+        for (final m in blockRe.allMatches(body)) {
+          final block = m.group(0)!;
+          final tm = titleRe.firstMatch(block);
+          if (tm == null) continue;
+          final title = clean(tm.group(1) ?? '');
+          if (title.isEmpty) continue;
+          String host = '';
+          final hm = hrefRe.firstMatch(block);
+          if (hm != null) {
+            final raw = hm.group(1) ?? '';
+            host = _hostOf(_bingRealUrl(raw) ?? raw);
+          }
+          final sm = snipRe.firstMatch(block);
+          final snip = sm != null ? clean(sm.group(1) ?? '') : '';
+          final src = host.isNotEmpty ? ' [$host]' : '';
+          results.add(snip.length >= 40 ? '$title — $snip$src' : '$title$src');
+          if (results.length >= 7) break;
+        }
+      } catch (_) {}
+    }
+
+    /// DuckDuckGo Instant Answer: короткая справка/абстракт для сущностей.
+    Future<void> ddgInstant() async {
+      try {
+        final resp = await http
+            .get(
+              Uri.parse(
+                'https://api.duckduckgo.com/'
+                '?q=${Uri.encodeQueryComponent(query)}'
+                '&format=json&no_html=1&skip_disambig=1',
+              ),
+              headers: ua,
+            )
+            .timeout(const Duration(seconds: 5));
+        if (resp.statusCode != 200) return;
+        final data =
+            jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+        final abstractText = data['AbstractText'] as String? ?? '';
+        if (abstractText.trim().length >= 60) {
+          results.add(abstractText.trim());
+        }
+        final topics = data['RelatedTopics'] as List? ?? [];
+        for (final t in topics) {
+          if (t is! Map<String, dynamic>) continue;
+          final nested = t['Topics'];
+          if (nested is List) {
+            for (final sub in nested) {
+              if (sub is Map<String, dynamic>) {
+                final text = sub['Text'] as String? ?? '';
+                if (text.trim().isNotEmpty) results.add(text.trim());
+              }
+            }
+          } else {
+            final text = t['Text'] as String? ?? '';
+            if (text.trim().isNotEmpty) results.add(text.trim());
+          }
+        }
+      } catch (_) {}
+    }
+
+    /// Wikipedia на языке пользователя.
+    Future<void> wiki() async {
+      final lang = switch (languageCode) {
+        'ru' => 'ru',
+        'fr' => 'fr',
+        _ => 'en',
+      };
+      try {
+        final resp = await http
+            .get(
+              Uri.parse(
+                'https://$lang.wikipedia.org/w/api.php'
+                '?action=query&list=search&srsearch='
+                '${Uri.encodeQueryComponent(query)}'
+                '&format=json&srlimit=6&srprop=snippet',
+              ),
+              headers: ua,
+            )
+            .timeout(const Duration(seconds: 5));
+        if (resp.statusCode != 200) return;
+        final data =
+            jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+        final search =
+            (data['query'] as Map<String, dynamic>?)?['search'] as List? ?? [];
+        for (final s in search) {
+          if (s is! Map<String, dynamic>) continue;
+          final title = s['title'] as String? ?? '';
+          final snippet = clean(s['snippet'] as String? ?? '');
+          if (title.trim().isNotEmpty) {
+            results.add(snippet.isNotEmpty ? '$title: $snippet' : title);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Параллельно: Bing + Instant Answer + Wikipedia; ждём не дольше
+    // ~6 секунд, чтобы успеть собрать глубокий контекст.
+    await Future.wait([
+      bingSearch(),
+      ddgInstant(),
+      wiki(),
+    ]).timeout(const Duration(seconds: 6), onTimeout: () => <void>[]);
+
+    // Дедупликация, лимит 8 фактов и обрезка каждого до ~180 симв:
+    // маленькая модель глушится огромным контекстом и отвечает пусто.
+    final seen = <String>{};
+    final unique = <String>[];
+    for (final r in results) {
+      final key = r.length > 70 ? r.substring(0, 70) : r;
+      if (!seen.add(key)) continue;
+      final cut = r.length > 180 ? r.substring(0, 180) : r;
+      unique.add(cut);
+      if (unique.length >= 8) break;
+    }
+    if (unique.isEmpty) return '';
+    final sb = StringBuffer();
+    for (var i = 0; i < unique.length; i++) {
+      sb.writeln('${i + 1}. ${unique[i]}');
+    }
+    return sb.toString().trim();
+  }
+
+  /// Домен из URL (www. убираем) — для пометки источника в результатах.
+  static String _hostOf(String url) {
+    try {
+      final u = Uri.parse(url);
+      final h = u.host;
+      if (h.isEmpty) return '';
+      return h.replaceFirst(RegExp(r'^www.'), '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Bing прячет реальный URL в редиректе /ck/a?...&u=a1<base64>...
+  /// Декодирует base64-часть и возвращает настоящий адрес.
+  static String? _bingRealUrl(String href) {
+    try {
+      // В HTML ссылки приходят с &amp; вместо & — сначала разворачиваем.
+      final decoded = href.replaceAll('&amp;', '&');
+      final u = Uri.parse(decoded);
+      if (!u.host.contains('bing.com')) return decoded;
+      final enc = u.queryParameters['u'];
+      if (enc == null || enc.isEmpty) return null;
+      var b64 = enc.startsWith('a1') ? enc.substring(2) : enc;
+      b64 = b64.replaceAll('-', '+').replaceAll('_', '/');
+      while (b64.length % 4 != 0) {
+        b64 = '$b64=';
+      }
+      final real = utf8.decode(base64.decode(b64), allowMalformed: true);
+      return real.isNotEmpty ? real : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -446,7 +742,7 @@ class AiGuideService {
           userText,
           history,
           languageCode,
-        ).timeout(const Duration(seconds: 14));
+        ).timeout(const Duration(seconds: 18));
         await _incrementHfQuota();
         _setModel('ada-0.0.3');
         return answer;
@@ -467,12 +763,12 @@ class AiGuideService {
     //    ждём не дольше 8 секунд суммарно. Кто первый ответил — того
     //    и берём (метку модели провайдер выставляет сам).
     final round = await Future.wait([
-      _tryProvider('kilo', () => _sendKilo(userText, languageCode), 8),
-      _tryProvider('llm7', () => _sendLLM7(userText, languageCode), 8),
+      _tryProvider('kilo', () => _sendKilo(userText, languageCode), 12),
+      _tryProvider('llm7', () => _sendLLM7(userText, languageCode), 12),
       _tryProvider(
         'pollinations',
         () => _sendPollinations(userText, languageCode),
-        8,
+        12,
       ),
     ]);
     for (final answer in round) {
@@ -877,6 +1173,52 @@ class AiGuideService {
     var changed = false;
     String text(String ruT, String frT, String enT) =>
         ru ? ruT : (fr ? frT : enT);
+    // Ежедневная награда Ады: КАЖДЫЙ день, пока чат открывается, Ада
+    // говорит что-то тёплое и «выдаёт торт». Сообщения чередуются по дню
+    // года — каждый день новое, повторов не бывает чаще раза в цикл.
+    final dailyKey = 'daily_${_todayKey()}';
+    if (!done.contains(dailyKey)) {
+      done.add(dailyKey);
+      changed = true;
+      const dailyRu = [
+        'Хорошо держишься, держи торт! 🎂',
+        'Новый день — новый шаг вперёд. Ты молодец! 🌟',
+        'С возвращением! Я скучала по тебе 🤗',
+        'Отличный день, чтобы быть собой. Держи награду! 🍀',
+        'Ты здесь — это уже победа. Награда твоя! 🏅',
+        'Продолжай в том же духе, я горжусь тобой 💪',
+        'Сегодня твой день. Наслаждайся! 🌈',
+        'Ты делаешь больше, чем думаешь. Держи печеньку! 🍪',
+      ];
+      const dailyFr = [
+        'Tiens bon, voilà un gâteau ! 🎂',
+        'Un nouveau jour, un pas en avant. Bravo ! 🌟',
+        'Ravie de te revoir ! Tu m\'as manqué 🤗',
+        'Un beau jour pour être toi-même. Voici ta récompense ! 🍀',
+        'Tu es là, c\'est déjà une victoire. Récompense à toi ! 🏅',
+        'Continue comme ça, je suis fière de toi 💪',
+        'Aujourd\'hui est ton jour. Profites-en ! 🌈',
+        'Tu fais plus que tu ne crois. Tiens, un cookie ! 🍪',
+      ];
+      const dailyEn = [
+        'Keep it up, here\'s a cake! 🎂',
+        'A new day, a step forward. Well done! 🌟',
+        'Welcome back! I missed you 🤗',
+        'A great day to be yourself. Here\'s your reward! 🍀',
+        'You\'re here — that\'s already a win. Reward yours! 🏅',
+        'Keep going, I\'m proud of you 💪',
+        'Today is your day. Enjoy! 🌈',
+        'You do more than you think. Here\'s a cookie! 🍪',
+      ];
+      final now = DateTime.now();
+      final dayOfYear = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).difference(DateTime(now.year, 1, 1)).inDays;
+      final list = ru ? dailyRu : (fr ? dailyFr : dailyEn);
+      rewards.add(list[dayOfYear % list.length]);
+    }
     // Вехи стриков.
     const milestones = [3, 7, 14, 30, 60, 100, 150, 200, 300, 365];
     for (final h in HabitService().habits) {

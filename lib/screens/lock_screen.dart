@@ -214,28 +214,37 @@ class _LockScreenState extends State<LockScreen>
                       ],
                     ),
                   ),
-                  // Ошибка появляется/исчезает плавно (место зарезервировано).
-                  AnimatedSwitcher(
+                  // Ошибка появляется/исчезает плавно: AnimatedSize
+                  // сглаживает скачок высоты при появлении/исчезновении,
+                  // AnimatedSwitcher даёт мягкий фейд — без «дёрганья».
+                  AnimatedSize(
                     duration: const Duration(milliseconds: 220),
-                    transitionBuilder: (child, animation) =>
-                        FadeTransition(opacity: animation, child: child),
-                    child: _error == null
-                        ? const SizedBox(key: ValueKey('noerror'), height: 20)
-                        : Padding(
-                            key: const ValueKey('error'),
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              _error == 'Wrong PIN'
-                                  ? Translations.t('wrongPin', context)
-                                  : _error == 'PINs do not match'
-                                  ? Translations.t('pinsDoNotMatch', context)
-                                  : _error!,
-                              style: TextStyle(
-                                color: theme.colorScheme.error,
-                                fontWeight: FontWeight.w500,
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
+                      child: _error == null
+                          ? const SizedBox(key: ValueKey('noerror'), height: 20)
+                          : Padding(
+                              key: const ValueKey('error'),
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                _error == 'Wrong PIN'
+                                    ? Translations.t('wrongPin', context)
+                                    : _error == 'PINs do not match'
+                                    ? Translations.t('pinsDoNotMatch', context)
+                                    : _error!,
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
-                          ),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   // Точки: «поп» при вводе (AnimatedScale + свечение),
@@ -259,11 +268,11 @@ class _LockScreenState extends State<LockScreen>
                       children: List.generate(_pinLength, (i) {
                         final filled = i < _pin.length;
                         return AnimatedScale(
-                          scale: filled ? 1.2 : 1.0,
-                          duration: const Duration(milliseconds: 240),
-                          curve: Curves.easeOutBack,
+                          scale: filled ? 1.18 : 1.0,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
                           child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
+                            duration: const Duration(milliseconds: 220),
                             curve: Curves.easeOutCubic,
                             margin: const EdgeInsets.symmetric(horizontal: 8),
                             width: 20,
@@ -380,11 +389,11 @@ class _KeyButtonState extends State<_KeyButton> {
         onTap: widget.onTap,
         child: AnimatedScale(
           scale: _pressed ? 0.88 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
+            curve: Curves.easeOutCubic,
             width: 80,
             height: 80,
             decoration: BoxDecoration(

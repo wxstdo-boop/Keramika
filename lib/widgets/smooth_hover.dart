@@ -23,8 +23,11 @@ class SmoothHover extends StatefulWidget {
   const SmoothHover({
     super.key,
     required this.child,
-    this.hoverScale = 1.02,
-    this.duration = const Duration(milliseconds: 200),
+    // 1.012 вместо 1.02: «вздутие» остаётся ощутимым, но карточка почти
+    // не наезжает на соседнюю — раньше на слабом GPU при 2% масштабе
+    // значок/край карточки «двоился» с соседней.
+    this.hoverScale = 1.012,
+    this.duration = const Duration(milliseconds: 180),
     this.curve = Curves.easeOutCubic,
   });
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import '../services/haptics.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
+
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../models/habit.dart';
 import '../services/habit_service.dart';
@@ -15,7 +16,6 @@ import '../widgets/drag_proxy.dart';
 import '../widgets/animated_strike_text.dart';
 import '../widgets/ai_guide.dart';
 import '../widgets/animated_fab_row.dart';
-import '../widgets/stagger_in.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_habit_screen.dart';
 
@@ -290,7 +290,7 @@ class _HabitsScreenState extends State<HabitsScreen>
     final sameHabit = _tappedHabitId == habit.id;
     final withinWindow =
         _lastTapTime != null &&
-        now.difference(_lastTapTime!) <= const Duration(milliseconds: 600);
+        now.difference(_lastTapTime!) <= const Duration(milliseconds: 500);
     if (!sameHabit || !withinWindow) {
       _tapCount = 1;
       _tappedHabitId = habit.id;
@@ -299,7 +299,9 @@ class _HabitsScreenState extends State<HabitsScreen>
     }
     _lastTapTime = now;
 
-    if (_tapCount >= 3) {
+    // Сброс — только после 4 быстрых тапов (раньше 3: случайные',
+    // «топтания» по карточке стирали стрик — «то исчезает, то ещё что»).',
+    if (_tapCount >= 4) {
       _tapCount = 0;
       _tappedHabitId = null;
       _lastResetByHabit[habit.id] = now;
@@ -510,7 +512,10 @@ class _HabitsScreenState extends State<HabitsScreen>
                     child: GestureDetector(
                       onLongPress: () => showBerserkSheet(context),
                       child: FloatingActionButton(
-                        onPressed: _addHabit,
+                        onPressed: () {
+                          Haptics.light();
+                          _addHabit();
+                        },
                         child: const Icon(Icons.add),
                       ),
                     ),
@@ -550,13 +555,13 @@ class _HabitsScreenState extends State<HabitsScreen>
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 340),
+        duration: const Duration(milliseconds: 420),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
           child: ScaleTransition(
-            scale: Tween<double>(begin: 0.985, end: 1.0).animate(animation),
+            scale: Tween<double>(begin: 0.97, end: 1.0).animate(animation),
             child: child,
           ),
         ),
@@ -607,10 +612,8 @@ class _HabitsScreenState extends State<HabitsScreen>
           buildDragProxy(child, theme, animation),
       itemBuilder: (context, i) => RepaintBoundary(
         key: ValueKey('rb_habit_${habits[i].id}'),
-        child: StaggerIn(
+        child: KeyedSubtree(
           key: ValueKey('item_habit_${habits[i].id}'),
-          index: i,
-          extraDelay: const Duration(milliseconds: 320),
           child: _buildHabitCard(context, theme, habits, _FlatIndexSource(i)),
         ),
       ),
@@ -714,10 +717,8 @@ class _HabitsScreenState extends State<HabitsScreen>
       },
       itemBuilder: (context, i) => RepaintBoundary(
         key: ValueKey('rb_section_${habits[i].id}'),
-        child: StaggerIn(
+        child: KeyedSubtree(
           key: ValueKey('item_habit_${habits[i].id}'),
-          index: i,
-          extraDelay: const Duration(milliseconds: 320),
           child: _buildHabitCard(
             context,
             theme,
@@ -727,6 +728,20 @@ class _HabitsScreenState extends State<HabitsScreen>
         ),
       ),
     );
+  }
+
+  DateTime? _lastHabitTap;
+
+  Future<void> _tapHabitOnce(Habit habit) async {
+    final now = DateTime.now();
+    if (_lastHabitTap != null &&
+        now.difference(_lastHabitTap!) < const Duration(milliseconds: 500)) {
+      return;
+    }
+    _lastHabitTap = now;
+    await _service.toggle(habit.id);
+    if (!mounted) return;
+    setState(() {});
   }
 
   /// Карточка привычки. Используется и в плоском списке (Flat),
@@ -805,8 +820,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                           color: Colors.grey,
                         ),
                       )
-                    : ReorderableDragStartListener(
-                        key: ValueKey('drag'),
+                    : _HabitDragHandle(
                         index: dragIndex,
                         child: const Padding(
                           padding: EdgeInsets.symmetric(
@@ -821,53 +835,49 @@ class _HabitsScreenState extends State<HabitsScreen>
                         ),
                       ),
               ),
-              // Чекбокс (сверху) + тип привычки (снизу) — как просили.
-              // Колонка уже (46): значок ближе к драгу, тексту — больше места.
+              // Чекбокс (сверху) + тип привычки (снизу).
+              // Колонка уже (40) и значок крупнее (23) — иконка ближе
+              // к драг-хэндлу слева, тексту — больше места.
               SizedBox(
-                width: 46,
+                width: 40,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Padding(
                       padding: EdgeInsets.zero,
-                      child: RepaintBoundary(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () async {
-                            // подсчёт ведёт сервис; нам только перерисовать
-                            await _service.toggle(habit.id);
-                            if (!mounted) return;
-                            setState(() {});
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
+                      // (scale 0.9) — «чуть выделяется», без мигания.
+                      // Защита от двойного срабатывания — в _tapHabitOnce.
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _tapHabitOnce(habit),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 260),
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: habit.doneToday
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            border: Border.all(
                               color: habit.doneToday
                                   ? theme.colorScheme.primary
-                                  : Colors.transparent,
-                              border: Border.all(
-                                color: habit.doneToday
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.outline,
-                                width: 2,
-                              ),
+                                  : theme.colorScheme.outline,
+                              width: 2,
                             ),
-                            child: habit.doneToday
-                                ? const Icon(
-                                    Icons.check,
-                                    size: 20,
-                                    color: Colors.white,
-                                  )
-                                : Icon(
-                                    habit.icon,
-                                    size: 20,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
                           ),
+                          child: habit.doneToday
+                              ? const Icon(
+                                  Icons.check,
+                                  size: 23,
+                                  color: Colors.white,
+                                )
+                              : Icon(
+                                  habit.icon,
+                                  size: 23,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                         ),
                       ),
                     ),
@@ -906,10 +916,46 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 struck: habit.doneToday,
                                 struckColor: theme.colorScheme.onSurfaceVariant,
                                 strikeColor: theme.colorScheme.outline,
-                                maxLines: 4,
+                                maxLines: 6,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            // Напоминание: только значок, без текста
+                            // времени (текст ломался в 4 строки). Если
+                            // задана своя заметка (reminderText) — она
+                            // показывается в одну строку с многоточием.
+                            if (habit.reminderText != null ||
+                                habit.reminderTime != null) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    habit.reminderText != null
+                                        ? Icons.edit_note_rounded
+                                        : Icons.schedule,
+                                    size: 14,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  if (habit.reminderText != null) ...[
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        habit.reminderText!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
                             // Быстрое напоминание: маленький колокольчик в
                             // цвет темы, если у привычки задано «Вспомнить всё».
                             if (habit.reminderTime != null)
@@ -1108,10 +1154,11 @@ class _HabitsScreenState extends State<HabitsScreen>
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
-                                              const Icon(
+                                              Icon(
                                                 Icons.lightbulb,
                                                 size: 16,
-                                                color: Color(0xFFFFD54F),
+                                                color:
+                                                    theme.colorScheme.primary,
                                               ),
                                               const SizedBox(width: 6),
                                               Expanded(
@@ -1167,173 +1214,189 @@ class _HabitsScreenState extends State<HabitsScreen>
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: flashing ? 0.0 : 1.0, end: 1.0),
       duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutBack,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
-      ),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) =>
+          Transform.scale(scale: value, child: child),
       child: inner,
     );
   }
 
-  Widget _buildPerfectionismStrip(BuildContext context, ThemeData theme) {
-    final today = _todaysPlaques();
-    if (today.isEmpty) return const SizedBox.shrink();
-    // Единый плавный вход всей ленты: fade + лёгкий подъём. Без per-card
-    // TweenAnimationBuilder — при горизонтальной прокрутке карточки не
-    // «перепроигрывали» анимацию появления при входе в вьюпорт.
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 16 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
-        child: SizedBox(
-          height: 150,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: today.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, i) => SizedBox(
-              width: 252,
-              child: _buildPerfectionismCard(context, theme, today[i]),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPerfectionismCard(
-    BuildContext context,
-    ThemeData theme,
-    _PerfPlaque plaque,
-  ) {
-    final isDark = theme.brightness == Brightness.dark;
-    final accent = plaque.color;
-    return SmoothHover(
-      child: Material(
-        color: Colors.transparent,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          splashColor: accent.withValues(alpha: 0.25),
-          highlightColor: accent.withValues(alpha: 0.15),
-          onTap: () => _showPerfFullScreen(
-            Translations.t(plaque.bodyKey, context),
-            Translations.t(plaque.titleKey, context),
-            plaque.color,
-          ),
-          child: Container(
-            height: 138,
-            padding: const EdgeInsets.all(14),
+  /// Ряд дней недели: активные дни привычки подсвечены кружками.
+  Widget _daysRow(Habit habit, ThemeData theme, BuildContext context) {
+    if (habit.activeDays.isEmpty) return const SizedBox.shrink();
+    final names = Translations.dayNames(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: List.generate(7, (i) {
+          final day = i + 1;
+          final active = habit.activeDays.contains(day);
+          return Container(
+            width: 24,
+            height: 24,
+            margin: const EdgeInsets.only(right: 5),
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              // Мягкая подложка вместо тяжёлого градиента: аккуратный
-              // тон в цвет карточки + тонкая рамка. Текст тёмный на
-              // светлой теме (белый на тёмной), иконка — цветная плашка.
-              color: isDark
-                  ? accent.withValues(alpha: 0.22)
-                  : accent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              color: active
+                  ? theme.colorScheme.primary.withValues(alpha: 0.14)
+                  : Colors.transparent,
               border: Border.all(
-                color: accent.withValues(alpha: isDark ? 0.4 : 0.28),
+                color: active
+                    ? theme.colorScheme.primary.withValues(alpha: 0.55)
+                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+                width: 1,
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(plaque.icon, color: Colors.white, size: 19),
-                ),
-                const Spacer(),
-                Text(
-                  Translations.t(plaque.titleKey, context),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: isDark ? Colors.white : theme.colorScheme.onSurface,
-                    fontWeight: FontWeight.w700,
-                    height: 1.15,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  Translations.t(plaque.shortKey, context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.75)
-                        : theme.colorScheme.onSurfaceVariant,
-                    height: 1.25,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            child: Text(
+              names[i][0].toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontSize: 10,
+                height: 1,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.55,
+                      ),
+              ),
             ),
-          ),
-        ),
+          );
+        }),
       ),
     );
   }
 
-  /// Compact action button that does not reserve the full 48×48 tap target
-  /// width of a default [IconButton], so long habit names keep more room.
   Widget _compactIconButton({
     required IconData icon,
     required Color color,
     required VoidCallback onPressed,
   }) {
-    return IconButton(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20, color: color),
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Padding(
+      padding: const EdgeInsets.only(left: 2),
+      child: InkResponse(
+        onTap: onPressed,
+        radius: 18,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, size: 18, color: color),
+        ),
       ),
     );
   }
 
-  Widget _daysRow(Habit habit, ThemeData theme, BuildContext context) {
-    if (habit.activeDays.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8, top: 2),
-        child: Text(
-          Translations.t('everyDay', context),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-    final dayNames = Translations.dayNames(context);
-    final labels = habit.activeDays.map((d) => dayNames[d - 1]).join('  ');
+  /// Полоса перфекционизма: 4-6 карточек-напоминаний на сегодня.
+  Widget _buildPerfectionismStrip(BuildContext context, ThemeData theme) {
+    final plaques = _todaysPlaques();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 2),
-      child: Text(
-        labels,
-        softWrap: true,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  size: 15,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  Translations.t('perfectionism', context),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    Translations.t('perfectionismHint', context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 118,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              itemCount: plaques.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, i) {
+                final p = plaques[i];
+                return SmoothHover(
+                  hoverScale: 1.03,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () => _showPerfFullScreen(
+                        Translations.t(p.bodyKey, context),
+                        Translations.t(p.titleKey, context),
+                        p.color,
+                      ),
+                      child: Container(
+                        width: 160,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              p.color.withValues(alpha: 0.22),
+                              p.color.withValues(alpha: 0.06),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: p.color.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(p.icon, size: 22, color: p.color),
+                            const SizedBox(height: 8),
+                            Text(
+                              Translations.t(p.titleKey, context),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              Translations.t(p.shortKey, context),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                height: 1.2,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1359,31 +1422,50 @@ class _HabitsScreenState extends State<HabitsScreen>
   }
 }
 
-/// Резолвер индексов для [ReorderableDragStartListener] и [itemBuilder].
-/// Для [Flat] источника i совпадает с глобальным, потому что плоский
-/// список — это и есть глобальный. Для [Section] источника локальный
-/// индекс привычки в секции == её позиция, dragIndex берётся
-/// из глобальной sortedHabits, чтобы движение ручки работало корректно.
+/// Drag-ручка карточки привычки: долгое нажатие начинает перетаскивание
+/// в ReorderableListView (index — позиция в текущем списке).
+class _HabitDragHandle extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _HabitDragHandle({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ReorderableDelayedDragStartListener(index: index, child: child);
+  }
+}
+
+/// Абстракция «какой индекс использовать для карточки»: для плоского списка
+/// локальный и drag-индекс совпадают; для секции это локальный индекс
+/// внутри секции.
 abstract class IndexSource {
   int localIndex(BuildContext context, List<Habit> habits);
   int dragIndex(BuildContext context, List<Habit> habits);
 }
 
 class _FlatIndexSource implements IndexSource {
-  final int i;
-  const _FlatIndexSource(this.i);
+  final int index;
+  const _FlatIndexSource(this.index);
+
   @override
-  int localIndex(BuildContext context, List<Habit> habits) => i;
+  int localIndex(BuildContext context, List<Habit> habits) => index;
+
   @override
-  int dragIndex(BuildContext context, List<Habit> habits) => i;
+  int dragIndex(BuildContext context, List<Habit> habits) => index;
 }
 
 class _SectionIndexSource implements IndexSource {
-  final int localIdx;
-  final List<Habit> sectionSource;
-  const _SectionIndexSource(this.localIdx, this.sectionSource);
+  final int index;
+  final List<Habit> sectionHabits;
+  const _SectionIndexSource(this.index, this.sectionHabits);
+
   @override
-  int localIndex(BuildContext context, List<Habit> habits) => localIdx;
+  int localIndex(BuildContext context, List<Habit> habits) => index;
+
   @override
-  int dragIndex(BuildContext context, List<Habit> habits) => localIdx;
+  int dragIndex(BuildContext context, List<Habit> habits) {
+    final habit = sectionHabits[index];
+    final global = habits.indexOf(habit);
+    return global < 0 ? index : global;
+  }
 }

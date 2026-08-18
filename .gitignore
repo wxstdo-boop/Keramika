@@ -5,6 +5,13 @@ build/
 .flutter-plugins-dependencies
 *.iml
 .idea/
+# Android build caches & local config (machine-specific)
+android/.gradle/
+android/**/.cxx/
+android/local.properties
+android/.kotlin/
+android/app/.cxx/
+*.lock
 # Unrelated helper scratch kept out of the repo backup
 .freebuff/
 .flutter_web_server.log

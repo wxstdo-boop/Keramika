@@ -1,2 +1,0 @@
-C:/Games/keramika/android/app/.cxx/debug/4f685r5g/arm64-v8a/CMakeFiles/edit_cache.dir
-C:/Games/keramika/android/app/.cxx/debug/4f685r5g/arm64-v8a/CMakeFiles/rebuild_cache.dir

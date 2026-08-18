@@ -28,8 +28,6 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
-import io.flutter.embedding.engine.plugins.FlutterPlugin;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
@@ -99,11 +97,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Система может перезапустить сервис (START_STICKY) с null-intent —
-        // не падать, а просто остаться жить (окно уже/ещё на месте).
-        if (intent == null) {
-            return START_STICKY;
-        }
         mResources = getApplicationContext().getResources();
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
@@ -116,30 +109,27 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 stopSelf();
             }
             isRunning = false;
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
         if (windowManager != null) {
+            // Повторный showOverlay (окно уже открыто): просто пересоздаём
+            // view. Раньше здесь стоял stopSelf() — сервис умирал, а из-за
+            // START_STICKY система перезапускала его с null-intent: окно
+            // больше не открывалось, а уведомление мигало снова.
             windowManager.removeView(flutterView);
             windowManager = null;
             flutterView.detachFromFlutterEngine();
-            stopSelf();
         }
         isRunning = true;
         Log.d("onStartCommand", "Service started");
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         engine.getLifecycleChannel().appIsResumed();
-        // FlutterTextureView по умолчанию opaque (GL surface = чёрный).
-        // setOpaque(false) делает SurfaceTexture прозрачным — без тёмных
-        // квадратов за контентом оверлея.
-        FlutterTextureView textureView = new FlutterTextureView(getApplicationContext());
-        textureView.setOpaque(false);
-        flutterView = new FlutterView(getApplicationContext(), textureView);
+        flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
         flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
-        flutterView.setFitsSystemWindows(false);
+        flutterView.setFitsSystemWindows(true);
         flutterView.setFocusable(true);
         flutterView.setFocusableInTouchMode(true);
         flutterView.setBackgroundColor(Color.TRANSPARENT);
-        flutterView.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         flutterChannel.setMethodCallHandler((call, result) -> {
             if (call.method.equals("updateFlag")) {
                 String flag = call.argument("flag").toString();
@@ -153,17 +143,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 int height = call.argument("height");
                 boolean enableDrag = call.argument("enableDrag");
                 resizeOverlay(width, height, enableDrag, result);
-            } else if (call.method.equals("getPosition")) {
-                // Текущая позиция окна в dp (нужно «самокатанию» пузыря:
-                // дрейф читает РЕАЛЬНУЮ позицию каждый тик, а не локальную
-                // копию — тогда после перетаскивания пальцем пузырь не
-                // прыгает обратно на старую траекторию).
-                Map<String, Double> pos = getCurrentPosition();
-                if (pos != null) {
-                    result.success(pos);
-                } else {
-                    result.success(null);
-                }
             }
         });
         overlayMessageChannel.setMessageHandler((message, reply) -> {
@@ -183,10 +162,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
         int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                // ВАЖНО: dp→px, как в resizeOverlay/moveOverlay. Раньше
-                // showOverlay(width:370) создавал окно 370 ПИКСЕЛЕЙ (≈134dp на
-                // плотности 2.75) — всё выглядело мелким/«скрученным»,
-                // текст лез поперёк. Теперь окно сразу правильного dp-размера.
+                // ВАЖНО: стартовое окно тоже конвертируем dp→px, как и в
+                // resizeOverlay. Раньше showOverlay(300×520) создавал окно
+                // 300×520 ФИЗИЧЕСКИХ px (≈109×189 dp на 2.75-экране) —
+                // мини-чат был крошечным: «пара букв и всё сжато».
                 WindowSetup.width == -1999 ? -1 : dpToPx(WindowSetup.width),
                 WindowSetup.height != -1999 ? dpToPx(WindowSetup.height) : screenHeight(),
                 0,
@@ -202,12 +181,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
         }
         params.gravity = WindowSetup.gravity;
-        // Клавиатура НЕ должна двигать окно оверлея.
-        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
         moveOverlay(dx, dy, null);
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
 
@@ -258,7 +235,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.flags = WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
                     WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
-            params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             } else {
@@ -347,22 +323,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
         }
 
-        // REGISTER THE PLUGINS the overlay needs (shared_preferences +
-        // path_provider for chat history / API key / settings). The overlay
-        // runs in a bare engine where these are NOT registered — without
-        // them the mini chat shows an empty/different history and Ada can't
-        // reply. Reflection avoids a hard dependency on the app module's
-        // GeneratedPluginRegistrant (this class lives in a library module).
-        // (Keramika fork: this is the actual fix.)
-        if (flutterEngine != null) {
-            registerPlugin(
-                    flutterEngine,
-                    "io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin");
-            registerPlugin(
-                    flutterEngine,
-                    "io.flutter.plugins.pathprovider.PathProviderPlugin");
-        }
-
         // Create the MethodChannel with the properly initialized FlutterEngine
         if (flutterEngine != null) {
             flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
@@ -380,36 +340,30 @@ public class OverlayService extends Service implements View.OnTouchListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(this,
                 0, notificationIntent, pendingFlags);
         final int notifyIcon = getDrawableResourceId("mipmap", "launcher");
-        // Keramika fork: hide the foreground-service notification text — the
-        // user asked to remove the mini-chat notification entirely. A silent
-        // empty notification stays (Android requires it for the service), but
-        // with no title/text and the lowest importance it's invisible.
         Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                .setContentTitle("")
-                .setContentText("")
+                .setContentTitle(WindowSetup.overlayTitle)
+                .setContentText(WindowSetup.overlayContent)
                 .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
                 .setVisibility(NotificationCompat.VISIBILITY_SECRET)
-                .setSilent(true)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setOnlyAlertOnce(true)
                 .build();
         startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-        instance = this;
-    }
-
-    /**
-     * Adds a plugin to the overlay engine by class name (reflection). The
-     * plugin classes live in the app's classpath; we just need to instantiate
-     * and attach them so their MethodChannels work inside the overlay.
-     */
-    private void registerPlugin(FlutterEngine engine, String className) {
-        try {
-            Class<?> cls = Class.forName(className);
-            Object plugin = cls.getDeclaredConstructor().newInstance();
-            if (plugin instanceof FlutterPlugin) {
-                engine.getPlugins().add((FlutterPlugin) plugin);
-            }
-        } catch (Throwable ignored) {
+        // Скрыть уведомление мини-окошка (Android 14+): сервис остаётся
+        // foreground, но уведомление исчезает из шторки — пользователь
+        // просил, чтобы при активном оверлее никакого уведомления не было.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            stopForeground(STOP_FOREGROUND_DETACH);
         }
+        // Дополнительная гарантия: на некоторых прошивках (MIUI/HyperOS)
+        // detach не убирает уведомление — гасим его и напрямую.
+        try {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.cancel(OverlayConstants.NOTIFICATION_ID);
+        } catch (Exception ignored) {}
+        instance = this;
     }
 
     private void createNotificationChannel() {
@@ -417,8 +371,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             NotificationChannel serviceChannel = new NotificationChannel(
                     OverlayConstants.CHANNEL_ID,
                     "Foreground Service Channel",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_LOW
             );
+            serviceChannel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
             NotificationManager manager = getSystemService(NotificationManager.class);
             assert manager != null;
             manager.createNotificationChannel(serviceChannel);
@@ -442,29 +397,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
     }
 
-    /**
-     * Определяет, попадает ли касание в зону заголовка окна.
-     * Only touches within the top N dp of the overlay window trigger
-     * native drag; everything else passes through to Flutter for scroll.
-     */
-    private boolean isInHeaderZone(MotionEvent event) {
-        WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-        // event.getRawY() — absolute screen Y.
-        // params.y — top of the overlay window in px (relative to gravity).
-        // statusBarHeightPx() — status bar offset.
-        float touchYInWindow = event.getRawY() - params.y - statusBarHeightPx();
-        int dragZonePx = dpToPx(WindowSetup.dragZoneHeightDp);
-        return touchYInWindow >= 0 && touchYInWindow <= dragZonePx;
-    }
-
     @Override
     public boolean onTouch(View view, MotionEvent event) {
         if (windowManager != null && WindowSetup.enableDrag) {
-            // Если касание НЕ в зоне заголовка — передаём Flutter
-            // (скролл чата работает без конфликтов).
-            if (!isInHeaderZone(event)) {
-                return false;
-            }
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
@@ -488,12 +423,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
                     int xx = params.x + ((int) dx * (invertX ? -1 : 1));
                     int yy = params.y + ((int) dy * (invertY ? -1 : 1));
-                    // Ограничиваем позицию границами экрана —
-                    // окно не может улететь за пределы дисплея.
-                    int viewW = flutterView.getWidth();
-                    int viewH = flutterView.getHeight();
-                    xx = Math.max(-statusBarHeightPx(), Math.min(xx, szWindow.x - viewW));
-                    yy = Math.max(0, Math.min(yy, szWindow.y - viewH));
                     params.x = xx;
                     params.y = yy;
                     if (windowManager != null) {

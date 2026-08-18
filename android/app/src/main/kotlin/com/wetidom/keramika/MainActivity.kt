@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationManagerCompat
@@ -61,10 +62,12 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 val vib = getSystemService(VIBRATOR_SERVICE) as Vibrator
                 val effect = when (call.method) {
-                    "select" -> VibrationEffect.createOneShot(8, 45)
-                    "light" -> VibrationEffect.createOneShot(14, 70)
-                    "medium" -> VibrationEffect.createOneShot(20, 120)
-                    "heavy" -> VibrationEffect.createOneShot(32, 190)
+                    // Усилено: раньше импульсы 8–32 мс на слабом вибромоторе
+                    // Redmi Note 12 были практически неощутимы.
+                    "select" -> VibrationEffect.createOneShot(30, 200)
+                    "light" -> VibrationEffect.createOneShot(50, 255)
+                    "medium" -> VibrationEffect.createOneShot(75, 255)
+                    "heavy" -> VibrationEffect.createOneShot(95, 255)
                     else -> null
                 }
                 if (effect != null) {
@@ -77,6 +80,33 @@ class MainActivity : FlutterActivity() {
                 }
                 result.success(true)
             }
+
+        // Полноэкранные уведомления (поверх блокировки): проверяем, выдано ли
+        // разрешение, чтобы не открывать настройки MIUI при каждом включении
+        // переключателя — только когда разрешения реально нет.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.wetidom.keramika/fullscreen",
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "canUseFullScreenIntent") {
+                val canUse = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    try {
+                        nm.canUseFullScreenIntent()
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "canUseFullScreenIntent failed: $e")
+                        @Suppress("DEPRECATION")
+                        Settings.canDrawOverlays(this)
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    Settings.canDrawOverlays(this)
+                }
+                result.success(canUse)
+            } else {
+                result.notImplemented()
+            }
+        }
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
@@ -174,6 +204,9 @@ class MainActivity : FlutterActivity() {
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
+            // Ограничение: в папке остаётся НЕ БОЛЬШЕ 2 копий бэкапа
+            // (авто + ручной) — старые лишние удаляются, папка не засоряется.
+            trimBackupCopies(resolver, relativePath)
             return "Download/$subDir/$fileName"
         }
 
@@ -189,6 +222,43 @@ class MainActivity : FlutterActivity() {
             out.flush()
         }
         return file.absolutePath
+    }
+
+    /**
+     * Оставляет в Download/[relativePath] не более 2 файлов бэкапа
+     * (имена начинаются с "keramika"), удаляя более старые копии.
+     */
+    private fun trimBackupCopies(resolver: android.content.ContentResolver, relativePath: String) {
+        try {
+            val ids = ArrayList<Long>()
+            resolver.query(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.DATE_ADDED,
+                ),
+                "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?",
+                arrayOf("$relativePath/", "keramika%"),
+                "${MediaStore.MediaColumns.DATE_ADDED} DESC",
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                while (cursor.moveToNext()) {
+                    ids.add(cursor.getLong(idCol))
+                }
+            }
+            if (ids.size > 2) {
+                for (i in 2 until ids.size) {
+                    resolver.delete(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        "${MediaStore.MediaColumns._ID}=?",
+                        arrayOf(ids[i].toString()),
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "trimBackupCopies failed: $e")
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

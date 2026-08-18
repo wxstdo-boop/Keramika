@@ -10,6 +10,7 @@ import '../widgets/icon_picker_sheet.dart';
 import '../utils/snackbar.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/smooth_keyboard_body.dart';
+import '../services/haptics.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final Task? existing;
@@ -160,6 +161,96 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
+  /// Плавный «чип» категории: выбор анимируется цветом/масштабом,
+  /// а не «прыгает» как выпадающий список.
+  Widget _categoryChip(BuildContext context, String value) {
+    final theme = Theme.of(context);
+    final selected = _category == value;
+    final label = value.isEmpty ? Translations.uncategorizedOf(context) : value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: () {
+          Haptics.light();
+          setState(() => _category = value);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.surfaceContainerHighest,
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: Text(
+              label,
+              key: ValueKey('chip_$label'),
+              style: TextStyle(
+                color: selected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Кнопка «+ Новая категория» в ряду чипов.
+  Widget _newCategoryChip(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: _createCategory,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 4),
+                Text(
+                  Translations.t('newCategory', context),
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _save() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
@@ -170,6 +261,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       iconCodePoint: _iconCodePoint,
       category: _category,
       priority: _priority,
+      note: widget.existing?.note ?? '',
       createdAt: widget.existing?.createdAt,
     );
     Navigator.of(context).pop(task);
@@ -279,64 +371,46 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 4,
+                    vertical: 8,
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
+                      Row(
+                        children: [
+                          Text(
+                            Translations.categoryOf(context),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_category.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              tooltip: Translations.t('category', context),
+                              onPressed: () => _renameCategory(_category),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        height: 44,
                         child: ListenableBuilder(
                           listenable: _taskSvc,
                           builder: (ctx, _) {
-                            final items = <DropdownMenuItem<String>>[
-                              DropdownMenuItem(
-                                value: '',
-                                child: Text(
-                                  Translations.uncategorizedOf(context),
-                                ),
-                              ),
-                              for (final c in _taskSvc.categories)
-                                DropdownMenuItem(value: c, child: Text(c)),
-                              if (_taskSvc.categories.length < 15)
-                                DropdownMenuItem(
-                                  value: '__new__',
-                                  child: Text(
-                                    '+ ${Translations.t('newCategory', context)}',
-                                  ),
-                                ),
-                            ];
-                            return DropdownButtonFormField<String>(
-                              initialValue:
-                                  items.any((i) => i.value == _category)
-                                  ? _category
-                                  : '',
-                              borderRadius: BorderRadius.circular(12),
-                              decoration: InputDecoration(
-                                labelText: Translations.categoryOf(context),
-                                border: const OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(12),
-                                  ),
-                                ),
-                                prefixIcon: const Icon(Icons.folder_outlined),
-                              ),
-                              items: items,
-                              onChanged: (v) async {
-                                if (v == '__new__') {
-                                  await _createCategory();
-                                } else {
-                                  setState(() => _category = v ?? '');
-                                }
-                              },
+                            final cats = <String>['', ..._taskSvc.categories];
+                            return ListView(
+                              scrollDirection: Axis.horizontal,
+                              children: [
+                                for (final c in cats) _categoryChip(ctx, c),
+                                if (_taskSvc.categories.length < 15)
+                                  _newCategoryChip(ctx),
+                              ],
                             );
                           },
                         ),
                       ),
-                      if (_category.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          tooltip: Translations.t('category', context),
-                          onPressed: () => _renameCategory(_category),
-                        ),
                     ],
                   ),
                 ),

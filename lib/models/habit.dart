@@ -18,6 +18,9 @@ class Habit {
 
   /// Напоминание «Вспомнить всё»: время в формате 'HH:mm' или null.
   String? reminderTime;
+  /// Текст напоминания (до 60 символов): если задан, показывается
+  /// вместо времени в карточке привычки.
+  String? reminderText;
 
   Habit({
     required this.id,
@@ -33,6 +36,7 @@ class Habit {
     this.lastDoneDate,
     this.type = 'good',
     this.reminderTime,
+    this.reminderText,
   }) : createdAt = createdAt ?? DateTime.now();
 
   bool get isDueToday {
@@ -58,6 +62,7 @@ class Habit {
     DateTime? lastDoneDate,
     String? type,
     String? reminderTime,
+    String? reminderText,
   }) => Habit(
     id: id,
     name: name ?? this.name,
@@ -72,6 +77,7 @@ class Habit {
     lastDoneDate: lastDoneDate ?? this.lastDoneDate,
     type: type ?? this.type,
     reminderTime: reminderTime ?? this.reminderTime,
+    reminderText: reminderText ?? this.reminderText,
   );
 
   Map<String, dynamic> toJson() => {
@@ -88,6 +94,7 @@ class Habit {
     'lastDoneDate': lastDoneDate?.toIso8601String(),
     'type': type,
     'reminderTime': reminderTime,
+    'reminderText': reminderText,
   };
 
   factory Habit.fromJson(Map<String, dynamic> json) => Habit(
@@ -113,6 +120,7 @@ class Habit {
     lastDoneDate: DateTime.tryParse(json['lastDoneDate'] as String? ?? ''),
     type: json['type'] as String? ?? 'good',
     reminderTime: json['reminderTime'] as String?,
+    reminderText: json['reminderText'] as String?,
   );
 }
 

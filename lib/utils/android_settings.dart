@@ -9,6 +9,27 @@ const _package = 'com.wetidom.keramika';
 // Канал для скрытия содержимого приложения из «недавних» при установленном PIN.
 const _secureChannel = MethodChannel('com.wetidom.keramika/secure');
 
+// Канал проверки полноэкранных уведомлений (поверх блокировки).
+const _fullscreenChannel = MethodChannel('com.wetidom.keramika/fullscreen');
+
+/// Проверяет, выдано ли уже разрешение полноэкранных уведомлений
+/// (full-screen notifications / поверх блокировки).
+/// API 34+: NotificationManager.canUseFullScreenIntent().
+/// Старые API / MIUI: Settings.canDrawOverlays() (SYSTEM_ALERT_WINDOW).
+/// Если проверить не удалось — возвращаем false, чтобы настройки
+/// открылись (консервативное поведение, как раньше).
+Future<bool> canUseFullScreenIntent() async {
+  if (!_isAndroid) return true;
+  try {
+    final ok = await _fullscreenChannel.invokeMethod<bool>(
+      'canUseFullScreenIntent',
+    );
+    return ok ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Включает/выключает FLAG_SECURE на окне приложения.
 /// При установленном PIN телефон в переключателе задач показывает
 /// размытую заглушку вместо содержимого, а скриншоты блокируются.

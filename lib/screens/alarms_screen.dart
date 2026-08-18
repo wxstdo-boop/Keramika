@@ -12,7 +12,6 @@ import '../main.dart';
 import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/volumetric_switch.dart';
-import '../widgets/stagger_in.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
 import '../widgets/smooth_hover.dart';
@@ -313,15 +312,10 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           buildDragProxy(child, theme, animation),
       itemBuilder: (context, i) {
         final alarm = alarms[i];
-        return StaggerIn(
+        return SwipeToDelete(
           // Ключ на ВНЕШНЕМ виджете: ReorderableListView берёт key от него.
           key: ValueKey('item_alarm_${alarm.id}'),
-          index: i,
-          // Главный экран монтируется во время slide-перехода (380мс) —
-          // каскад стартует уже на видимом экране, а не «за шторкой».
-          extraDelay: const Duration(milliseconds: 320),
-          child: SwipeToDelete(
-            dismissKey: ValueKey('dismiss_${alarm.id}'),
+          dismissKey: ValueKey('dismiss_${alarm.id}'),
             horizontalInset: 0,
             confirmDismiss: (_) async {
               return await showDialog<bool>(
@@ -459,8 +453,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                 ),
               ),
             ),
-          ),
-        );
+          );
       },
     );
   }
@@ -637,23 +630,66 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                                             padding: const EdgeInsets.only(
                                               right: 4,
                                             ),
-                                            child: Text(
-                                              _timerSvc.remainingDisplay(
-                                                timer.id,
-                                              ),
-                                              style: theme.textTheme.bodyMedium
-                                                  ?.copyWith(
-                                                    fontFeatures: const [
-                                                      FontFeature.tabularFigures(),
-                                                    ],
-                                                    color: running
-                                                        ? theme
-                                                              .colorScheme
-                                                              .primary
-                                                        : theme
-                                                              .colorScheme
-                                                              .onSurfaceVariant,
+                                            child: ClipRect(
+                                              // Каждая секунда счётчика
+                                              // сменяется ПЛАВНО: цифры
+                                              // «вкатываются» снизу/сверху
+                                              // (fade + slide), а не
+                                              // щёлкают резко.
+                                              child: AnimatedSwitcher(
+                                                duration: const Duration(
+                                                  milliseconds: 320,
+                                                ),
+                                                switchInCurve:
+                                                    Curves.easeOutCubic,
+                                                switchOutCurve:
+                                                    Curves.easeInCubic,
+                                                transitionBuilder:
+                                                    (child, animation) {
+                                                      final t = Curves
+                                                          .easeOutCubic
+                                                          .transform(
+                                                            animation.value,
+                                                          );
+                                                      return FadeTransition(
+                                                        opacity: animation,
+                                                        child: Transform.translate(
+                                                          offset: Offset(
+                                                            0,
+                                                            14 * (1 - t),
+                                                          ),
+                                                          child: child,
+                                                        ),
+                                                      );
+                                                    },
+                                                child: Text(
+                                                  _timerSvc.remainingDisplay(
+                                                    timer.id,
                                                   ),
+                                                  key: ValueKey(
+                                                    _timerSvc
+                                                        .remainingDisplay(
+                                                          timer.id,
+                                                        ),
+                                                  ),
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodyMedium
+                                                      ?.copyWith(
+                                                        fontFeatures: const [
+                                                          FontFeature
+                                                              .tabularFigures(),
+                                                        ],
+                                                        color: running
+                                                            ? theme
+                                                                  .colorScheme
+                                                                  .primary
+                                                            : theme
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                      ),
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),

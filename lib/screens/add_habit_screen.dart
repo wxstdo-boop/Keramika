@@ -30,6 +30,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
 
   /// Напоминание «Вспомнить всё»: null — выключено.
   TimeOfDay? _reminderTime;
+  /// Текст напоминания (до 60 символов).
+  String? _reminderText;
+  final _reminderTextCtrl = TextEditingController();
   bool _editing = false;
 
   @override
@@ -43,6 +46,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       _activeDays = List.from(widget.existing!.activeDays);
       _habitType = widget.existing!.type;
       _reminderTime = _parseReminder(widget.existing!.reminderTime);
+      _reminderText = widget.existing!.reminderText;
+      if (_reminderText != null) _reminderTextCtrl.text = _reminderText!;
       _editing = true;
     } else {
       _nameCtrl = TextEditingController();
@@ -91,6 +96,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         );
       }
     }
+    // Клавиатура не должна «оставаться» после выбора времени: снимаем
+    // фокус с поля имени, иначе по возврату из пикера она вылезает снова.
+    FocusManager.instance.primaryFocus?.unfocus();
     final picked = await showManualTimePicker(
       context,
       initial: _reminderTime ?? const TimeOfDay(hour: 8, minute: 0),
@@ -139,7 +147,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            Icon(Icons.lightbulb, color: const Color(0xFFFFD54F)),
+            Icon(Icons.lightbulb, color: Theme.of(ctx).colorScheme.primary),
             const SizedBox(width: 8),
             Text(Translations.t('habitStatusTitle', context)),
           ],
@@ -196,6 +204,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
           ? null
           : '${_reminderTime!.hour.toString().padLeft(2, '0')}:'
                 '${_reminderTime!.minute.toString().padLeft(2, '0')}',
+      reminderText: _reminderText?.trim().isEmpty == true ? null : _reminderText?.trim(),
     );
     Navigator.of(context).pop(habit);
   }
@@ -282,7 +291,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             : Icons.lightbulb_outline,
                         size: 20,
                         color: _statusCtrl.text.isNotEmpty
-                            ? const Color(0xFFFFD54F)
+                            ? theme.colorScheme.primary
                             : theme.colorScheme.onSurfaceVariant,
                       ),
                       tooltip: Translations.t('habitNotesBtn', context),
@@ -464,17 +473,21 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      // Плавные чипы дней: каждый анимируется (цвет,
+                      // граница, галочка) при выборе. Кнопки «Каждый день»/
+                      // «Очистить» меняют список за один setState, но чипы
+                      // «перетекают» плавно, а не прыгают разом.
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: List.generate(7, (i) {
                           final day = i + 1;
                           final selected = _activeDays.contains(day);
-                          return FilterChip(
+                          return _DayChip(
+                            day: day,
+                            label: Translations.dayNames(context)[i],
                             selected: selected,
-                            label: Text(Translations.dayNames(context)[i]),
-                            onSelected: (_) => _toggleDay(day),
-                            showCheckmark: false,
+                            onTap: () => _toggleDay(day),
                           );
                         }),
                       ),
@@ -651,12 +664,176 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                   ],
                                 ),
                         ),
+                        // Текст напоминания (до 60 символов) — появляется плавно.
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.topCenter,
+                          child: _reminderTime == null
+                              ? const SizedBox(width: double.infinity)
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(height: 10),
+                                    Material(
+                                      color: theme.colorScheme.surfaceContainerHigh
+                                          .withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 8,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.edit_note_rounded,
+                                                  size: 18,
+                                                  color: theme.colorScheme.primary,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    Translations.t(
+                                                      "remindCustomText",
+                                                      context,
+                                                      "Текст напоминания (до 60 симв.)",
+                                                    ),
+                                                    style: theme.textTheme.bodySmall
+                                                        ?.copyWith(
+                                                      color: theme.colorScheme.onSurfaceVariant,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            TextField(
+                                              controller: _reminderTextCtrl,
+                                              maxLength: 60,
+                                              maxLines: 1,
+                                              decoration: InputDecoration(
+                                                hintText: Translations.t(
+                                                  "remindCustomHint",
+                                                  context,
+                                                  "Например: Пора пить воду",
+                                                ),
+                                                hintStyle: theme.textTheme.bodyMedium
+                                                    ?.copyWith(
+                                                  color: theme.colorScheme.onSurfaceVariant
+                                                      .withValues(alpha: 0.5),
+                                                ),
+                                                border: InputBorder.none,
+                                                isDense: true,
+                                                contentPadding: EdgeInsets.zero,
+                                                counterStyle: theme.textTheme.bodySmall
+                                                    ?.copyWith(
+                                                  color: theme.colorScheme.onSurfaceVariant
+                                                      .withValues(alpha: 0.5),
+                                                ),
+                                              ),
+                                              style: theme.textTheme.bodyMedium
+                                                  ?.copyWith(
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              onChanged: (v) => setState(
+                                                  () => _reminderText = v.isEmpty ? null : v),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Плавный чип дня недели: цвет/граница/галочка анимируются (240 мс),
+/// вместо резкого переключения системного FilterChip.
+class _DayChip extends StatelessWidget {
+  final int day;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _DayChip({
+    required this.day,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: selected
+            ? cs.primary
+            : cs.surfaceContainerHigh.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: selected ? cs.primary : cs.outlineVariant,
+          width: 1.2,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) =>
+                      ScaleTransition(
+                    scale: Tween<double>(begin: 0.6, end: 1).animate(animation),
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: selected
+                      ? Icon(
+                          Icons.check,
+                          key: ValueKey('day_on_$day'),
+                          size: 14,
+                          color: cs.onPrimary,
+                        )
+                      : const SizedBox(
+                          key: ValueKey('day_off'),
+                          width: 14,
+                        ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

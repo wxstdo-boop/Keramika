@@ -74,7 +74,7 @@ Future<bool> ensureAdaOverlay({
       await FlutterOverlayWindow.requestPermission();
     }
     if (!await FlutterOverlayWindow.isPermissionGranted()) return false;
-    return showAdaOverlay(
+    return await showAdaOverlay(
       devicePixelRatio: devicePixelRatio,
       screenWidth: screenWidth,
       screenHeight: screenHeight,

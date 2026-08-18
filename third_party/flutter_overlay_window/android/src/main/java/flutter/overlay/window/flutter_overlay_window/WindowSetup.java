@@ -20,9 +20,6 @@ public abstract class WindowSetup {
     static String positionGravity = "none";
     static int notificationVisibility = NotificationCompat.VISIBILITY_PRIVATE;
     static boolean enableDrag = false;
-    // Высота зоны drag в dp. Только касания внутри этой зоны
-    // (от верхнего края окна) двигают окно. Ниже — Flutter scroll.
-    static int dragZoneHeightDp = 48;
 
 
     static void setNotificationVisibility(String name) {
