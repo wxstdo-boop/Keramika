@@ -2365,7 +2365,22 @@ class _SettingsScreenState extends State<SettingsScreen>
     ];
     return Scaffold(
       appBar: AppBar(
-        title: Text(Translations.settingsOf(context)),
+        // Логотип Flutter рядом с заголовком «Настройки»: маленький
+        // фирменный значок (три «ступеньки») в мягком круглом бейдже.
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const _FlutterBadge(),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                Translations.settingsOf(context),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         centerTitle: true,
         backgroundColor: Colors.transparent, // Make AppBar transparent
         elevation: 0, // Remove shadow
@@ -3314,4 +3329,84 @@ class _BloodStainsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BloodStainsPainter oldDelegate) => false;
+}
+
+/// Логотип Flutter: три фирменные «ступеньки» (светло-голубая, синяя,
+/// тёмно-синяя) в мягком круглом бейдже. Рядом с заголовком «Настройки» —
+/// для солидности, как у настоящего Flutter-приложения.
+class _FlutterBadge extends StatelessWidget {
+  const _FlutterBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.colorScheme.surfaceContainerHighest,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(6),
+      child: const CustomPaint(
+        size: Size.square(18),
+        painter: _FlutterLogoPainter(),
+      ),
+    );
+  }
+}
+
+class _FlutterLogoPainter extends CustomPainter {
+  const _FlutterLogoPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final light = Paint()..color = const Color(0xFF54C5F8); // светло-голубой
+    final mid = Paint()..color = const Color(0xFF0468D7); // синий
+    final dark = Paint()..color = const Color(0xFF02569B); // тёмно-синий
+
+    final step = w / 3.0;
+    // Верхняя ступенька: полная ширина, правый край скошен.
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, 0)
+        ..lineTo(w, 0)
+        ..lineTo(w - step, h / 3)
+        ..lineTo(0, h / 3)
+        ..close(),
+      light,
+    );
+    // Средняя ступенька: правая граница уходит дальше влево.
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, h / 3)
+        ..lineTo(w - step, h / 3)
+        ..lineTo(w - 2 * step, 2 * h / 3)
+        ..lineTo(0, 2 * h / 3)
+        ..close(),
+      mid,
+    );
+    // Нижняя ступенька: самая узкая.
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, 2 * h / 3)
+        ..lineTo(w - 2 * step, 2 * h / 3)
+        ..lineTo(w - 3 * step, h)
+        ..lineTo(0, h)
+        ..close(),
+      dark,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FlutterLogoPainter oldDelegate) => false;
 }
