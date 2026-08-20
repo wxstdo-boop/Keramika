@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon only valid for sdk 26+. Pre-26 devices fall back to the
+     mipmap-*/ic_launcher.png raster, so we keep that file untouched. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background_grad" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

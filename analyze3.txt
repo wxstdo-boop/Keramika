@@ -1,0 +1,6 @@
+Analyzing 2 items...                                            
+
+warning - The declaration '_open' isn't referenced. Try removing the declaration of '_open' - lib\widgets\ai_guide.dart:306:8 - unused_element
+warning - The value of the field '_opening' isn't used. Try removing the field, or using it - lib\widgets\ai_guide.dart:1610:8 - unused_field
+
+2 issues found. (ran in 3.3s)

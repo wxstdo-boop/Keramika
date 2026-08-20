@@ -1,0 +1,5 @@
+Analyzing 2 items...                                            
+
+warning - The value of the field '_opening' isn't used. Try removing the field, or using it - lib\widgets\ai_guide.dart:260:8 - unused_field
+
+1 issue found. (ran in 1.4s)

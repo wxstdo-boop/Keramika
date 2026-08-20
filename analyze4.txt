@@ -1,0 +1,31 @@
+Resolving dependencies...
+Downloading packages...
+  dynamic_color 1.8.1 (1.9.0 available)
+  file_picker 10.3.10 (11.0.3 available)
+  flutter_local_notifications 17.2.4 (22.3.0 available)
+  flutter_local_notifications_linux 4.0.1 (8.0.1 available)
+  flutter_local_notifications_platform_interface 7.2.0 (12.2.0 available)
+  hooks 2.0.2 (2.1.0 available)
+  intl 0.20.2 (0.20.3 available)
+  matcher 0.12.19 (0.12.20 available)
+  meta 1.18.0 (1.19.0 available)
+  record_use 0.6.0 (1.0.0 available)
+  share_plus 12.0.2 (13.3.0 available)
+  share_plus_platform_interface 6.1.0 (7.2.0 available)
+  test_api 0.7.11 (0.7.13 available)
+  timezone 0.9.4 (0.11.1 available)
+  vector_math 2.2.0 (2.4.2 available)
+  win32 5.15.0 (6.4.0 available)
+  xml 6.6.1 (7.0.1 available)
+Got dependencies!
+17 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing keramika...                                           
+
+warning - Dead code. Try removing the code, or fixing the code before it so that it can be reached - lib\services\ai_guide_service.dart:402:32 - dead_code
+warning - The left operand can't be null, so the right operand is never executed. Try removing the operator and the right operand - lib\services\ai_guide_service.dart:402:35 - dead_null_aware_expression
+warning - The declaration '_open' isn't referenced. Try removing the declaration of '_open' - lib\widgets\ai_guide.dart:302:8 - unused_element
+warning - The value of the field '_opening' isn't used. Try removing the field, or using it - lib\widgets\ai_guide.dart:1606:8 - unused_field
+  error - Undefined name '_open'. Try correcting the name to one that is defined, or defining the name - lib\widgets\ai_guide.dart:1702:30 - undefined_identifier
+
+5 issues found. (ran in 61.4s)
