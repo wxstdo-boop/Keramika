@@ -1,0 +1,1 @@
+Restored checkout available at C:/Wettixal/keramika-current.\n
