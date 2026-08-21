@@ -1,0 +1,29 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-cached-deps/
+build/
+coverage/
+*.log
+*.log.*
+**/logs/
+
+# Android
+*.iml
+.gradle/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.keystore
+!debug.keystore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Keramika local build artifacts
+build_logs/
