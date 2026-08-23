@@ -567,7 +567,11 @@ class _OverlayChatState extends State<_OverlayChat>
           final appearT = Curves.easeOutCubic.transform(_appearCtrl.value);
           final contentT = _contentCtrl.value;
           return Opacity(
-            opacity: (appearT * contentT).clamp(0.0, 1.0),
+            // Минимум 0.06: окно НИКОГДА не бывает полностью прозрачным.
+            // Если анимация появления не успела стартовать (повторное
+            // открытие окошка в живом движке), мы видим призрак вместо
+            // «невидимого окна», которое нельзя ни увидеть, ни потаскать.
+            opacity: (appearT * contentT).clamp(0.06, 1.0),
             child: _collapsed ? _buildBubble() : _buildChatShell(),
           );
         },
