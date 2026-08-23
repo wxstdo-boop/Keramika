@@ -876,14 +876,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     final isSelected = appState.themeKey == key;
     // Для MUTILATED — зажатие 10 секунд показывает плашную «Вы элегант?»
     // с переводами. Плавно появляется, держится 3 секунды, плавно уходит.
-    // ТОНКАЯ обводка (1px), как была. Плавность делаем НАСТОЯЩИМ
-    // покадровым перетеканием прозрачности: TweenAnimationBuilder
-    // перестраивает чип КАЖДЫЙ кадр анимации с новым alpha обводки
-    // (0 → 1), поэтому линия именно «проявляется» и «гаснет», а не
-    // перескакивает.
+    // ТОНКАЯ обводка (1px) с НАСТОЯЩЕЙ анимацией: begin всегда 0,
+    // end = 1 для выбранного / 0 для остальных. TweenAnimationBuilder
+    // сам анимирует переход (текущее значение → end) при каждом
+    // rebuild, поэтому при выборе линия плавно «проявляется» (0→1),
+    // при снятии — плавно «гаснет» (1→0). ВАЖНО: begin фиксирован —
+    // одинаковые begin/end давали мгновенный скачок.
     return TweenAnimationBuilder<double>(
       tween: Tween(
-        begin: isSelected ? 1.0 : 0.0,
+        begin: 0.0,
         end: isSelected ? 1.0 : 0.0,
       ),
       duration: const Duration(milliseconds: 300),
