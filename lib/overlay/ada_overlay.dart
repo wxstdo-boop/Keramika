@@ -245,16 +245,36 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   // ── Drag оверлея ──────────────────────────────────────────────────
-  // Драг работает ПО ВСЕЙ площади (пузырь и чат), а не только по шапке:
-  // раньше палец уходил с шапки — жест обрывался, и движение «дёргалось».
-  // На нативную сторону позиция шлётся ОДИН раз за кадр (rAF-scheduling):
-  // дельты копятся в _pos, а invoke не спамится быстрее обновления экрана.
+  // Драг работает ПО ВСЕЙ площади (пузырь и чат). Дельты копятся в _pos,
+  // а на нативную сторону позиция уходит ОДИН раз за ~16мс (частота
+  // кадров): пачка вызовов MethodChannel при быстром жесте перегружает
+  // UI-поток и движение начинает «дёргаться». Раз в кадр — телефон успевает
+  // отрисовать каждое новое положение окна.
+  bool _dragging = false;
+  Timer? _dragTimer;
+
+  void _startDrag() {
+    if (_dragging) return;
+    _dragging = true;
+    _stopDrift();
+    _dragTimer?.cancel();
+    _dragTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_dragging) return;
+      _sendPos();
+    });
+  }
+
+  void _endDrag() {
+    _dragging = false;
+    _dragTimer?.cancel();
+    _dragTimer = null;
+    if (mounted) _sendPos();
+    if (_collapsed) _startDrift();
+  }
+
   void _onDrag(DragUpdateDetails d) {
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
-    // Отправляем СРАЗУ: MethodChannel с дробными координатами даёт
-    // плавное движение; rAF-дебаунс раньше мог «проглатывать» кадры
-    // перетаскивания, и палец уезжал, а окно отставало.
-    _sendPos();
+    _startDrag();
   }
 
   /// Шлёт текущую позицию на нативную сторону, удерживая окошко в границах
@@ -586,6 +606,7 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_live == this) _live = null;
     WidgetsBinding.instance.removeObserver(this);
     _appearTimer?.cancel();
+    _dragTimer?.cancel();
     _stopDrift();
     _appearCtrl.dispose();
     _contentCtrl.dispose();
@@ -637,10 +658,9 @@ class _OverlayChatState extends State<_OverlayChat>
       // перетаскивание выглядело «дёрганым». После отпускания дрейф
       // возобновляется.
       onTapDown: (_) => _stopDrift(),
-      onPanStart: (_) => _stopDrift(),
-      onPanEnd: (_) {
-        if (_collapsed) _startDrift();
-      },
+      onPanStart: (_) => _startDrag(),
+      onPanEnd: (_) => _endDrag(),
+      onPanCancel: _endDrag,
       onPanUpdate: _onDrag,
       child: Center(
         child: Container(
@@ -711,10 +731,9 @@ class _OverlayChatState extends State<_OverlayChat>
       behavior: HitTestBehavior.translucent,
       // Чат двигается за шапку и фон (в ленте драг перехватывает
       // скролл, чтобы сообщения можно было листать).
-      onPanStart: (_) => _stopDrift(),
-      onPanEnd: (_) {
-        if (_collapsed) _startDrift();
-      },
+      onPanStart: (_) => _startDrag(),
+      onPanEnd: (_) => _endDrag(),
+      onPanCancel: _endDrag,
       onPanUpdate: _onDrag,
       child: ClipRRect(
         // Гарантированно скруглённые углы: ClipRRect клипает и фон, и
