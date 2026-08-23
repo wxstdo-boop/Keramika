@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import '../services/haptics.dart';
 import 'dart:math' as math;
@@ -120,8 +121,8 @@ void cycleAdaAvatar() {
   setAdaAvatarVariant(next);
   Haptics.select();
   // Живая синхронизация с мини-окошком (отдельный движок): аватарка
-  // меняется мгновенно и там.
-  syncOverlayState({'cmd': 'sync_avatar', 'variant': next});
+  // меняется там при ближайшем опросе (~0.7с), через файл состояния.
+  writeAdaSyncState(avatar: next);
 }
 
 /// Открывает мини-чат Ады снизу экрана.
@@ -163,41 +164,27 @@ class _AiChatSheet extends StatefulWidget {
 }
 
 class _AiChatSheetState extends State<_AiChatSheet> {
-  // Высота листа ЗАФИКСИРОВАНА с первого кадра. Клавиатуру при её подъёме
-  // обслуживает ТОЛЬКО Positioned (меняется его нижний offset), а тяжёлое
-  // тело чата вообще не пересобирается и не пересчитывает layout.
-  double? _fixedHeight;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final insets = MediaQuery.viewInsetsOf(context).bottom;
-    final screenH = MediaQuery.sizeOf(context).height;
-    // Клавиатура: лист целиком поднимается НАД ней, высота не меняется.
+    // Клавиатура: лёгкая оболочка ПОДНИМАЕТ лист над ней, высота ужимается
+    // ровно под доступное пространство. Чат — НА ВЕСЬ экран (как было).
     // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
-    // вместе с анимацией клавиатуры — Positioned двигает лист ровно с ней.
-    _fixedHeight ??= (screenH * 0.72).clamp(260.0, screenH);
-    return SizedBox.expand(
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: insets,
-            child: RepaintBoundary(
-              child: Container(
-                height: _fixedHeight!,
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
-                  ),
-                ),
-                child: const _AiChatBody(),
-              ),
-            ),
+    // вместе с анимацией клавиатуры — Padding двигает лист ровно с ней.
+    final insets = MediaQuery.viewInsetsOf(context).bottom;
+    final available = MediaQuery.sizeOf(context).height - insets;
+    final sheetHeight = available.clamp(260.0, available);
+    return Padding(
+      padding: EdgeInsets.only(bottom: insets),
+      child: RepaintBoundary(
+        child: Container(
+          height: sheetHeight,
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-        ],
+          child: const _AiChatBody(),
+        ),
       ),
     );
   }
@@ -276,6 +263,13 @@ class _AiChatBodyState extends State<_AiChatBody>
     // Модель могла смениться в мини-окошке (отдельный движок) — тик
     // приходит по мосту, перечитываем лейбл.
     AiGuideService.modelLabelTick.addListener(_onModelLabelTick);
+    // Живая синхронизация с мини-окошком через файл состояния: опрос
+    // дешёвый (0.7с), зато работает надёжно между двумя движками.
+    _syncTick();
+    _syncTimer = Timer.periodic(
+      const Duration(milliseconds: 700),
+      (_) => _syncTick(),
+    );
     SettingsService.loadLanguageCode()
         .then((c) {
           if (!mounted) return;
@@ -332,6 +326,29 @@ class _AiChatBodyState extends State<_AiChatBody>
     _refreshModelLabel();
   }
 
+  Timer? _syncTimer;
+  int _lastSyncAvatar = -1;
+  String _lastSyncModel = '';
+
+  /// Опрос файла синхронизации: применяет смену аватарки/модели из
+  /// мини-окошка (отдельный движок пишет в тот же файл).
+  Future<void> _syncTick() async {
+    try {
+      final s = await readAdaSyncState();
+      if (s.isEmpty) return;
+      final av = s['avatar'];
+      if (av is int && av >= 0 && av != _lastSyncAvatar) {
+        _lastSyncAvatar = av;
+        if (av != adaAvatarVariant.value) setAdaAvatarVariant(av);
+      }
+      final m = s['model'];
+      if (m is String && m.isNotEmpty && m != _lastSyncModel) {
+        _lastSyncModel = m;
+        AiGuideService.recordModelUsed(m);
+      }
+    } catch (_) {}
+  }
+
   void _refreshModelLabel() {
     AiGuideService.currentModelLabel()
         .then((m) {
@@ -350,6 +367,7 @@ class _AiChatBodyState extends State<_AiChatBody>
   void dispose() {
     AiGuideService.adaReportTick.removeListener(_onAdaReportTick);
     AiGuideService.modelLabelTick.removeListener(_onModelLabelTick);
+    _syncTimer?.cancel();
     _clearCtrl.dispose();
     _dotsCtrl.dispose();
     _inputCtrl.dispose();
@@ -678,7 +696,7 @@ class _AiChatBodyState extends State<_AiChatBody>
       // Синхронизируем «кто ответил» с мини-окошком (отдельный движок).
       final used = AiGuideService.lastUsedModel;
       if (used.isNotEmpty) {
-        syncOverlayState({'cmd': 'sync_model', 'label': used});
+        writeAdaSyncState(model: used);
       }
       _scrollToBottom();
     } catch (e) {
