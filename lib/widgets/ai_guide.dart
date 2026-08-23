@@ -98,19 +98,12 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
   }
 }
 
-/// Живой индекс значка Ады: ВСЕ аватарки (шапка, пузыри сообщений и плавающее
-/// мини-окошко) следят за ним и меняются мгновенно и плавно, где бы их ни
-/// нажали — работает из любого места приложения.
-final ValueNotifier<int> adaAvatarVariant = ValueNotifier<int>(
-  savedAdaAvatarIndex(),
-);
-
-/// Тап по сердечку/значку Ады — случайный другой вариант. Включается
-/// навсегда (переживает перезапуск). Вызывается из шапки, пузырей и
-/// плавающего окошка; синхронизируется с мини-окошком по каналу сообщений.
+/// Тап по сердечке/значке Ай: случайный другой вариант. Вызывается из
+/// шапки, пузырей и плавающего окошка; живёт в [adaAvatarVariant] и
+/// синхронизируется с мини-окошком по каналу сообщений.
 void cycleAdaAvatar() {
-  // Переключаем только на УНИКАЛЬНЫЙ значок: вариант с той же иконкой,
-  // что у текущего, пропускаем — раньше могли «выпадать» дубли.
+  // Переводим только на УНИКАЛЬНЫЙ значок: вариант с той же иконкой,
+  // что у текущего, пропускаем.
   final cur = adaVariants[adaAvatarVariant.value];
   var next = adaAvatarVariant.value;
   var guard = 0;
@@ -124,8 +117,7 @@ void cycleAdaAvatar() {
   if (next == adaAvatarVariant.value) {
     next = (adaAvatarVariant.value + 1) % adaVariants.length;
   }
-  adaAvatarVariant.value = next;
-  globalPrefs.setInt('ada_avatar_variant', next);
+  setAdaAvatarVariant(next);
   Haptics.select();
   // Живая синхронизация с мини-окошком (отдельный движок): аватарка
   // меняется мгновенно и там.
