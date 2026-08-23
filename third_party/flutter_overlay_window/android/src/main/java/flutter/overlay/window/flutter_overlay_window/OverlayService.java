@@ -391,9 +391,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
             NotificationChannel serviceChannel = new NotificationChannel(
                     OverlayConstants.CHANNEL_ID,
                     "Foreground Service Channel",
-                    NotificationManager.IMPORTANCE_LOW
+                    // IMPORTANCE_NONE — уведомление фонового сервиса окошка
+                    // НЕ показывается в шторке вообще (на всех Android):
+                    // пользователь просил никаких уведомлений от окошка.
+                    NotificationManager.IMPORTANCE_NONE
             );
             serviceChannel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
+            serviceChannel.setShowBadge(false);
             NotificationManager manager = getSystemService(NotificationManager.class);
             assert manager != null;
             manager.createNotificationChannel(serviceChannel);
