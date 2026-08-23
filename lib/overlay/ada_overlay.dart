@@ -203,10 +203,18 @@ class _OverlayChatState extends State<_OverlayChat>
     _initialized = true;
     WidgetsBinding.instance.addObserver(this);
     _inputFocus.addListener(_onFocusChange);
-    // Стартовый fade запускает onHostReset (command от main при первом
-    // open) или lifecycle resumed; здесь просто оставляем прозрачность 0.
+    // Стартовый fade: onHostReset (command от main при первом open) или
+    // lifecycle resumed. Страховка — свой таймер: если ни та, ни другая
+    // команда не пришла, окно ВСЁ РАВНО плавно появится через ~300мс
+    // (иначе навсегда висел «полупрозрачный след чата» при прозрачности 0).
     _appearCtrl.value = 0;
     _contentCtrl.value = 0;
+    _appearTimer?.cancel();
+    _appearTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _appearCtrl.forward(from: 0);
+      _contentCtrl.forward(from: 0);
+    });
   }
 
   // Оверлей рендерится в КЭШИРОВАННОМ движке: после закрытия окна Dart-
@@ -232,65 +240,37 @@ class _OverlayChatState extends State<_OverlayChat>
   // (MediaQuery.removeViewInsets), поэтому пересборки нет. При фокусе
   // досматриваем вниз БЕЗ анимации (jumpTo) — но только если последнее
   // сообщение реально ушло из виду (иначе каждый фокус дёргал ленту).
-  // Позиция до открытия клавиатуры — вернём её при блюре.
-  Offset? _posBeforeKb;
-
   void _onFocusChange() {
     if (!mounted) return;
     final f = _inputFocus.hasFocus;
     if (f != _inputFocused) {
       _inputFocused = f;
       _setFocusable(f);
-      if (f) {
-        // Оверлей рисуется ПОВЕРХ клавиатуры: нижняя часть чата оставалась
-        // под её полупрозрачной зоной — «белый фон за клавиатурой».
-        // Поднимаем окно так, чтобы оно стояло полностью над клавиатурой
-        // (примерная высота IME ≈ 45% экрана).
-        final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
-        final kb = sh * 0.45;
-        _posBeforeKb ??= _pos;
-        final targetY = (sh - kb - _chatHeight - 8).clamp(0.0, sh - _chatHeight);
-        _animateMoveTo(Offset(_pos.dx, targetY));
-        if (_scrollCtrl.hasClients) {
-          final pos = _scrollCtrl.position;
-          if (pos.maxScrollExtent > 0 &&
-              pos.pixels < pos.maxScrollExtent - 16) {
-            _scrollCtrl.jumpTo(pos.maxScrollExtent);
-          }
+      // Окно при фокусе НЕ поднимаем: оно живёт поверх клавиатуры, и
+      // пользователь сам двигает его куда надо. Просто прокручиваем ленту
+      // к последнему сообщению, чтобы оно не пряталось под полем.
+      if (f && _scrollCtrl.hasClients) {
+        final pos = _scrollCtrl.position;
+        if (pos.maxScrollExtent > 0 &&
+            pos.pixels < pos.maxScrollExtent - 16) {
+          _scrollCtrl.jumpTo(pos.maxScrollExtent);
         }
-      } else {
-        // Клавиатура закрылась — вернуть окно на прежнее место (плавно).
-        final back = _posBeforeKb;
-        _posBeforeKb = null;
-        if (back != null) _animateMoveTo(back);
       }
     }
   }
 
-  /// Плавное перемещение к точке за ~200 мс (8 шагов) — без дёрганых
-  /// скачков при смене позиции.
-  Future<void> _animateMoveTo(Offset target) async {
-    final from = _pos;
-    const steps = 8;
-    for (var i = 1; i <= steps; i++) {
-      final t = Curves.easeInOutCubic.transform(i / steps);
-      _pos = Offset(
-        from.dx + (target.dx - from.dx) * t,
-        from.dy + (target.dy - from.dy) * t,
-      );
-      _sendPos();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
-    _pos = target;
-    _sendPos();
-  }
 
 
 
-  void _setFocusable(bool focus) {
-    _overlayChannel.invokeMethod<void>('updateFlag', {
-      'flag': focus ? 'focusPointer' : 'defaultFlag',
-    });
+  /// Меняет флаг фокусируемости окна. Дождаться ответа натива ВАЖНО:
+  /// requestFocus сразу после смены флага «съедался», и клавиатура
+  /// появлялась только со второго тапа.
+  Future<void> _setFocusable(bool focus) async {
+    try {
+      await _overlayChannel.invokeMethod<void>('updateFlag', {
+        'flag': focus ? 'focusPointer' : 'defaultFlag',
+      });
+    } catch (_) {}
   }
 
   // ── Drag оверлея ──────────────────────────────────────────────────
@@ -342,6 +322,13 @@ class _OverlayChatState extends State<_OverlayChat>
       'x': _pos.dx,
       'y': _pos.dy,
     });
+    // Сохраняем позицию: при переоткрытии окно должно встать ТУДА, где
+    // его оставили (showOverlay по умолчанию открывает в ЦЕНТРЕ, и без
+    // сохранения позиция «не запоминалась»).
+    try {
+      globalPrefs.setDouble('ada_overlay_x', _pos.dx);
+      globalPrefs.setDouble('ada_overlay_y', _pos.dy);
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -350,17 +337,27 @@ class _OverlayChatState extends State<_OverlayChat>
       _overlayGradients.length - 1,
     );
     _modelLabel = await AiGuideService.currentModelLabel();
-    // Синхронизируем _pos с РЕАЛЬНЫМ положением окошка (в dp). Раньше
-    // позиция начиналась с (0,0) — первое перетаскивание «прыгало»
-    // в левый верхний угол, отсюда «дерганое» перемещение.
-    try {
-      final p = await FlutterOverlayWindow.getOverlayPosition();
-      if (mounted) {
-        _pos = Offset(p.x, p.y);
-        _posInit = true;
+    // ВОССТАНАВЛИВАЕМ позицию из prefs: showOverlay всегда создаёт окно
+    // по центру, а мы переставляем его туда, где оно было (иначе каждое
+    // открытие «прыгало» в центр).
+    final sx = globalPrefs.getDouble('ada_overlay_x');
+    final sy = globalPrefs.getDouble('ada_overlay_y');
+    if (sx != null && sy != null) {
+      _pos = Offset(sx, sy);
+      _posInit = true;
+      _sendPos();
+    } else {
+      // Первый запуск — синхронизируемся с реальным положением окошка
+      // (нативные координаты), чтобы первый драг не «прыгал». 
+      try {
+        final p = await FlutterOverlayWindow.getOverlayPosition();
+        if (mounted) {
+          _pos = Offset(p.x, p.y);
+          _posInit = true;
+        }
+      } catch (_) {
+        // Окошко ещё не готово — просто оставляем центр экрана.
       }
-    } catch (_) {
-      // Окошко ещё не готово — оставляем центр экрана (см. _ensurePos).
     }
     try {
       final raw = await JsonFile.read(_historyKey);
@@ -386,57 +383,53 @@ class _OverlayChatState extends State<_OverlayChat>
   Future<void> _toggleSize() async {
     if (_closing) return;
     if (_collapsed) {
+      // Пузырь → чат: гасим пузырь, мгновенно ставим размер чата (в момент
+      // непрозрачности 0 — незаметно), выравниваем центр, проявляем.
       _stopDrift();
       await _contentCtrl.reverse();
       if (!mounted) return;
       setState(() => _collapsed = false);
-      await _animateResize(_bubbleSize, _bubbleSize, _chatWidth, _chatHeight);
+      _resizeKeepCenter(_bubbleSize, _bubbleSize, _chatWidth, _chatHeight);
+      await FlutterOverlayWindow.resizeOverlay(
+        _chatWidth.round(),
+        _chatHeight.round(),
+        false,
+      );
+      _sendPos();
+      _clampToScreen();
       if (!mounted) return;
       _contentCtrl.forward(from: 0);
-      _clampToScreen();
       _load();
     } else {
+      // Чат → пузырь: гасим чат, мгновенно уменьшаем окно в центр,
+      // проявляем пузырь.
       await _contentCtrl.reverse();
       if (!mounted) return;
       setState(() => _collapsed = true);
-      await _animateResize(_chatWidth, _chatHeight, _bubbleSize, _bubbleSize);
+      _resizeKeepCenter(_chatWidth, _chatHeight, _bubbleSize, _bubbleSize);
+      await FlutterOverlayWindow.resizeOverlay(
+        _bubbleSize.round(),
+        _bubbleSize.round(),
+        false,
+      );
+      _sendPos();
       if (!mounted) return;
       _contentCtrl.forward(from: 0);
       _startDrift();
     }
   }
 
-  Future<void> _animateResize(
+  /// Пересчитывает _pos так, чтобы ЦЕНТР окна не сдвинулся при смене
+  /// размеров (нативный ресайз идёт от верхнего левого угла).
+  void _resizeKeepCenter(
     double fromW,
     double fromH,
     double toW,
     double toH,
-  ) async {
-    // Окно ресайзится от ВЕРХНЕГО ЛЕВОГО угла (нативный LayoutParams),
-    // поэтому при росте размера без сдвига оно распухало вправо-вниз и
-    // «уезжало» за край экрана. Разворачиваем вокруг ЦЕНТРА: на каждом
-    // шаге синхронно двигаем позицию на половину прироста размера.
-    // 24 шага по ~12мс ≈ 290мс — достаточная плавность, без лишней тянучки.
-    const steps = 24;
+  ) {
     final cx = _pos.dx + fromW / 2;
     final cy = _pos.dy + fromH / 2;
-    for (var i = 1; i <= steps; i++) {
-      final t = Curves.easeInOutCubic.transform(i / steps);
-      final w = fromW + (toW - fromW) * t;
-      final h = fromH + (toH - fromH) * t;
-      try {
-        await FlutterOverlayWindow.resizeOverlay(w.round(), h.round(), false);
-        // Центр окна не должен смещаться во время анимации.
-        _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
-          'x': cx - w / 2,
-          'y': cy - h / 2,
-        });
-      } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 12));
-    }
-    final w = _collapsed ? _bubbleSize : _chatWidth;
-    final h = _collapsed ? _bubbleSize : _chatHeight;
-    _pos = Offset(cx - w / 2, cy - h / 2);
+    _pos = Offset(cx - toW / 2, cy - toH / 2);
   }
 
   void _startDrift() {
@@ -702,11 +695,10 @@ class _OverlayChatState extends State<_OverlayChat>
           final appearT = Curves.easeOutCubic.transform(_appearCtrl.value);
           final contentT = _contentCtrl.value;
           return Opacity(
-            // Минимум 0.06: окно НИКОГДА не бывает полностью прозрачным.
-            // Если анимация появления не успела стартовать (повторное
-            // открытие окошка в живом движке), мы видим призрак вместо
-            // «невидимого окна», которое нельзя ни увидеть, ни потаскать.
-            opacity: (appearT * contentT).clamp(0.06, 1.0),
+            // Появление гарантировано (авто-таймер в initState + команда
+            // сброса от main + lifecycle), поэтому минимум НЕ нужен —
+            // иначе висел «полупрозрачный след чата» вместо плавного фейда.
+            opacity: (appearT * contentT).clamp(0.0, 1.0),
             child: _collapsed ? _buildBubble() : _buildChatShell(),
           );
         },
@@ -989,7 +981,9 @@ class _OverlayChatState extends State<_OverlayChat>
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest.withValues(alpha: 0.8),
+        // Полностью непрозрачный фон: полупрозрачный давал «белую полосу»
+        // под клавиатурой/внизу чата.
+        color: cs.surfaceContainerLowest,
         border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.4)),
       ),
       child: Row(
@@ -1038,15 +1032,16 @@ class _OverlayChatState extends State<_OverlayChat>
                   maxLines: 3,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _send(),
-                  onTap: () {
-                    // Первый тап в окошке при FLAG_NOT_FOCUSABLE: снимаем
-                    // флаг и просим фокус СЛЕДУЮЩИМ кадром (после того как
-                    // окно стало фокусируемым) — иначе клавиатура
-                    // появлялась лишь со второго тапа.
-                    _setFocusable(true);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _inputFocus.requestFocus();
-                    });
+                  onTap: () async {
+                    // Первый тап: снимаем FLAG_NOT_FOCUSABLE, ЖДЁМ ответа
+                    // нативной стороны и только потом даём фокус полю —
+                    // иначе клавиатура появляется лишь со второго тапа.
+                    await _setFocusable(true);
+                    if (mounted) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _inputFocus.requestFocus();
+                      });
+                    }
                   },
                   style: const TextStyle(
                     fontSize: 13,
@@ -1066,7 +1061,7 @@ class _OverlayChatState extends State<_OverlayChat>
                     ),
                     isDense: true,
                     filled: true,
-                    fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.7),
+                    fillColor: cs.surfaceContainerHigh,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 8,
@@ -1201,7 +1196,21 @@ class _MiniBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isUser) ...[
-              _OverlayAvatar(size: 18, variant: avatar),
+              // Плавная смена аватарки и в пузырях сообщений окошка.
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: ScaleTransition(scale: anim, child: child),
+                ),
+                child: _OverlayAvatar(
+                  key: ValueKey('mini_av_$avatar'),
+                  size: 18,
+                  variant: avatar,
+                ),
+              ),
               const SizedBox(width: 5),
             ],
             Flexible(

@@ -482,6 +482,12 @@ class _AiChatBodyState extends State<_AiChatBody>
     try {
       _webSearch = globalPrefs.getBool('ai_web_search') ?? false;
     } catch (_) {}
+    // Автофокус при открытии: IME-соединение прогревается СРАЗУ, пока лист
+    // выезжает (520мс), — первый тап по полю при «холодном» чате больше
+    // не тормозит (клавиатура и соединение уже готовы).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _inputFocus.requestFocus();
+    });
   }
 
   /// Догоняет пропущенный отчёт Ады (если время наступило) и подхватывает
@@ -1419,13 +1425,12 @@ class _AiChatBodyState extends State<_AiChatBody>
                 child: Row(
                   children: [
                     Expanded(
-                      // Плавное выделение поля при фокусе: обводка и цвет
-                      // анимируются (AnimatedBuilder на FocusNode → AnimatedContainer).
+                      // Обводка поля — МГНОВЕННАЯ по фокусу (без 220мс
+                      // анимации: при первом тапе она тормозила появление
+                      // клавиатуры и поле «дёргалось»).
                       child: AnimatedBuilder(
                         animation: _inputFocus,
-                        builder: (context, child) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOut,
+                        builder: (context, child) => Container(
                           decoration: BoxDecoration(
                             color: cs.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(24),
