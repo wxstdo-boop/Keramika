@@ -280,11 +280,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             params.x = (x == -1999.0 || x == -1.0) ? -1 : dpToPxF(x);
             params.y = dpToPxF(y);
+            // БЕЗ flutterView.invalidate(): TextureView рисует каждый кадр
+            // сам, а лишний invalidate при 60fps-перемещении приводил к
+            // конкуренции с движением и «дёрганью».
             windowManager.updateViewLayout(flutterView, params);
-            // TextureView при быстром перемещении успевает «затирать» только
-            // часть старой области — остаются следы. invalidate() просит
-            // перерисовать вид сразу.
-            flutterView.invalidate();
             if (result != null)
                 result.success(true);
         } else {
