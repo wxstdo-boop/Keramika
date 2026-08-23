@@ -167,25 +167,34 @@ class _AiChatSheetState extends State<_AiChatSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Клавиатура: лёгкая оболочка ПОДНИМАЕТ лист над ней, высота ужимается
-    // ровно под доступное пространство. Чат — НА ВЕСЬ экран (как было).
-    // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
-    // вместе с анимацией клавиатуры — Padding двигает лист ровно с ней.
+    // Чат — НА ВЕСЬ экран, фиксированной высоты. Клавиатуру обслуживает
+    // ТОЛЬКО Positioned (меняется нижний offset), высота НЕ меняется:
+    // лента сообщений не пересчитывает layout на каждом кадре IME —
+    // иначе «тормоза» при подъёме/опускании. При открытой клавиатуре
+    // шапка уходит за верх экрана, поле всегда видно над клавиатурой.
     final insets = MediaQuery.viewInsetsOf(context).bottom;
-    final available = MediaQuery.sizeOf(context).height - insets;
-    final sheetHeight = available.clamp(260.0, available);
-    return Padding(
-      padding: EdgeInsets.only(bottom: insets),
-      child: RepaintBoundary(
-        child: Container(
-          height: sheetHeight,
-          decoration: BoxDecoration(
-            color: theme.scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+    final screenH = MediaQuery.sizeOf(context).height;
+    final sheetHeight = screenH; // фиксированная: ВЕСЬ экран
+    return Stack(
+      children: [
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: insets,
+          child: RepaintBoundary(
+            child: Container(
+              height: sheetHeight,
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+              ),
+              child: const _AiChatBody(),
+            ),
           ),
-          child: const _AiChatBody(),
         ),
-      ),
+      ],
     );
   }
 }
