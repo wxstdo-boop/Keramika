@@ -266,6 +266,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
             WindowSetup.enableDrag = enableDrag;
             windowManager.updateViewLayout(flutterView, params);
+            // TextureView при смене LayoutParams может оставлять на экране
+            // старый кадр («след»): форсируем перерисовку.
+            flutterView.invalidate();
             result.success(true);
         } else {
             result.success(false);
@@ -278,6 +281,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.x = (x == -1999.0 || x == -1.0) ? -1 : dpToPxF(x);
             params.y = dpToPxF(y);
             windowManager.updateViewLayout(flutterView, params);
+            // TextureView при быстром перемещении успевает «затирать» только
+            // часть старой области — остаются следы. invalidate() просит
+            // перерисовать вид сразу.
+            flutterView.invalidate();
             if (result != null)
                 result.success(true);
         } else {
