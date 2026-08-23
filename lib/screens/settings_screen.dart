@@ -919,13 +919,18 @@ class _SettingsScreenState extends State<SettingsScreen>
         }
         extraOnSelected?.call();
       },
+      // О бводка ВСЕГДА задана явно и плавно перетекает: у выбранной —
+      // primary с полной непрозрачностью, у остальных — та же ширина
+      // и цвет, но ПРОЗРАЧНЫЙ. Убрано условное переключение цвета, из-за
+      // которого обводка «появлялась скачком» (AnimatedContainer на
+      // маппинге «выбран/нет»).
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        // Тонкая аккуратная обводка: у выбранной — первичный цвет (1px),
-        // у остальных — прозрачная. Никакого «утолщения» при переключении.
         side: BorderSide(
-          color: isSelected ? theme.colorScheme.primary : Colors.transparent,
-          width: 1,
+          color: theme.colorScheme.primary.withValues(
+            alpha: isSelected ? 1.0 : 0.0,
+          ),
+          width: 2,
         ),
       ),
     ); // Центрируем в ячейке сетки 3×3 — ровная и красивая сетка тем.

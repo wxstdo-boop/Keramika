@@ -487,32 +487,41 @@ class _MonthChart extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                for (var i = 0; i < days.length; i++)
-                                  Expanded(
-                                    child: _stackedBar(
-                                      days[i],
-                                      maxV,
-                                      habitColor,
-                                      taskColor,
-                                      grow,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  for (var i = 0; i < days.length; i++)
+                                    Expanded(
+                                      child: _stackedBar(
+                                        days[i],
+                                        maxV,
+                                        habitColor,
+                                        taskColor,
+                                        grow,
+                                      ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 5),
                       // Метки под столбцами: день недели по каждой 5-й
-                      // колонке, «сегодня» — точка.
-                      Row(
-                        children: [
-                          for (var i = 0; i < days.length; i++)
-                            Expanded(child: Center(child: _dayLabel(i))),
-                        ],
+                      // колонке, «сегодня» — точка. Горизонтальные отступы
+                      // по краям — 30-я колонка/символ не упираются в грань.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Row(
+                          children: [
+                            for (var i = 0; i < days.length; i++)
+                              Expanded(child: Center(child: _dayLabel(i))),
+                          ],
+                        ),
                       ),
                     ],
                   );

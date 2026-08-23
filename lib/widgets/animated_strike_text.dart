@@ -189,11 +189,10 @@ class _StrikePainter extends CustomPainter {
     for (final m in tp.computeLineMetrics()) {
       final lineWidth = m.width * progress;
       if (lineWidth <= 0.3) continue;
-      // Позиция по реальным метрикам КАЖДОЙ строки: asc+desc — высота
-      // строки, линия на 45% от верха (ближе к середине букв). Раньше
-      // 0.45 от ascent поднималась слишком высоко и «заезжала» на
-      // верх текста — опускаем чуть ниже, к центру строки.
-      final y = m.baseline - m.ascent * 0.42;
+      // Позиция по реальным метрикам КАЖДОЙ строки: линия ещё ниже —
+      // 0.38 от верха (ascent), ближе к визуальной середине букв
+      // (раньше 0.42/0.45 уходили к верху строки).
+      final y = m.baseline - m.ascent * 0.38;
       canvas.drawLine(
         Offset(m.left, y),
         Offset(m.left + lineWidth, y),
