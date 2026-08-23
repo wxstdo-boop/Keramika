@@ -329,17 +329,10 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_dragging) return;
     _dragging = true;
     _stopDrift();
-    _dragTimer?.cancel();
-    _dragTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      if (!_dragging) return;
-      _sendPos();
-    });
   }
 
   void _endDrag() {
     _dragging = false;
-    _dragTimer?.cancel();
-    _dragTimer = null;
     if (mounted) _sendPos();
     if (_collapsed) _startDrift();
   }
@@ -347,6 +340,11 @@ class _OverlayChatState extends State<_OverlayChat>
   void _onDrag(DragUpdateDetails d) {
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
     _startDrag();
+    // ОТПРАВКА СРАЗУ за жестом: каждый delta уходит на нативную сторону
+    // немедленно (фракционные dp → плавные пиксели). Таймер на 16 мс
+    // добавлял задержку «палец ушёл — окно догоняет», из-за чего драг
+    // казался дёрганым на слабых устройствах.
+    _sendPos();
   }
 
   /// Шлёт текущую позицию на нативную сторону, удерживая окошко в границах
@@ -376,7 +374,12 @@ class _OverlayChatState extends State<_OverlayChat>
 
   Future<void> _load() async {
     _avatarVariant = savedAdaAvatarIndex();
-    _modelLabel = await AiGuideService.currentModelLabel();
+    // Лейбл модели не перезатираем при каждом входе из пузыря (прыгал из
+    // «ada-0.0.3» в «Kilo..» и обратно): берём только если ещё пуст,
+    // дальше живёт через синхронизацию/ответы.
+    if (_modelLabel.isEmpty) {
+      _modelLabel = await AiGuideService.currentModelLabel();
+    }
     // ВОССТАНАВЛИВАЕМ позицию из prefs: showOverlay всегда создаёт окно
     // по центру, а мы переставляем его туда, где оно было (иначе каждое
     // открытие «прыгало» в центр).
@@ -1045,20 +1048,31 @@ class _OverlayChatState extends State<_OverlayChat>
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               onTap: () async {
-                // Первый тап: окно становится фокусируемым, поле — фокусом.
+                // Первый тап: окно становится фокусирующим, поле — фокусом.
                 // Некоторые прошивки «съедают» первый requestFocus, пока
-                // натив применяет флаг — повторяем, пока фокус не встанет.
-                for (var i = 0; i < 4 && mounted; i++) {
+                // натив применяет флаг — пробуем до 6 раз, плюс прямой
+                // показ IME, плюс страховка на следующий кадр.
+                for (var i = 0; i < 6 && mounted; i++) {
                   await _setFocusable(true);
                   if (!mounted) return;
                   _inputFocus.requestFocus();
+                  try {
+                    await SystemChannels.textInput
+                        .invokeMethod<void>('TextInput.show');
+                  } catch (_) {}
+                  if (!mounted) return;
                   if (_inputFocus.hasFocus) break;
-                  await Future<void>.delayed(const Duration(milliseconds: 90));
+                  await Future<void>.delayed(const Duration(milliseconds: 110));
                 }
-                // Страховка на следующий кадр.
                 if (mounted && !_inputFocus.hasFocus) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _inputFocus.requestFocus();
+                    if (mounted) {
+                      _inputFocus.requestFocus();
+                      try {
+                        SystemChannels.textInput
+                            .invokeMethod<void>('TextInput.show');
+                      } catch (_) {}
+                    }
                   });
                 }
               },
