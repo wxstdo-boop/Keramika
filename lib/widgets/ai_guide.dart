@@ -10,6 +10,7 @@ import '../services/json_file.dart';
 import '../services/prefs.dart';
 import '../services/settings_service.dart';
 import '../overlay/overlay_bridge.dart';
+import 'ada_avatars.dart';
 import '../utils/snackbar.dart';
 import '../utils/context_menu.dart';
 import '../utils/markdown_text.dart';
@@ -92,239 +93,43 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
       onPressed: () => showAiGuideChat(context),
       backgroundColor: cs.primaryContainer,
       foregroundColor: cs.onPrimaryContainer,
-      child: const _AdaAvatar(size: 20),
+      child: const AdaAvatar(size: 20),
     );
   }
 }
-
-/// Вариант аватарки Ады: градиент + значок.
-class _AdaVariant {
-  final List<Color> colors;
-  final IconData icon;
-  const _AdaVariant(this.colors, this.icon);
-}
-
-/// Все варианты Ады: 6 авторских + 114 сгенерированных = 120 уникальных
-/// градиентов. Индекс выбранного сохраняется в prefs ('ada_avatar_variant')
-/// и переживает перезапуск; тап по аватарке/имени меняет его рандомно.
-/// Генерация детерминированная — порядок стабилен между запусками.
-final List<_AdaVariant> _adaVariants = _buildAdaVariants();
-
-List<_AdaVariant> _buildAdaVariants() {
-  const specials = <_AdaVariant>[
-    _AdaVariant([
-      Color(0xFFFF9EC6),
-      Color(0xFFB06AB3),
-      Color(0xFF7C4DFF),
-    ], Icons.favorite),
-    _AdaVariant([
-      Color(0xFFFFB199),
-      Color(0xFFFF6B9D),
-      Color(0xFFE63946),
-    ], Icons.local_florist),
-    _AdaVariant([
-      Color(0xFF9BE8FF),
-      Color(0xFF7C4DFF),
-      Color(0xFF2E3192),
-    ], Icons.auto_awesome),
-    _AdaVariant([
-      Color(0xFF8BF0C8),
-      Color(0xFF2BB3A0),
-      Color(0xFF0F6E6E),
-    ], Icons.wb_sunny),
-    _AdaVariant([
-      Color(0xFFFFD166),
-      Color(0xFFFF8C42),
-      Color(0xFFD62828),
-    ], Icons.star),
-    _AdaVariant([
-      Color(0xFFC9B8FF),
-      Color(0xFF8E7CFF),
-      Color(0xFF4A3F9E),
-    ], Icons.psychology),
-  ];
-  // Набор значков: повторяется через каждые 24 варианта, но hue каждый раз
-  // другой (шаг 47° по цветовому кругу) — комбинации не повторяются.
-  const icons = <IconData>[
-    Icons.favorite,
-    Icons.local_florist,
-    Icons.auto_awesome,
-    Icons.wb_sunny,
-    Icons.star,
-    Icons.psychology,
-    Icons.bolt,
-    Icons.flare,
-    Icons.water_drop,
-    Icons.eco,
-    Icons.rocket_launch,
-    Icons.diamond,
-    Icons.energy_savings_leaf,
-    Icons.nights_stay,
-    Icons.face_retouching_natural,
-    Icons.celebration,
-    Icons.shield_moon,
-    Icons.spa,
-    Icons.forest,
-    Icons.emoji_emotions,
-    Icons.light_mode,
-    Icons.wb_twilight,
-    Icons.air,
-    Icons.blur_on,
-  ];
-  final generated = <_AdaVariant>[];
-  for (var i = 0; i < 114; i++) {
-    final hue = (i * 47) % 360;
-    final band = i ~/ 24;
-    final sat = (0.52 + 0.30 * (band % 3)).clamp(0.0, 1.0);
-    final light = (0.46 + 0.16 * ((band ~/ 3) % 3)).clamp(0.0, 1.0);
-    final c1 = HSLColor.fromAHSL(1, hue.toDouble(), sat, light).toColor();
-    final c2 = HSLColor.fromAHSL(
-      1,
-      ((hue + 36) % 360).toDouble(),
-      sat,
-      (light - 0.10).clamp(0.0, 1.0),
-    ).toColor();
-    final c3 = HSLColor.fromAHSL(
-      1,
-      ((hue + 72) % 360).toDouble(),
-      sat,
-      (light - 0.20).clamp(0.0, 1.0),
-    ).toColor();
-    generated.add(_AdaVariant([c1, c2, c3], icons[i % icons.length]));
-  }
-  return [...specials, ...generated];
-}
-
-int _savedAvatarVariant() => (globalPrefs.getInt('ada_avatar_variant') ?? 0)
-    .clamp(0, _adaVariants.length - 1);
 
 /// Живой индекс значка Ады: ВСЕ аватарки (шапка, пузыри сообщений и плавающее
 /// мини-окошко) следят за ним и меняются мгновенно и плавно, где бы их ни
 /// нажали — работает из любого места приложения.
 final ValueNotifier<int> adaAvatarVariant = ValueNotifier<int>(
-  _savedAvatarVariant(),
+  savedAdaAvatarIndex(),
 );
 
-/// Тап по сердечку/значку Ады — случайный другой вариант. Сохраняется
+/// Тап по сердечку/значку Ады — случайный другой вариант. Включается
 /// навсегда (переживает перезапуск). Вызывается из шапки, пузырей и
-/// плавающего окошка.
+/// плавающего окошка; синхронизируется с мини-окошком по каналу сообщений.
 void cycleAdaAvatar() {
   // Переключаем только на УНИКАЛЬНЫЙ значок: вариант с той же иконкой,
   // что у текущего, пропускаем — раньше могли «выпадать» дубли.
-  final cur = _adaVariants[adaAvatarVariant.value];
+  final cur = adaVariants[adaAvatarVariant.value];
   var next = adaAvatarVariant.value;
   var guard = 0;
-  while (guard < _adaVariants.length * 3) {
-    next = math.Random().nextInt(_adaVariants.length);
-    final v = _adaVariants[next];
+  while (guard < adaVariants.length * 3) {
+    next = math.Random().nextInt(adaVariants.length);
+    final v = adaVariants[next];
     if (v.icon != cur.icon) break;
     guard++;
   }
   // Вырожденный случай (не нашли с первого захода) — соседний индекс.
   if (next == adaAvatarVariant.value) {
-    next = (adaAvatarVariant.value + 1) % _adaVariants.length;
+    next = (adaAvatarVariant.value + 1) % adaVariants.length;
   }
   adaAvatarVariant.value = next;
   globalPrefs.setInt('ada_avatar_variant', next);
   Haptics.select();
-}
-
-/// Аватарка Ады — градиентный кружок со свечением и бликом.
-/// [variantIndex] — индекс в [_adaVariants]; -1 — следит за живым
-/// [adaAvatarVariant] (меняется сразу во всех местах).
-class _AdaAvatar extends StatelessWidget {
-  final double size;
-  final int variantIndex;
-  const _AdaAvatar({super.key, this.size = 34, this.variantIndex = -1});
-
-  @override
-  Widget build(BuildContext context) {
-    // Плавная смена градиента: fade + лёгкий scale при любом переключении
-    // варианта (шапка, сообщения, пузыри окошка) — одинаково во всех местах.
-    Widget wrap(int idx, Key key) => AnimatedSwitcher(
-          duration: const Duration(milliseconds: 320),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, anim) => FadeTransition(
-            opacity: anim,
-            child: ScaleTransition(scale: anim, child: child),
-          ),
-          child: KeyedSubtree(
-            key: key,
-            child: _core(context, _adaVariants[idx]),
-          ),
-        );
-    if (variantIndex >= 0) {
-      return wrap(variantIndex, ValueKey('av_$variantIndex'));
-    }
-    return ValueListenableBuilder<int>(
-      valueListenable: adaAvatarVariant,
-      builder: (context, idx, _) => wrap(idx, ValueKey('av_$idx')),
-    );
-  }
-
-  Widget _core(BuildContext context, _AdaVariant v) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: v.colors,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: v.colors[1].withValues(alpha: 0.45),
-            blurRadius: size * 0.35,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Блик сверху — «стеклянный» объём.
-          Positioned(
-            top: size * 0.06,
-            left: size * 0.16,
-            child: Container(
-              width: size * 0.42,
-              height: size * 0.24,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(size),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.55),
-                    Colors.white.withValues(alpha: 0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Значок Ады (плавно меняется на другой при тапе).
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 320),
-            switchInCurve: Curves.easeOutBack,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, animation) => ScaleTransition(
-              scale: animation,
-              child: FadeTransition(opacity: animation, child: child),
-            ),
-            child: Icon(
-              v.icon,
-              key: ValueKey<int>(v.icon.codePoint),
-              size: size * 0.42,
-              color: Colors.white.withValues(alpha: 0.95),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Живая синхронизация с мини-окошком (отдельный движок): аватарка
+  // меняется мгновенно и там.
+  syncOverlayState({'cmd': 'sync_avatar', 'variant': next});
 }
 
 /// Открывает мини-чат Ады снизу экрана.
@@ -366,26 +171,41 @@ class _AiChatSheet extends StatefulWidget {
 }
 
 class _AiChatSheetState extends State<_AiChatSheet> {
+  // Высота листа ЗАФИКСИРОВАНА с первого кадра. Клавиатуру при её подъёме
+  // обслуживает ТОЛЬКО Positioned (меняется его нижний offset), а тяжёлое
+  // тело чата вообще не пересобирается и не пересчитывает layout.
+  double? _fixedHeight;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Клавиатура: лёгкая оболочка ПОДНИМАЕТСЯ над ней, высота ужимается,
-    // чтобы шапка не уходила за экран. Поле ввода всегда видно.
-    // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
-    // вместе с анимацией клавиатуры — обычный Padding двигает лист ровно
-    // с ней, без собственной задержки.
     final insets = MediaQuery.viewInsetsOf(context).bottom;
-    final available = MediaQuery.sizeOf(context).height - insets;
-    final sheetHeight = available.clamp(260.0, available);
-    return Padding(
-      padding: EdgeInsets.only(bottom: insets),
-      child: Container(
-        height: sheetHeight,
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: const _AiChatBody(),
+    final screenH = MediaQuery.sizeOf(context).height;
+    // Клавиатура: лист целиком поднимается НАД ней, высота не меняется.
+    // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
+    // вместе с анимацией клавиатуры — Positioned двигает лист ровно с ней.
+    _fixedHeight ??= (screenH * 0.72).clamp(260.0, screenH);
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: insets,
+            child: RepaintBoundary(
+              child: Container(
+                height: _fixedHeight!,
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                ),
+                child: const _AiChatBody(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -461,6 +281,9 @@ class _AiChatBodyState extends State<_AiChatBody>
     // ленту к низу, чтобы последнее сообщение/«сочиняю» не прятались
     // за формой (клавиатура поднимается раньше, чем список перестроится).
     _inputFocus.addListener(_onInputFocus);
+    // Модель могла смениться в мини-окошке (отдельный движок) — тик
+    // приходит по мосту, перечитываем лейбл.
+    AiGuideService.modelLabelTick.addListener(_onModelLabelTick);
     SettingsService.loadLanguageCode()
         .then((c) {
           if (!mounted) return;
@@ -482,12 +305,6 @@ class _AiChatBodyState extends State<_AiChatBody>
     try {
       _webSearch = globalPrefs.getBool('ai_web_search') ?? false;
     } catch (_) {}
-    // Автофокус при открытии: IME-соединение прогревается СРАЗУ, пока лист
-    // выезжает (520мс), — первый тап по полю при «холодном» чате больше
-    // не тормозит (клавиатура и соединение уже готовы).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _inputFocus.requestFocus();
-    });
   }
 
   /// Догоняет пропущенный отчёт Ады (если время наступило) и подхватывает
@@ -519,6 +336,10 @@ class _AiChatBodyState extends State<_AiChatBody>
     _loadHistory();
   }
 
+  void _onModelLabelTick() {
+    _refreshModelLabel();
+  }
+
   void _refreshModelLabel() {
     AiGuideService.currentModelLabel()
         .then((m) {
@@ -536,6 +357,7 @@ class _AiChatBodyState extends State<_AiChatBody>
   @override
   void dispose() {
     AiGuideService.adaReportTick.removeListener(_onAdaReportTick);
+    AiGuideService.modelLabelTick.removeListener(_onModelLabelTick);
     _clearCtrl.dispose();
     _dotsCtrl.dispose();
     _inputCtrl.dispose();
@@ -861,6 +683,11 @@ class _AiChatBodyState extends State<_AiChatBody>
         if (mounted) setState(() => _quotaLeft = n);
       });
       _refreshModelLabel();
+      // Синхронизируем «кто ответил» с мини-окошком (отдельный движок).
+      final used = AiGuideService.lastUsedModel;
+      if (used.isNotEmpty) {
+        syncOverlayState({'cmd': 'sync_model', 'label': used});
+      }
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -1062,7 +889,7 @@ class _AiChatBodyState extends State<_AiChatBody>
                                 child: child,
                               ),
                             ),
-                        child: _AdaAvatar(
+                        child: AdaAvatar(
                           variantIndex: idx,
                           key: ValueKey('ada_avatar_$idx'),
                         ),
@@ -1582,7 +1409,7 @@ class _MessageBubble extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: cycleAdaAvatar,
               onLongPress: onLongPress,
-              child: const _AdaAvatar(size: 18),
+              child: const AdaAvatar(size: 18),
             ),
             const SizedBox(width: 6),
           ],
@@ -1837,7 +1664,7 @@ class _TypingIndicator extends StatelessWidget {
       padding: const EdgeInsets.only(top: 10),
       child: Row(
         children: [
-          const _AdaAvatar(size: 18),
+          const AdaAvatar(size: 18),
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -2633,7 +2460,7 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
               ),
             ],
           ),
-          child: const Center(child: _AdaAvatar(size: 36)),
+          child: const Center(child: AdaAvatar(size: 36)),
         ),
       ),
     );
@@ -2658,7 +2485,7 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => setState(() => _collapsed = true),
-                  child: _AdaAvatar(size: 26),
+                  child: AdaAvatar(size: 26),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
