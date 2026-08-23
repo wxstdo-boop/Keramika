@@ -1414,7 +1414,7 @@ class _AiChatSheetState extends State<_AiChatSheet>
                               // Copilot» и лишних пунктов системного меню.
                               contextMenuBuilder: minimalContextMenuBuilder,
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 17,
                                 height: 1.4,
                                 color: cs.onSurface,
                               ),
@@ -1464,7 +1464,7 @@ class _EmptyChatPlaceholder extends StatelessWidget {
           Translations.t('adaEmptyChat', context),
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 19,
             height: 1.35,
             fontWeight: FontWeight.w800,
             color: cs.onSurfaceVariant,
@@ -1599,7 +1599,9 @@ class _MessageBubble extends StatelessWidget {
                                   : (isUser
                                         ? cs.onPrimaryContainer
                                         : cs.onSurface),
-                              fontSize: 16,
+                              // Markdown-сообщения НЕ увеличиваем: разметка
+                              // не должна «распухать» сильнее обычного текста.
+                              fontSize: 14.5,
                               height: 1.35,
                             ),
                           ),
@@ -2891,7 +2893,8 @@ class _MiniBubble extends StatelessWidget {
         child: buildMarkdownText(
           message.text,
           TextStyle(
-            fontSize: 14.5,
+            // Markdown в мини-оверлее тоже не увеличиваем.
+            fontSize: 12.5,
             height: 1.3,
             color: isUser ? cs.onPrimary : cs.onSurface,
           ),

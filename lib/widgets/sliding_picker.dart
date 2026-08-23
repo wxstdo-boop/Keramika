@@ -210,9 +210,17 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
               _userDragging = true;
               _applyLivePage();
             } else {
-              // Баллистика (флип) — промежуточные пункты не применяем,
-              // только финальный, когда карусель остановится.
+              // Баллистика (флип): промежуточные пункты не применяем,
+              // НО финальный применяем СРАЗУ, как только карусель почти
+              // встала на него (близко к центру) — не ждём полной
+              // остановки, иначе переключение «ощущалось с задержкой»
+              // после быстрого свайпа.
               _cancelPendingApply();
+              final page = _ctrl.page;
+              if (page != null &&
+                  (page - page.round()).abs() < 0.12) {
+                _applyLivePage();
+              }
             }
           } else if (notification is ScrollEndNotification) {
             _userDragging = false;

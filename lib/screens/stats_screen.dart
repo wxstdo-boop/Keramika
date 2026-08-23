@@ -87,10 +87,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
       // Как на остальных экранах: свайп вверх/вниз работает всегда,
       // даже когда контента мало (иначе жест «не ловился» и экран
       // казался залипшим).
-      // Та же физика, что на экранах привычек/задач: AlwaysScrollable —
-      // свайп вверх/вниз работает всегда, даже когда контента меньше
-      // экрана, и RefreshIndicator ловит потягивание.
-      physics: const AlwaysScrollableScrollPhysics(),
+      // Та же физика, что на экранах привычек/задач: AlwaysScrollable +
+      // Bouncing — свайп вверх/вниз работает всегда и с упругим
+      // «оттягиванием» на краях (раньше ClampingScrollPhysics не давал
+      // оттягивания, поэтому экран казался «залипшим»).
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: EdgeInsets.fromLTRB(
         16,
         16,
