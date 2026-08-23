@@ -15,7 +15,6 @@ import '../services/prefs.dart';
 import '../services/settings_service.dart';
 import '../utils/context_menu.dart';
 import '../widgets/ada_avatars.dart';
-import 'overlay_bridge.dart';
 
 /// Канал системного оверлея.
 const MethodChannel _overlayChannel = MethodChannel('x-slayer/overlay');
@@ -193,11 +192,17 @@ class _OverlayChatState extends State<_OverlayChat>
   );
 
   Timer? _appearTimer;
+  Timer? _syncTimer;
 
   // ── Позиция окна ──────────────────────────────────────────────────
-  // Пузырь больше НЕ летает сам (автодрейф убран: он конфликтовал
-  // с пальцем и казался «дёрганым»). Окно стоит там, где его оставили.
+  // Пузырь ЛЕТАЕТ САМ по экрану (пользователь просил вернуть).
+  // Движение плавное: дробные dp, отклонение раз в 16 мс (частота кадров),
+  // при касании дрейф мгновенно встаёт (не спорит с пальцем) и плавно
+  // возобновляется после отпускания.
   Timer? _driftTimer;
+  double _vx = 0.8;
+  double _vy = 0.6;
+  bool _driftMoving = false;
   Offset _pos = Offset.zero;
 
   // Сгладить первое поднятие клавиатуры: лента и без того изолирована
@@ -224,6 +229,31 @@ class _OverlayChatState extends State<_OverlayChat>
       _appearCtrl.forward(from: 0);
       _contentCtrl.forward(from: 0);
     });
+    // Опрос файла синхронизации с ГЛАВНЫМ чатом: аватарка/модель меняются
+    // в мини-окошке при ближайшем тике (~0.7с). Праксис надёжнее канала
+    // сообщений между двумя движками (prefs кэшируется отдельно).
+    _syncTick();
+    _syncTimer = Timer.periodic(
+      const Duration(milliseconds: 700),
+      (_) => _syncTick(),
+    );
+  }
+
+  Future<void> _syncTick() async {
+    try {
+      final s = await readAdaSyncState();
+      if (s.isEmpty) return;
+      final av = s['avatar'];
+      if (av is int && av >= 0 && av != _avatarVariant) {
+        final v = av.clamp(0, adaVariants.length - 1);
+        if (mounted) setState(() => _avatarVariant = v);
+        setAdaAvatarVariant(v);
+      }
+      final m = s['model'];
+      if (m is String && m.isNotEmpty && m != _modelLabel) {
+        if (mounted) setState(() => _modelLabel = m);
+      }
+    } catch (_) {}
   }
 
   // Оверлей рендерится в КЭШИРОВАННОМ движке: после закрытия окна Dart-
@@ -311,6 +341,7 @@ class _OverlayChatState extends State<_OverlayChat>
     _dragTimer?.cancel();
     _dragTimer = null;
     if (mounted) _sendPos();
+    if (_collapsed) _startDrift();
   }
 
   void _onDrag(DragUpdateDetails d) {
@@ -422,6 +453,7 @@ class _OverlayChatState extends State<_OverlayChat>
       _sendPos();
       if (!mounted) return;
       _contentCtrl.forward(from: 0);
+      _startDrift();
     }
   }
 
@@ -438,9 +470,51 @@ class _OverlayChatState extends State<_OverlayChat>
     _pos = Offset(cx - toW / 2, cy - toH / 2);
   }
 
+  void _startDrift() {
+    _driftTimer?.cancel();
+    _ensurePos();
+    _vx = Random().nextBool() ? 0.2133 : -0.2133;
+    _vy = Random().nextBool() ? 0.16 : -0.16;
+    _driftTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _driftTick(),
+    );
+  }
+
   void _stopDrift() {
     _driftTimer?.cancel();
     _driftTimer = null;
+    _driftMoving = false;
+  }
+
+  void _ensurePos() {
+    if (_pos.dx != 0 || _pos.dy != 0) return;
+    final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
+    final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
+    _pos = Offset((sw - _bubbleSize) / 2, (sh - _bubbleSize) / 2);
+  }
+
+  void _driftTick() {
+    if (!_collapsed || !mounted || _driftMoving) return;
+    _ensurePos();
+    final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
+    final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
+    var x = _pos.dx + _vx;
+    var y = _pos.dy + _vy;
+    if (x <= 4 || x >= sw - _bubbleSize - 4) _vx = -_vx;
+    if (y <= 4 || y >= sh - _bubbleSize - 4) _vy = -_vy;
+    x = x.clamp(4.0, sw - _bubbleSize - 4);
+    y = y.clamp(4.0, sh - _bubbleSize - 4);
+    if ((x - _pos.dx).abs() < 0.01 && (y - _pos.dy).abs() < 0.01) return;
+    _pos = Offset(x, y);
+    _driftMoving = true;
+    _overlayChannel
+        .invokeMethod<void>('updateOverlayPosition', {
+          'x': _pos.dx,
+          'y': _pos.dy,
+        })
+        .then((_) => _driftMoving = false)
+        .catchError((_) => _driftMoving = false);
   }
 
   Future<void> _clampToScreen() async {
@@ -533,7 +607,7 @@ class _OverlayChatState extends State<_OverlayChat>
       });
       final used = AiGuideService.lastUsedModel;
       if (used.isNotEmpty) {
-        syncOverlayState({'cmd': 'sync_model', 'label': used});
+        writeAdaSyncState(model: used);
       }
       _scrollToBottom();
     } catch (_) {
@@ -590,7 +664,8 @@ class _OverlayChatState extends State<_OverlayChat>
     }
     setState(() => _avatarVariant = next);
     setAdaAvatarVariant(next);
-    syncOverlayState({'cmd': 'sync_avatar', 'variant': next});
+    // Синхронизация с главным чатом: файл состояния подхватится опросом.
+    writeAdaSyncState(avatar: next);
   }
 
   /// Аватар с плавной сменой: fade + лёгкий scale при переключении варианта.
@@ -636,6 +711,7 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_live == this) _live = null;
     WidgetsBinding.instance.removeObserver(this);
     _appearTimer?.cancel();
+    _syncTimer?.cancel();
     _dragTimer?.cancel();
     _stopDrift();
     _appearCtrl.dispose();
@@ -969,19 +1045,22 @@ class _OverlayChatState extends State<_OverlayChat>
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               onTap: () async {
-                // Первый тап: снимаем FLAG_NOT_FOCUSABLE, ЖДЁМ ответа
-                // нативной стороны и только потом даём фокус полю —
-                // иначе клавиатура появляется лишь со второго тапа.
-                // Плюс повторный requestFocus следующим кадром: некоторые
-                // прошивки «съедают» первый из-за пересоздания IME-связи.
-                await _setFocusable(true);
-                if (!mounted) return;
-                _inputFocus.requestFocus();
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && !_inputFocus.hasFocus) {
-                    _inputFocus.requestFocus();
-                  }
-                });
+                // Первый тап: окно становится фокусируемым, поле — фокусом.
+                // Некоторые прошивки «съедают» первый requestFocus, пока
+                // натив применяет флаг — повторяем, пока фокус не встанет.
+                for (var i = 0; i < 4 && mounted; i++) {
+                  await _setFocusable(true);
+                  if (!mounted) return;
+                  _inputFocus.requestFocus();
+                  if (_inputFocus.hasFocus) break;
+                  await Future<void>.delayed(const Duration(milliseconds: 90));
+                }
+                // Страховка на следующий кадр.
+                if (mounted && !_inputFocus.hasFocus) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _inputFocus.requestFocus();
+                  });
+                }
               },
               style: TextStyle(
                 fontSize: 13,

@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
+import '../services/json_file.dart';
 import '../services/prefs.dart';
 
 /// Вариант аватарки Ады: градиент + значок. Общий для основного чата и
@@ -120,6 +123,35 @@ void setAdaAvatarVariant(int index) {
   try {
     globalPrefs.setInt('ada_avatar_variant', v);
   } catch (_) {}
+}
+
+/// Синхронизация между ДВУМЯ движками (главный чат ↔ мини-окошко):
+/// shared_preferences кэширует значение в памяти каждого движка, поэтому
+/// пишем состояние в ФАЙЛ (JsonFile читает с диска) — другой движок увидит
+/// изменение опросом, без хрупкого канала сообщений.
+Future<void> writeAdaSyncState({int? avatar, String? model}) async {
+  try {
+    final raw = await JsonFile.read('ada_sync_state');
+    final map =
+        (raw != null && raw.isNotEmpty)
+            ? (jsonDecode(raw) as Map<String, dynamic>)
+            : <String, dynamic>{};
+    if (avatar != null) map['avatar'] = avatar;
+    if (model != null && model.isNotEmpty) map['model'] = model;
+    map['ts'] = DateTime.now().millisecondsSinceEpoch;
+    await JsonFile.write('ada_sync_state', jsonEncode(map));
+  } catch (_) {}
+}
+
+/// Читает синхронизированное состояние ({'avatar': int?, 'model': String?}).
+Future<Map<String, dynamic>> readAdaSyncState() async {
+  try {
+    final raw = await JsonFile.read('ada_sync_state');
+    if (raw == null || raw.isEmpty) return <String, dynamic>{};
+    return jsonDecode(raw) as Map<String, dynamic>;
+  } catch (_) {
+    return <String, dynamic>{};
+  }
 }
 
 /// Аватарка Ады — градиентный кружок с бликом.
