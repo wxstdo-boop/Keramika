@@ -132,7 +132,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
         Log.d("onStartCommand", "Service started");
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         engine.getLifecycleChannel().appIsResumed();
-        flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+        // TextureView обязан быть ПРОЗРАЧНЫМ: иначе под скруглённой панелью
+        // рисуется непрозрачный прямоугольник («квадратные углы»/белый фон
+        // за клавиатурой). Окно само по себе PixelFormat.TRANSLUCENT.
+        FlutterTextureView textureView = new FlutterTextureView(getApplicationContext());
+        textureView.setOpaque(false);
+        flutterView = new FlutterView(getApplicationContext(), textureView);
         flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
         flutterView.setFitsSystemWindows(true);
         flutterView.setFocusable(true);
