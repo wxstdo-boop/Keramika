@@ -133,8 +133,10 @@ class _OverlayChatState extends State<_OverlayChat>
     // «вспыхнет» — fade стартует через момент.
     s._appearCtrl.value = 0;
     s._contentCtrl.value = 0;
+    // НЕ ставим позицию в центр: синхронизацию делает _load() с нативным
+    // getOverlayPosition (иначе окно «жило» в центре, хотя было вверху,
+    // и первый сдвиг прыгал в центр — это и казалось «следом»).
     s._posInit = false;
-    s._ensurePos();
     s._load();
     // Окно появляется через ~300-400 мс после команды (пересоздание
     // сервиса). Запускаем анимацию именно тогда.
@@ -580,6 +582,24 @@ class _OverlayChatState extends State<_OverlayChat>
     globalPrefs.setInt('ada_avatar_variant', next);
   }
 
+  /// Аватар с плавной сменой: fade + лёгкий scale при переключении варианта.
+  Widget _animatedAvatar(double size, int variant) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(scale: anim, child: child),
+      ),
+      child: _OverlayAvatar(
+        key: ValueKey('av_$variant'),
+        size: size,
+        variant: variant,
+      ),
+    );
+  }
+
   Future<void> _close() async {
     if (_closing) return;
     _closing = true;
@@ -697,7 +717,7 @@ class _OverlayChatState extends State<_OverlayChat>
             fit: StackFit.expand,
             children: [
               Center(
-                child: _OverlayAvatar(size: sz * 0.66, variant: _avatarVariant),
+                child: _animatedAvatar(sz * 0.66, _avatarVariant),
               ),
               // Глянцевый блик сверху — «стеклянный» объём (как в web).
               Positioned.fill(
@@ -791,7 +811,7 @@ class _OverlayChatState extends State<_OverlayChat>
               children: [
                 GestureDetector(
                   onTap: _cycleAvatar,
-                  child: _OverlayAvatar(size: 28, variant: _avatarVariant),
+                  child: _animatedAvatar(28, _avatarVariant),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -982,7 +1002,13 @@ class _OverlayChatState extends State<_OverlayChat>
                   maxLines: 3,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _send(),
-                  onTap: () => _setFocusable(true),
+                  onTap: () {
+                    // Первый тап в окошке при FLAG_NOT_FOCUSABLE: только
+                    // делаем окно фокусируемым И сразу просим фокус полю —
+                    // иначе клавиатура появлялась лишь со второго тапа.
+                    _setFocusable(true);
+                    _inputFocus.requestFocus();
+                  },
                   style: const TextStyle(
                     fontSize: 13,
                     height: 1.3,
@@ -1055,7 +1081,7 @@ class _OverlayChatState extends State<_OverlayChat>
 class _OverlayAvatar extends StatelessWidget {
   final double size;
   final int variant;
-  const _OverlayAvatar({required this.size, required this.variant});
+  const _OverlayAvatar({super.key, required this.size, required this.variant});
 
   @override
   Widget build(BuildContext context) {
