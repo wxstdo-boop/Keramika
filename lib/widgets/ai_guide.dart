@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import '../services/haptics.dart';
 import 'dart:math' as math;
@@ -349,33 +350,55 @@ class _AiChatSheet extends StatefulWidget {
 }
 
 class _AiChatSheetState extends State<_AiChatSheet> {
+  final GlobalKey<_AiChatBodyState> _bodyKey = GlobalKey<_AiChatBodyState>();
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Клавиатура: лёгкая оболочка ПОДНИМАЕТСЯ над ней, высота ужимается,
-    // чтобы шапка не уходила за экран. Поле ввода всегда видно.
-    // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
-    // вместе с анимацией клавиатуры — обычный Padding двигает лист ровно
-    // с ней, без собственной задержки.
+    // Клавиатура БЕЗ ресайза листа: высота шелла ВСЕГДА полная и НЕ
+    // меняется с viewInsets — значит тело чата (лента, шапка) не
+    // пересчитывается ни на одном кадре анимации клавиатуры. Двигается
+    // только поле ввода (Positioned bottom = insets) отдельным лёгким
+    // виджетом поверх ленты.
+    //
+    // Если бы мы уменьшали высоту (как раньше), каждый кадр клавиатуры
+    // заставлял ListView пересчитывать весь layout сотен сообщений —
+    // отсюда «подтормаживания и дёргание поля ввода».
     final insets = MediaQuery.viewInsetsOf(context).bottom;
-    final available = MediaQuery.sizeOf(context).height - insets;
-    final sheetHeight = available.clamp(260.0, available);
-    return Padding(
-      padding: EdgeInsets.only(bottom: insets),
-      child: Container(
-        height: sheetHeight,
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: const _AiChatBody(),
+    final body = _bodyKey.currentState;
+    return Container(
+      width: double.infinity,
+      height: MediaQuery.sizeOf(context).height,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Тяжёлое тело: фиксированный размер, от клавиатуры не зависит.
+          _AiChatBody(key: _bodyKey),
+          // Плавает над лентой и никогда не трогает её layout.
+          if (body != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: insets,
+              child: _AiChatInputBar(
+                ctrl: body._inputCtrl,
+                focusNode: body._inputFocus,
+                busy: body._busy,
+                onSend: body._send,
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
 class _AiChatBody extends StatefulWidget {
-  const _AiChatBody();
+  const _AiChatBody({super.key});
 
   @override
   State<_AiChatBody> createState() => _AiChatBodyState();
@@ -479,17 +502,28 @@ class _AiChatBodyState extends State<_AiChatBody>
 
   void _onInputFocus() {
     if (!_inputFocus.hasFocus) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollCtrl.hasClients) return;
-      final pos = _scrollCtrl.position;
-      // reverse:true — offset 0 это низ (последнее сообщение). Если мы уже
-      // внизу — НИЧЕГО не делаем: первое поднятие клавиатуры не должно
-      // сопровождаться скроллом (именно он давал «подтормаживание» при
-      // первом открытии). Если читали старые сообщения — мгновенный
-      // jumpTo(0), без анимации, чтобы не драться с клавиатурой.
-      if (pos.pixels <= 8) return;
-      _scrollCtrl.jumpTo(0);
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpAboveKeyboard());
+    // Клавиатура поднимается ~200-300мс: повторная проверка ловит момент,
+    // когда инсеты уже выросли (первый пост-кадр мог захватить 0).
+    Timer(const Duration(milliseconds: 320), _jumpAboveKeyboard);
+  }
+
+  /// Поле ввода плавает над клавиатурой, а лента — полного роста: чтобы
+  /// последнее сообщение не оставалось «под» клавиатурой, докручиваем ленту
+  /// вверх на высоту IME (reverse-лента: pixels = сдвиг от низа). Чтение
+  /// viewInsets здесь — в колбэке, НЕ в build: подписки не создаётся.
+  void _jumpAboveKeyboard() {
+    if (!mounted || !_scrollCtrl.hasClients) return;
+    final pos = _scrollCtrl.position;
+    final insets = MediaQuery.viewInsetsOf(context).bottom;
+    final target = 0.0 + insets;
+    if (pos.pixels < target - 4) {
+      _scrollCtrl.animateTo(
+        target,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   void _onAdaReportTick() {
@@ -687,16 +721,21 @@ class _AiChatBodyState extends State<_AiChatBody>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients) return;
       final pos = _scrollCtrl.position;
+      // Поле ввода плавает над клавиатурой, поэтому «низ» ленты для глаза
+      // = высота клавиатуры (если она открыта). Чтение инсетов тут —
+      // в колбэке, не в build: подписки на MediaQuery не создаётся.
+      final keyboard = MediaQuery.viewInsetsOf(context).bottom
+          .clamp(0.0, pos.maxScrollExtent);
       if (animate) {
-        if (pos.pixels > 4) {
+        if ((pos.pixels - keyboard).abs() > 4) {
           _scrollCtrl.animateTo(
-            0,
+            keyboard,
             duration: const Duration(milliseconds: 360),
             curve: Curves.easeOutCubic,
           );
         }
-      } else if (pos.pixels > 0) {
-        _scrollCtrl.jumpTo(0);
+      } else if ((pos.pixels - keyboard).abs() > 0) {
+        _scrollCtrl.jumpTo(keyboard);
       }
     });
   }
@@ -1200,9 +1239,15 @@ class _AiChatBodyState extends State<_AiChatBody>
                       // reverse:true — индекс 0 это НИЗ чата: открытие сразу
                       // показывает последние сообщения, никаких прыжков.
                       reverse: true,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                      // bottom: 112 — лента НЕ уходит под плавающее поле
+                      // ввода: последнее сообщение всегда висит над ним.
+                      // Паддинг СТАТИЧНЫЙ — не зависит от клавиатуры, иначе
+                      // каждый её кадр пересчитывал бы layout ленты.
+                      padding: const EdgeInsets.only(
+                        left: 14,
+                        right: 14,
+                        top: 12,
+                        bottom: 112,
                       ),
                       itemCount: _messages.length + (_busy ? 1 : 0),
                       itemBuilder: (context, i) {
@@ -1388,93 +1433,107 @@ class _AiChatBodyState extends State<_AiChatBody>
                       ),
                     ),
             ),
-            // Поле ввода.
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-                child: Row(
+          ],
+    );
+  }
+}
+
+/// Поле ввода — единственный движущийся элемент чата: его позиционирует
+/// [_AiChatSheetState] поверх ленты (Positioned bottom = высота клавиатуры).
+/// Тело чата при этом НИКОГДА не меняет высоту — лента не пересчитывается
+/// ни на одном кадре анимации клавиатуры (это и убирало «дёрганое поле»).
+class _AiChatInputBar extends StatelessWidget {
+  const _AiChatInputBar({
+    required this.ctrl,
+    required this.focusNode,
+    required this.busy,
+    required this.onSend,
+  });
+
+  final TextEditingController ctrl;
+  final FocusNode focusNode;
+  final bool busy;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+        child: Row(
+          children: [
+            Expanded(
+              // Плавное выделение поля при фокусе: обводка и цвет
+              // анимируются (AnimatedBuilder на FocusNode → AnimatedContainer).
+              child: AnimatedBuilder(
+                animation: focusNode,
+                builder: (context, child) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: focusNode.hasFocus
+                          ? cs.primary.withValues(alpha: 0.65)
+                          : cs.outlineVariant.withValues(alpha: 0.4),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: child,
+                ),
+                child: Stack(
                   children: [
-                    Expanded(
-                      // Плавное выделение поля при фокусе: обводка и цвет
-                      // анимируются (AnimatedBuilder на FocusNode → AnimatedContainer).
-                      child: AnimatedBuilder(
-                        animation: _inputFocus,
-                        builder: (context, child) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOut,
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: _inputFocus.hasFocus
-                                  ? cs.primary.withValues(alpha: 0.65)
-                                  : cs.outlineVariant.withValues(alpha: 0.4),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: child,
+                    TextField(
+                      magnifierConfiguration:
+                          TextMagnifierConfiguration.disabled,
+                      controller: ctrl,
+                      focusNode: focusNode,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => onSend(),
+                      minLines: 1,
+                      maxLines: 4,
+                      maxLength: 13000,
+                      // Отключаем автоподсказки/автокоррекцию клавиатуры:
+                      // Gboard/MIUI добавляет свой автопробел после
+                      // выбранного слова — отсюда «пробел в конце».
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      // Меню при зажатии: только Копировать/Вставить/
+                      // Вырезать/Курсив — без лишних пунктов системного меню.
+                      contextMenuBuilder: minimalContextMenuBuilder,
+                      style: TextStyle(
+                        fontSize: 18,
+                        height: 1.4,
+                        color: cs.onSurface,
+                      ),
+                      cursorColor: cs.primary,
+                      decoration: InputDecoration(
+                        hintText: Translations.t(
+                          'aiGuideHint',
+                          context,
+                          'Ask me…',
                         ),
-                        child: Stack(
-                          children: [
-                            // Предпросмотр markdown убран: прозрачный
-                            // TextField + RichText давали «разъехавшиеся
-                            // буквы» (шрифт Avenir Next недоступен на Android
-                            // и фолбэк рендерил слои со сдвигом). Теперь
-                            // текст обычный, видимый, без артефактов.
-                            // Настоящее поле СВЕРХУ: текст прозрачный (его
-                            // рисует предпросмотр), но каретка, выделение и
-                            // клавиатура работают как обычно.
-                            TextField(
-                              magnifierConfiguration:
-                                  TextMagnifierConfiguration.disabled,
-                              controller: _inputCtrl,
-                              focusNode: _inputFocus,
-                              textInputAction: TextInputAction.send,
-                              onSubmitted: (_) => _send(),
-                              minLines: 1,
-                              maxLines: 4,
-                              maxLength: 13000,
-                              // Отключаем автоподсказки/автокоррекцию клавиатуры:
-                              // Gboard/MIUI добавляет свой автопробел после
-                              // выбранного слова — отсюда «пробел в конце».
-                              enableSuggestions: false,
-                              autocorrect: false,
-                              // Меню при зажатии: только Копировать/Вставить/
-                              // Вырезать/Курсив — без «Поделиться», «Спросить
-                              // Copilot» и лишних пунктов системного меню.
-                              contextMenuBuilder: minimalContextMenuBuilder,
-                              style: TextStyle(
-                                fontSize: 18,
-                                height: 1.4,
-                                color: cs.onSurface,
-                              ),
-                              cursorColor: cs.primary,
-                              decoration: InputDecoration(
-                                hintText: Translations.t(
-                                  'aiGuideHint',
-                                  context,
-                                  'Ask me…',
-                                ),
-                                counterText: '',
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 12,
-                                ),
-                              ),
-                            ),
-                          ],
+                        counterText: '',
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 12,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _SendButton(busy: _busy, onTap: () => _send()),
                   ],
                 ),
               ),
             ),
+            const SizedBox(width: 8),
+            _SendButton(busy: busy, onTap: onSend),
           ],
+        ),
+      ),
     );
   }
 }
@@ -2354,16 +2413,21 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients) return;
       final pos = _scrollCtrl.position;
+      // Поле ввода плавает над клавиатурой, поэтому «низ» ленты для глаза
+      // = высота клавиатуры (если она открыта). Чтение инсетов тут —
+      // в колбэке, не в build: подписки на MediaQuery не создаётся.
+      final keyboard = MediaQuery.viewInsetsOf(context).bottom
+          .clamp(0.0, pos.maxScrollExtent);
       if (animate) {
-        if (pos.pixels > 4) {
+        if ((pos.pixels - keyboard).abs() > 4) {
           _scrollCtrl.animateTo(
-            0,
+            keyboard,
             duration: const Duration(milliseconds: 360),
             curve: Curves.easeOutCubic,
           );
         }
-      } else if (pos.pixels > 0) {
-        _scrollCtrl.jumpTo(0);
+      } else if ((pos.pixels - keyboard).abs() > 0) {
+        _scrollCtrl.jumpTo(keyboard);
       }
     });
   }
