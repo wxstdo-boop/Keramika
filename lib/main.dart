@@ -29,6 +29,8 @@ import 'services/prefs.dart';
 import 'services/ai_guide_service.dart';
 import 'services/json_file.dart';
 import 'services/migration.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+
 import 'overlay/ada_overlay.dart';
 import 'overlay/overlay_bridge.dart';
 import 'widgets/ai_guide.dart';
@@ -569,6 +571,13 @@ Future<void> _precacheLogo() async {
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Сигнал от главного приложения: «окно пересоздано — сбросься и
+  // покажись». Это единственный надёжный канал между движками: lifecycle
+  // при повторном открытии может не долететь, и окошко оставалось бы
+  // невидимым (анимация появления не стартовала).
+  FlutterOverlayWindow.overlayListener.listen((_) {
+    resetOverlayFromHost();
+  });
   runApp(const AdaOverlayApp());
 }
 
