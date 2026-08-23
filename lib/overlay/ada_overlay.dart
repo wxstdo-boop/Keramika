@@ -43,6 +43,12 @@ const double _bubbleSize = 64;
 const double _chatWidth = 340;
 const double _chatHeight = 380;
 
+/// Точка входа для главного приложения: движок оверлея переживает закрытие
+/// окна, поэтому при каждом показе окна мы посылаем команду «сбросься и
+/// покажись» — только так повторное открытие гарантированно видимо.
+/// (lifecycle-события могут не долететь до вторичного движка.)
+void resetOverlayFromHost() => _OverlayChatState.onHostReset();
+
 class AdaOverlayApp extends StatefulWidget {
   const AdaOverlayApp({super.key});
 
@@ -102,6 +108,32 @@ class _OverlayChat extends StatefulWidget {
 
 class _OverlayChatState extends State<_OverlayChat>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+  /// Живой экземпляр состояния (в движке оверлея он один и переживает
+  /// закрытие окна). [onHostReset] вызывается из ГЛАВНОГО приложения по
+  /// каналу сообщений — переоткрытие окна не зависит от lifecycle.
+  static _OverlayChatState? _live;
+
+  /// Сброс из основного приложения: окно пересоздано — привести чат
+  /// в «только что открылся» состояние и проиграть появление заново.
+  static void onHostReset() {
+    final s = _live;
+    if (s == null || !s.mounted) return;
+    s._inputFocus.unfocus();
+    s.setState(() {
+      s._closing = false;
+      s._inputFocused = false;
+      s._collapsed = false;
+    });
+    s._posInit = false;
+    s._ensurePos();
+    s._appearCtrl.forward(from: 0);
+    s._contentCtrl.forward(from: 0);
+    s._load();
+    // Окно могло остаться от прошлой сессии у края (пузырь 64px,
+    // а чат 340px) — доотскакиваем в границы.
+    s._clampToScreen();
+  }
+
   static const _historyKey = 'ai_chat_history';
 
   final _inputCtrl = TextEditingController();
@@ -144,6 +176,7 @@ class _OverlayChatState extends State<_OverlayChat>
   @override
   void initState() {
     super.initState();
+    _live = this;
     WidgetsBinding.instance.addObserver(this);
     _inputFocus.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -310,19 +343,31 @@ class _OverlayChatState extends State<_OverlayChat>
     double toW,
     double toH,
   ) async {
-    // Больше шагов + меньше задержка: раньше 8 шагов по 30мс выглядели
-    // как «дёрганые скачки» размера, теперь плавная анимация.
+    // Окно ресайзится от ВЕРХНЕГО ЛЕВОГО угла (нативный LayoutParams),
+    // поэтому при росте размера без сдвига оно распухало вправо-вниз и
+    // «уезжало» за край экрана. Разворачиваем вокруг ЦЕНТРА: на каждом
+    // шаге синхронно двигаем позицию на половину прироста размера.
     // 24 шага по ~12мс ≈ 290мс — достаточная плавность, без лишней тянучки.
     const steps = 24;
+    final cx = _pos.dx + fromW / 2;
+    final cy = _pos.dy + fromH / 2;
     for (var i = 1; i <= steps; i++) {
       final t = Curves.easeInOutCubic.transform(i / steps);
       final w = fromW + (toW - fromW) * t;
       final h = fromH + (toH - fromH) * t;
       try {
         await FlutterOverlayWindow.resizeOverlay(w.round(), h.round(), false);
+        // Центр окна не должен смещаться во время анимации.
+        _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
+          'x': cx - w / 2,
+          'y': cy - h / 2,
+        });
       } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 12));
     }
+    final w = _collapsed ? _bubbleSize : _chatWidth;
+    final h = _collapsed ? _bubbleSize : _chatHeight;
+    _pos = Offset(cx - w / 2, cy - h / 2);
   }
 
   void _startDrift() {
@@ -538,6 +583,7 @@ class _OverlayChatState extends State<_OverlayChat>
 
   @override
   void dispose() {
+    if (_live == this) _live = null;
     WidgetsBinding.instance.removeObserver(this);
     _stopDrift();
     _appearCtrl.dispose();

@@ -89,8 +89,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
             flutterView = null;
         }
         isRunning = false;
-        NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
+        // Гарантированно снимаем уведомление сервиса: на Android < 14
+        // foreground-уведомления после уничтожения сервиса иногда "зависают"
+        // в шторке — пользователь видел «окошко в уведомлении» после закрытия.
+        try {
+            NotificationManager nm = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            nm.cancel(OverlayConstants.NOTIFICATION_ID);
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                stopForeground(true);
+            }
+        } catch (Exception ignored) {}
         instance = null;
     }
 

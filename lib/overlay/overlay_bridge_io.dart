@@ -34,6 +34,20 @@ Future<bool> showAdaOverlay({
     }
     final sw = screenWidth ?? 400;
     final sh = screenHeight ?? 850;
+    // 1. Команда «сбросься и покажись» прямо в живой движок оверлея.
+    //    Движок КЭШИРУЕТСЯ между открытиями: его Dart-состояние живёт
+    //    даже когда окна нет, и lifecycle-событие при переоткрытии
+    //    может не долететь. Ручной сигнал надёжнее любых догадок.
+    try {
+      await FlutterOverlayWindow.shareData({'cmd': 'reset_overlay'});
+    } catch (_) {}
+    // 2. Если старый сервис/окно ещё живы — гасим: повторный show создаст
+    //    вид с нуля, а висящее уведомление будет снято (см. onDestroy).
+    try {
+      if (await FlutterOverlayWindow.isActive()) {
+        await FlutterOverlayWindow.closeOverlay();
+      }
+    } catch (_) {}
     await FlutterOverlayWindow.showOverlay(
       // Стартуем как полноценный мини-чат (340×380 dp — почти квадрат,
       // «не вдлину»). alignment topLeft = абсолютные координаты.
