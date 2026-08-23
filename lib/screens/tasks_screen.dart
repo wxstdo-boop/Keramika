@@ -314,38 +314,47 @@ class _TasksScreenState extends State<TasksScreen>
                       itemBuilder: (context, c, selected) {
                         final label = c == '' ? Translations.allOf(context) : c;
                         return Center(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 110),
-                            curve: Curves.easeOutCubic,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              color: selected
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.surfaceContainerHighest,
-                              boxShadow: selected
-                                  ? [
-                                      BoxShadow(
-                                        color: theme.colorScheme.primary
-                                            .withValues(alpha: 0.25),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
+                          child: Padding(
+                            // Безопасные отступы по бокам карусели: длинная
+                            // категория у края вьюпорта не «упирается» в
+                            // границу и её последний символ не обрезается.
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 110),
+                              curve: Curves.easeOutCubic,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
                                 color: selected
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onSurfaceVariant,
-                                fontWeight: selected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.surfaceContainerHighest,
+                                boxShadow: selected
+                                    ? [
+                                        BoxShadow(
+                                          color: theme.colorScheme.primary
+                                              .withValues(alpha: 0.25),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: TextStyle(
+                                  color: selected
+                                      ? theme.colorScheme.onPrimary
+                                      : theme.colorScheme.onSurfaceVariant,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
                               ),
                             ),
                           ),
