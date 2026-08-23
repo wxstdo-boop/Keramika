@@ -347,6 +347,7 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   void _onDrag(DragUpdateDetails d) {
+    if (_closing) return; // закрытие — драг не двигает окно
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
     _startDrag();
     _scheduleSend();
@@ -362,7 +363,9 @@ class _OverlayChatState extends State<_OverlayChat>
     final w = _collapsed ? _bubbleSize : _chatWidth;
     final h = _collapsed ? _bubbleSize : _chatHeight;
     final x = _pos.dx.clamp(0.0, sw - w);
-    final y = _pos.dy.clamp(0.0, sh - h);
+    // Нижняя граница не даёт окну лечь на навбар (белая полоса под
+    // клавиатурой/внизу) — запас 36dp под системную навигацию.
+    final y = _pos.dy.clamp(0.0, sh - h - 36);
     _pos = Offset(x, y);
     _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
       'x': _pos.dx,
@@ -522,7 +525,7 @@ class _OverlayChatState extends State<_OverlayChat>
     final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
     final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
     final x = _pos.dx.clamp(2.0, sw - _chatWidth - 2);
-    final y = _pos.dy.clamp(2.0, sh - _chatHeight - 2);
+    final y = _pos.dy.clamp(2.0, sh - _chatHeight - 2 - 36);
     _pos = Offset(x, y);
     try {
       await _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
@@ -691,6 +694,9 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_closing) return;
     _closing = true;
     _stopDrift();
+    // Замораживаем движение: отменяем отложенную отправку позиции
+    // (иначе окно могло «уехать» в момент закрытия) и фиксируем её.
+    _sendScheduled = false;
     _setFocusable(false);
     await _contentCtrl.reverse();
     if (!mounted) return;
@@ -1251,7 +1257,22 @@ class _TypingBubbleState extends State<_TypingBubble>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AdaAvatar(size: 16, variantIndex: widget.avatar),
+            // Ава меняется плавно (fade+scale), даже пока Ада печатает:
+            // смена значка в любом месте мгновенно анимируется и здесь.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: ScaleTransition(scale: anim, child: child),
+              ),
+              child: AdaAvatar(
+                key: ValueKey('typing_av_${widget.avatar}'),
+                size: 16,
+                variantIndex: widget.avatar,
+              ),
+            ),
             const SizedBox(width: 5),
             AnimatedBuilder(
               animation: _ctrl,
