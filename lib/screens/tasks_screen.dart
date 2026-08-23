@@ -353,26 +353,39 @@ class _TasksScreenState extends State<TasksScreen>
                       },
                     ),
                   Expanded(
-                    // Плавное появление задач при смене категории: лёгкий
-                    // fade + подъём 200 мс. Применяется САМ фильтр — мгновенно
-                    // (см. SlidingPicker: onChanged без ожидания), а эта
-                    // анимация лишь визуальная, «исчезли старые → появились
-                    // новые», и не создаёт задержки переключения.
+                    // Красивая смена задач при переключении категории:
+                    // старый список плавно гаснет (fade + лёгкое сжатие),
+                    // новый — проявляется (fade + подъём + scale). Фильтр
+                    // применяется МГНОВЕННО (см. SlidingPicker: onChanged без
+                    // ожидания), эта анимация чисто визуальная и не влияет
+                    // на отклик переключения.
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
+                      duration: const Duration(milliseconds: 240),
                       switchInCurve: Curves.easeOutCubic,
                       switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) =>
-                          FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, 0.03),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
+                      transitionBuilder: (child, animation) {
+                        final curved = CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                          reverseCurve: Curves.easeInCubic,
+                        );
+                        return FadeTransition(
+                          opacity: curved,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.04),
+                              end: Offset.zero,
+                            ).animate(curved),
+                            child: ScaleTransition(
+                              scale: Tween<double>(
+                                begin: 0.97,
+                                end: 1.0,
+                              ).animate(curved),
+                              child: child,
+                            ),
+                          ),
+                        );
+                      },
                       child: hasTasks
                           ? KeyedSubtree(
                               key: ValueKey('list_$_filter'),

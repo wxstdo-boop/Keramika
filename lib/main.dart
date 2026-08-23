@@ -1072,37 +1072,37 @@ class KeramikaAppState extends State<KeramikaApp>
             // а эти размеры применяются везде, включая привычки и задачи.
             titleMedium: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 22,
+              fontSize: 23,
               fontWeight: FontWeight.w600,
             ),
             titleSmall: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 19,
+              fontSize: 20,
               fontWeight: FontWeight.w600,
             ),
             bodyLarge: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 21,
+              fontSize: 22,
               fontWeight: FontWeight.w500,
             ),
             bodyMedium: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 20,
+              fontSize: 21,
               fontWeight: FontWeight.w500,
             ),
             bodySmall: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 18,
+              fontSize: 19,
               fontWeight: FontWeight.w500,
             ),
             labelSmall: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 16,
+              fontSize: 17,
               fontWeight: FontWeight.w500,
             ),
             labelMedium: const TextStyle(
               fontFamily: 'Caveat',
-              fontSize: 17,
+              fontSize: 18,
               fontWeight: FontWeight.w500,
             ),
           ),
