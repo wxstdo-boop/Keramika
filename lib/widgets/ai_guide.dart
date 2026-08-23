@@ -336,6 +336,11 @@ Future<void> showAiGuideChat(BuildContext context) {
   ).whenComplete(() => _activeChats = 0);
 }
 
+/// Тонкая оболочка листа ИИ-чата: единственное, что реагирует на
+/// клавиатуру (viewInsets меняется покадрово при её подъёме). Тяжёлое
+/// содержимое — [_AiChatBody], которое подаётся как const-child и НЕ
+/// пересобирается во время анимации клавиатуры. Раньше весь чат читал
+/// MediaQuery и перестраивался на каждом кадре — «чуть тормозно».
 class _AiChatSheet extends StatefulWidget {
   const _AiChatSheet();
 
@@ -343,7 +348,40 @@ class _AiChatSheet extends StatefulWidget {
   State<_AiChatSheet> createState() => _AiChatSheetState();
 }
 
-class _AiChatSheetState extends State<_AiChatSheet>
+class _AiChatSheetState extends State<_AiChatSheet> {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Клавиатура: лёгкая оболочка ПОДНИМАЕТСЯ над ней, высота ужимается,
+    // чтобы шапка не уходила за экран. Поле ввода всегда видно.
+    // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
+    // вместе с анимацией клавиатуры — обычный Padding двигает лист ровно
+    // с ней, без собственной задержки.
+    final insets = MediaQuery.viewInsetsOf(context).bottom;
+    final available = MediaQuery.sizeOf(context).height - insets;
+    final sheetHeight = available.clamp(260.0, available);
+    return Padding(
+      padding: EdgeInsets.only(bottom: insets),
+      child: Container(
+        height: sheetHeight,
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: const _AiChatBody(),
+      ),
+    );
+  }
+}
+
+class _AiChatBody extends StatefulWidget {
+  const _AiChatBody();
+
+  @override
+  State<_AiChatBody> createState() => _AiChatBodyState();
+}
+
+class _AiChatBodyState extends State<_AiChatBody>
     with SingleTickerProviderStateMixin {
   static const _historyKey = 'ai_chat_history';
   static const _pinsKey = 'ai_pinned_messages';
@@ -958,40 +996,14 @@ class _AiChatSheetState extends State<_AiChatSheet>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final media = MediaQuery.of(context);
-    // Клавиатура: лист плавно ПОДНИМАЕТСЯ над ней (AnimatedPadding),
-    // а высота ужимается, чтобы шапка не уходила за экран. Поле ввода
-    // всегда видно. Лист на весь экран — нет «белой полосы» снизу.
-    final insets = media.viewInsets.bottom;
-    final available = media.size.height - insets;
-    final sheetHeight = available.clamp(260.0, available);
-
-    // БЕЗ AnimatedPadding/AnimatedContainer: на Android 11+ viewInsets
-    // приходит покадрово вместе с анимацией клавиатуры — обычный Padding
-    // и Container двигают лист ровно с ней. Свои 200-220 мс задержки
-    // открывали белую полосу под листом, когда клавиатура уже уехала.
-    //
-    // ВАЖНО про дёрганье: тяжёлое содержимое (лента сообщений) обёрнуто в
-    // MediaQuery.removeViewInsets — при поднятии/опускании клавиатуры
-    // viewInsets меняются покадрово, и БЕЗ изоляции весь чат пересобирался
-    // на каждом кадре (отсюда «дёрганое тормозное» поднятие). Теперь
-    // двигается только лёгкая оболочка (Padding + Container), а содержимое
-    // не перестраивается пока идёт анимация клавиатуры.
-    return Padding(
-      padding: EdgeInsets.only(bottom: insets),
-      child: Container(
-        height: sheetHeight,
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        // Поле ввода должно видеть клавиатуру (каретка/выделение), поэтому
-        // изолируем ТОЛЬКО ленту сообщений (см. _buildMessages), а не весь
-        // лист. Здесь оставляем как есть — само содержимое ниже уже
-        // отрисовано в отдельном слое.
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    // Тело чата НЕ читает viewInsets: клавиатуру обслуживает лёгкая
+    // оболочка _AiChatSheet. Здесь — только содержимое, которое
+    // пересобирается по собственным setState, а не при каждом кадре
+    // анимации клавиатуры. Лента дополнительно изолирована
+    // (RepaintBoundary + removeViewInsets в _buildMessages).
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
             // Ручка.
             Container(
               margin: const EdgeInsets.only(top: 10),
@@ -1463,8 +1475,6 @@ class _AiChatSheetState extends State<_AiChatSheet>
               ),
             ),
           ],
-        ),
-      ),
     );
   }
 }
