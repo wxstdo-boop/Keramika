@@ -325,9 +325,9 @@ Future<void> showAiGuideChat(BuildContext context) {
     // Закрытие — тот же мягкий профиль, без резких рывков.
     sheetAnimationStyle: AnimationStyle(
       curve: Curves.easeInOutQuart,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 520),
       reverseCurve: Curves.easeInOutQuart,
-      reverseDuration: const Duration(milliseconds: 380),
+      reverseDuration: const Duration(milliseconds: 400),
     ),
     // Отделяем тяжёлую ленту чата в отдельный composited layer: во время
     // выезда bottom sheet Android двигает готовый слой, а не перерисовывает
@@ -402,6 +402,10 @@ class _AiChatSheetState extends State<_AiChatSheet>
     // Открытый чат слушает доставку и перечитывает историю — отчёт
     // появляется в ленте в момент доставки, без переоткрытия.
     AiGuideService.adaReportTick.addListener(_onAdaReportTick);
+    // При фокусе на поле ввода клавиатура выезжает — плавно доскролливаем
+    // ленту к низу, чтобы последнее сообщение/«сочиняю» не прятались
+    // за формой (клавиатура поднимается раньше, чем список перестроится).
+    _inputFocus.addListener(_onInputFocus);
     SettingsService.loadLanguageCode()
         .then((c) {
           if (!mounted) return;
@@ -433,6 +437,20 @@ class _AiChatSheetState extends State<_AiChatSheet>
       final delivered = await AiGuideService.maybeDeliverAdaReports('');
       if (delivered.isNotEmpty) await _loadHistory();
     } catch (_) {}
+  }
+
+  void _onInputFocus() {
+    if (!_inputFocus.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      // Плавно к последнему сообщению — за время выезда клавиатуры
+      // (как у листа), а не резким скачком в 0.
+      _scrollCtrl.animateTo(
+        _scrollCtrl.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   void _onAdaReportTick() {
@@ -1464,7 +1482,7 @@ class _EmptyChatPlaceholder extends StatelessWidget {
           Translations.t('adaEmptyChat', context),
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             height: 1.35,
             fontWeight: FontWeight.w800,
             color: cs.onSurfaceVariant,
@@ -1603,7 +1621,7 @@ class _MessageBubble extends StatelessWidget {
                               // markdown-разметка при этом не растёт — bold/
                               // italic имеют тот же fontSize, что обычный
                               // текст (см. parseMarkdownSpans).
-                              fontSize: 18,
+                              fontSize: 18.5,
                               height: 1.35,
                             ),
                           ),
@@ -1809,7 +1827,7 @@ class _TypingIndicator extends StatelessWidget {
                       child: Text(
                         Translations.t('aiComposing', context),
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: cs.onSurfaceVariant,
                         ),
@@ -2896,7 +2914,7 @@ class _MiniBubble extends StatelessWidget {
           message.text,
           TextStyle(
             // Сообщения в мини-оверлее тоже увеличены, markdown не растёт.
-            fontSize: 15.5,
+            fontSize: 16,
             height: 1.3,
             color: isUser ? cs.onPrimary : cs.onSurface,
           ),
