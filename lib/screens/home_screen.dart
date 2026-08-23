@@ -203,13 +203,19 @@ class _HomeScreenState extends State<HomeScreen>
     final current = _currentIndex.value;
     final distance = (index - current).abs();
     if (distance == 0) return;
+    // Подсветка чипа меняется СРАЗУ (страница ещё едет) — отклик
+    // мгновенный, без ожидания конца анимации.
+    _currentIndex.value = index;
     // Все страницы заранее построены (scrollCacheExtent ниже), поэтому
     // даже дальний переход «первый → последний» едет по готовым кадрам
-    // и остаётся плавным. Длительность растёт с расстоянием.
+    // и остаётся плавным. Длительность короче прежнего и ограничена
+    // сверху: отклик быстрее, анимация мягкая (easeInOutCubic).
     _pageController.animateToPage(
       index,
-      duration: Duration(milliseconds: 180 + distance * 60),
-      curve: Curves.easeOutCubic,
+      duration: Duration(
+        milliseconds: (140 + distance * 45).clamp(140, 260),
+      ),
+      curve: Curves.easeInOutCubic,
     );
   }
 

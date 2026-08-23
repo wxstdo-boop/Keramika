@@ -66,7 +66,7 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
                   width: 1.2,
                 ),
               ),
-              child: const Text('🎄', style: TextStyle(fontSize: 22)),
+              child: const Text('🎄', style: TextStyle(fontSize: 11)),
             ),
             const SizedBox(width: 8),
             const Flexible(

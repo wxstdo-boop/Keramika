@@ -7,21 +7,9 @@ import '../services/prefs.dart';
 
 const _package = 'com.wetidom.keramika';
 
-// Канал для скрытия содержимого приложения из «недавних» при установленном PIN.
-const _secureChannel = MethodChannel('com.wetidom.keramika/secure');
 
 // Канал проверки полноэкранных уведомлений (поверх блокировки).
 const _fullscreenChannel = MethodChannel('com.wetidom.keramika/fullscreen');
-
-// Слушатель смены PIN-режима: main.dart через него включает/выключает
-// размытие содержимого в «недавних» (снимок экрана при уходе в фон).
-void Function(bool secure)? _onSecureChanged;
-
-/// Регистрирует слушатель смены PIN-режима. Вызывается один раз из
-/// KeramikaAppState, чтобы размытие в «недавних» знало, когда PIN активен.
-void setSecureChangedListener(void Function(bool secure) listener) {
-  _onSecureChanged = listener;
-}
 
 /// Проверяет, выдано ли уже разрешение полноэкранных уведомлений
 /// (full-screen notifications / поверх блокировки).
@@ -41,19 +29,11 @@ Future<bool> canUseFullScreenIntent() async {
   }
 }
 
-/// Включает/выключает PIN-режим (размытие содержимого в «недавних»).
-/// При установленном PIN телефон в переключателе задач показывает красиво
-/// размытый снимок приложения вместо содержимого или пустой заглушки.
-/// Размытие делает сам Flutter (снимок + оверлей при уходе в фон), поэтому
-/// на нативную сторону уходит только сигнал — там FLAG_SECURE больше
-/// не ставится (он давал чёрную заглушку и блокировал скриншоты).
-Future<void> setSecureWindow(bool secure) async {
-  _onSecureChanged?.call(secure);
-  if (!_isAndroid) return;
-  try {
-    await _secureChannel.invokeMethod('setSecure', {'secure': secure});
-  } catch (_) {}
-}
+/// Историческая заглушка: раньше по PIN включалось размытие содержимого
+/// в «недавных» (снимок + оверлей на стороне Flutter, FLAG_SECURE не
+/// ставился). Размытие удалено — функция оставлена пустой, чтобы вызовы
+/// из settings_screen не ломались.
+Future<void> setSecureWindow(bool secure) async {}
 
 /// defaultTargetPlatform не бросает на web, в отличие от dart:io Platform,
 /// поэтому проверка безопасна на всех платформах.

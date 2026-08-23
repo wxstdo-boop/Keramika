@@ -1599,8 +1599,8 @@ class _MessageBubble extends StatelessWidget {
                                   : (isUser
                                         ? cs.onPrimaryContainer
                                         : cs.onSurface),
-                              fontSize: 14.5,
-                              height: 1.3,
+                              fontSize: 16,
+                              height: 1.35,
                             ),
                           ),
                           // Красивые ручки выделения + меню Копировать/
@@ -2891,7 +2891,7 @@ class _MiniBubble extends StatelessWidget {
         child: buildMarkdownText(
           message.text,
           TextStyle(
-            fontSize: 12.5,
+            fontSize: 14.5,
             height: 1.3,
             color: isUser ? cs.onPrimary : cs.onSurface,
           ),

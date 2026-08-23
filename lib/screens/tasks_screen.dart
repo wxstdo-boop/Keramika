@@ -353,32 +353,15 @@ class _TasksScreenState extends State<TasksScreen>
                       },
                     ),
                   Expanded(
-                    child: AnimatedSwitcher(
-                      // Плавное и быстрое переключение категорий: короткий
-                      // fade (110 мс) — список меняется почти мгновенно, без
-                      // «задержки фона». Слайд/scale убраны: при живом
-                      // применении во время драга (см. SlidingPicker) переход
-                      // должен быть лёгким, чтобы быстрые свайпы не
-                      // накапливали тяжёлые анимации всего списка.
-                      duration: const Duration(milliseconds: 110),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) =>
-                          FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      ),
-                      child: hasTasks
-                          ? KeyedSubtree(
-                              // Ключ меняется вместе с фильтром: AnimatedSwitcher
-                              // плавно переводит список при переключении
-                              // категорий (раньше ключ был константным —
-                              // список просто прыгал без анимации).
-                              key: ValueKey('task_list_$_filter'),
-                              child: _buildList(context, theme, tasks, all),
-                            )
-                          : _buildEmpty(context, theme),
-                    ),
+                    // Мгновенное переключение категорий БЕЗ AnimatedSwitcher:
+                    // fade (даже 110 мс) ощущается как «задержка» при быстрых
+                    // свайпах и накапливает тяжёлые анимации всего списка.
+                    // Список переключается сразу (живое применение во время
+                    // драга в SlidingPicker уже даёт мгновенный отклик),
+                    // а плавность — анимация самих таблеток категорий.
+                    child: hasTasks
+                        ? _buildList(context, theme, tasks, all)
+                        : _buildEmpty(context, theme),
                   ),
                 ],
               ),
@@ -479,8 +462,13 @@ class _TasksScreenState extends State<TasksScreen>
     Task task,
     int index,
   ) {
+    // Ключ карточки привязан к фильтру: при переключении категории
+    // карточка ПЕРЕСОЗДАЁТСЯ мгновенно (без чаcтичного слипания
+    // состояний SwipeToDelete/AnimatedSize между категориями).
+    // Сам список при этом переключается атомарно — без анимации.
+    final cardKey = ValueKey('card_${_filter}_${task.id}');
     return SwipeToDelete(
-      // Ключ теперь на внешнем StaggerIn (см. itemBuilder).
+      key: cardKey,
       dismissKey: ValueKey('dismiss_${task.id}'),
       confirmDismiss: (_) async {
         return await showDialog<bool>(

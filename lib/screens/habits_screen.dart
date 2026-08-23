@@ -1011,7 +1011,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
                                           color: isDone
-                                              ? Colors.pink[300]
+                                              ? theme.colorScheme.primary
                                               : theme
                                                     .colorScheme
                                                     .surfaceContainerHighest,
@@ -1200,7 +1200,7 @@ class _HabitsScreenState extends State<HabitsScreen>
             child: Text(
               names[i][0].toUpperCase(),
               style: theme.textTheme.labelSmall?.copyWith(
-                fontSize: 10,
+                fontSize: 13,
                 height: 1,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 color: active
@@ -1257,17 +1257,6 @@ class _HabitsScreenState extends State<HabitsScreen>
                   style: theme.textTheme.titleSmall?.copyWith(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    Translations.t('perfectionismHint', context),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
                   ),
                 ),
               ],
