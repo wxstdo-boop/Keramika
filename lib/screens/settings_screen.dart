@@ -3413,9 +3413,6 @@ class _CtaButtonState extends State<_CtaButton> {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Theme.of(context).brightness == Brightness.dark
-        ? Colors.white
-        : const Color(0xDE000000);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) {
@@ -3432,9 +3429,9 @@ class _CtaButtonState extends State<_CtaButton> {
         duration: const Duration(milliseconds: 170),
         curve: Curves.easeOutCubic,
         width: double.infinity,
-        height: _pressed ? 56 : 62,
+        height: _pressed ? 50 : 54,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
               color: widget.glow.withValues(alpha: _pressed ? 0.22 : 0.38),
@@ -3448,70 +3445,44 @@ class _CtaButtonState extends State<_CtaButton> {
             colors: widget.gradient,
           ),
           border: Border.all(
-            color: fg.withValues(alpha: 0.35),
-            width: 1.5,
+            color: Colors.white.withValues(alpha: 0.40),
+            width: 1.2,
           ),
         ),
-        child: Stack(
-          fit: StackFit.expand,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Верхний блик — лёгкая выпуклость, как у шайбы переключателя.
-            DecoratedBox(
+            Container(
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    fg.withValues(alpha: 0.22),
-                    fg.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.0, 0.5],
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.24),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  width: 1,
                 ),
               ),
+              child: Icon(widget.icon, color: Colors.white, size: 16),
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: fg.withValues(alpha: 0.20),
-                    border: Border.all(
-                      color: fg.withValues(alpha: 0.40),
-                      width: 1,
+            const SizedBox(width: 11),
+            Flexible(
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  letterSpacing: 0.6,
+                  shadows: [
+                    Shadow(
+                      color: Color(0x33000000),
+                      blurRadius: 2,
+                      offset: Offset(0, 1),
                     ),
-                  ),
-                  child: Icon(widget.icon, color: fg, size: 17),
-                ),
-                const SizedBox(width: 11),
-                Flexible(
-                  child: Text(
-                    widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            // Стрелка справа — кнопка «открывает окно», намекает на это.
-            Positioned(
-              right: 18,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: fg.withValues(alpha: 0.7),
-                  size: 26,
+                  ],
                 ),
               ),
             ),
