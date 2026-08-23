@@ -353,22 +353,22 @@ class _TasksScreenState extends State<TasksScreen>
                       },
                     ),
                   Expanded(
-                    // Плавная смена задач при переключении категории: fade + 
-                    // лёгкий подъём, БЕЗ scale (масштабирование целого списка
-                    // на слабых устройствах давало «неплавность»). Старый
-                    // список гаснет быстрее (140 мс), новый проявляется
-                    // мягко (220 мс). Фильтр применяется МГНОВЕННО (см.
-                    // SlidingPicker) — анимация чисто визуальная.
+                    // Плавная и медленная смена задач при переключении
+                    // категории: старый список мягко гаснет (fade + лёгкий
+                    // сдвиг вниз на 4%), новый плавно «выезжает снизу» и
+                    // проявляется (300 мс, easeInOutCubic — без резких
+                    // рывков). Фильтр применяется МГНОВЕННО (см.
+                    // SlidingPicker), анимация чисто визуальная.
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeInOutCubic,
+                      switchOutCurve: Curves.easeInOutCubic,
                       transitionBuilder: (child, animation) =>
                           FadeTransition(
                             opacity: animation,
                             child: SlideTransition(
                               position: Tween<Offset>(
-                                begin: const Offset(0, 0.03),
+                                begin: const Offset(0, 0.06),
                                 end: Offset.zero,
                               ).animate(animation),
                               child: child,

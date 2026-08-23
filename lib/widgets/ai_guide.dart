@@ -1978,7 +1978,7 @@ class _QuickChips extends StatelessWidget {
     // Первый элемент — значок веб-поиска (если задан), дальше таблетки.
     final hasLeading = leading != null;
     return SizedBox(
-      height: 34,
+      height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1991,17 +1991,17 @@ class _QuickChips extends StatelessWidget {
             onTap: () => onTap(template),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: cs.primaryContainer.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                   color: cs.onPrimaryContainer,
                 ),
               ),
