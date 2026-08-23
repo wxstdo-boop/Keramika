@@ -33,6 +33,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import 'overlay/ada_overlay.dart';
 import 'overlay/overlay_bridge.dart';
+import 'widgets/ada_avatars.dart';
 import 'widgets/ai_guide.dart';
 import 'utils/page_transitions.dart';
 import 'utils/snackbar.dart';
@@ -575,7 +576,28 @@ void overlayMain() {
   // покажись». Это единственный надёжный канал между движками: lifecycle
   // при повторном открытии может не долететь, и окошко оставалось бы
   // невидимым (анимация появления не стартовала).
-  FlutterOverlayWindow.overlayListener.listen((_) {
+  FlutterOverlayWindow.overlayListener.listen((msg) {
+    // Команды живой синхронизации из ГЛАВНОГО чата: аватарка и модель
+    // сменяются в мини-окошке МГНОВЕННО (без переоткрытия окна).
+    if (msg is Map) {
+      final cmd = msg['cmd'];
+      if (cmd == 'sync_avatar') {
+        final v = msg['variant'];
+        if (v is int) syncOverlayAvatarFromHost(v);
+        return;
+      }
+      if (cmd == 'sync_model') {
+        final l = msg['label'];
+        if (l is String) {
+          // ГЛАВНЫЙ движок запоминает модель (общий сервис) и уведомляет
+          // открытый чат — лейбл «кто ответил» меняется сразу.
+          AiGuideService.recordModelUsed(l);
+          syncOverlayModelFromHost(l);
+        }
+        return;
+      }
+    }
+    // Окно пересоздано — сбросься и покажись.
     resetOverlayFromHost();
   });
   runApp(const AdaOverlayApp());
@@ -645,6 +667,24 @@ void main() async {
   // картинка успеет загрузиться к первому кадру. Так окно Android
   // (теперь фирменного цвета) не висит лишние секунды перед runApp.
   _precacheLogo();
+
+  // Обратная живая синхронизация: мини-окошко (отдельный движок) сообщает
+  // о смене аватарки — применяем к общему notifier'у, все аватарки главного
+  // чата обновляются мгновенно.
+  if (!kIsWeb) {
+    FlutterOverlayWindow.overlayListener.listen((msg) {
+      if (msg is Map && msg['cmd'] == 'sync_avatar') {
+        final v = msg['variant'];
+        if (v is int) {
+          final clamped = v.clamp(0, adaVariants.length - 1);
+          adaAvatarVariant.value = clamped;
+          try {
+            globalPrefs.setInt('ada_avatar_variant', clamped);
+          } catch (_) {}
+        }
+      }
+    });
+  }
 
   // Разрешения на уведомления и будильники пользователь включает сам
   // в настройках приложения (SettingsScreen). Здесь только перепланировка.

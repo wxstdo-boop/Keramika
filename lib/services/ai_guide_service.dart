@@ -1414,6 +1414,19 @@ class AiGuideService {
   static String get lastUsedModel => _lastModel;
   static void _setModel(String label) => _lastModel = label;
 
+  /// Тик «модель сменилась»: открытый чат слушает и перечитывает лейбл —
+  /// в том числе когда ответила модель из МИНИ-ОКОШКА (отдельный движок,
+  /// сообщение приходит по мосту сообщений).
+  static final ValueNotifier<int> modelLabelTick = ValueNotifier<int>(0);
+
+  /// Запоминает, какая модель ответила. Вызывается из минимального окошка
+  /// (там свой экземпляр статики) — через bridge-сообщение доходит сюда,
+  /// чтобы общий чат показывал ту же модель.
+  static void recordModelUsed(String label) {
+    if (label.isNotEmpty) _setModel(label);
+    modelLabelTick.value++;
+  }
+
   /// Текущая модель: если кто-то уже отвечал в этой сессии — показываем его
   /// (например «Kilo · openrouter/free»); иначе дефолт по квоте Ады.
   static Future<String> currentModelLabel() async {
