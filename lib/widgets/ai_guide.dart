@@ -1599,11 +1599,11 @@ class _MessageBubble extends StatelessWidget {
                                   : (isUser
                                         ? cs.onPrimaryContainer
                                         : cs.onSurface),
-                              // ВСЕ сообщения (и ответы, и мои) увеличены;
+                              // ВСЕ сообщения (и ответы, и мои) крупные;
                               // markdown-разметка при этом не растёт — bold/
-                              // italic в parseMarkdownSpans идут на 0.96 от
-                              // базы, так что «жирный» не раздувает текст.
-                              fontSize: 16.5,
+                              // italic имеют тот же fontSize, что обычный
+                              // текст (см. parseMarkdownSpans).
+                              fontSize: 18,
                               height: 1.35,
                             ),
                           ),
@@ -2896,7 +2896,7 @@ class _MiniBubble extends StatelessWidget {
           message.text,
           TextStyle(
             // Сообщения в мини-оверлее тоже увеличены, markdown не растёт.
-            fontSize: 14.5,
+            fontSize: 15.5,
             height: 1.3,
             color: isUser ? cs.onPrimary : cs.onSurface,
           ),

@@ -16,23 +16,17 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
       spans.add(
         TextSpan(
           text: bold,
-          // w600 вместо w800: при рукописном шрифте (Caveat/Kalam) жирный
-          // w800 выглядит «раздутым» и крупнее обычного текста. w600 даёт
-          // акцент без визуального увеличения.
-          style: baseStyle.copyWith(
-            fontWeight: FontWeight.w600,
-            fontSize: (baseStyle.fontSize ?? 14) * 0.96,
-          ),
+          // БЕЗ изменения размера: жирный/курсив/код имеют РОВНО тот же
+          // fontSize, что обычный текст (раньше множители 0.96/0.92 в
+          // связке с кеглем темы ощущались как «markdown увеличивается»).
+          style: baseStyle.copyWith(fontWeight: FontWeight.w600),
         ),
       );
     } else if (italic != null) {
       spans.add(
         TextSpan(
           text: italic,
-          style: baseStyle.copyWith(
-            fontStyle: FontStyle.italic,
-            fontSize: (baseStyle.fontSize ?? 14) * 0.96,
-          ),
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
         ),
       );
     } else if (code != null) {
@@ -42,7 +36,6 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
           style: baseStyle.copyWith(
             fontFamily: 'monospace',
             backgroundColor: baseStyle.color?.withValues(alpha: 0.12),
-            fontSize: (baseStyle.fontSize ?? 12) * 0.92,
           ),
         ),
       );
