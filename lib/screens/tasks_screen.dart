@@ -314,38 +314,52 @@ class _TasksScreenState extends State<TasksScreen>
                       itemBuilder: (context, c, selected) {
                         final label = c == '' ? Translations.allOf(context) : c;
                         return Center(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 110),
-                            curve: Curves.easeOutCubic,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              color: selected
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.surfaceContainerHighest,
-                              boxShadow: selected
-                                  ? [
-                                      BoxShadow(
-                                        color: theme.colorScheme.primary
-                                            .withValues(alpha: 0.25),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
+                          child: Padding(
+                            // Безопасные отступы по бокам карусели: длинная
+                            // категория у края вьюпорта не «упирается» в
+                            // границу и её последний символ не обрезается.
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 110),
+                              curve: Curves.easeOutCubic,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
                                 color: selected
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onSurfaceVariant,
-                                fontWeight: selected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.surfaceContainerHighest,
+                                boxShadow: selected
+                                    ? [
+                                        BoxShadow(
+                                          color: theme.colorScheme.primary
+                                              .withValues(alpha: 0.25),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              // FittedBox: длинное название масштабируется,
+                              // чтобы ПОМЕСТИТЬСЯ целиком — последний символ
+                              // всегда виден (раньше обрезался краем/троеточием).
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  label,
+                                  softWrap: false,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: selected
+                                        ? theme.colorScheme.onPrimary
+                                        : theme.colorScheme.onSurfaceVariant,
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -353,31 +367,38 @@ class _TasksScreenState extends State<TasksScreen>
                       },
                     ),
                   Expanded(
+                    // Плавная и медленная смена задач при переключении
+                    // категории: старый список мягко гаснет (fade + лёгкий
+                    // сдвиг вниз на 4%), новый плавно «выезжает снизу» и
+                    // проявляется (300 мс, easeInOutCubic — без резких
+                    // рывков). Фильтр применяется МГНОВЕННО (см.
+                    // SlidingPicker), анимация чисто визуальная.
                     child: AnimatedSwitcher(
-                      // Плавное и быстрое переключение категорий: короткий
-                      // fade (110 мс) — список меняется почти мгновенно, без
-                      // «задержки фона». Слайд/scale убраны: при живом
-                      // применении во время драга (см. SlidingPicker) переход
-                      // должен быть лёгким, чтобы быстрые свайпы не
-                      // накапливали тяжёлые анимации всего списка.
-                      duration: const Duration(milliseconds: 110),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeInOutCubic,
+                      switchOutCurve: Curves.easeInOutCubic,
                       transitionBuilder: (child, animation) =>
                           FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      ),
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.06),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          ),
                       child: hasTasks
                           ? KeyedSubtree(
-                              // Ключ меняется вместе с фильтром: AnimatedSwitcher
-                              // плавно переводит список при переключении
-                              // категорий (раньше ключ был константным —
-                              // список просто прыгал без анимации).
-                              key: ValueKey('task_list_$_filter'),
-                              child: _buildList(context, theme, tasks, all),
+                              key: ValueKey('list_$_filter'),
+                              child: RepaintBoundary(
+                                child: _buildList(context, theme, tasks, all),
+                              ),
                             )
-                          : _buildEmpty(context, theme),
+                          : KeyedSubtree(
+                              key: ValueKey('empty_$_filter'),
+                              child: _buildEmpty(context, theme),
+                            ),
                     ),
                   ),
                 ],
@@ -479,8 +500,13 @@ class _TasksScreenState extends State<TasksScreen>
     Task task,
     int index,
   ) {
+    // Ключ карточки привязан к фильтру: при переключении категории
+    // карточка ПЕРЕСОЗДАЁТСЯ мгновенно (без чаcтичного слипания
+    // состояний SwipeToDelete/AnimatedSize между категориями).
+    // Сам список при этом переключается атомарно — без анимации.
+    final cardKey = ValueKey('card_${_filter}_${task.id}');
     return SwipeToDelete(
-      // Ключ теперь на внешнем StaggerIn (см. itemBuilder).
+      key: cardKey,
       dismissKey: ValueKey('dismiss_${task.id}'),
       confirmDismiss: (_) async {
         return await showDialog<bool>(

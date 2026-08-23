@@ -874,79 +874,92 @@ class _SettingsScreenState extends State<SettingsScreen>
   }) {
     final appState = KeramikaApp.of(context);
     final isSelected = appState.themeKey == key;
-    final theme = Theme.of(context);
     // Для MUTILATED — зажатие 10 секунд показывает плашную «Вы элегант?»
     // с переводами. Плавно появляется, держится 3 секунды, плавно уходит.
-    final chip = ChoiceChip(
-      // Крупные названия: в карусели у каждой темы много места, длинные
-      // имена (MUTILATED, System Light) аккуратно масштабируются вниз,
-      // короткие — полного размера.
-      label: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          label,
-          // Жирнее (w700): названия читаются одинаково плотно и по-русски,
-          // и по-английски (латиница в w600 выглядела тоньше кириллицы).
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
+    // ТОНКАЯ обводка (1px) с НАСТОЯЩЕЙ анимацией: begin всегда 0,
+    // end = 1 для выбранного / 0 для остальных. TweenAnimationBuilder
+    // сам анимирует переход (текущее значение → end) при каждом
+    // rebuild, поэтому при выборе линия плавно «проявляется» (0→1),
+    // при снятии — плавно «гаснет» (1→0). ВАЖНО: begin фиксирован —
+    // одинаковые begin/end давали мгновенный скачок.
+    return TweenAnimationBuilder<double>(
+      tween: Tween(
+        begin: 0.0,
+        end: isSelected ? 1.0 : 0.0,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      // Галочка выбранной темы появляется плавно: AnimatedSwitcher плавно
-      // подменяет иконку на check (scale + fade), а не прыгает мгновенно.
-      avatar: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 280),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => ScaleTransition(
-          scale: Tween<double>(begin: 0.8, end: 1).animate(animation),
-          child: FadeTransition(opacity: animation, child: child),
-        ),
-        child: Icon(
-          isSelected ? Icons.check_circle : icon,
-          key: ValueKey('pill_${key}_$isSelected'),
-          size: 14,
-        ),
-      ),
-      selected: isSelected,
-      showCheckmark: false,
-      onSelected: (selected) {
-        // Приятный «клик» при смене темы.
-        Haptics.select();
-        if (key == 'peach' && appState.themeKey == 'peach') {
-          appState.togglePeachDark();
-        } else {
-          appState.setThemeMode(key);
-        }
-        extraOnSelected?.call();
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOutCubic,
+      builder: (context2, alphaBorder, _) {
+        final themeLocal = Theme.of(context2);
+        final chip = ChoiceChip(
+          // Крупные названия: в карусели у каждой темы много места, длинные
+          // имена (MUTILATED, System Light) масштабируются вниз.
+          label: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          // Галочка выбранной темы появляется плавно.
+          avatar: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: Tween<double>(begin: 0.8, end: 1).animate(animation),
+              child: FadeTransition(opacity: animation, child: child),
+            ),
+            child: Icon(
+              isSelected ? Icons.check_circle : icon,
+              key: ValueKey('pill_${key}_$isSelected'),
+              size: 14,
+            ),
+          ),
+          selected: isSelected,
+          showCheckmark: false,
+          onSelected: (selected) {
+            Haptics.select();
+            if (key == 'peach' && appState.themeKey == 'peach') {
+              appState.togglePeachDark();
+            } else {
+              appState.setThemeMode(key);
+            }
+            extraOnSelected?.call();
+          },
+          // Обводка тонкая (1px) и АНИМИРУЕТСЯ по alpha каждый кадр.
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: themeLocal.colorScheme.primary.withValues(
+                alpha: alphaBorder,
+              ),
+              width: 1,
+            ),
+          ),
+        );
+        if (!specialMutilated) return Center(child: chip);
+        return Center(
+          child: _LongPressChip(
+            duration: const Duration(seconds: 10),
+            onLongPress: () {
+              showBeautifulSnackBar(
+                context,
+                message:
+                    'Вы элегантны? 🥀 — Are you elegant? — Êtes-vous élégant·e ?',
+                icon: Icons.diamond_outlined,
+                iconColor: const Color(0xFFFFD166),
+                duration: const Duration(seconds: 3),
+              );
+            },
+            child: chip,
+          ),
+        );
       },
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        // Тонкая аккуратная обводка: у выбранной — первичный цвет (1px),
-        // у остальных — прозрачная. Никакого «утолщения» при переключении.
-        side: BorderSide(
-          color: isSelected ? theme.colorScheme.primary : Colors.transparent,
-          width: 1,
-        ),
-      ),
-    ); // Центрируем в ячейке сетки 3×3 — ровная и красивая сетка тем.
-    if (!specialMutilated) return Center(child: chip);
-    return Center(
-      child: _LongPressChip(
-        duration: const Duration(seconds: 10),
-        onLongPress: () {
-          // Плавный красивый snackbar с эмодзи — выезжает снизу с пружинкой,
-          // держится 3 секунды и плавно уезжает.
-          showBeautifulSnackBar(
-            context,
-            message:
-                'Вы элегантны? 🥀 — Are you elegant? — Êtes-vous élégant·e ?',
-            icon: Icons.diamond_outlined,
-            iconColor: const Color(0xFFFFD166),
-            duration: const Duration(seconds: 3),
-          );
-        },
-        child: chip,
-      ),
     );
   }
 
@@ -978,11 +991,15 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 12),
               _buildThemeCarousel(context),
+              // Значок Flutter ПОД каруселью тем, внутри той же карточки:
+              // аккуратный фирменный акцент внизу секции.
+              const SizedBox(height: 14),
+              const Center(child: _FlutterBadge()),
             ],
           ),
         ),
       ),
-      const SizedBox(height: 8),
+
       // Проверяем статус уведомлений — если false и предупреждение не скрыто, показываем карточку.
       // На web статус уведомлений не определить (всегда true), поэтому карточку
       // показываем тоже — иначе «Сбросить предупреждения» не даёт видимого результата.
@@ -1266,6 +1283,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               _CtaButton(
                 label: Translations.t('visitellaName', context, 'Visitella'),
                 icon: Icons.rocket_launch_outlined,
+                // Оригинальный вид Visitella: тёмный градиент + чёрное свечение.
                 gradient: const [
                   Color(0xFF4A4D54),
                   Color(0xFF232428),
@@ -1346,31 +1364,20 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 14),
+              // Кнопка «Поддержать»: открывает снизу окно с выбором способа
+              // оплаты — CloudTips, Boosty (и др.). Внутри окна — крупные
+              // градиентные кнопки, каждая открывает свою страницу.
               _CtaButton(
                 label: Translations.t('support', context, 'Support'),
                 icon: Icons.favorite,
+                // Оригинальный вид: розовый градиент + розовое свечение.
                 gradient: const [
                   Color(0xFFFF8FB3),
                   Color(0xFFFF4D7E),
                   Color(0xFFE91E63),
                 ],
                 glow: const Color(0xFFE91E63),
-                onTap: () => _openLink(_supportAuthorUrl),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                Translations.t(
-                  'supportAuthorHint',
-                  context,
-                  'Opens the donation page in your browser',
-                ),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.8,
-                  ),
-                  fontWeight: FontWeight.w800,
-                ),
-                textAlign: TextAlign.center,
+                onTap: _showSupportSheet,
               ),
             ],
           ),
@@ -1957,9 +1964,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               // Поле ключа появляется/исчезает плавно (SizeTransition + fade).
               AnimatedSwitcher(
-                duration: const Duration(milliseconds: 320),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
+                duration: const Duration(milliseconds: 420),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
                 transitionBuilder: (child, animation) => SizeTransition(
                   sizeFactor: animation,
                   alignment: AlignmentDirectional.topStart,
@@ -2365,21 +2372,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     ];
     return Scaffold(
       appBar: AppBar(
-        // Логотип Flutter рядом с заголовком «Настройки»: маленький
-        // фирменный значок (три «ступеньки») в мягком круглом бейдже.
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const _FlutterBadge(),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                Translations.settingsOf(context),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
+        title: Text(
+          Translations.settingsOf(context),
+          overflow: TextOverflow.ellipsis,
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent, // Make AppBar transparent
@@ -2919,11 +2914,153 @@ class _SettingsScreenState extends State<SettingsScreen>
       globalPrefs.getString('support_author_url') ??
       'https://pay.cloudtips.ru/p/da0c7421';
 
+  String get _boostyUrl =>
+      globalPrefs.getString('boosty_url') ?? 'https://boosty.to/larafut';
+
   Future<void> _openLink(String url) async {
     final uri = Uri.parse(url);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {}
+  }
+
+  /// Окно снизу с выбором способа поддержки: крупные градиентные кнопки
+  /// CloudTips и Boosty, каждая открывает свою страницу оплаты. Оформление
+  /// строится на цветах ТЕКУЩЕЙ темы — тёмные/светлые темы окно
+  /// подхватывает само.
+  void _showSupportSheet() {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final accent = cs.primary;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      isScrollControlled: false,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Ручка-индикатор сверху.
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    // Иконка-«сердце» в мягком градиентном кружке в цвете
+                    // темы (primary вместо розового).
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            accent.withValues(alpha: 0.22),
+                            accent.withValues(alpha: 0.10),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: accent.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Icon(Icons.favorite, color: accent, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        Translations.t('support', context, 'Support'),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.15,
+                        ),
+                      ),
+                    ),
+                    // Крестик — закрыть окно.
+                    IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: cs.onSurfaceVariant,
+                        size: 22,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  Translations.t(
+                    'supportAuthorBody',
+                    context,
+                    'If this app helps you, you can thank the developer with a small donation.',
+                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                // Способы оплаты — большие кнопки-«таблетки» В ЦВЕТАХ ТЕМЫ
+                // (primary и tertiary) с уникальными значками: облако для
+                // CloudTips, ракета для Boosty.
+                _SupportPill(
+                  label: 'CloudTips',
+                  icon: Icons.cloud_rounded,
+                  gradient: [
+                    Color.lerp(accent, Colors.white, 0.30)!,
+                    accent,
+                    Color.lerp(accent, Colors.black, 0.16)!,
+                  ],
+                  glow: accent,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _openLink(_supportAuthorUrl);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _SupportPill(
+                  label: 'Boosty',
+                  icon: Icons.rocket_launch_rounded,
+                  gradient: [
+                    Color.lerp(cs.tertiary, Colors.white, 0.30)!,
+                    cs.tertiary,
+                    Color.lerp(cs.tertiary, Colors.black, 0.16)!,
+                  ],
+                  glow: cs.tertiary,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _openLink(_boostyUrl);
+                  },
+                ),
+                const SizedBox(height: 6),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openChangelog() async {
@@ -3149,6 +3286,118 @@ class _RealityCheckToggleCard extends StatelessWidget {
 /// заливкой, мягким цветным свечением и белой иконкой-капсулой. БЕЗ нижней
 /// полосы-грани — объём только через тень и блик. Зажатие у всех таких
 /// кнопок одинаковое: мягкое вдавливание по высоте + схлопывание тени.
+/// Кнопка-«таблетка» способа оплаты в окне поддержки: градиентная широкая
+/// строка с иконкой в кружке, названием и стрелкой. Используется внутри
+/// bottom sheet (CloudTips / Boosty и др.).
+class _SupportPill extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final List<Color> gradient;
+  final Color glow;
+  final VoidCallback onTap;
+
+  const _SupportPill({
+    required this.label,
+    required this.icon,
+    required this.gradient,
+    required this.glow,
+    required this.onTap,
+  });
+
+  @override
+  State<_SupportPill> createState() => _SupportPillState();
+}
+
+class _SupportPillState extends State<_SupportPill> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Контраст под текущую тему: на светлых темах градиент светлый →
+    // тёмный текст, на тёмных → белый.
+    final fg = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : const Color(0xDE000000);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) {
+        _setPressed(true);
+        Haptics.medium();
+      },
+      onTapUp: (_) {
+        _setPressed(false);
+        widget.onTap();
+      },
+      onTapCancel: () => _setPressed(false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 170),
+        curve: Curves.easeOutCubic,
+        height: _pressed ? 58 : 64,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: widget.glow.withValues(alpha: _pressed ? 0.2 : 0.35),
+              blurRadius: _pressed ? 6 : 14,
+              offset: Offset(0, _pressed ? 1 : 4),
+            ),
+          ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: widget.gradient,
+          ),
+          border: Border.all(
+            color: fg.withValues(alpha: 0.40),
+            width: 1.2,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: fg.withValues(alpha: 0.18),
+                border: Border.all(
+                  color: fg.withValues(alpha: 0.40),
+                  width: 1,
+                ),
+              ),
+              child: Icon(widget.icon, color: fg, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: fg.withValues(alpha: 0.7),
+              size: 26,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CtaButton extends StatefulWidget {
   final String label;
   final IconData icon;
@@ -3179,7 +3428,11 @@ class _CtaButtonState extends State<_CtaButton> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _setPressed(true),
+      onTapDown: (_) {
+        _setPressed(true);
+        // Отдача при нажатии — как у остальных кнопок приложения.
+        Haptics.medium();
+      },
       onTapUp: (_) {
         _setPressed(false);
         widget.onTap?.call();
@@ -3206,65 +3459,45 @@ class _CtaButtonState extends State<_CtaButton> {
           ),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.40),
-            width: 1.5,
+            width: 1.2,
           ),
         ),
-        child: Stack(
-          fit: StackFit.expand,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Верхний блик — лёгкая выпуклость, как у шайбы переключателя.
-            DecoratedBox(
+            Container(
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.4),
-                    Colors.white.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.0, 0.5],
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.24),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  width: 1,
                 ),
               ),
+              child: Icon(widget.icon, color: Colors.white, size: 16),
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.24),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.45),
-                      width: 1,
+            const SizedBox(width: 11),
+            Flexible(
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  letterSpacing: 0.6,
+                  shadows: [
+                    Shadow(
+                      color: Color(0x33000000),
+                      blurRadius: 2,
+                      offset: Offset(0, 1),
                     ),
-                  ),
-                  child: Icon(widget.icon, color: Colors.white, size: 16),
+                  ],
                 ),
-                const SizedBox(width: 11),
-                Flexible(
-                  child: Text(
-                    widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                      letterSpacing: 0.6,
-                      shadows: [
-                        Shadow(
-                          color: Color(0x33000000),
-                          blurRadius: 2,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
@@ -3332,47 +3565,72 @@ class _BloodStainsPainter extends CustomPainter {
 }
 
 /// Логотип Flutter: три фирменные «ступеньки» (светло-голубая, синяя,
-/// тёмно-синяя) в мягком круглом бейдже. Рядом с заголовком «Настройки» —
-/// для солидности, как у настоящего Flutter-приложения.
+/// тёмно-синяя) в мягком круглом бейдже с лёгкой «стеклянной» подложкой.
+/// Стоит внизу карточки тем, внутри неё — как аккуратный фирменный акцент.
 class _FlutterBadge extends StatelessWidget {
   const _FlutterBadge();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final bg = Color.lerp(cs.surfaceContainerHighest, cs.primary, 0.06)!;
     return Container(
-      width: 30,
-      height: 30,
+      width: 26,
+      height: 26,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: theme.colorScheme.surfaceContainerHighest,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [bg, cs.surfaceContainerHighest],
+        ),
+        border: Border.all(
+          color: cs.primary.withValues(alpha: 0.25),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 5,
+            color: cs.primary.withValues(alpha: 0.18),
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(6),
-      child: const CustomPaint(
-        size: Size.square(18),
-        painter: _FlutterLogoPainter(),
+      padding: const EdgeInsets.all(5),
+      child: CustomPaint(
+        size: const Size.square(16),
+        painter: _FlutterLogoPainter(
+          // Ступеньки в цвет текущей темы: светлый/средний/тёмный оттенки
+          // primary вместо фирменных синих — значок подстраивается под
+          // каждую тему.
+          light: Color.lerp(cs.primary, Colors.white, 0.72)!,
+          mid: Color.lerp(cs.primary, Colors.black, 0.05)!,
+          dark: Color.lerp(cs.primary, Colors.black, 0.30)!,
+        ),
       ),
     );
   }
 }
 
 class _FlutterLogoPainter extends CustomPainter {
-  const _FlutterLogoPainter();
+  final Color light;
+  final Color mid;
+  final Color dark;
+
+  const _FlutterLogoPainter({
+    required this.light,
+    required this.mid,
+    required this.dark,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final light = Paint()..color = const Color(0xFF54C5F8); // светло-голубой
-    final mid = Paint()..color = const Color(0xFF0468D7); // синий
-    final dark = Paint()..color = const Color(0xFF02569B); // тёмно-синий
+    final lightPaint = Paint()..color = light;
+    final midPaint = Paint()..color = mid;
+    final darkPaint = Paint()..color = dark;
 
     final step = w / 3.0;
     // Верхняя ступенька: полная ширина, правый край скошен.
@@ -3383,7 +3641,7 @@ class _FlutterLogoPainter extends CustomPainter {
         ..lineTo(w - step, h / 3)
         ..lineTo(0, h / 3)
         ..close(),
-      light,
+      lightPaint,
     );
     // Средняя ступенька: правая граница уходит дальше влево.
     canvas.drawPath(
@@ -3393,7 +3651,7 @@ class _FlutterLogoPainter extends CustomPainter {
         ..lineTo(w - 2 * step, 2 * h / 3)
         ..lineTo(0, 2 * h / 3)
         ..close(),
-      mid,
+      midPaint,
     );
     // Нижняя ступенька: самая узкая.
     canvas.drawPath(
@@ -3403,10 +3661,13 @@ class _FlutterLogoPainter extends CustomPainter {
         ..lineTo(w - 3 * step, h)
         ..lineTo(0, h)
         ..close(),
-      dark,
+      darkPaint,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _FlutterLogoPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _FlutterLogoPainter oldDelegate) =>
+      oldDelegate.light != light ||
+      oldDelegate.mid != mid ||
+      oldDelegate.dark != dark;
 }

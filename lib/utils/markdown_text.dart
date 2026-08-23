@@ -16,7 +16,10 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
       spans.add(
         TextSpan(
           text: bold,
-          style: baseStyle.copyWith(fontWeight: FontWeight.w800),
+          // БЕЗ изменения размера: жирный/курсив/код имеют РОВНО тот же
+          // fontSize, что обычный текст (раньше множители 0.96/0.92 в
+          // связке с кеглем темы ощущались как «markdown увеличивается»).
+          style: baseStyle.copyWith(fontWeight: FontWeight.w600),
         ),
       );
     } else if (italic != null) {
@@ -31,9 +34,10 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
         TextSpan(
           text: code,
           style: baseStyle.copyWith(
-            fontFamily: 'monospace',
-            backgroundColor: baseStyle.color?.withValues(alpha: 0.12),
-            fontSize: (baseStyle.fontSize ?? 12) * 0.92,
+            // monospace на телефоне рендерится крупнее/шире основного
+            // шрифта — пользователь видит «код увеличился». Оставляем
+            // ТОТ ЖЕ шрифт и размер, только подкрашиваем фоном.
+            backgroundColor: baseStyle.color?.withValues(alpha: 0.10),
           ),
         ),
       );

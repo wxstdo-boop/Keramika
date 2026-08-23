@@ -51,15 +51,32 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
   // живое применение во время драга конфликтовало бы с пальцем.
   bool _userDragging = false;
   Timer? _applyTimer;
+  // Пункт, на который ТОЛЬКО ЧТО тапнули (но карусель ещё едет к нему):
+  // подсветка прилипает к нему МГНОВЕННО, не дожидаясь, пока карусель
+  // доедет и встанет по центру. Так тап не ощущается «с задержкой».
 
   int get _selectedIndex {
     final i = widget.items.indexOf(widget.selected);
     return i < 0 ? 0 : i;
   }
 
+  int? _pendingSelect;
+
+  /// Карусель доехала до намеченного тапом пункта — подсветку можно
+  /// передать живой логике (она и так держит этот пункт).
+  void _maybeClearPending() {
+    final p = _pendingSelect;
+    if (p == null || !_ctrl.hasClients) return;
+    final page = _ctrl.page;
+    if (page != null && (page - p).abs() < 0.02) {
+      setState(() => _pendingSelect = null);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _ctrl.addListener(_maybeClearPending);
     // При открытии экрана карусель стартует на ВЫБРАННОМ пункте, а не на
     // первом — иначе обводка выбранного звука «сбрасывается» при перезаходе.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -79,22 +96,34 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
     _applyTimer?.cancel();
     _applyTimer = null;
     final item = widget.items[i];
-    if (item == widget.selected) return;
+    if (item == widget.selected) {
+      // Уже выбран — просто делаем его центрированным, без анимации.
+      if (_ctrl.hasClients) _ctrl.jumpToPage(i);
+      return;
+    }
+    // МГНОВЕННОЕ применение: список задач переключается сразу, без
+    // задержки и без «анимации исчезновения» (AnimatedSwitcher убран).
+    // Карусель плавно подъезжает к выбранному пункту уже ПОСЛЕ —
+    // на отклик это не влияет.
+    _pendingSelect = i;
     widget.onChanged(item);
+    if (_ctrl.hasClients) {
+      _ctrl.animateToPage(
+        i,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   /// Карусель закончила движение (отпускание пальца или конец баллистики).
   void _onScrollEnd({required bool ballisticEnd}) {
     _applyTimer?.cancel();
-    _applyTimer = Timer(
-      // Баллистика встала — применяем сразу; отпускание — совсем короткая
-      // пауза (тики начинающейся баллистики всё равно отменят применение),
-      // чтобы переключение не ощущалось «с задержкой фона».
-      ballisticEnd
-          ? const Duration(milliseconds: 0)
-          : const Duration(milliseconds: 20),
-      _applySettledPage,
-    );
+    // Применяем мгновенно — без пауз: пользователь убрал палец (или
+    // баллистика встала), пункт уже по центру, и переключение не должно
+    // ощущаться «с задержкой». Тики новой баллистики всё равно отменят
+    // применение (см. _cancelPendingApply в ScrollUpdateNotification).
+    _applyTimer = Timer(Duration.zero, _applySettledPage);
   }
 
   /// Карусель снова движется — отменяем отложенное применение: промежуточные
@@ -145,7 +174,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
         (page - target).abs() > 0.01) {
       _ctrl.animateToPage(
         target,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
       );
     }
@@ -168,6 +197,9 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
           if (notification is ScrollStartNotification) {
             _userDragging = notification.dragDetails != null;
             _cancelPendingApply();
+            // Пользователь сам ведёт карусель — отменяем «намеченную тапом»
+            // подсветку, её место занимает живая подсветка под пальцем.
+            if (_pendingSelect != null) setState(() => _pendingSelect = null);
           } else if (notification is ScrollUpdateNotification) {
             if (notification.dragDetails != null) {
               // Палец ведёт карусель: применяем пункт, к которому она
@@ -178,9 +210,17 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
               _userDragging = true;
               _applyLivePage();
             } else {
-              // Баллистика (флип) — промежуточные пункты не применяем,
-              // только финальный, когда карусель остановится.
+              // Баллистика (флип): промежуточные пункты не применяем,
+              // НО финальный применяем СРАЗУ, как только карусель почти
+              // встала на него (близко к центру) — не ждём полной
+              // остановки, иначе переключение «ощущалось с задержкой»
+              // после быстрого свайпа.
               _cancelPendingApply();
+              final page = _ctrl.page;
+              if (page != null &&
+                  (page - page.round()).abs() < 0.12) {
+                _applyLivePage();
+              }
             }
           } else if (notification is ScrollEndNotification) {
             _userDragging = false;
@@ -197,21 +237,27 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
             final item = widget.items[i];
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => _selectPage(i),
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (context, _) {
-                  // Масштаб/прозрачность по мере приближения к центру.
-                  final pos = _ctrl.hasClients ? (_ctrl.page ?? 0) : 0.0;
-                  final delta = (i - pos).abs().clamp(0.0, 1.0);
-                  final scale = 1.0 - 0.12 * delta;
-                  final opacity = 1.0 - 0.35 * delta;
-                  // ЖИВАЯ подсветка: пункт, к которому карусель привязана
-                  // прямо сейчас (центр), подсвечивается СРАЗУ во время
-                  // скролла — «фон» переключается без задержки, не дожидаясь
-                  // фиксации выбора.
-                  final liveSelected = (i - pos).abs() < 0.5;
-                  return Opacity(
+              onTap: () => _selectPage(i),                child: AnimatedBuilder(
+                  animation: _ctrl,
+                  builder: (context, _) {
+                    // Масштаб/прозрачность по мере приближения к центру.
+                    final pos = _ctrl.hasClients ? (_ctrl.page ?? 0) : 0.0;
+                    // ВАЖНО: намеченному тапом пункту придаём вид ЦЕНТРАЛЬНОГО
+                    // СРАЗУ (пока карусель ещё едет к нему) — никакой
+                    // «задержки» выделения; остальные таблетки плавно
+                    // уезжают/приезжают мимо него.
+                    final effPos =
+                        i == _pendingSelect ? i.toDouble() : pos;
+                    final delta = (i - effPos).abs().clamp(0.0, 1.0);
+                    final scale = 1.0 - 0.12 * delta;
+                    final opacity = 1.0 - 0.35 * delta;
+                    // ЖИВАЯ подсветка: пункт, к которому карусель привязана
+                    // прямо сейчас (центр), подсвечивается СРАЗУ во время
+                    // скролла — «фон» переключается без задержки, не дожидаясь
+                    // фиксации выбора.
+                    final liveSelected =
+                        (i - pos).abs() < 0.5 || i == _pendingSelect;
+                    return Opacity(
                     opacity: opacity,
                     child: Transform.scale(
                       scale: scale,
