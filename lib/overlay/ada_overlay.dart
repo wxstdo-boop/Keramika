@@ -101,7 +101,7 @@ class _OverlayChat extends StatefulWidget {
 }
 
 class _OverlayChatState extends State<_OverlayChat>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const _historyKey = 'ai_chat_history';
 
   final _inputCtrl = TextEditingController();
@@ -144,6 +144,7 @@ class _OverlayChatState extends State<_OverlayChat>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _inputFocus.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -151,6 +152,30 @@ class _OverlayChatState extends State<_OverlayChat>
         _contentCtrl.forward();
       }
     });
+  }
+
+  // Оверлей рендерится в КЭШИРОВАННОМ движке: после закрытия окна Dart-
+  // состояние чата остаётся живым, и второе открытие подхватывает
+  // «хвосты» сессии (_closing=true и т.п.). При каждом перезапуске окна
+  // (сервис зовёт appIsResumed → resumed) — сбрасываем всё и плавно
+  // проигрываем появление заново.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    _inputFocus.unfocus();
+    if (!mounted) return;
+    setState(() {
+      _closing = false;
+      _inputFocused = false;
+      _collapsed = false;
+    });
+    // Позицию перечитываем с нативной стороны — окно пересоздалось.
+    _posInit = false;
+    _ensurePos();
+    _appearCtrl.forward(from: 0);
+    _contentCtrl.forward(from: 0);
+    _load();
   }
 
   // Сгладить первое поднятие клавиатуры: лента изолирована от viewInsets
@@ -286,8 +311,9 @@ class _OverlayChatState extends State<_OverlayChat>
     double toH,
   ) async {
     // Больше шагов + меньше задержка: раньше 8 шагов по 30мс выглядели
-    // как «дёрганые скачки» размера, теперь плавная ~256мс анимация.
-    const steps = 16;
+    // как «дёрганые скачки» размера, теперь плавная анимация.
+    // 24 шага по ~12мс ≈ 290мс — достаточная плавность, без лишней тянучки.
+    const steps = 24;
     for (var i = 1; i <= steps; i++) {
       final t = Curves.easeInOutCubic.transform(i / steps);
       final w = fromW + (toW - fromW) * t;
@@ -295,7 +321,7 @@ class _OverlayChatState extends State<_OverlayChat>
       try {
         await FlutterOverlayWindow.resizeOverlay(w.round(), h.round(), false);
       } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 16));
+      await Future.delayed(const Duration(milliseconds: 12));
     }
   }
 
@@ -315,6 +341,9 @@ class _OverlayChatState extends State<_OverlayChat>
   void _stopDrift() {
     _driftTimer?.cancel();
     _driftTimer = null;
+    // Снимаем флаг «тик в полёте» — иначе после остановки/перезапуска
+    // дрейф навсегда застревает (guard в _driftTick).
+    _driftMoving = false;
   }
 
   void _ensurePos() {
@@ -500,10 +529,16 @@ class _OverlayChatState extends State<_OverlayChat>
       await JsonFile.write('overlay_closed', '1');
     } catch (_) {}
     await FlutterOverlayWindow.closeOverlay();
+    // Снимаем «закрытость» и позицию: движок живёт дальше, окно может
+    // быть открыто снова — состояние не должно оставаться мёртвым.
+    _closing = false;
+    _posInit = false;
+    _inputFocused = false;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopDrift();
     _appearCtrl.dispose();
     _contentCtrl.dispose();
@@ -516,16 +551,27 @@ class _OverlayChatState extends State<_OverlayChat>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([_appearCtrl, _contentCtrl]),
-      builder: (context, _) {
-        final appearT = Curves.easeOutCubic.transform(_appearCtrl.value);
-        final contentT = _contentCtrl.value;
-        return Opacity(
-          opacity: (appearT * contentT).clamp(0.0, 1.0),
-          child: _collapsed ? _buildBubble() : _buildChatShell(),
-        );
-      },
+    // removeViewInsets: у системного окошка НЕТ места для клавиатуры,
+    // окно поверх неё не сдвигается — а вот MediaQuery с viewInsets могла
+    // заставлять чат пересчитываться при каждом подъёме/опускании IME
+    // (отсюда «подтормаживания»). Изолируем инсеты полностью.
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeLeft: true,
+      removeTop: true,
+      removeRight: true,
+      removeBottom: true,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_appearCtrl, _contentCtrl]),
+        builder: (context, _) {
+          final appearT = Curves.easeOutCubic.transform(_appearCtrl.value);
+          final contentT = _contentCtrl.value;
+          return Opacity(
+            opacity: (appearT * contentT).clamp(0.0, 1.0),
+            child: _collapsed ? _buildBubble() : _buildChatShell(),
+          );
+        },
+      ),
     );
   }
 
