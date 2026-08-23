@@ -14,6 +14,8 @@ Future<bool> ensureAdaOverlay({
 
 Future<void> closeAdaOverlay() async {}
 
+Future<void> syncOverlayState(Map<String, dynamic> data) async {}
+
 Future<bool> adaOverlayPermission() async => false;
 
 Future<bool> isAdaOverlayActive() async => false;

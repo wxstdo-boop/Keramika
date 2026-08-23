@@ -4,6 +4,16 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import '../services/prefs.dart';
 
+/// Шлёт данные в живой движок мини-окошка (аватарка Ады, модель и т.п.).
+/// Внутри одного приложения канал сообщений доставляет их в overlayListener;
+/// при закрытом окошке вызов просто игнорируется.
+Future<void> syncOverlayState(Map<String, dynamic> data) async {
+  if (!Platform.isAndroid) return;
+  try {
+    await FlutterOverlayWindow.shareData(data);
+  } catch (_) {}
+}
+
 /// Показывает системный пузырь Ады поверх других приложений.
 /// Работает только на Android; на остальных платформах — no-op.
 /// Возвращает true, если оверлей показан.
@@ -34,6 +44,14 @@ Future<bool> showAdaOverlay({
     }
     final sw = screenWidth ?? 400;
     final sh = screenHeight ?? 850;
+    // Стартовая позиция — ТА, где окно оставили (prefs), а не центр:
+    // иначе при каждом открытии окно сначала «вспыхивает» в центре,
+    // а потом перепрыгивает на сохранённое место.
+    final savedX = globalPrefs.getDouble('ada_overlay_x');
+    final savedY = globalPrefs.getDouble('ada_overlay_y');
+    final startPos = (savedX != null && savedY != null)
+        ? OverlayPosition(savedX, savedY)
+        : OverlayPosition((sw - 340) / 2, (sh - 380) / 2);
     // 1. Команда «сбросься и покажись» прямо в живой движок оверлея.
     //    Движок КЭШИРУЕТСЯ между открытиями: его Dart-состояние живёт
     //    даже когда окна нет, и lifecycle-событие при переоткрытии
@@ -55,7 +73,7 @@ Future<bool> showAdaOverlay({
       height: 380,
       width: 340,
       alignment: OverlayAlignment.topLeft,
-      startPosition: OverlayPosition((sw - 340) / 2, (sh - 380) / 2),
+      startPosition: startPos,
       // NOT_FOCUSABLE по дефолту — жест «назад» работает в основном
       // приложении. Фокус включается при тапе на поле ввода через
       // MethodChannel (updateFlag('focusPointer')).

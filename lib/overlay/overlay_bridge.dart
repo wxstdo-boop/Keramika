@@ -32,6 +32,10 @@ Future<bool> ensureAdaOverlay({
 /// Закрывает системный оверлей.
 Future<void> closeAdaOverlay() => bridge.closeAdaOverlay();
 
+/// Шлёт данные в живой движок мини-окошка (синхронизация аватарки/модели).
+Future<void> syncOverlayState(Map<String, dynamic> data) =>
+    bridge.syncOverlayState(data);
+
 /// Есть ли разрешение на системный оверлей.
 Future<bool> adaOverlayPermission() => bridge.adaOverlayPermission();
 
