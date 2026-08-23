@@ -437,7 +437,7 @@ class AiGuideService {
       ),
       '',
     );
-    // Служебные «### Instruction/Response/...»-секции вырезаем, а **жирный**,
+    // Служебные «### System/Response/...»-секции вырезаем, а **жирный**,
     // *курсив* и `код` НЕ трогаем — их рендерит чат как markdown.
     s = s.replaceAll(
       RegExp(
@@ -448,7 +448,28 @@ class AiGuideService {
       ),
       '',
     );
-    return s.trim();
+    // Некоторые бесплатные модели вместо ответа выдают служебный
+    // «статус-вывод»: «system ready true», «status waiting...»,
+    // «client connected» и т.п. Вырезаем такие строки целиком.
+    s = s.replaceAll(
+      RegExp(
+        r'^\s*(?:system|status|state|ready|waiting|debug|warning|error|'
+        r'client|server|session|thread|model_name?|provider|request|'
+        r'response|result|message|type|object|created|iteration|step|'
+        r'success|fail(?:ed)?|usage|stop_reason)\b[^\n]*$',
+        multiLine: true,
+        caseSensitive: false,
+      ),
+      '',
+    );
+    s = s.trim();
+    // Если после чистки остался только служебный статус — это НЕ ответ
+    // Ады: возвращаем пустоту, чтобы сработал отказ и попробовался
+    // следующий провайдер.
+    if (s.length < 30 && !RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(s)) {
+      return '';
+    }
+    return s;
   }
 
   /// Ответ почти целиком на латинице (английский) — мелкие модели
@@ -2743,7 +2764,9 @@ class AiGuideService {
     if (text == null || text.trim().isEmpty) {
       throw Exception('Poolside empty text');
     }
-    return _cleanText(text);
+    final cleaned = _cleanText(text);
+    if (cleaned.isEmpty) throw Exception('Poolside junk text');
+    return cleaned;
   }
 
   /// Второй раунд: выполняем tool_calls и доигрываем ответ.
