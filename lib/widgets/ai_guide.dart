@@ -443,15 +443,14 @@ class _AiChatSheetState extends State<_AiChatSheet>
     if (!_inputFocus.hasFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollCtrl.hasClients) return;
-      // Лента — reverse: true, значит offset 0 = низ (последнее
-      // сообщение), maxScrollExtent = верх (старые). Скроллим ИМЕННО
-      // к 0, чтобы при поднятии клавиатуры новые сообщения/«сочиняю»
-      // оставались на месте, а не «улетали» к началу чата.
-      _scrollCtrl.animateTo(
-        0,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-      );
+      final pos = _scrollCtrl.position;
+      // reverse:true — offset 0 это низ (последнее сообщение). Если мы уже
+      // внизу — НИЧЕГО не делаем: первое поднятие клавиатуры не должно
+      // сопровождаться скроллом (именно он давал «подтормаживание» при
+      // первом открытии). Если читали старые сообщения — мгновенный
+      // jumpTo(0), без анимации, чтобы не драться с клавиатурой.
+      if (pos.pixels <= 8) return;
+      _scrollCtrl.jumpTo(0);
     });
   }
 
