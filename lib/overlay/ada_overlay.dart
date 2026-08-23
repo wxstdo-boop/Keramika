@@ -119,9 +119,7 @@ class _OverlayChatState extends State<_OverlayChat>
     final v = variant.clamp(0, adaVariants.length - 1);
     if (v == s._avatarVariant) return;
     s.setState(() => s._avatarVariant = v);
-    try {
-      globalPrefs.setInt('ada_avatar_variant', v);
-    } catch (_) {}
+    setAdaAvatarVariant(v);
   }
 
   /// Живая синхронизация модели из ГЛАВНОГО чата: какой провайдер ответил
@@ -346,10 +344,7 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Future<void> _load() async {
-    _avatarVariant = (globalPrefs.getInt('ada_avatar_variant') ?? 0).clamp(
-      0,
-      adaVariants.length - 1,
-    );
+    _avatarVariant = savedAdaAvatarIndex();
     _modelLabel = await AiGuideService.currentModelLabel();
     // ВОССТАНАВЛИВАЕМ позицию из prefs: showOverlay всегда создаёт окно
     // по центру, а мы переставляем его туда, где оно было (иначе каждое
@@ -594,7 +589,7 @@ class _OverlayChatState extends State<_OverlayChat>
       next = (_avatarVariant + 1) % adaVariants.length;
     }
     setState(() => _avatarVariant = next);
-    globalPrefs.setInt('ada_avatar_variant', next);
+    setAdaAvatarVariant(next);
     syncOverlayState({'cmd': 'sync_avatar', 'variant': next});
   }
 
@@ -1184,11 +1179,10 @@ class _TypingBubbleState extends State<_TypingBubble>
                           shape: BoxShape.circle,
                           color: cs.primary,
                         ),
-                        transform: Matrix4.translationValues(
-                          0,
-                          -4 * (0.5 - 0.5 * cos((t * 2 * pi) - i * 0.9)),
-                          0,
-                        ),
+                        // Без вертикального прыжка: только альфа пульсирует
+                        // (плавный «печатает…» на слабых устройствах —
+                        // transform каждой точки каждый кадр дёргал UI).
+                        color: cs.primary.withValues(alpha: 0.4 + 0.6 * (.5 - .5 * cos((t * 2 * pi) - i * 0.9))),
                       ),
                   ],
                 );

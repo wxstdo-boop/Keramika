@@ -106,9 +106,25 @@ List<AdaVariant> _buildAdaVariants() {
 int savedAdaAvatarIndex() => (globalPrefs.getInt('ada_avatar_variant') ?? 0)
     .clamp(0, adaVariants.length - 1);
 
-/// Аватарка Ады — градиентный кружок со свечением и бликом.
-/// [variantIndex] — индекс в [adaVariants]; -1 — не следит за живым
-/// notifier'ом (переключение анимирует родительский AnimatedSwitcher).
+/// Живой индекс значка Ады: ВСЕ аватарки (шапка, пузыри сообщений,
+/// плавающее мини-окошко) следят за ним и меняются мгновенно и плавно,
+/// где бы их ни нажали. Общий для обоих движков.
+final ValueNotifier<int> adaAvatarVariant = ValueNotifier<int>(
+  savedAdaAvatarIndex(),
+);
+
+/// Сохраняет выбранный индекс (общий для движков) и уведомляет аватарки.
+void setAdaAvatarVariant(int index) {
+  final v = index.clamp(0, adaVariants.length - 1);
+  adaAvatarVariant.value = v;
+  try {
+    globalPrefs.setInt('ada_avatar_variant', v);
+  } catch (_) {}
+}
+
+/// Аватарка Ады — градиентный кружок с бликом.
+/// [variantIndex] — индекс в [adaVariants]; -1 — следит за живым
+/// [adaAvatarVariant] и меняется плавно сам.
 class AdaAvatar extends StatelessWidget {
   final double size;
   final int variantIndex;
@@ -116,11 +132,30 @@ class AdaAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final idx =
-        (variantIndex >= 0 && variantIndex < adaVariants.length)
-            ? variantIndex
-            : 0;
-    return _core(context, adaVariants[idx]);
+    if (variantIndex >= 0 && variantIndex < adaVariants.length) {
+      // Статичный индекс: родитель сам анимирует смену (AnimatedSwitcher
+      // в мини-окошке).
+      return _core(context, adaVariants[variantIndex]);
+    }
+    // Живой режим: следит за [adaAvatarVariant] и плавно меняется сам —
+    // везде, где аватарка может смениться (шапка, пузыри сообщений,
+    // подсказки), без дополнительных обёрток.
+    return ValueListenableBuilder<int>(
+      valueListenable: adaAvatarVariant,
+      builder: (context, idx, _) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: ScaleTransition(scale: anim, child: child),
+        ),
+        child: KeyedSubtree(
+          key: ValueKey('ada_av_$idx'),
+          child: _core(context, adaVariants[idx]),
+        ),
+      ),
+    );
   }
 
   Widget _core(BuildContext context, AdaVariant v) {
