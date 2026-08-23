@@ -34,8 +34,10 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
         TextSpan(
           text: code,
           style: baseStyle.copyWith(
-            fontFamily: 'monospace',
-            backgroundColor: baseStyle.color?.withValues(alpha: 0.12),
+            // monospace на телефоне рендерится крупнее/шире основного
+            // шрифта — пользователь видит «код увеличился». Оставляем
+            // ТОТ ЖЕ шрифт и размер, только подкрашиваем фоном.
+            backgroundColor: baseStyle.color?.withValues(alpha: 0.10),
           ),
         ),
       );
