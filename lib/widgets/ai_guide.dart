@@ -239,10 +239,27 @@ class _AdaAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (variantIndex >= 0) return _core(context, _adaVariants[variantIndex]);
+    // Плавная смена градиента: fade + лёгкий scale при любом переключении
+    // варианта (шапка, сообщения, пузыри окошка) — одинаково во всех местах.
+    Widget wrap(int idx, Key key) => AnimatedSwitcher(
+          duration: const Duration(milliseconds: 320),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: ScaleTransition(scale: anim, child: child),
+          ),
+          child: KeyedSubtree(
+            key: key,
+            child: _core(context, _adaVariants[idx]),
+          ),
+        );
+    if (variantIndex >= 0) {
+      return wrap(variantIndex, ValueKey('av_$variantIndex'));
+    }
     return ValueListenableBuilder<int>(
       valueListenable: adaAvatarVariant,
-      builder: (context, idx, _) => _core(context, _adaVariants[idx]),
+      builder: (context, idx, _) => wrap(idx, ValueKey('av_$idx')),
     );
   }
 
