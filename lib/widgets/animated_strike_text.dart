@@ -163,7 +163,13 @@ class _StrikePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (progress <= 0.001) return;
-    final fontSize = span.style?.fontSize ?? 16.0;
+    final baseFontSize = span.style?.fontSize ?? 16.0;
+    // МАСШТАБИРОВАННЫЙ размер: baseline от TextPainter приходит уже в
+    // масштабированных координатах (textScaler применён к раскладке), а
+    // span.style.fontSize — нет. Если брать немасштабированный fontSize,
+    // линия при масштабе > 1.0 рисуется ниже, чем нужно, и «залезает»
+    // в текст/descenders.
+    final fontSize = textScaler.scale(baseFontSize);
     final tp = TextPainter(
       text: span,
       textDirection: TextDirection.ltr,
@@ -177,14 +183,19 @@ class _StrikePainter extends CustomPainter {
 
     final linePaint = Paint()
       ..color = strikeColor
-      ..strokeWidth = math.max(1.6, fontSize * 0.10)
+      ..strokeWidth = math.max(1.8, fontSize * 0.11)
       ..strokeCap = StrokeCap.round;
 
     for (final m in tp.computeLineMetrics()) {
       final lineWidth = m.width * progress;
       if (lineWidth <= 0.3) continue;
-      // Линия проходит чуть ниже середины строки (0.42 от fontSize к baseline).
-      final y = m.baseline - fontSize * 0.42;
+      // Позиция по реальным метрикам КАЖДОЙ строки: ascent — высота
+      // от baseline до верха строки, и линия ставится на 0.45 от неё
+      // (середина между baseline и шапкой строки — проходит по центру
+      // букв, включая строки с заглавными/высокими глифами). Раньше
+      // брали fontSize*0.34 — при переносах на несколько строк и
+      // разной высоте строк линия «разъезжалась» по тексту.
+      final y = m.baseline - m.ascent * 0.45;
       canvas.drawLine(
         Offset(m.left, y),
         Offset(m.left + lineWidth, y),
@@ -197,7 +208,7 @@ class _StrikePainter extends CustomPainter {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
         canvas.drawCircle(
           Offset(m.left + lineWidth, y),
-          fontSize * 0.12,
+          m.ascent * 0.10,
           dotPaint,
         );
       }

@@ -16,14 +16,23 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
       spans.add(
         TextSpan(
           text: bold,
-          style: baseStyle.copyWith(fontWeight: FontWeight.w800),
+          // w600 вместо w800: при рукописном шрифте (Caveat/Kalam) жирный
+          // w800 выглядит «раздутым» и крупнее обычного текста. w600 даёт
+          // акцент без визуального увеличения.
+          style: baseStyle.copyWith(
+            fontWeight: FontWeight.w600,
+            fontSize: (baseStyle.fontSize ?? 14) * 0.96,
+          ),
         ),
       );
     } else if (italic != null) {
       spans.add(
         TextSpan(
           text: italic,
-          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          style: baseStyle.copyWith(
+            fontStyle: FontStyle.italic,
+            fontSize: (baseStyle.fontSize ?? 14) * 0.96,
+          ),
         ),
       );
     } else if (code != null) {

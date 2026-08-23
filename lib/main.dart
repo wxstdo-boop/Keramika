@@ -4,14 +4,13 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:path_provider/path_provider.dart';
 import 'screens/splash_screen.dart';
 import 'utils/android_settings.dart'
-    show setSecureWindow, setSecureChangedListener;
+    show setSecureWindow;
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/wake_task_screen.dart';
@@ -42,24 +41,6 @@ Timer? _autoSaveTimer;
 // Флаг — WakeTaskScreen уже показан, не пушить второй при тапе
 // по уведомлению (onNewIntent → onNewAlarmPayload).
 bool _wakeScreenShowing = false;
-// Сигнал от нативной стороны (onUserLeaveHint): пользователь РЕАЛЬНО уходит
-// из приложения — Home, «недавние», другое приложение. В отличие от простого
-// inactive (шторка, системные диалоги) именно этот сигнал означает, что
-// Android вот-вот снимет снапшот для переключателя задач. По нему показываем
-// PIN-размытие СРАЗУ (пока кадры ещё рендерятся), а не на paused — иначе
-// размытый кадр не успевает попасть в превью «недавних».
-bool userLeaveHintFired = false;
-// Фокус окна: шторка уведомлений/диалоги его ОТНИМАЮТ, а «недавние»
-// (кнопка/жест) — сохраняют. По нему отличаем «пук» от реального ухода.
-bool windowFocused = true;
-// hidden/paused подтвердили реальный уход — размытие больше не трогаем
-// до возврата (сторож шторки его не убивает).
-bool blurConfirmedByHidden = false;
-// Ссылка на состояние KeramikaApp для обработчика канала windowFocus
-// (обработчик живёт вне дерева виджетов и не имеет доступа к полям
-// состояния напрямую).
-KeramikaAppState? blurAppState;
-
 /// Маппинг prefs-ключей на короткие имена, чтобы при экспорте обратно
 /// в payload ключи совпадали с именами, которыми пользуется импорт
 /// в settings_screen.
@@ -724,39 +705,14 @@ void main() async {
       // и проверки реальности, иначе они молча пропадут до ручного
       // открытия приложения.
       await rescheduleAllNotifications();
-    } else if (call.method == 'userLeaveHint') {
-      // Пользователь реально покидает приложение (Home/«недавние»):
-      // поднимаем флаг, по которому lifecycle покажет PIN-размытие уже
-      // на inactive — пока кадры ещё рендерятся и Android снимет
-      // размытый снапшот для «недавних».
-      userLeaveHintFired = true;
     }
   });
 
-  // Сигнал onUserLeaveHint приходит по ОТДЕЛЬНОМУ каналу (lifecycle),
-  // а не alarm_payload — нативный invoke без ответа здесь не ронялся,
-  // но и не доходил до Dart: флаг не поднимался, и размытие в «недавних»
-  // не показывалось. Вешаем обработчик и на этот канал тоже.
-  _lifecycleChannel.setMethodCallHandler((call) async {
-    if (call.method == 'userLeaveHint') {
-      userLeaveHintFired = true;
-      debugPrint('[blur] userLeaveHint fired');
-      // userLeaveHint — пользователь РЕАЛЬНО уходит (Home, «недавные»,
-      // другое приложение), шторка его НЕ даёт. Отменяем сторож шторки:
-      // размытие уже показано мгновенно на inactive и должно остаться
-      // до hidden (попасть в миниатюру «недавных»).
-      blurAppState?._confirmRealExit();
-    } else if (call.method == 'windowFocus') {
-      // ВАЖНО: фокус НЕ различает шторку и «недавные» на жестовой
-      // навигации — оба отнимают фокус за 0–1 мс (замерено на телефоне).
-      // Поэтому по фокусу размытие НЕ прячем (раньше гвард с порогом
-      // 10 мс убивал размытие при жестах — «в недавных размытия вовсе
-      // нет»). Шторку отличаем по отсутствию hidden/userLeaveHint
-      // (см. _armShadeWatchdog).
-      windowFocused = call.arguments as bool? ?? true;
-      debugPrint('[blur] windowFocus=$windowFocused');
-    }
-  });
+  // Канал жизненного цикла от нативной стороны. Раньше по нему приходили
+  // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
+  // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
+  // invoke не падал в MissingPluginException.
+  _lifecycleChannel.setMethodCallHandler((call) async {});
 }
 
 /// Поведение скролла для всего приложения: iOS-стиль «баунса»/натяжения
@@ -776,219 +732,6 @@ class _AppScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-/// Оверлей для «недавних»: размытый снимок приложения + лёгкая тёмная
-/// вуаль + белый бейдж с буквой «K» (Keramika) по центру. Android
-/// фиксирует его как превью задачи, когда PIN установлен.
-///
-/// Появляется МГНОВЕННО (кадр должен успеть в превью «недавних»), а
-/// исчезает при возврате плавно («расфокусировка» — снимок свежий, кадры
-/// совпадают, «двоения» нет). Оверлей живёт в дереве постоянно и лишь
-/// меняет прозрачность.
-class _RecentsBlurOverlay extends StatefulWidget {
-  final ui.Image? image;
-
-  const _RecentsBlurOverlay({super.key, this.image});
-
-  @override
-  State<_RecentsBlurOverlay> createState() => _RecentsBlurOverlayState();
-}
-
-class _RecentsBlurOverlayState extends State<_RecentsBlurOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _fadeCtrl;
-  late final Animation<double> _opacity;
-  // Снимок, которым ОВЕРЛЕЙ сейчас владеет (диспозится самим оверлеем,
-  // а не KeramikaAppState): иначе старый image диспозится в момент, когда
-  // оверлей ещё рисует его во время fade-out — отсюда «мигание» при возврате.
-  ui.Image? _owned;
-
-  @override
-  void initState() {
-    super.initState();
-    // Короткий fade при показе (90 мс): Android снимает снапшот «недавних»
-    // почти сразу после ухода в фон, поэтому долгий fade (180 мс) не успевал
-    // и в «недавних» было видно настоящее содержимое. 90 мс — «мягко», но
-    // успевает. Исчезновение при возврате — плавное (320 мс).
-    _fadeCtrl = AnimationController(
-      vsync: this,    // Показ — короткий fade (см. show): размытие появляется ПОСЛЕ
-    // подтверждения ухода, а миниатюра «недавных» переснимается ещё
-    // позже (~1200 мс) — fade успевает, «двоения» не будет.
-      duration: const Duration(milliseconds: 90),
-      // 300 мс: заметно плавное исчезновение при возврате — размытие
-      // мягко «расфокусируется» поверх живого экрана, без резкого
-      // щелчка и без ощущения «мигания». 200 мс было слишком резким.
-      reverseDuration: const Duration(milliseconds: 300),
-    );
-    _opacity = CurvedAnimation(
-      parent: _fadeCtrl,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-  }
-
-  @override
-  void didUpdateWidget(_RecentsBlurOverlay oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.image != widget.image) {
-      // Новый снимок пришёл. Старый диспозим, но ТОЛЬКО если оверлей его
-      // уже не рисует (полностью скрыт). Если идёт fade-out — откладываем
-      // до завершения анимации.
-      final old = _owned;
-      _owned = widget.image;
-      if (old != null && old != widget.image) {
-        if (_fadeCtrl.value == 0.0) {
-          old.dispose();
-        } else {
-          // Диспозим после того, как оверлей закончит показывать старый кадр.
-          _fadeCtrl.addStatusListener(_disposeAfterFade);
-          _pendingDispose = old;
-        }
-      }
-    }
-  }
-
-  ui.Image? _pendingDispose;
-  bool _listenerAttached = false;
-
-  void _disposeAfterFade(AnimationStatus status) {
-    if (status == AnimationStatus.dismissed &&
-        !_listenerAttached) {
-      _listenerAttached = true;
-      _fadeCtrl.removeStatusListener(_disposeAfterFade);
-      _listenerAttached = false;
-      _pendingDispose?.dispose();
-      _pendingDispose = null;
-    }
-  }
-
-  @override
-  void dispose() {
-    _fadeCtrl.dispose();
-    _owned?.dispose();
-    _pendingDispose?.dispose();
-    super.dispose();
-  }
-
-  /// Показать оверлей при уходе в фон.
-  ///
-  /// Короткий fade (60 мс) — «вход» мягкий, без резкого щелчка. Он
-  /// завершается задолго до снятия миниатюры «недавных» (~250 мс), поэтому
-  /// кадр миниатюры — полное размытие, без «двоения». Плавность при
-  /// ВОЗВРАТЕ — см. hideAnimated.
-  void show() {
-    if (_fadeCtrl.value < 1.0) _fadeCtrl.forward();
-  }
-
-  /// Скрыть оверлей МГНОВЕННО — когда размытие не попало в превью
-  /// «недавних» (показано только на hidden/paused): при возврате оно не
-  /// должно мигнуть поверх контента.
-  void hide() {
-    if (_fadeCtrl.value > 0.0) _fadeCtrl.value = 0.0;
-  }
-
-  /// Плавное исчезновение — когда размытие реально было на экране при
-  /// уходе (свежий снимок совпадает с контентом): «расфокусировка»
-  /// выглядит плавной, без «двоения» и вспышек.
-  TickerFuture? hideAnimated() {
-    if (_fadeCtrl.value > 0.0) return _fadeCtrl.reverse();
-    return null;
-  }
-
-
-  @override
-  Widget build(BuildContext context) {
-    // IgnorePointer пересчитывается вместе с анимацией (ListenableBuilder),
-    // а не один раз при build: иначе после первого показа `ignoring`
-    // застревал в false и оверлей НАВСЕГДА блокировал нажатия.
-    // Во время fade-out (возврат в приложение) нажатия НЕ блокируем —
-    // пользователь сразу может тапать.
-    return ListenableBuilder(
-      listenable: _fadeCtrl,
-      builder: (context, child) {
-        final hiding = _fadeCtrl.status == AnimationStatus.reverse;
-        return IgnorePointer(
-          ignoring: hiding || _fadeCtrl.value == 0.0,
-          child: child,
-        );
-      },
-      child: FadeTransition(
-        opacity: _opacity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (widget.image != null)
-              ImageFiltered(
-                // Сильное размытие: детали не читаются, остаётся только
-                // общий фон и цветовая гамма приложения.
-                imageFilter:
-                    ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                // SizedBox.expand гарантирует, что снимок покрывает ВЕСЬ
-                // экран (независимо от того, как constraints доходят до
-                // RawImage внутри ImageFiltered).
-                child: SizedBox.expand(
-                  child: RawImage(
-                    image: widget.image,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                  ),
-                ),
-              )
-            else
-              // Снимок не успел получиться — мягкий фирменный градиент
-              // (фиолетовый → тёмный → розовый), а не плоский «серый квадрат».
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF2A2440),
-                      Color(0xFF17181C),
-                      Color(0xFF2E1B26),
-                    ],
-                  ),
-                ),
-              ),
-            // Тёмная вуаль поверх размытия — дополнительно прячет детали
-            // и делает превью ровным и «дорогим».
-            ColoredBox(color: Colors.black.withValues(alpha: 0.30)),
-            // Бейдж: белый круг с чёрной буквой «K» — сразу видно, что
-            // контент защищён PIN, и это выглядит намеренно, а не
-            // «квадрат посреди экрана».
-            Center(
-              child: Container(
-                width: 86,
-                height: 86,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.30),
-                      blurRadius: 26,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Center(
-                  child: Text(
-                    'K',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 44,
-                      fontWeight: FontWeight.w700,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class KeramikaApp extends StatefulWidget {
   final bool initialLocked;
@@ -1024,39 +767,10 @@ class KeramikaAppState extends State<KeramikaApp>
   // меняется (тема та же), поэтому никаких белых/чёрных вспышек — просто
   // деликатное затемнение и проявление контента.
   bool _locked = false;
-  // === Размытие в «недавних» при установленном PIN ===
-  // При уходе приложения в фон снимаем текущий кадр и рисуем его размытым
-  // поверх — Android фиксирует это превью в переключателе задач вместо
-  // пустой/чёрной заглушки FLAG_SECURE (и вместо видимых личных записей).
-  final GlobalKey _blurBoundaryKey = GlobalKey();
-  final GlobalKey<_RecentsBlurOverlayState> _blurOverlayKey =
-      GlobalKey<_RecentsBlurOverlayState>();
-  bool _pinBlurEnabled = false; // true, пока установлен PIN
-  bool _blurOverlayVisible = false;
-  // До первого resumed (запуск, системный сплэш) размытие не трогаем —
-  // иначе «мигает при запуске».
-  bool _everResumed = false;
-  // Пауза на inactive: жест/кнопка «недавных» не дают onUserLeaveHint —
-  // если за паузой приходит hidden/paused, это реальный уход; шторка
-  // hidden не даёт, и размытие не останется (см. _armShadeWatchdog).
-  Timer? _blurArmTimer;
-  // Сторож шторки: размытие показано на inactive, но hidden/paused так и
-  // не пришли — значит это шторка/системный диалог, убираем размытие
-  // мгновенно, чтобы оно не «висело» при любом пуке.
-  Timer? _shadeWatchdog;
-  // Размытие реально попало в кадр при уходе (показано на inactive до
-  // остановки рендера) — при возврате оно плавно «расфокусируется».
-  // Если показано только на hidden/paused — в превью его нет, и при
-  // возврате его нужно убрать МГНОВЕННО (иначе вспышка поверх контента).
-  bool _blurRenderedAtExit = false;
-  ui.Image? _blurImage;
   ColorScheme? _lightDynamic;
   ColorScheme? _darkDynamic;
   Timer? _overlayCheckTimer;
 
-  /// Таймер Ада-трекинга: будит приложение ровно в 08:00 и 21:00, чтобы
-  /// Ада написала утренний/вечерний отчёт прямо в чат (пока приложение
-  /// открыто). Пропущенные времена догоняются при старте и возврате из фона.
   Timer? _adaTrackTimer;
   ThemeData? _lightThemeCache;
   ThemeData? _darkThemeCache;
@@ -1194,232 +908,18 @@ class KeramikaAppState extends State<KeramikaApp>
   }
 
   void unlock() {
-    // PIN остаётся установленным — размытие в «недавних» НЕ выключаем:
-    // переключатель задач показывает размытый снимок, пока PIN активен.
     aiLockScreenVisible.value = false;
     setState(() => _locked = false);
     _goSplash();
   }
 
-  /// Периодический захват снимка экрана (пока приложение в фореграунде и PIN
-  /// активен): к моменту ухода в фон у нас уже есть свежий кадр, и оверлей
-  /// показывается СИНХРОННО (без ожидания toImage — на MIUI асинхронный
-  /// захват не успевал отрисоваться до снапшота «недавних»).
-  Timer? _blurRefreshTimer;
-  bool _blurCapturing = false;
-  // Плавное проявление приложения при возврате: размытие держится
-  // НЕПРОЗРАЧНЫМ, а поверх него проявляется само приложение (0 → 1). Так нет
-  // «двоения» экрана (размытая копия + живой экран одновременно) и резких
-  // скачков. Когда приложение полностью непрозрачно — размытие убирается
-  // мгновенно (оно невидимо под приложением).
-
-  void _startBlurRefresh() {
-    _stopBlurRefresh();
-    // Свежий кадр сразу — и дальше каждые 1.5 с.
-    _refreshBlurSnapshot();
-    _blurRefreshTimer = Timer.periodic(
-      const Duration(milliseconds: 1500),
-      (_) {
-        if (_pinBlurEnabled && !_blurOverlayVisible) _refreshBlurSnapshot();
-      },
-    );
-  }
-
-  void _stopBlurRefresh() {
-    _blurRefreshTimer?.cancel();
-    _blurRefreshTimer = null;
-  }
-
-  /// Снимает кадр приложения (половинное разрешение — быстро) и кладёт его
-  /// в [_blurImage] БЕЗ setState: оверлей прочитает его в момент показа.
-  Future<void> _refreshBlurSnapshot() async {
-    if (!_pinBlurEnabled || _blurCapturing) return;
-    final boundary = _blurBoundaryKey.currentContext?.findRenderObject();
-    if (boundary is! RenderRepaintBoundary || !boundary.hasSize) return;
-    _blurCapturing = true;
-    try {
-      final image = await boundary.toImage(pixelRatio: 0.5);
-      if (!mounted) {
-        image.dispose();
-        return;
-      }
-      // НЕ диспозим старый снимок здесь: им может ещё владеть оверлей
-      // (fade-out). Оверлей сам диспозит предыдущий кадр, когда закончит
-      // его показывать (см. _RecentsBlurOverlayState.didUpdateWidget).
-      // setState нужен, чтобы оверлей перестроился с новым кадром и
-      // освободил старый (иначе утечка каждые 1.5 с).
-      if (mounted) setState(() => _blurImage = image);
-    } catch (_) {
-      // Снимок не удался — оверлей покажет тёмную подложку с замком.
-    } finally {
-      _blurCapturing = false;
-    }
-  }
-
-  /// Подтверждение реального ухода (userLeaveHint — жест «недавных»
-  /// ~700 мс, Home, другое приложение). Это НЕ шторка: показываем
-  /// размытие сейчас — Android переснимает миниатюру «недавных» ещё
-  /// позже (~1200 мс) и успеет захватить размытый кадр.
-  void _confirmRealExit() {
-    _cancelShadeWatchdog();
-    if (!_pinBlurEnabled) return;
-    _showBlurNow(rendered: true);
-  }
-
-  /// Показ оверлея — МГНОВЕННО (без fade): в момент ухода кадры ещё
-  /// рендерятся, и Android фиксирует размытый кадр в превью «недавних».
-  /// Любой fade рискует не успеть — и в переключателе задач окажется
-  /// настоящее содержимое. [rendered] = true, когда размытие реально
-  /// попало в кадр (показано на inactive до остановки рендера): тогда
-  /// при возврате оно плавно «расфокусируется». false — размытие показано
-  /// только на hidden/paused (в превью его нет) — при возврате убирается
-  /// мгновенно, чтобы не мигнуть поверх контента.
-  void _showBlurNow({bool rendered = false}) {
-    if (!_pinBlurEnabled) return;
-    debugPrint('[blur] showBlurNow: pin=$_pinBlurEnabled visible=$_blurOverlayVisible image=${_blurImage != null} rendered=$rendered');
-    if (!_blurOverlayVisible) {
-      // rendered=true (показано по таймеру ДО hidden) — размытие реально
-      // в миниатюре «недавных», при возврате плавно «расфокусируемся».
-      // rendered=false (только на hidden) — в превью его нет, при возврате
-      // убираем мгновенно, чтобы не мигнуть. Флаг ставим ТОЛЬКО при
-      // первом показе (false→true): повторные вызовы (hidden после таймера)
-      // не должны затирать rendered=true на false — иначе возврат резкий.
-      _blurRenderedAtExit = rendered;
-      _blurOverlayVisible = true;
-      setState(() {});
-    }
-    // Даже если оверлей уже «виден» (быстрый повторный уход во время
-    // fade-out) — возвращаем его к полной непрозрачности.
-    _blurOverlayKey.currentState?.show();
-  }
-
-  /// Плавный возврат. Размытие тает ПОВЕРХ живого экрана (снимок свежий —
-  /// снят в момент ухода, кадры совпадают — «двоения» нет). Если размытие
-  /// не попало в превью (жест/кнопка «недавних») — убираем мгновенно.
-  void _clearBlurOverlay() {
-    if (!_blurOverlayVisible) return;
-    debugPrint('[blur] clearBlurOverlay rendered=$_blurRenderedAtExit');
-    // Флаг сбрасываем СИНХРОННО: раньше он зависел от whenComplete
-    // fade-анимации и мог «застрять» в true — после чего размытие
-    // переставало показываться навсегда. Анимация исчезновения при этом
-    // всё равно плавная (контроллер оверлея делает reverse).
-    _blurOverlayVisible = false;
-    final state = _blurOverlayKey.currentState;
-    if (state == null) return;
-    // ВСЕГДА плавное исчезновение (300 мс): оверлей показан — при возврате
-    // он должен «расфокусироваться» поверх живого экрана, а не исчезнуть
-    // щелчком. Мгновенный hide() давал «мигание при входе», когда размытие
-    // показывалось поздно (rendered=false, кнопка «недавных»). Снимок
-    // свежий (снимается каждые 1.5 с + при возврате), кадры совпадают —
-    // «двоения» нет.
-    state.hideAnimated();
-  }
-
-  /// Показ размытия для «недавных» (кнопка/жест). Баланс двух проблем:
-  ///
-  /// 1. Если ждать подтверждения ухода (userLeaveHint/hidden) — на этом
-  ///    телефоне оно приходит через ~700–1250 мс, а миниатюра «недавных»
-  ///    снимается уже через ~615 мс: в переключателе оказывается НАСТОЯЩЕЕ
-  ///    содержимое («размытия вовсе нет»).
-  /// 2. Если показывать размытие мгновенно на inactive — шторка
-  ///    уведомлений тоже даёт inactive (подтверждения ухода НЕ даёт), и
-  ///    размытие висит под ней («появляется и исчезает»).
-  ///
-  /// Решение: показать размытие через ~250 мс (успевает к снятию
-  /// миниатюры ~615 мс), а сторож 1.6 с убирает его, только если
-  /// подтверждение реального ухода (hidden/paused/userLeaveHint) так и
-  /// не пришло — это шторка. «Недавные» всегда приходят раньше (~1.25 с),
-  /// поэтому их размытие сторож не трогает.
-  void _armBlurTimer() {
-    _blurArmTimer?.cancel();
-    _shadeWatchdog?.cancel();
-    debugPrint('[blur] inactive: show blur in 250ms, shade guard 1.6s');
-    _blurArmTimer = Timer(const Duration(milliseconds: 250), () {
-      _blurArmTimer = null;
-      if (!mounted) return;
-      if (_blurOverlayVisible || blurConfirmedByHidden) return;
-      _showBlurNow(rendered: true);
-    });
-    _shadeWatchdog = Timer(const Duration(milliseconds: 1600), () {
-      _shadeWatchdog = null;
-      if (!mounted) return;
-      // Подтверждение пришло (userLeaveHint/hidden показали размытие
-      // или blurConfirmedByHidden уже стоит) — ничего не делаем.
-      if (_blurOverlayVisible || blurConfirmedByHidden) return;
-      // Ничего не пришло за 1.6 с — это шторка уведомлений: убираем
-      // размытие, чтобы оно не висело под ней.
-      debugPrint('[blur] shade guard: no confirm in 1.6s — шторка, прячем');
-      _blurOverlayVisible = false;
-      _blurOverlayKey.currentState?.hide();
-    });
-  }
-
-  void _cancelBlurArm() {
-    _blurArmTimer?.cancel();
-    _blurArmTimer = null;
-  }
-
-  void _cancelShadeWatchdog() {
-    _shadeWatchdog?.cancel();
-    _shadeWatchdog = null;
-  }
-
-  /// Home / запуск другого приложения (onUserLeaveHint): ждём свежий снимок
-  /// (десятки мс — анимация сворачивания ещё идёт, размытый кадр успеет
-  /// в превью «недавных»), затем показываем размытие. Свежий снимок важен:
-  /// старый (до 1.5 с) при возврате давал «двоение» со старым экраном.
-  Future<void> _showBlurAfterSnapshot() async {
-    await _refreshBlurSnapshot();
-    if (!mounted || !userLeaveHintFired) return;
-    if (_blurOverlayVisible) return;
-    _showBlurNow(rendered: true);
-    // userLeaveHint уже пришёл — реальный уход подтверждён, шторка его не
-    // даёт. Зонд не нужен: размытие остаётся до hidden/возврата.
-  }
-
-
-
-  void _onPinBlurChanged(bool secure) {
-    _pinBlurEnabled = secure;
-    if (secure) {
-      _startBlurRefresh();
-    } else {
-      _stopBlurRefresh();
-      _clearBlurOverlay();
-    }
-  }
-
-  /// Сверяет размытие с ФАКТОМ установленного PIN (не с состоянием
-  /// блокировки): пользователь мог удалить PIN или поставить его, пока
-  /// приложение было в фоне.
-  Future<void> _syncPinBlur() async {
-    try {
-      final has = await PinService.hasPin();
-      if (!mounted || has == _pinBlurEnabled) return;
-      _pinBlurEnabled = has;
-      if (has) {
-        _startBlurRefresh();
-      } else {
-        _stopBlurRefresh();
-        _clearBlurOverlay();
-      }
-    } catch (_) {}
-  }
-
-  @override
   void initState() {
     super.initState();
-    blurAppState = this;
     _themeKey = widget.initialTheme;
     _languageCode = widget.initialLanguageCode;
     _peachDark = widget.initialPeachDark;
     _locked = widget.initialLocked;
     aiLockScreenVisible.value = _locked;
-    // PIN-режим активен уже при старте (инициализация из initialLocked):
-    // приложение может уйти в фон прямо с локскрина.
-    _pinBlurEnabled = widget.initialLocked;
-    if (_pinBlurEnabled) _startBlurRefresh();
-    setSecureChangedListener(_onPinBlurChanged);
     WidgetsBinding.instance.addObserver(this);
     // Polling: проверяем каждые 2 сек, жив ли оверлей Ады.
     // Lifecycle resumed НЕ fire при закрытии системного оверлея
@@ -1432,13 +932,6 @@ class KeramikaAppState extends State<KeramikaApp>
     // (e.g. Russian) even if it was unavailable at startup.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _languageCode == 'system') setState(() {});
-      // Initial `resumed` Android часто доставляет ДО того, как state
-      // зарегистрировался как observer (main() долго инициализируется:
-      // prefs, миграции, уведомления) — событие теряется и _everResumed
-      // навсегда остаётся false, из-за чего PIN-размытие не показывается
-      // ВООБЩЕ. Первый кадр = приложение реально на переднем плане —
-      // считаем это эквивалентом первого resumed.
-      _everResumed = true;
     });
     _armAdaTrackingTimer();
   }
@@ -1498,16 +991,10 @@ class KeramikaAppState extends State<KeramikaApp>
 
   @override
   void dispose() {
-    if (blurAppState == this) blurAppState = null;
-    _stopBlurRefresh();
-    _cancelBlurArm();
-    _cancelShadeWatchdog();
     _stopOverlayCheck();
     _adaTrackTimer?.cancel();
     aiFloating.removeListener(_onAiFloatingChanged);
     WidgetsBinding.instance.removeObserver(this);
-    // Сам снимок не диспозим: им владеет оверлей (_RecentsBlurOverlayState).
-    _blurImage = null;
     super.dispose();
   }
 
@@ -1522,22 +1009,8 @@ class KeramikaAppState extends State<KeramikaApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    debugPrint('[blur] lifecycle=$state pin=$_pinBlurEnabled visible=$_blurOverlayVisible leave=$userLeaveHintFired sysUi=$systemUiActive ever=$_everResumed');
     if (state == AppLifecycleState.resumed) {
       // Приложение снова на переднем плане.
-      _everResumed = true;
-      _cancelBlurArm();
-      _cancelShadeWatchdog();
-      // Пользователь вернулся — снимаем флаги ухода.
-      userLeaveHintFired = false;
-      windowFocused = true;
-      blurConfirmedByHidden = false;
-      // Плавный возврат: размытие тает поверх живого экрана (снимок свежий —
-      // совпадает с контентом, «двоения» нет), или убирается мгновенно,
-      // если в превью его не было (иначе — вспышка при входе).
-      _clearBlurOverlay();
-      // PIN мог поменяться, пока приложение было в фоне — сверяемся с фактом.
-      unawaited(_syncPinBlur());
       // Системный UI (файл-пикер и т.п.) закрылся — флаг сбрасываем.
       systemUiActive = false;
       HabitService().normalizeIfDayChanged();
@@ -1549,11 +1022,6 @@ class KeramikaAppState extends State<KeramikaApp>
       // Автоэкспорт «догоняет» пропущенный час, пока приложение было
       // закрыто или в фоне — Dart-таймер там не срабатывает.
       maybeCatchUpAutoExport();
-      // Свежий снимок для следующего ухода в фон — после отрисовки кадра
-      // (текущий экран уже виден).
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _refreshBlurSnapshot();
-      });
       // Если системный оверлей Ады закрыли — возвращаем значок ИИ
       // плавно через AnimatedSwitcher.
       if (!kIsWeb && aiFloating.value) {
@@ -1564,48 +1032,6 @@ class KeramikaAppState extends State<KeramikaApp>
           }
         });
       }
-      return;
-    }
-
-    // До первого resumed (запуск, системный сплэш) размытие не трогаем —
-    // иначе «мигает при запуске».
-    if (!_everResumed) return;
-    // Открыт системный UI (файл-пикер при экспорте/импорте, выбор звука,
-    // уведомления) — размытие НЕ показываем: оно портило переходы.
-    if (systemUiActive) return;
-
-    if (state == AppLifecycleState.inactive) {
-      // Шторка уведомлений и системные диалоги дают только inactive (без
-      // hidden/paused). Снимок НЕ переснимаем здесь: к моменту inactive
-      // переход в «недавные» уже начался и окно затемнено/ужато — свежий
-      // кадр получается тёмным, и миниатюра выглядит чёрным прямоугольником.
-      // Используем последний периодический снимок (обновляется раз в 1.5 с,
-      // всегда яркий).
-      if (userLeaveHintFired) {
-        // Home / запуск другого приложения: ждём свежий снимок (десятки мс —
-        // анимация сворачивания ещё идёт) и показываем размытие, пока кадры
-        // ещё рендерятся и Android снимет размытый снапшот для «недавных».
-        unawaited(_showBlurAfterSnapshot());
-      } else {
-        // Жест / кнопка «недавных»: onUserLeaveHint не приходит. Даём
-        // короткую паузу — если это реальный уход, за ней придёт
-        // hidden/paused (подтверждение), и размытие уже будет на экране,
-        // когда Android снимет миниатюру. Шторка даёт только inactive —
-        // сторож уберёт размытие, а возврат (resumed) очистит его.
-        _armBlurTimer();
-      }
-      return;
-    }
-    if (state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused) {
-      // Реальный уход в фон подтверждён (шторка hidden НЕ даёт).
-      _cancelBlurArm();
-      _cancelShadeWatchdog();
-      blurConfirmedByHidden = true;
-      // Если размытие уже показано (timer/userLeaveHint) — no-op. Если
-      // hidden пришёл раньше паузы — страховка: при возврате убирается
-      // мгновенно, без вспышки (rendered=false).
-      _showBlurNow(rendered: false);
     }
   }
 
@@ -1629,12 +1055,56 @@ class KeramikaAppState extends State<KeramikaApp>
       // Лёгкая цветокоррекция «приятнее глазу» без смены палитр: чуть
       // больше воздуха в тексте, мягче тени и скругления карточек,
       // деликатный размытый фон вместо сплошного — глаза меньше устают.
+      // Базовый textTheme: слегка крупнее стандарта, чтобы компенсировать
+      // малую x-высоту Caveat (глобальный TextScaler больше не используем —
+      // он не доходил до части виджетов). Здесь размеры применяются
+      // безусловно.
       textTheme: Typography.material2021(platform: TargetPlatform.android)
           .black
           .apply(
             fontFamily: 'Caveat',
             bodyColor: scheme.onSurface,
             displayColor: scheme.onSurface,
+          )
+          .copyWith(
+            // Немного выше стандарта, но без прежнего перекоса: прежний
+            // глобальный коэффициент 1.35 не долетал до части экранов,
+            // а эти размеры применяются везде, включая привычки и задачи.
+            titleMedium: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 21,
+              fontWeight: FontWeight.w600,
+            ),
+            titleSmall: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+            bodyLarge: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 20,
+              fontWeight: FontWeight.w500,
+            ),
+            bodyMedium: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 19,
+              fontWeight: FontWeight.w500,
+            ),
+            bodySmall: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 17,
+              fontWeight: FontWeight.w500,
+            ),
+            labelSmall: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+            labelMedium: const TextStyle(
+              fontFamily: 'Caveat',
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
           ),
       scaffoldBackgroundColor: scheme.surface,
       appBarTheme: const AppBarTheme(
@@ -1726,34 +1196,10 @@ class KeramikaAppState extends State<KeramikaApp>
 
   @override
   Widget build(BuildContext context) {
-    // Корень: Stack из приложения и размытого оверлея для «недавних».
-    // RepaintBoundary вокруг всего приложения — по нему периодически
-    // снимается кадр (см. _refreshBlurSnapshot), чтобы к уходу в фон был
-    // свежий снимок. Оверлей рисуется ПОВЕРХ приложения, поэтому Android
-    // фиксирует в переключателе задач именно размытый кадр.
-    //
-    // ВАЖНО: корень стоит ВЫШЕ MaterialApp, поэтому Directionality
-    // (которую даёт MaterialApp) здесь ещё не доступна — Stack с дефолтным
-    // AlignmentDirectional.topStart падал бы с «No Directionality widget
-    // found» (весь экран превращался в ErrorWidget). Оборачиваем в
-    // Directionality явно.
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Репозиторий снимка для размытия — вокруг всего приложения:
-          // кадр всегда снимается с полной непрозрачности.
-          RepaintBoundary(
-            key: _blurBoundaryKey,
-            child: _buildApp(context),
-          ),
-          // Оверлей живёт в дереве ВСЕГДА и лишь меняет прозрачность:
-          // поэтому и появление (180 мс), и исчезновение (320 мс) плавные.
-          _RecentsBlurOverlay(key: _blurOverlayKey, image: _blurImage),
-        ],
-      ),
-    );
+    // Корень — само приложение. Раньше здесь был Stack с репозиторием
+    // снимка и размытым оверлеем для «недавных» (PIN) — размытие удалено,
+    // остался прямой вызов _buildApp.
+    return _buildApp(context);
   }
 
   Widget _buildApp(BuildContext context) {
@@ -1973,7 +1419,7 @@ class KeramikaAppState extends State<KeramikaApp>
           themeMode: themeMode,
           // Плавная смена темы: цвета интерфейса (фон, карточки, тексты)
           // перетекают за 420 мс вместо резкого мгновенного переключения.
-          themeAnimationDuration: const Duration(milliseconds: 420),
+          themeAnimationDuration: const Duration(milliseconds: 320),
           themeAnimationCurve: Curves.easeOutCubic,
           home: _locked
               ? LockScreen(onUnlock: () => unlock())
@@ -1982,6 +1428,11 @@ class KeramikaAppState extends State<KeramikaApp>
                   onDone: _goHome,
                 ),
           builder: (context, child) {
+            // Глобальный множитель шрифта убран: TextScaler.linear(1.35)
+            // НЕ применялся к виджетам, оборачивающим текст в собственный
+            // MediaQuery (поэтому в привычках/задачах шрифт «не менялся»).
+            // Базовые размеры теперь подняты в самой теме (_buildThemeData)
+            // и точечно в проблемных местах — работает везде одинаково.
             // Системную навигационную панель красим в цвет фона приложения:
             // иначе внизу (под контентом) видна белая полоса, за которую
             // «залезает» экран при pull-to-refresh. Вызывается при каждой
@@ -2009,8 +1460,10 @@ class KeramikaAppState extends State<KeramikaApp>
                 ),
               );
             });
+            // Системный textScaler оставляем как есть — пользователь мог
+            // включить крупный шрифт в системе; дополнительно не трогаем.
             return LocaleProvider(
-              locale: resolved,
+                locale: resolved,
               // БЕЗ меняющегося key: при смене темы/языка не пересоздаём
               // Navigator и плавающее окошко (иначе открытый чат закрывался,
               // а пузырь терял состояние).
