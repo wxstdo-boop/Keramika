@@ -39,7 +39,9 @@ const _overlayIcons = <IconData>[
 
 /// Размеры окна оверлея (dp). Окно почти квадратное — «не вдлину»:
 /// 340×380 (было 280×440 — вытянутое).
-const double _bubbleSize = 64;
+// Пузырь уменьшен ВДВОЕ (64→32): компактнее, не перекрывает контент.
+// Чат-окно то же (340×380).
+const double _bubbleSize = 32;
 const double _chatWidth = 340;
 const double _chatHeight = 380;
 
@@ -112,6 +114,10 @@ class _OverlayChatState extends State<_OverlayChat>
   /// закрытие окна). [onHostReset] вызывается из ГЛАВНОГО приложения по
   /// каналу сообщений — переоткрытие окна не зависит от lifecycle.
   static _OverlayChatState? _live;
+  /// Первое появление (initState) НЕ должно повторять сброс: lifecycle
+  /// «resumed» приходит на старте движка ДО первого кадра, и повторный
+  /// сброс съедал плавный вход (fade успевал закончиться до показа).
+  bool _initialized = false;
 
   /// Сброс из основного окна: окно пересоздано — привести чат в состояние
   /// «только что открылся» и НАЧАТЬ появление заново. Важно: команда
@@ -194,14 +200,13 @@ class _OverlayChatState extends State<_OverlayChat>
   void initState() {
     super.initState();
     _live = this;
+    _initialized = true;
     WidgetsBinding.instance.addObserver(this);
     _inputFocus.addListener(_onFocusChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _appearCtrl.forward();
-        _contentCtrl.forward();
-      }
-    });
+    // Стартовый fade запускает onHostReset (command от main при первом
+    // open) или lifecycle resumed; здесь просто оставляем прозрачность 0.
+    _appearCtrl.value = 0;
+    _contentCtrl.value = 0;
   }
 
   // Оверлей рендерится в КЭШИРОВАННОМ движке: после закрытия окна Dart-
@@ -214,31 +219,73 @@ class _OverlayChatState extends State<_OverlayChat>
     super.didChangeAppLifecycleState(state);
     // Окно пересоздано/возвращено — то же самое, что и команда сброса
     // с главного экрана: приводим состояние и плавно показываемся.
-    if (state == AppLifecycleState.resumed) onHostReset();
+    if (state == AppLifecycleState.resumed) {
+      if (_initialized) {
+        _initialized = false;
+        return; // первый resumed при старте — не трогаем
+      }
+      onHostReset();
+    }
   }
 
   // Сгладить первое поднятие клавиатуры: лента изолирована от viewInsets
   // (MediaQuery.removeViewInsets), поэтому пересборки нет. При фокусе
   // досматриваем вниз БЕЗ анимации (jumpTo) — но только если последнее
   // сообщение реально ушло из виду (иначе каждый фокус дёргал ленту).
+  // Позиция до открытия клавиатуры — вернём её при блюре.
+  Offset? _posBeforeKb;
+
   void _onFocusChange() {
     if (!mounted) return;
     final f = _inputFocus.hasFocus;
     if (f != _inputFocused) {
       _inputFocused = f;
       _setFocusable(f);
-      if (f && _scrollCtrl.hasClients) {
-        final pos = _scrollCtrl.position;
-        // Обычная лента: maxScrollExtent = низ (новые сообщения).
-        // Уже внизу — ничего не трогаем: первое поднятие клавиатуры
-        // без прыжков. Иначе — мгновенно к последнему сообщению.
-        if (pos.maxScrollExtent > 0 &&
-            pos.pixels < pos.maxScrollExtent - 16) {
-          _scrollCtrl.jumpTo(pos.maxScrollExtent);
+      if (f) {
+        // Оверлей рисуется ПОВЕРХ клавиатуры: нижняя часть чата оставалась
+        // под её полупрозрачной зоной — «белый фон за клавиатурой».
+        // Поднимаем окно так, чтобы оно стояло полностью над клавиатурой
+        // (примерная высота IME ≈ 45% экрана).
+        final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
+        final kb = sh * 0.45;
+        _posBeforeKb ??= _pos;
+        final targetY = (sh - kb - _chatHeight - 8).clamp(0.0, sh - _chatHeight);
+        _animateMoveTo(Offset(_pos.dx, targetY));
+        if (_scrollCtrl.hasClients) {
+          final pos = _scrollCtrl.position;
+          if (pos.maxScrollExtent > 0 &&
+              pos.pixels < pos.maxScrollExtent - 16) {
+            _scrollCtrl.jumpTo(pos.maxScrollExtent);
+          }
         }
+      } else {
+        // Клавиатура закрылась — вернуть окно на прежнее место (плавно).
+        final back = _posBeforeKb;
+        _posBeforeKb = null;
+        if (back != null) _animateMoveTo(back);
       }
     }
   }
+
+  /// Плавное перемещение к точке за ~200 мс (8 шагов) — без дёрганых
+  /// скачков при смене позиции.
+  Future<void> _animateMoveTo(Offset target) async {
+    final from = _pos;
+    const steps = 8;
+    for (var i = 1; i <= steps; i++) {
+      final t = Curves.easeInOutCubic.transform(i / steps);
+      _pos = Offset(
+        from.dx + (target.dx - from.dx) * t,
+        from.dy + (target.dy - from.dy) * t,
+      );
+      _sendPos();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    _pos = target;
+    _sendPos();
+  }
+
+
 
   void _setFocusable(bool focus) {
     _overlayChannel.invokeMethod<void>('updateFlag', {
@@ -687,8 +734,9 @@ class _OverlayChatState extends State<_OverlayChat>
           width: sz,
           height: sz,
           decoration: BoxDecoration(
-            // Круглый градиентный пузырь как на web: белая обводка,
-            // цветное свечение, глубокая тень.
+            // Круглый градиентный пузырь: белая обводка. Тени УБРАНЫ —
+            // blur-тень за круглым клипом обрезалась прямоугольной
+            // границей окна и выглядела как тёмный «квадрат» за пузырём.
             shape: BoxShape.circle,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -697,20 +745,8 @@ class _OverlayChatState extends State<_OverlayChat>
             ),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.55),
-              width: 1.6,
+              width: 1.2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: colors[1].withValues(alpha: 0.5),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
@@ -1003,11 +1039,14 @@ class _OverlayChatState extends State<_OverlayChat>
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _send(),
                   onTap: () {
-                    // Первый тап в окошке при FLAG_NOT_FOCUSABLE: только
-                    // делаем окно фокусируемым И сразу просим фокус полю —
-                    // иначе клавиатура появлялась лишь со второго тапа.
+                    // Первый тап в окошке при FLAG_NOT_FOCUSABLE: снимаем
+                    // флаг и просим фокус СЛЕДУЮЩИМ кадром (после того как
+                    // окно стало фокусируемым) — иначе клавиатура
+                    // появлялась лишь со второго тапа.
                     _setFocusable(true);
-                    _inputFocus.requestFocus();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _inputFocus.requestFocus();
+                    });
                   },
                   style: const TextStyle(
                     fontSize: 13,
@@ -1097,13 +1136,8 @@ class _OverlayAvatar extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: colors,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: colors[1].withValues(alpha: 0.3),
-            blurRadius: size * 0.2,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        // Без тени: она обрезалась прямоугольной границей окна и давала
+        // видимый «квадрат» за круглой аватаркой.
       ),
       child: Stack(
         alignment: Alignment.center,
