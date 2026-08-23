@@ -298,6 +298,11 @@ class _HomeScreenState extends State<HomeScreen>
     ];
 
     final content = Scaffold(
+      // НЕ уменьшать экран при появлении клавиатуры: иначе при открытом
+      // ИИ-чате (bottom sheet) весь экран под ним пересчитывает layout на
+      // каждом кадре подъёма/опускания IME — чат «тормозил». Клавиатуру
+      // обслуживает сам лист (viewInsets), фону ресайз не нужен.
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.refresh_outlined),

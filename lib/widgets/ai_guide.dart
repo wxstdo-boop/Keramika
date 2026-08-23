@@ -167,34 +167,37 @@ class _AiChatSheetState extends State<_AiChatSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Чат — НА ВЕСЬ экран, фиксированной высоты. Клавиатуру обслуживает
-    // ТОЛЬКО Positioned (меняется нижний offset), высота НЕ меняется:
-    // лента сообщений не пересчитывает layout на каждом кадре IME —
-    // иначе «тормоза» при подъёме/опускании. При открытой клавиатуре
-    // шапка уходит за верх экрана, поле всегда видно над клавиатурой.
+    // Клавиатура: лист ПОДНИМАЕТСЯ вместе с ней, верх не уезжает.
+    // Высота = доступное пространство (экран минус IME), Positioned
+    // снизу = смещение на IME: верхняя кромка остаётся на месте.
+    // Экран ПОД листом не ресайзится (resizeToAvoidBottomInset:false на
+    // главном Scaffold), поэтому при IME пересобирается только лёгкий
+    // контейнер листа, а не весь фон под ним.
     final insets = MediaQuery.viewInsetsOf(context).bottom;
     final screenH = MediaQuery.sizeOf(context).height;
-    final sheetHeight = screenH; // фиксированная: ВЕСЬ экран
-    return Stack(
-      children: [
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: insets,
-          child: RepaintBoundary(
-            child: Container(
-              height: sheetHeight,
-              decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
+    final sheetHeight = (screenH - insets).clamp(260.0, screenH);
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: insets,
+            child: RepaintBoundary(
+              child: Container(
+                height: sheetHeight,
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
                 ),
+                child: const _AiChatBody(),
               ),
-              child: const _AiChatBody(),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

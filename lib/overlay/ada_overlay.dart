@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
@@ -196,13 +197,12 @@ class _OverlayChatState extends State<_OverlayChat>
 
   // ── Позиция окна ──────────────────────────────────────────────────
   // Пузырь ЛЕТАЕТ САМ по экрану (пользователь просил вернуть).
-  // Движение плавное: дробные dp, отклонение раз в 16 мс (частота кадров),
-  // при касании дрейф мгновенно встаёт (не спорит с пальцем) и плавно
-  // возобновляется после отпускания.
-  Timer? _driftTimer;
+  // Движение плавное: тики синхронизированы с vsync (Ticker), без
+  // таймерных гонок; при касании дрейф мгновенно встаёт (не спорит
+  // с пальцем) и плавно возобновляется после отпускания.
+  Ticker? _driftTicker;
   double _vx = 0.8;
   double _vy = 0.6;
-  bool _driftMoving = false;
   Offset _pos = Offset.zero;
 
   // Сгладить первое поднятие клавиатуры: лента и без того изолирована
@@ -317,13 +317,22 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   // ── Drag оверлея ──────────────────────────────────────────────────
-  // Драг работает ПО ВСЕЙ площади (пузырь и чат). Дельты копятся в _pos,
-  // а на нативную сторону позиция уходит ОДИН раз за ~16мс (частота
-  // кадров): пачка вызовов MethodChannel при быстром жесте перегружает
-  // UI-поток и движение начинает «дёргаться». Раз в кадр — телефон успевает
-  // отрисовать каждое новое положение окна.
+  // Драг работает по всей зоне (пузырь и чат). Дельты копятся в _pos,
+  // а на нативную сторону позиция уходит РОВНО РАЗ В КАДР (синхронно с
+  // vsync через addPostFrameCallback) — телефон успевает отрисовать
+  // каждое положение без гонки между таймером (16мс) и кадрами, которая
+  // давала «дёрганье» (то двойная отправка, то пропуск).
   bool _dragging = false;
-  Timer? _dragTimer;
+  bool _sendScheduled = false;
+
+  void _scheduleSend() {
+    if (_sendScheduled) return;
+    _sendScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sendScheduled = false;
+      if (mounted) _sendPos();
+    });
+  }
 
   void _startDrag() {
     if (_dragging) return;
@@ -340,11 +349,7 @@ class _OverlayChatState extends State<_OverlayChat>
   void _onDrag(DragUpdateDetails d) {
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
     _startDrag();
-    // ОТПРАВКА СРАЗУ за жестом: каждый delta уходит на нативную сторону
-    // немедленно (фракционные dp → плавные пиксели). Таймер на 16 мс
-    // добавлял задержку «палец ушёл — окно догоняет», из-за чего драг
-    // казался дёрганым на слабых устройствах.
-    _sendPos();
+    _scheduleSend();
   }
 
   /// Шлёт текущую позицию на нативную сторону, удерживая окошко в границах
@@ -474,20 +479,20 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   void _startDrift() {
-    _driftTimer?.cancel();
+    _driftTicker?.stop();
+    _driftTicker?.dispose();
+    _driftTicker = null;
     _ensurePos();
     _vx = Random().nextBool() ? 0.2133 : -0.2133;
     _vy = Random().nextBool() ? 0.16 : -0.16;
-    _driftTimer = Timer.periodic(
-      const Duration(milliseconds: 16),
-      (_) => _driftTick(),
-    );
+    _driftTicker = createTicker((_) => _driftTick());
+    _driftTicker!.start();
   }
 
   void _stopDrift() {
-    _driftTimer?.cancel();
-    _driftTimer = null;
-    _driftMoving = false;
+    _driftTicker?.stop();
+    _driftTicker?.dispose();
+    _driftTicker = null;
   }
 
   void _ensurePos() {
@@ -498,7 +503,7 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   void _driftTick() {
-    if (!_collapsed || !mounted || _driftMoving) return;
+    if (!_collapsed || !mounted || _dragging) return;
     _ensurePos();
     final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
     final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
@@ -510,14 +515,7 @@ class _OverlayChatState extends State<_OverlayChat>
     y = y.clamp(4.0, sh - _bubbleSize - 4);
     if ((x - _pos.dx).abs() < 0.01 && (y - _pos.dy).abs() < 0.01) return;
     _pos = Offset(x, y);
-    _driftMoving = true;
-    _overlayChannel
-        .invokeMethod<void>('updateOverlayPosition', {
-          'x': _pos.dx,
-          'y': _pos.dy,
-        })
-        .then((_) => _driftMoving = false)
-        .catchError((_) => _driftMoving = false);
+    _scheduleSend();
   }
 
   Future<void> _clampToScreen() async {
@@ -715,7 +713,6 @@ class _OverlayChatState extends State<_OverlayChat>
     WidgetsBinding.instance.removeObserver(this);
     _appearTimer?.cancel();
     _syncTimer?.cancel();
-    _dragTimer?.cancel();
     _stopDrift();
     _appearCtrl.dispose();
     _contentCtrl.dispose();
