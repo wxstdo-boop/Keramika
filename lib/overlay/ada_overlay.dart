@@ -113,25 +113,38 @@ class _OverlayChatState extends State<_OverlayChat>
   /// каналу сообщений — переоткрытие окна не зависит от lifecycle.
   static _OverlayChatState? _live;
 
-  /// Сброс из основного приложения: окно пересоздано — привести чат
-  /// в «только что открылся» состояние и проиграть появление заново.
+  /// Сброс из основного окна: окно пересоздано — привести чат в состояние
+  /// «только что открылся» и НАЧАТЬ появление заново. Важно: команда
+  /// приходит ДО того, как новое окно реально появилось (движок живёт
+  /// отдельно), поэтому мгновенный forward закончится ещё до открытия —
+  /// окно выскочило бы без фейда. Ставим прозрачность в 0 и запускаем
+  /// появление с задержкой, когда окно уже на экране.
   static void onHostReset() {
     final s = _live;
     if (s == null || !s.mounted) return;
     s._inputFocus.unfocus();
+    s._stopDrift();
     s.setState(() {
       s._closing = false;
       s._inputFocused = false;
       s._collapsed = false;
     });
+    // Приглушаем ДО нуля: даже если окно мгновенно появится, оно не
+    // «вспыхнет» — fade стартует через момент.
+    s._appearCtrl.value = 0;
+    s._contentCtrl.value = 0;
     s._posInit = false;
     s._ensurePos();
-    s._appearCtrl.forward(from: 0);
-    s._contentCtrl.forward(from: 0);
     s._load();
-    // Окно могло остаться от прошлой сессии у края (пузырь 64px,
-    // а чат 340px) — доотскакиваем в границы.
-    s._clampToScreen();
+    // Окно появляется через ~300-400 мс после команды (пересоздание
+    // сервиса). Запускаем анимацию именно тогда.
+    s._appearTimer?.cancel();
+    s._appearTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!s.mounted) return;
+      s._appearCtrl.forward(from: 0);
+      s._contentCtrl.forward(from: 0);
+      s._clampToScreen();
+    });
   }
 
   static const _historyKey = 'ai_chat_history';
@@ -159,6 +172,8 @@ class _OverlayChatState extends State<_OverlayChat>
     vsync: this,
     duration: const Duration(milliseconds: 200),
   );
+
+  Timer? _appearTimer;
 
   // ── Дрейф пузыря ──────────────────────────────────────────────────
   Timer? _driftTimer;
@@ -195,20 +210,9 @@ class _OverlayChatState extends State<_OverlayChat>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed) return;
-    _inputFocus.unfocus();
-    if (!mounted) return;
-    setState(() {
-      _closing = false;
-      _inputFocused = false;
-      _collapsed = false;
-    });
-    // Позицию перечитываем с нативной стороны — окно пересоздалось.
-    _posInit = false;
-    _ensurePos();
-    _appearCtrl.forward(from: 0);
-    _contentCtrl.forward(from: 0);
-    _load();
+    // Окно пересоздано/возвращено — то же самое, что и команда сброса
+    // с главного экрана: приводим состояние и плавно показываемся.
+    if (state == AppLifecycleState.resumed) onHostReset();
   }
 
   // Сгладить первое поднятие клавиатуры: лента изолирована от viewInsets
@@ -245,16 +249,12 @@ class _OverlayChatState extends State<_OverlayChat>
   // раньше палец уходил с шапки — жест обрывался, и движение «дёргалось».
   // На нативную сторону позиция шлётся ОДИН раз за кадр (rAF-scheduling):
   // дельты копятся в _pos, а invoke не спамится быстрее обновления экрана.
-  bool _dragScheduled = false;
-
   void _onDrag(DragUpdateDetails d) {
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
-    if (_dragScheduled) return; // один вызов в кадр
-    _dragScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _dragScheduled = false;
-      if (mounted) _sendPos();
-    });
+    // Отправляем СРАЗУ: MethodChannel с дробными координатами даёт
+    // плавное движение; rAF-дебаунс раньше мог «проглатывать» кадры
+    // перетаскивания, и палец уезжал, а окно отставало.
+    _sendPos();
   }
 
   /// Шлёт текущую позицию на нативную сторону, удерживая окошко в границах
@@ -585,6 +585,7 @@ class _OverlayChatState extends State<_OverlayChat>
   void dispose() {
     if (_live == this) _live = null;
     WidgetsBinding.instance.removeObserver(this);
+    _appearTimer?.cancel();
     _stopDrift();
     _appearCtrl.dispose();
     _contentCtrl.dispose();

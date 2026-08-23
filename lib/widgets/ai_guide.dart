@@ -352,10 +352,22 @@ class _AiChatSheet extends StatefulWidget {
 class _AiChatSheetState extends State<_AiChatSheet> {
   final GlobalKey<_AiChatBodyState> _bodyKey = GlobalKey<_AiChatBodyState>();
 
+  // Контроллеры живут ЗДЕСЬ (оболочка), а не в теле: бар ввода рисуется
+  // безусловно с первого кадра, не дожидаясь создания тяжёлого тела.
+  final _inputCtrl = TextEditingController();
+  final _inputFocus = FocusNode();
+
+  @override
+  void dispose() {
+    _inputCtrl.dispose();
+    _inputFocus.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Клавиатура БЕЗ ресайза листа: высота шелла ВСЕГДА полная и НЕ
+    // Клавиатура БЕЗ ресайза ленты: высота шелла ВСЕГДА полная и НЕ
     // меняется с viewInsets — значит тело чата (лента, шапка) не
     // пересчитывается ни на одном кадре анимации клавиатуры. Двигается
     // только поле ввода (Positioned bottom = insets) отдельным лёгким
@@ -365,7 +377,6 @@ class _AiChatSheetState extends State<_AiChatSheet> {
     // заставлял ListView пересчитывать весь layout сотен сообщений —
     // отсюда «подтормаживания и дёргание поля ввода».
     final insets = MediaQuery.viewInsetsOf(context).bottom;
-    final body = _bodyKey.currentState;
     return Container(
       width: double.infinity,
       height: MediaQuery.sizeOf(context).height,
@@ -377,20 +388,24 @@ class _AiChatSheetState extends State<_AiChatSheet> {
         fit: StackFit.expand,
         children: [
           // Тяжёлое тело: фиксированный размер, от клавиатуры не зависит.
-          _AiChatBody(key: _bodyKey),
-          // Плавает над лентой и никогда не трогает её layout.
-          if (body != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: insets,
-              child: _AiChatInputBar(
-                ctrl: body._inputCtrl,
-                focusNode: body._inputFocus,
-                busy: body._busy,
-                onSend: body._send,
-              ),
+          _AiChatBody(
+            key: _bodyKey,
+            inputCtrl: _inputCtrl,
+            inputFocus: _inputFocus,
+          ),
+          // Бар ввода ВСЕГДА на месте (даже до первого кадра тела) и
+          // плавает над лентой, не трогая её layout.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: insets,
+            child: _AiChatInputBar(
+              ctrl: _inputCtrl,
+              focusNode: _inputFocus,
+              busy: _bodyKey.currentState?._busy ?? false,
+              onSend: () => _bodyKey.currentState?._send(),
             ),
+          ),
         ],
       ),
     );
@@ -398,7 +413,14 @@ class _AiChatSheetState extends State<_AiChatSheet> {
 }
 
 class _AiChatBody extends StatefulWidget {
-  const _AiChatBody({super.key});
+  const _AiChatBody({
+    super.key,
+    required this.inputCtrl,
+    required this.inputFocus,
+  });
+
+  final TextEditingController inputCtrl;
+  final FocusNode inputFocus;
 
   @override
   State<_AiChatBody> createState() => _AiChatBodyState();
@@ -410,8 +432,9 @@ class _AiChatBodyState extends State<_AiChatBody>
   static const _pinsKey = 'ai_pinned_messages';
   static const int _maxPins = 10;
 
-  final _inputCtrl = TextEditingController();
-  final _inputFocus = FocusNode();
+  // inputCtrl/inputFocus принадлежат оболочке (_AiChatSheetState) —
+  // бар ввода рисуется поверх ленты и живёт независимо; здесь только
+  // ссылки на них через widget.*.
   final _scrollCtrl = ScrollController();
   final List<AiMessage> _messages = [];
   // Закреплённые сообщения Ады: живут отдельно от чата и НЕ стираются
@@ -466,7 +489,7 @@ class _AiChatBodyState extends State<_AiChatBody>
     // При фокусе на поле ввода клавиатура выезжает — плавно доскролливаем
     // ленту к низу, чтобы последнее сообщение/«сочиняю» не прятались
     // за формой (клавиатура поднимается раньше, чем список перестроится).
-    _inputFocus.addListener(_onInputFocus);
+    widget.inputFocus.addListener(_onInputFocus);
     SettingsService.loadLanguageCode()
         .then((c) {
           if (!mounted) return;
@@ -501,7 +524,7 @@ class _AiChatBodyState extends State<_AiChatBody>
   }
 
   void _onInputFocus() {
-    if (!_inputFocus.hasFocus) return;
+    if (!widget.inputFocus.hasFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpAboveKeyboard());
     // Клавиатура поднимается ~200-300мс: повторная проверка ловит момент,
     // когда инсеты уже выросли (первый пост-кадр мог захватить 0).
@@ -547,10 +570,11 @@ class _AiChatBodyState extends State<_AiChatBody>
   @override
   void dispose() {
     AiGuideService.adaReportTick.removeListener(_onAdaReportTick);
+    widget.inputFocus.removeListener(_onInputFocus);
     _clearCtrl.dispose();
     _dotsCtrl.dispose();
-    _inputCtrl.dispose();
-    _inputFocus.dispose();
+    // inputCtrl/inputFocus принадлежат оболочке (_AiChatSheetState) —
+    // диспоузятся там, чтобы бар ввода переживал пересоздание тела.
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -825,10 +849,10 @@ class _AiChatBodyState extends State<_AiChatBody>
   /// [keepUserBubble] — true при повторной отправке с плашки «ИИ на курорте»:
   /// сообщение уже на экране, дубликат не добавляем.
   Future<void> _send({String? text, bool keepUserBubble = false}) async {
-    final message = (text ?? _inputCtrl.text).trim();
+    final message = (text ?? widget.inputCtrl.text).trim();
     if (message.isEmpty || _busy) return;
     Haptics.light();
-    _inputCtrl.clear();
+    widget.inputCtrl.clear();
     setState(() {
       // Лимит чата: 1000 сообщений, дальше — стереть и начать новый диалог.
       if (_messages.length >= 1000) _messages.clear();
@@ -1340,11 +1364,11 @@ class _AiChatBodyState extends State<_AiChatBody>
               // вместе с таблетками (не приклеен столбом слева).
               leading: _buildWebSearchToggle(context, theme),
               onTap: (template) {
-                _inputCtrl.text = template;
-                _inputCtrl.selection = TextSelection.collapsed(
-                  offset: _inputCtrl.text.length,
+                widget.inputCtrl.text = template;
+                widget.inputCtrl.selection = TextSelection.collapsed(
+                  offset: widget.inputCtrl.text.length,
                 );
-                _inputFocus.requestFocus();
+                widget.inputFocus.requestFocus();
               },
             ),
             // Подсказка про лимит Ады.
