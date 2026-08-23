@@ -210,10 +210,17 @@ class _HabitsScreenState extends State<HabitsScreen>
   // Per-habit cooldown: 1500ms after reset, only blocks the SAME habit.
   Map<String, DateTime> _lastResetByHabit = <String, DateTime>{};
 
+  // Данные ещё не загружены: показываем пустоту вместо кросс-фейда
+  // «пусто → список», который при старте выглядел как мигание после
+  // сплэша.
+  bool _loaded = false;
+
   @override
   void initState() {
     super.initState();
-    _service.load();
+    _service.load().then((_) {
+      if (mounted) setState(() => _loaded = true);
+    });
     _loadPerfectionismMode();
     SettingsService.perfectionismEnabled.addListener(_onPerfectionismChanged);
     // Проверка смены дня: приложение может жить в фореграунде через полночь —
@@ -462,27 +469,33 @@ class _HabitsScreenState extends State<HabitsScreen>
               child: Column(
                 children: [
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 320),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.98,
-                            end: 1.0,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
-                      child: habits.isNotEmpty
-                          ? SizedBox.expand(
-                              key: const ValueKey('list'),
-                              child: _buildBody(context, theme, habits),
-                            )
-                          : _buildEmpty(context, theme),
-                    ),
+                    // Пока данные не загрузились — ничего не показываем
+                    // (без кросс-фейда «пусто → список» на старте). Как
+                    // только загрузились — список появляется сразу.
+                    child: !_loaded
+                        ? const SizedBox.shrink(key: ValueKey('habits_loading'))
+                        : AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 320),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: ScaleTransition(
+                                    scale: Tween<double>(
+                                      begin: 0.98,
+                                      end: 1.0,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                ),
+                            child: habits.length > 0
+                                ? SizedBox.expand(
+                                    key: const ValueKey('list'),
+                                    child: _buildBody(context, theme, habits),
+                                  )
+                                : _buildEmpty(context, theme),
+                          ),
                   ),
                 ],
               ),
@@ -1011,7 +1024,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
                                           color: isDone
-                                              ? Colors.pink[300]
+                                              ? theme.colorScheme.primary
                                               : theme
                                                     .colorScheme
                                                     .surfaceContainerHighest,
@@ -1200,7 +1213,7 @@ class _HabitsScreenState extends State<HabitsScreen>
             child: Text(
               names[i][0].toUpperCase(),
               style: theme.textTheme.labelSmall?.copyWith(
-                fontSize: 10,
+                fontSize: 13,
                 height: 1,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 color: active
@@ -1257,17 +1270,6 @@ class _HabitsScreenState extends State<HabitsScreen>
                   style: theme.textTheme.titleSmall?.copyWith(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    Translations.t('perfectionismHint', context),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
                   ),
                 ),
               ],

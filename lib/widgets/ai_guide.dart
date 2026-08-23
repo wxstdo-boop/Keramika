@@ -325,9 +325,9 @@ Future<void> showAiGuideChat(BuildContext context) {
     // Закрытие — тот же мягкий профиль, без резких рывков.
     sheetAnimationStyle: AnimationStyle(
       curve: Curves.easeInOutQuart,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 520),
       reverseCurve: Curves.easeInOutQuart,
-      reverseDuration: const Duration(milliseconds: 380),
+      reverseDuration: const Duration(milliseconds: 400),
     ),
     // Отделяем тяжёлую ленту чата в отдельный composited layer: во время
     // выезда bottom sheet Android двигает готовый слой, а не перерисовывает
@@ -402,6 +402,10 @@ class _AiChatSheetState extends State<_AiChatSheet>
     // Открытый чат слушает доставку и перечитывает историю — отчёт
     // появляется в ленте в момент доставки, без переоткрытия.
     AiGuideService.adaReportTick.addListener(_onAdaReportTick);
+    // При фокусе на поле ввода клавиатура выезжает — плавно доскролливаем
+    // ленту к низу, чтобы последнее сообщение/«сочиняю» не прятались
+    // за формой (клавиатура поднимается раньше, чем список перестроится).
+    _inputFocus.addListener(_onInputFocus);
     SettingsService.loadLanguageCode()
         .then((c) {
           if (!mounted) return;
@@ -433,6 +437,21 @@ class _AiChatSheetState extends State<_AiChatSheet>
       final delivered = await AiGuideService.maybeDeliverAdaReports('');
       if (delivered.isNotEmpty) await _loadHistory();
     } catch (_) {}
+  }
+
+  void _onInputFocus() {
+    if (!_inputFocus.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      final pos = _scrollCtrl.position;
+      // reverse:true — offset 0 это низ (последнее сообщение). Если мы уже
+      // внизу — НИЧЕГО не делаем: первое поднятие клавиатуры не должно
+      // сопровождаться скроллом (именно он давал «подтормаживание» при
+      // первом открытии). Если читали старые сообщения — мгновенный
+      // jumpTo(0), без анимации, чтобы не драться с клавиатурой.
+      if (pos.pixels <= 8) return;
+      _scrollCtrl.jumpTo(0);
+    });
   }
 
   void _onAdaReportTick() {
@@ -1414,7 +1433,7 @@ class _AiChatSheetState extends State<_AiChatSheet>
                               // Copilot» и лишних пунктов системного меню.
                               contextMenuBuilder: minimalContextMenuBuilder,
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 18,
                                 height: 1.4,
                                 color: cs.onSurface,
                               ),
@@ -1464,7 +1483,7 @@ class _EmptyChatPlaceholder extends StatelessWidget {
           Translations.t('adaEmptyChat', context),
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 22,
             height: 1.35,
             fontWeight: FontWeight.w800,
             color: cs.onSurfaceVariant,
@@ -1599,8 +1618,12 @@ class _MessageBubble extends StatelessWidget {
                                   : (isUser
                                         ? cs.onPrimaryContainer
                                         : cs.onSurface),
-                              fontSize: 14.5,
-                              height: 1.3,
+                              // ВСЕ сообщения (и ответы, и мои) крупные;
+                              // markdown-разметка при этом не растёт — bold/
+                              // italic имеют тот же fontSize, что обычный
+                              // текст (см. parseMarkdownSpans).
+                              fontSize: 18.5,
+                              height: 1.35,
                             ),
                           ),
                           // Красивые ручки выделения + меню Копировать/
@@ -1805,7 +1828,7 @@ class _TypingIndicator extends StatelessWidget {
                       child: Text(
                         Translations.t('aiComposing', context),
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: cs.onSurfaceVariant,
                         ),
@@ -1974,7 +1997,7 @@ class _QuickChips extends StatelessWidget {
     // Первый элемент — значок веб-поиска (если задан), дальше таблетки.
     final hasLeading = leading != null;
     return SizedBox(
-      height: 34,
+      height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1987,17 +2010,17 @@ class _QuickChips extends StatelessWidget {
             onTap: () => onTap(template),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: cs.primaryContainer.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                   color: cs.onPrimaryContainer,
                 ),
               ),
@@ -2891,7 +2914,8 @@ class _MiniBubble extends StatelessWidget {
         child: buildMarkdownText(
           message.text,
           TextStyle(
-            fontSize: 12.5,
+            // Сообщения в мини-оверлее тоже увеличены, markdown не растёт.
+            fontSize: 16,
             height: 1.3,
             color: isUser ? cs.onPrimary : cs.onSurface,
           ),

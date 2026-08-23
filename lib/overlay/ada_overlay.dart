@@ -77,9 +77,14 @@ class _AdaOverlayAppState extends State<AdaOverlayApp> {
     // светлой теме приложения контраст текста внутри не ломается.
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      // Прозрачный фон под всей аппкой: именно canvasColor/backgroundColor
+      // Material рисовал непрозрачным прямоугольником ЗА нашим скруглённым
+      // шеллом — отсюда «квадратные углы» на фоне. Теперь за скруглением
+      // виден настоящий экран.
       color: Colors.transparent,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
         colorScheme: ThemeData.dark().colorScheme.copyWith(
           surface: Colors.transparent,
         ),
@@ -96,7 +101,7 @@ class _OverlayChat extends StatefulWidget {
 }
 
 class _OverlayChatState extends State<_OverlayChat>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const _historyKey = 'ai_chat_history';
 
   final _inputCtrl = TextEditingController();
@@ -131,10 +136,15 @@ class _OverlayChatState extends State<_OverlayChat>
   bool _posInit = false;
   bool _driftMoving = false;
 
+  // Сгладить первое поднятие клавиатуры: лента и без того изолирована
+  // от viewInsets (MediaQuery.removeViewInsets), поэтому тяжёлого
+  // пересборки нет; здесь же обеспечиваем мягкий старт — при появлении
+  // фокуса делаем jumpTo(0) БЕЗ анимации (иначе «первое поднятие»
+  // тормозило анимацией скролла вместе с выездом клавиатуры).
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addObserver(this);
     _inputFocus.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -144,12 +154,50 @@ class _OverlayChatState extends State<_OverlayChat>
     });
   }
 
+  // Оверлей рендерится в КЭШИРОВАННОМ движке: после закрытия окна Dart-
+  // состояние чата остаётся живым, и второе открытие подхватывает
+  // «хвосты» сессии (_closing=true и т.п.). При каждом перезапуске окна
+  // (сервис зовёт appIsResumed → resumed) — сбрасываем всё и плавно
+  // проигрываем появление заново.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    _inputFocus.unfocus();
+    if (!mounted) return;
+    setState(() {
+      _closing = false;
+      _inputFocused = false;
+      _collapsed = false;
+    });
+    // Позицию перечитываем с нативной стороны — окно пересоздалось.
+    _posInit = false;
+    _ensurePos();
+    _appearCtrl.forward(from: 0);
+    _contentCtrl.forward(from: 0);
+    _load();
+  }
+
+  // Сгладить первое поднятие клавиатуры: лента изолирована от viewInsets
+  // (MediaQuery.removeViewInsets), поэтому пересборки нет. При фокусе
+  // досматриваем вниз БЕЗ анимации (jumpTo) — но только если последнее
+  // сообщение реально ушло из виду (иначе каждый фокус дёргал ленту).
   void _onFocusChange() {
     if (!mounted) return;
     final f = _inputFocus.hasFocus;
     if (f != _inputFocused) {
       _inputFocused = f;
       _setFocusable(f);
+      if (f && _scrollCtrl.hasClients) {
+        final pos = _scrollCtrl.position;
+        // Обычная лента: maxScrollExtent = низ (новые сообщения).
+        // Уже внизу — ничего не трогаем: первое поднятие клавиатуры
+        // без прыжков. Иначе — мгновенно к последнему сообщению.
+        if (pos.maxScrollExtent > 0 &&
+            pos.pixels < pos.maxScrollExtent - 16) {
+          _scrollCtrl.jumpTo(pos.maxScrollExtent);
+        }
+      }
     }
   }
 
@@ -159,18 +207,21 @@ class _OverlayChatState extends State<_OverlayChat>
     });
   }
 
-  // ── Drag заголовка ────────────────────────────────────────────────
-  // Позиция отслеживается на КАЖДОМ событии (дельты не теряются и не
-  // «прыгают»), а на нативную сторону шлём не чаще ~60fps — окно
-  // следует за пальцем плавно, без рывков и без потери движения.
-  DateTime _lastDragMove = DateTime.fromMillisecondsSinceEpoch(0);
+  // ── Drag оверлея ──────────────────────────────────────────────────
+  // Драг работает ПО ВСЕЙ площади (пузырь и чат), а не только по шапке:
+  // раньше палец уходил с шапки — жест обрывался, и движение «дёргалось».
+  // На нативную сторону позиция шлётся ОДИН раз за кадр (rAF-scheduling):
+  // дельты копятся в _pos, а invoke не спамится быстрее обновления экрана.
+  bool _dragScheduled = false;
 
-  void _onHeaderDrag(DragUpdateDetails d) {
+  void _onDrag(DragUpdateDetails d) {
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
-    final now = DateTime.now();
-    if (now.difference(_lastDragMove).inMilliseconds < 16) return;
-    _lastDragMove = now;
-    _sendPos();
+    if (_dragScheduled) return; // один вызов в кадр
+    _dragScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dragScheduled = false;
+      if (mounted) _sendPos();
+    });
   }
 
   /// Шлёт текущую позицию на нативную сторону, удерживая окошко в границах
@@ -260,8 +311,9 @@ class _OverlayChatState extends State<_OverlayChat>
     double toH,
   ) async {
     // Больше шагов + меньше задержка: раньше 8 шагов по 30мс выглядели
-    // как «дёрганые скачки» размера, теперь плавная ~256мс анимация.
-    const steps = 16;
+    // как «дёрганые скачки» размера, теперь плавная анимация.
+    // 24 шага по ~12мс ≈ 290мс — достаточная плавность, без лишней тянучки.
+    const steps = 24;
     for (var i = 1; i <= steps; i++) {
       final t = Curves.easeInOutCubic.transform(i / steps);
       final w = fromW + (toW - fromW) * t;
@@ -269,7 +321,7 @@ class _OverlayChatState extends State<_OverlayChat>
       try {
         await FlutterOverlayWindow.resizeOverlay(w.round(), h.round(), false);
       } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 16));
+      await Future.delayed(const Duration(milliseconds: 12));
     }
   }
 
@@ -289,6 +341,9 @@ class _OverlayChatState extends State<_OverlayChat>
   void _stopDrift() {
     _driftTimer?.cancel();
     _driftTimer = null;
+    // Снимаем флаг «тик в полёте» — иначе после остановки/перезапуска
+    // дрейф навсегда застревает (guard в _driftTick).
+    _driftMoving = false;
   }
 
   void _ensurePos() {
@@ -474,10 +529,16 @@ class _OverlayChatState extends State<_OverlayChat>
       await JsonFile.write('overlay_closed', '1');
     } catch (_) {}
     await FlutterOverlayWindow.closeOverlay();
+    // Снимаем «закрытость» и позицию: движок живёт дальше, окно может
+    // быть открыто снова — состояние не должно оставаться мёртвым.
+    _closing = false;
+    _posInit = false;
+    _inputFocused = false;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopDrift();
     _appearCtrl.dispose();
     _contentCtrl.dispose();
@@ -490,16 +551,27 @@ class _OverlayChatState extends State<_OverlayChat>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([_appearCtrl, _contentCtrl]),
-      builder: (context, _) {
-        final appearT = Curves.easeOutCubic.transform(_appearCtrl.value);
-        final contentT = _contentCtrl.value;
-        return Opacity(
-          opacity: (appearT * contentT).clamp(0.0, 1.0),
-          child: _collapsed ? _buildBubble() : _buildChatShell(),
-        );
-      },
+    // removeViewInsets: у системного окошка НЕТ места для клавиатуры,
+    // окно поверх неё не сдвигается — а вот MediaQuery с viewInsets могла
+    // заставлять чат пересчитываться при каждом подъёме/опускании IME
+    // (отсюда «подтормаживания»). Изолируем инсеты полностью.
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeLeft: true,
+      removeTop: true,
+      removeRight: true,
+      removeBottom: true,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_appearCtrl, _contentCtrl]),
+        builder: (context, _) {
+          final appearT = Curves.easeOutCubic.transform(_appearCtrl.value);
+          final contentT = _contentCtrl.value;
+          return Opacity(
+            opacity: (appearT * contentT).clamp(0.0, 1.0),
+            child: _collapsed ? _buildBubble() : _buildChatShell(),
+          );
+        },
+      ),
     );
   }
 
@@ -509,6 +581,16 @@ class _OverlayChatState extends State<_OverlayChat>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleSize,
+      // Драг за ВЕСЬ пузырь. Дрейф останавливаем СРАЗУ при касании
+      // (onTapDown), иначе он продолжает толкать пузырь под пальцем —
+      // перетаскивание выглядело «дёрганым». После отпускания дрейф
+      // возобновляется.
+      onTapDown: (_) => _stopDrift(),
+      onPanStart: (_) => _stopDrift(),
+      onPanEnd: (_) {
+        if (_collapsed) _startDrift();
+      },
+      onPanUpdate: _onDrag,
       child: Center(
         child: Container(
           width: sz,
@@ -574,43 +656,52 @@ class _OverlayChatState extends State<_OverlayChat>
 
   Widget _buildChatShell() {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        // Мягкие скруглённые углы (20) — как у основного чата. Тёмная
-        // цельная панель поверх любого приложения: читаемый контраст,
-        // аккуратные углы.
-        color: const Color(0xFF0A0A0C),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
-          width: 1,
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      // Чат двигается за шапку и фон (в ленте драг перехватывает
+      // скролл, чтобы сообщения можно было листать).
+      onPanStart: (_) => _stopDrift(),
+      onPanEnd: (_) {
+        if (_collapsed) _startDrift();
+      },
+      onPanUpdate: _onDrag,
+      child: ClipRRect(
+        // Гарантированно скруглённые углы: ClipRRect клипает и фон, и
+        // детей — никакого «прямоугольника» за панелью (некоторые
+        // устройства рисовали подложку окна квадратной).
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A0A0C),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
+            // Тени НЕ кладём: оверлей рисуется на поверхности, обрезанной
+            // ПРЯМОУГОЛЬНОЙ границей окна — размытая тень обрезалась
+            // углами окна и выглядела как тёмный «квадратный фон».
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _buildHeader(cs),
+              const Divider(height: 1),
+              Expanded(
+                child: _messages.isEmpty ? _buildEmpty(cs) : _buildMessages(cs),
+              ),
+              _buildInput(cs),
+            ],
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          _buildHeader(cs),
-          const Divider(height: 1),
-          Expanded(
-            child: _messages.isEmpty ? _buildEmpty(cs) : _buildMessages(cs),
-          ),
-          _buildInput(cs),
-        ],
       ),
     );
   }
 
   Widget _buildHeader(ColorScheme cs) {
     return GestureDetector(
-      onPanUpdate: _onHeaderDrag,
+      onPanUpdate: _onDrag,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

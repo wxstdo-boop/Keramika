@@ -16,7 +16,6 @@ import android.os.Vibrator
 import android.provider.Settings
 import java.util.LinkedHashSet
 import android.util.Log
-import android.view.WindowManager
 import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -26,35 +25,12 @@ import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.wetidom.keramika/alarm_payload"
-    private val SECURE_CHANNEL = "com.wetidom.keramika/secure"
     private val HAPTICS_CHANNEL = "com.wetidom.keramika/haptics"
-    private val LIFECYCLE_CHANNEL = "com.wetidom.keramika/lifecycle"
     private var methodChannel: MethodChannel? = null
-    private var lifecycleChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         AlarmSchedulerPlugin.registerWith(flutterEngine, applicationContext)
-
-        // Когда установлен PIN — содержимое приложения в «недавних» красиво
-        // РАЗМЫВАЕТСЯ на стороне Flutter: при уходе в фон приложение снимает
-        // текущий кадр и рисует его размытым поверх, и Android фиксирует это
-        // превью для переключателя задач.
-        // Раньше здесь ставился FLAG_SECURE — он давал пустую/чёрную заглушку
-        // вместо размытия и блокировал скриншоты. Теперь он не нужен: канал
-        // оставлен для обратной совместимости, а флаг на всякий случай
-        // СНИМАЕМ (старые билды могли его выставить на окне).
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SECURE_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                if (call.method == "setSecure") {
-                    runOnUiThread {
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                    }
-                    result.success(true)
-                } else {
-                    result.notImplemented()
-                }
-            }
 
         // Уведомления НЕ отменяем — fullScreenIntent только что показал
         // alarm-нотификацию с играющим звуком. cancelAlarmNotifications()
@@ -114,19 +90,6 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Канал для сигналов жизненного цикла Activity → Dart. Главный из них:
-        // onUserLeaveHint (пользователь реально уходит: Home, «недавние»,
-        // другое приложение) — по нему Dart показывает PIN-размытие СРАЗУ,
-        // пока кадры ещё рендерятся, чтобы размытый кадр успел попасть
-        // в снапшот переключателя задач. Шторка уведомлений и системные
-        // диалоги onUserLeaveHint НЕ вызывают — размытие при «пуках» не
-        // выскакивает.
-        lifecycleChannel =
-            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LIFECYCLE_CHANNEL)
-        lifecycleChannel?.setMethodCallHandler { call, result ->
-            result.notImplemented()
-        }
-
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -143,30 +106,6 @@ class MainActivity : FlutterActivity() {
                 "getTimeZone" -> {
                     // Returns IANA timezone ID (e.g. "Europe/Moscow") from the system
                     result.success(java.util.TimeZone.getDefault().id)
-                }
-                "isShadeExpanded" -> {
-                    // Отличитель «шторки уведомлений» от «недавных»/Home для
-                    // PIN-размытия: при открытой шторке StatusBarManager отвечает
-                    // true, при переходе в «недавные» (кнопка/жест) — false.
-                    // Размытие показывается мгновенно на inactive, а этот запрос
-                    // (пара миллисекунд) подтверждает/опровергает шторку —
-                    // чтобы размытие не висело под ней.
-                    //
-                    // isStatusBarExpanded() есть в runtime (API 30+), но скрыт
-                    // от компилятора — берём через reflection.
-                    val expanded =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            // На MIUI геттера состояния шторки НЕТ (проверено: только
-                            // действия expandNotificationsPanel/collapse и т.п.),
-                            // поэтому честно вернуть «раскрыта ли шторка» нельзя.
-                            // Возвращаем false: Dart отличает шторку по отсутствию
-                            // подтверждения ухода (userLeaveHint/hidden) — шторка
-                            // их не даёт, и размытие при ней не показывается.
-                            false
-                        } else {
-                            false
-                        }
-                    result.success(expanded)
                 }
                 "saveToDownloads" -> {
                     try {
@@ -380,54 +319,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         return ids.toList()
-    }
-
-    /**
-     * Пользователь уходит из приложения (Home, «недавние», запуск другого
-     * приложения) — но НЕ при открытии шторки уведомлений и системных
-     * диалогов. Сообщаем Dart, чтобы тот показал PIN-размытие СРАЗУ на
-     * inactive — пока кадры ещё рендерятся и Android снимет размытый
-     * снапшот для «недавних».
-     *
-     * ВАЖНО: жест-свайп (gesture-навигация) этот колбэк НЕ вызывает —
-     * для жестов размытие показывается по сохранённому фокусу окна
-     * (см. onWindowFocusChanged: шторка фокус отнимает, «недавние» — нет).
-     */
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        Log.i("MainActivity", "onUserLeaveHint fired, channel=$lifecycleChannel")
-        try {
-            lifecycleChannel?.invokeMethod("userLeaveHint", null)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "userLeaveHint invoke failed: $e")
-        }
-    }
-
-    // Отладка: куда реально уходит приложение при разных действиях.
-    override fun onPause() {
-        super.onPause()
-        Log.i("MainActivity", "onPause called")
-    }
-
-    override fun onStop() {
-        super.onStop()
-        Log.i("MainActivity", "onStop called")
-    }
-
-    /**
-     * Фокус окна — отличитель «шторки» от «недавных»:
-     * шторка уведомлений и системные диалоги ОТНИМАЮТ фокус у окна,
-     * а переход в «недавние» (кнопка/жест) фокус сохраняет.
-     * Dart по этому сигналу не показывает PIN-размытие при «пуках»,
-     * но показывает при реальном уходе в «недавные».
-     */
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        try {
-            lifecycleChannel?.invokeMethod("windowFocus", hasFocus)
-        } catch (e: Exception) {
-            Log.e("MainActivity", "windowFocus invoke failed: $e")
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
