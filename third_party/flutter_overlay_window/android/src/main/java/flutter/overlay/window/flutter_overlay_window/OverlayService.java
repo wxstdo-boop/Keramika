@@ -188,9 +188,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 0,
                 -statusBarHeightPx(),
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
+                // БЕЗ FLAG_LAYOUT_INSET_DECOR: при фокусе и открытой клавиатуре
+                // этот флаг заставляет систему «ужать» окно по IME-инсетам,
+                // и за клавиатурой появлялась белая полоса (фон view без
+                // отрисовки). Окно оверлея стоит над всем, инсеты не нужны.
                 WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT
         );
@@ -251,7 +254,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             params.flags = WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                    WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             } else {
