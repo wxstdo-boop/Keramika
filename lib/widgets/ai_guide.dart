@@ -167,36 +167,25 @@ class _AiChatSheetState extends State<_AiChatSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Клавиатура: лист ПОДНИМАЕТСЯ вместе с ней, верх не уезжает.
-    // Высота = доступное пространство (экран минус IME), Positioned
-    // снизу = смещение на IME: верхняя кромка остаётся на месте.
-    // Экран ПОД листом не ресайзится (resizeToAvoidBottomInset:false на
-    // главном Scaffold), поэтому при IME пересобирается только лёгкий
-    // контейнер листа, а не весь фон под ним.
+    // Клавиатура: лёгкая оболочка ПОДНИМАЕТСЯ над ней, высота ужимается,
+    // чтобы шапка не уходила за экран. Поле ввода всегда видно.
+    // Без AnimatedPadding: на Android 11+ viewInsets приходит покадрово
+    // вместе с анимацией клавиатуры — обычный Padding двигает лист ровно
+    // с ней, без собственной задержки.
     final insets = MediaQuery.viewInsetsOf(context).bottom;
-    final screenH = MediaQuery.sizeOf(context).height;
-    final sheetHeight = (screenH - insets).clamp(260.0, screenH);
-    return SizedBox.expand(
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: insets,
-            child: RepaintBoundary(
-              child: Container(
-                height: sheetHeight,
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
-                  ),
-                ),
-                child: const _AiChatBody(),
-              ),
-            ),
+    final available = MediaQuery.sizeOf(context).height - insets;
+    final sheetHeight = available.clamp(260.0, available);
+    return Padding(
+      padding: EdgeInsets.only(bottom: insets),
+      child: RepaintBoundary(
+        child: Container(
+          height: sheetHeight,
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-        ],
+          child: const _AiChatBody(),
+        ),
       ),
     );
   }
