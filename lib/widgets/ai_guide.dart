@@ -184,7 +184,13 @@ class _AiChatSheetState extends State<_AiChatSheet> {
             color: theme.scaffoldBackgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: const _AiChatBody(),
+          // Тело чата не получает покадровые IME-инсеты: меняется только
+          // внешний лёгкий Padding, а лента и её TextFields не пересобираются.
+          child: MediaQuery.removeViewInsets(
+            context: context,
+            removeBottom: true,
+            child: const _AiChatBody(),
+          ),
         ),
       ),
     );
@@ -1310,6 +1316,9 @@ class _AiChatBodyState extends State<_AiChatBody>
                               // Вырезать/Курсив — без «Поделиться», «Спросить
                               // Copilot» и лишних пунктов системного меню.
                               contextMenuBuilder: minimalContextMenuBuilder,
+                              // Не запускать дополнительный автоскролл EditableText
+                              // при каждом кадре IME: лист уже сам двигается.
+                              scrollPadding: EdgeInsets.zero,
                               style: TextStyle(
                                 fontSize: 18,
                                 height: 1.4,
