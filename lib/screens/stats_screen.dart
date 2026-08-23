@@ -442,13 +442,21 @@ class _MonthChart extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  // Суммарные значения месяца — живые числа.
-                  _GlitchText(
-                    '$totalHabit + $totalTask',
-                    ctrl: glitch,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
+                  // Суммарные значения месяца — живые числа. Flexible +
+                  // FittedBox: даже при больших суммах число не упирается
+                  // в правую грань карточки и не обрезается.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: _GlitchText(
+                        '$totalHabit + $totalTask',
+                        ctrl: glitch,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -535,12 +543,19 @@ class _MonthChart extends StatelessWidget {
                 const SizedBox(width: 12),
                 _legend(context, taskColor, Icons.checklist_outlined, Translations.t('monthChartTasks', context)),
                 const Spacer(),
-                _GlitchText(
-                  '$activeDays ${Translations.t('monthChartDays', context)}',
-                  ctrl: glitch,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
+                // Число дней тоже под защитой от правой грани.
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: _GlitchText(
+                      '$activeDays ${Translations.t('monthChartDays', context)}',
+                      ctrl: glitch,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],
