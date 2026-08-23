@@ -1270,12 +1270,13 @@ class _SettingsScreenState extends State<SettingsScreen>
               _CtaButton(
                 label: Translations.t('visitellaName', context, 'Visitella'),
                 icon: Icons.rocket_launch_outlined,
-                gradient: [
-                  Color.lerp(theme.colorScheme.primary, Colors.white, 0.15)!,
-                  theme.colorScheme.primary,
-                  Color.lerp(theme.colorScheme.primary, Colors.black, 0.15)!,
+                // Оригинальный вид Visitella: тёмный градиент + чёрное свечение.
+                gradient: const [
+                  Color(0xFF4A4D54),
+                  Color(0xFF232428),
+                  Color(0xFF101013),
                 ],
-                glow: theme.colorScheme.primary,
+                glow: Colors.black,
                 onTap: () => _openLink('https://mutilated.pages.dev/#top'),
               ),
               const SizedBox(height: 8),
@@ -1356,14 +1357,13 @@ class _SettingsScreenState extends State<SettingsScreen>
               _CtaButton(
                 label: Translations.t('support', context, 'Support'),
                 icon: Icons.favorite,
-                // Цвета ТЕКУЩЕЙ темы (primary вместо розового) — кнопка
-                // подстраивается под каждую тему.
-                gradient: [
-                  Color.lerp(theme.colorScheme.primary, Colors.white, 0.18)!,
-                  theme.colorScheme.primary,
-                  Color.lerp(theme.colorScheme.primary, Colors.black, 0.18)!,
+                // Оригинальный вид: розовый градиент + розовое свечение.
+                gradient: const [
+                  Color(0xFFFF8FB3),
+                  Color(0xFFFF4D7E),
+                  Color(0xFFE91E63),
                 ],
-                glow: theme.colorScheme.primary,
+                glow: const Color(0xFFE91E63),
                 onTap: _showSupportSheet,
               ),
             ],

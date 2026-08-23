@@ -353,15 +353,36 @@ class _TasksScreenState extends State<TasksScreen>
                       },
                     ),
                   Expanded(
-                    // Мгновенное переключение категорий БЕЗ AnimatedSwitcher:
-                    // fade (даже 110 мс) ощущается как «задержка» при быстрых
-                    // свайпах и накапливает тяжёлые анимации всего списка.
-                    // Список переключается сразу (живое применение во время
-                    // драга в SlidingPicker уже даёт мгновенный отклик),
-                    // а плавность — анимация самих таблеток категорий.
-                    child: hasTasks
-                        ? _buildList(context, theme, tasks, all)
-                        : _buildEmpty(context, theme),
+                    // Плавное появление задач при смене категории: лёгкий
+                    // fade + подъём 200 мс. Применяется САМ фильтр — мгновенно
+                    // (см. SlidingPicker: onChanged без ожидания), а эта
+                    // анимация лишь визуальная, «исчезли старые → появились
+                    // новые», и не создаёт задержки переключения.
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.03),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: hasTasks
+                          ? KeyedSubtree(
+                              key: ValueKey('list_$_filter'),
+                              child: _buildList(context, theme, tasks, all),
+                            )
+                          : KeyedSubtree(
+                              key: ValueKey('empty_$_filter'),
+                              child: _buildEmpty(context, theme),
+                            ),
+                    ),
                   ),
                 ],
               ),
