@@ -874,84 +874,91 @@ class _SettingsScreenState extends State<SettingsScreen>
   }) {
     final appState = KeramikaApp.of(context);
     final isSelected = appState.themeKey == key;
-    final theme = Theme.of(context);
     // Для MUTILATED — зажатие 10 секунд показывает плашную «Вы элегант?»
     // с переводами. Плавно появляется, держится 3 секунды, плавно уходит.
-    final chip = ChoiceChip(
-      // Крупные названия: в карусели у каждой темы много места, длинные
-      // имена (MUTILATED, System Light) аккуратно масштабируются вниз,
-      // короткие — полного размера.
-      label: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          label,
-          // Жирнее (w700): названия читаются одинаково плотно и по-русски,
-          // и по-английски (латиница в w600 выглядела тоньше кириллицы).
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
+    // ТОНКАЯ обводка (1px), как была. Плавность делаем НАСТОЯЩИМ
+    // покадровым перетеканием прозрачности: TweenAnimationBuilder
+    // перестраивает чип КАЖДЫЙ кадр анимации с новым alpha обводки
+    // (0 → 1), поэтому линия именно «проявляется» и «гаснет», а не
+    // перескакивает.
+    return TweenAnimationBuilder<double>(
+      tween: Tween(
+        begin: isSelected ? 1.0 : 0.0,
+        end: isSelected ? 1.0 : 0.0,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      // Галочка выбранной темы появляется плавно: AnimatedSwitcher плавно
-      // подменяет иконку на check (scale + fade), а не прыгает мгновенно.
-      avatar: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 280),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => ScaleTransition(
-          scale: Tween<double>(begin: 0.8, end: 1).animate(animation),
-          child: FadeTransition(opacity: animation, child: child),
-        ),
-        child: Icon(
-          isSelected ? Icons.check_circle : icon,
-          key: ValueKey('pill_${key}_$isSelected'),
-          size: 14,
-        ),
-      ),
-      selected: isSelected,
-      showCheckmark: false,
-      onSelected: (selected) {
-        // Приятный «клик» при смене темы.
-        Haptics.select();
-        if (key == 'peach' && appState.themeKey == 'peach') {
-          appState.togglePeachDark();
-        } else {
-          appState.setThemeMode(key);
-        }
-        extraOnSelected?.call();
-      },
-      // О бводка ВСЕГДА задана явно и плавно перетекает: у выбранной —
-      // primary с полной непрозрачностью, у остальных — та же ширина
-      // и цвет, но ПРОЗРАЧНЫЙ. Убрано условное переключение цвета, из-за
-      // которого обводка «появлялась скачком» (AnimatedContainer на
-      // маппинге «выбран/нет»).
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: theme.colorScheme.primary.withValues(
-            alpha: isSelected ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOutCubic,
+      builder: (context2, alphaBorder, _) {
+        final themeLocal = Theme.of(context2);
+        final chip = ChoiceChip(
+          // Крупные названия: в карусели у каждой темы много места, длинные
+          // имена (MUTILATED, System Light) масштабируются вниз.
+          label: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
-          width: 2,
-        ),
-      ),
-    ); // Центрируем в ячейке сетки 3×3 — ровная и красивая сетка тем.
-    if (!specialMutilated) return Center(child: chip);
-    return Center(
-      child: _LongPressChip(
-        duration: const Duration(seconds: 10),
-        onLongPress: () {
-          // Плавный красивый snackbar с эмодзи — выезжает снизу с пружинкой,
-          // держится 3 секунды и плавно уезжает.
-          showBeautifulSnackBar(
-            context,
-            message:
-                'Вы элегантны? 🥀 — Are you elegant? — Êtes-vous élégant·e ?',
-            icon: Icons.diamond_outlined,
-            iconColor: const Color(0xFFFFD166),
-            duration: const Duration(seconds: 3),
-          );
-        },
-        child: chip,
-      ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          // Галочка выбранной темы появляется плавно.
+          avatar: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: Tween<double>(begin: 0.8, end: 1).animate(animation),
+              child: FadeTransition(opacity: animation, child: child),
+            ),
+            child: Icon(
+              isSelected ? Icons.check_circle : icon,
+              key: ValueKey('pill_${key}_$isSelected'),
+              size: 14,
+            ),
+          ),
+          selected: isSelected,
+          showCheckmark: false,
+          onSelected: (selected) {
+            Haptics.select();
+            if (key == 'peach' && appState.themeKey == 'peach') {
+              appState.togglePeachDark();
+            } else {
+              appState.setThemeMode(key);
+            }
+            extraOnSelected?.call();
+          },
+          // Обводка тонкая (1px) и АНИМИРУЕТСЯ по alpha каждый кадр.
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: themeLocal.colorScheme.primary.withValues(
+                alpha: alphaBorder,
+              ),
+              width: 1,
+            ),
+          ),
+        );
+        if (!specialMutilated) return Center(child: chip);
+        return Center(
+          child: _LongPressChip(
+            duration: const Duration(seconds: 10),
+            onLongPress: () {
+              showBeautifulSnackBar(
+                context,
+                message:
+                    'Вы элегантны? 🥀 — Are you elegant? — Êtes-vous élégant·e ?',
+                icon: Icons.diamond_outlined,
+                iconColor: const Color(0xFFFFD166),
+                duration: const Duration(seconds: 3),
+              );
+            },
+            child: chip,
+          ),
+        );
+      },
     );
   }
 
