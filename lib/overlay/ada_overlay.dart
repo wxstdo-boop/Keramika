@@ -14,7 +14,6 @@ import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
 import '../services/prefs.dart';
 import '../services/settings_service.dart';
-import '../utils/context_menu.dart';
 import '../widgets/ada_avatars.dart';
 
 /// Канал системного оверлея.
@@ -324,6 +323,8 @@ class _OverlayChatState extends State<_OverlayChat>
   // давала «дёрганье» (то двойная отправка, то пропуск).
   bool _dragging = false;
   bool _sendScheduled = false;
+  bool _nativeMoveInFlight = false;
+  Offset? _pendingNativePosition;
 
   void _scheduleSend() {
     if (_sendScheduled) return;
@@ -342,7 +343,10 @@ class _OverlayChatState extends State<_OverlayChat>
 
   void _endDrag() {
     _dragging = false;
-    if (mounted) _sendPos();
+    if (mounted) {
+      _sendPos();
+      _persistPosition();
+    }
     if (_collapsed) _startDrift();
   }
 
@@ -367,13 +371,35 @@ class _OverlayChatState extends State<_OverlayChat>
     // клавиатурой/внизу) — запас 36dp под системную навигацию.
     final y = _pos.dy.clamp(0.0, sh - h - 36);
     _pos = Offset(x, y);
-    _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
-      'x': _pos.dx,
-      'y': _pos.dy,
-    });
-    // Сохраняем позицию: при переоткрытии окно должно встать ТУДА, где
-    // его оставили (showOverlay по умолчанию открывает в ЦЕНТРЕ, и без
-    // сохранения позиция «не запоминалась»).
+    // Не складываем MethodChannel-вызовы в очередь: если native ещё
+    // применяет предыдущую позицию, оставляем только самую свежую.
+    _pendingNativePosition = _pos;
+    _flushNativePosition();
+  }
+
+  void _flushNativePosition() async {
+    if (_nativeMoveInFlight || _pendingNativePosition == null || !mounted) {
+      return;
+    }
+    final position = _pendingNativePosition!;
+    _pendingNativePosition = null;
+    _nativeMoveInFlight = true;
+    try {
+      await _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
+        'x': position.dx,
+        'y': position.dy,
+      });
+    } catch (_) {
+      // Окно могло закрыться между кадрами — это не должно ломать чат.
+    } finally {
+      _nativeMoveInFlight = false;
+      if (mounted && _pendingNativePosition != null) {
+        _flushNativePosition();
+      }
+    }
+  }
+
+  void _persistPosition() {
     try {
       globalPrefs.setDouble('ada_overlay_x', _pos.dx);
       globalPrefs.setDouble('ada_overlay_y', _pos.dy);
@@ -445,6 +471,7 @@ class _OverlayChatState extends State<_OverlayChat>
         false,
       );
       _sendPos();
+      _persistPosition();
       _clampToScreen();
       if (!mounted) return;
       _contentCtrl.forward(from: 0);
@@ -462,6 +489,7 @@ class _OverlayChatState extends State<_OverlayChat>
         false,
       );
       _sendPos();
+      _persistPosition();
       if (!mounted) return;
       _contentCtrl.forward(from: 0);
       _startDrift();
@@ -694,9 +722,11 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_closing) return;
     _closing = true;
     _stopDrift();
+    _persistPosition();
     // Замораживаем движение: отменяем отложенную отправку позиции
     // (иначе окно могло «уехать» в момент закрытия) и фиксируем её.
     _sendScheduled = false;
+    _pendingNativePosition = null;
     _setFocusable(false);
     await _contentCtrl.reverse();
     if (!mounted) return;
@@ -1043,11 +1073,17 @@ class _OverlayChatState extends State<_OverlayChat>
           Expanded(
             child: TextField(
               magnifierConfiguration: TextMagnifierConfiguration.disabled,
-              contextMenuBuilder: minimalContextMenuBuilder,
+              // Поле мини-окна не должно открывать выделение/тулбар:
+              // long-press оставляем для обычного ввода, без полупрозрачного
+              // selection overlay поверх оверлея.
+              contextMenuBuilder: (_, __) => const SizedBox.shrink(),
+              selectionControls: null,
+              enableInteractiveSelection: false,
               controller: _inputCtrl,
               focusNode: _inputFocus,
               minLines: 1,
               maxLines: 3,
+              scrollPadding: EdgeInsets.zero,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               onTap: () async {
