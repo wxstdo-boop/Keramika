@@ -514,6 +514,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                                   maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontSize: 20.5,
                                     color: theme.colorScheme.onSurface,
                                   ),
                                 ),

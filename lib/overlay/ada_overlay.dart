@@ -23,7 +23,7 @@ const MethodChannel _overlayChannel = MethodChannel('x-slayer/overlay');
 /// 340×380 (было 280×440 — вытянутое).
 // Пузырь уменьшен ВДВОЕ (64→32): компактнее, не перекрывает контент.
 // Чат-окно то же (340×380).
-const double _bubbleSize = 32;
+const double _bubbleSize = 48;
 const double _chatWidth = 340;
 const double _chatHeight = 380;
 
@@ -175,6 +175,7 @@ class _OverlayChatState extends State<_OverlayChat>
   bool _typingFade = false;
   bool _collapsed = false; // Стартуем как ЧАТ.
   bool _closing = false;
+  bool _resizing = false;
   bool _inputFocused = false;
   String _modelLabel = '';
   int _avatarVariant = 0;
@@ -354,6 +355,9 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_closing) return; // закрытие — драг не двигает окно
     _pos = Offset(_pos.dx + d.delta.dx, _pos.dy + d.delta.dy);
     _startDrag();
+    // Координаты жеста приходят чаще, чем кадры. Сливаем их до ближайшего
+    // кадра Flutter; native затем применяет одну последнюю позицию на vsync.
+    // Прямой вызов на каждый onPanUpdate накапливал MethodChannel-запросы.
     _scheduleSend();
   }
 
@@ -456,43 +460,83 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Future<void> _toggleSize() async {
-    if (_closing) return;
-    if (_collapsed) {
-      // Пузырь → чат: гасим пузырь, мгновенно ставим размер чата (в момент
-      // непрозрачности 0 — незаметно), выравниваем центр, проявляем.
-      _stopDrift();
-      await _contentCtrl.reverse();
-      if (!mounted) return;
-      setState(() => _collapsed = false);
-      _resizeKeepCenter(_bubbleSize, _bubbleSize, _chatWidth, _chatHeight);
-      await FlutterOverlayWindow.resizeOverlay(
-        _chatWidth.round(),
-        _chatHeight.round(),
-        false,
-      );
-      _sendPos();
-      _persistPosition();
-      _clampToScreen();
-      if (!mounted) return;
-      _contentCtrl.forward(from: 0);
-      _load();
-    } else {
-      // Чат → пузырь: гасим чат, мгновенно уменьшаем окно в центр,
-      // проявляем пузырь.
-      await _contentCtrl.reverse();
-      if (!mounted) return;
-      setState(() => _collapsed = true);
-      _resizeKeepCenter(_chatWidth, _chatHeight, _bubbleSize, _bubbleSize);
-      await FlutterOverlayWindow.resizeOverlay(
-        _bubbleSize.round(),
-        _bubbleSize.round(),
-        false,
-      );
-      _sendPos();
-      _persistPosition();
-      if (!mounted) return;
-      _contentCtrl.forward(from: 0);
-      _startDrift();
+    if (_closing || _resizing) return;
+    _resizing = true;
+    final wasCollapsed = _collapsed;
+    final previousPosition = _pos;
+    try {
+      if (_collapsed) {
+        // Пузырь → чат: гасим пузырь, мгновенно ставим размер чата (в момент
+        // непрозрачности 0 — незаметно), выравниваем центр, проявляем.
+        _stopDrift();
+        await _contentCtrl.reverse();
+        if (!mounted) return;
+        setState(() => _collapsed = false);
+        _resizeKeepCenter(_bubbleSize, _bubbleSize, _chatWidth, _chatHeight);
+        final resized = await FlutterOverlayWindow.resizeOverlay(
+              _chatWidth.round(),
+              _chatHeight.round(),
+              false,
+            ) ??
+            false;
+        if (!resized) {
+          _pos = previousPosition;
+          if (mounted) {
+            setState(() => _collapsed = wasCollapsed);
+            _contentCtrl.forward(from: 0);
+          }
+          return;
+        }
+        _sendPos();
+        _persistPosition();
+        if (!mounted) return;
+        // Ждём, пока новый размер попадёт в кадр, и только затем проявляем
+        // чат. Иначе последний кадр fade рисовался уже с новым layout и давал
+        // заметный толчок.
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        _contentCtrl.forward(from: 0);
+      } else {
+        // Чат → пузырь: гасим чат, мгновенно уменьшаем окно в центр,
+        // проявляем пузырь.
+        await _contentCtrl.reverse();
+        if (!mounted) return;
+        setState(() => _collapsed = true);
+        _resizeKeepCenter(_chatWidth, _chatHeight, _bubbleSize, _bubbleSize);
+        final resized = await FlutterOverlayWindow.resizeOverlay(
+              _bubbleSize.round(),
+              _bubbleSize.round(),
+              false,
+            ) ??
+            false;
+        if (!resized) {
+          _pos = previousPosition;
+          if (mounted) {
+            setState(() => _collapsed = wasCollapsed);
+            _contentCtrl.forward(from: 0);
+          }
+          return;
+        }
+        _sendPos();
+        _persistPosition();
+        if (!mounted) return;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        _contentCtrl.forward(from: 0);
+        _startDrift();
+      }
+    } catch (_) {
+      // Сервис мог закрыться между тапом и resize. Не оставляем Dart-состояние
+      // в промежуточном режиме и не даём исключению завершить overlay engine.
+      _pos = previousPosition;
+      if (mounted) {
+        if (_collapsed != wasCollapsed) {
+          setState(() => _collapsed = wasCollapsed);
+        }
+        _contentCtrl.forward(from: 0);
+      }
+    } finally {
+      _resizing = false;
     }
   }
 
@@ -789,66 +833,59 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Widget _buildBubble() {
-    final sz = _bubbleSize - 8;
+    final sz = _bubbleSize - 4;
     final colors = adaVariants[_avatarVariant].colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleSize,
-      // Драг за ВЕСЬ пузырь. Дрейф останавливаем СРАЗУ при касании
-      // (onTapDown), иначе он продолжает толкать пузырь под пальцем —
-      // перетаскивание выглядело «дёрганым». После отпускания дрейф
-      // возобновляется.
       onTapDown: (_) => _stopDrift(),
       onPanStart: (_) => _startDrag(),
       onPanEnd: (_) => _endDrag(),
       onPanCancel: _endDrag,
       onPanUpdate: _onDrag,
       child: Center(
-        child: Container(
-          width: sz,
-          height: sz,
-          decoration: BoxDecoration(
-            // Круглый градиентный пузырь: белая обводка. Тени УБРАНЫ —
-            // blur-тень за круглым клипом обрезалась прямоугольной
-            // границей окна и выглядела как тёмный «квадрат» за пузырём.
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: colors,
-            ),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.55),
-              width: 1.2,
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Center(
-                child: _animatedAvatar(sz * 0.66, _avatarVariant),
+        child: RepaintBoundary(
+          child: ClipOval(
+            child: Container(
+              width: sz,
+              height: sz,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: colors,
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  width: 1.2,
+                ),
               ),
-              // Глянцевый блик сверху — «стеклянный» объём (как в web).
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.32),
-                          Colors.white.withValues(alpha: 0.0),
-                        ],
-                        stops: const [0.0, 0.45],
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Center(child: _animatedAvatar(sz * 0.66, _avatarVariant)),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.32),
+                              Colors.white.withValues(alpha: 0.0),
+                            ],
+                            stops: const [0.0, 0.45],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

@@ -1507,7 +1507,7 @@ class _MessageBubble extends StatelessWidget {
                               // markdown-разметка при этом не растёт — bold/
                               // italic имеют тот же fontSize, что обычный
                               // текст (см. parseMarkdownSpans).
-                              fontSize: 18.5,
+                              fontSize: 19.5,
                               height: 1.35,
                             ),
                           ),

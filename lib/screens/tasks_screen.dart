@@ -620,6 +620,7 @@ class _TasksScreenState extends State<TasksScreen>
                               child: AnimatedStrikeText(
                                 text: task.title,
                                 style: theme.textTheme.titleMedium!.copyWith(
+                                  fontSize: 22.5,
                                   height: 1.25,
                                   color: theme.colorScheme.onSurface,
                                 ),

@@ -8,6 +8,7 @@ class SettingsService {
   static const _keyTheme = 'setting_theme';
   static const _keyLocale = 'setting_locale';
   static const _keyPeachDark = 'setting_peach_dark';
+  static const _keyFontFamily = 'setting_font_family';
   static const _keyExperimental = 'setting_experimental';
   static const _keyAutoSave = 'setting_auto_save';
   static const _keyDevMode = 'setting_dev_mode';
@@ -72,6 +73,19 @@ class SettingsService {
   static Future<void> saveThemeMode(String mode) async {
     final map = await _loadSettings();
     map[_keyTheme] = mode;
+    await _saveSettings(map);
+  }
+
+  static Future<String> loadFontFamily() async {
+    final map = await _loadSettings();
+    final value = map[_keyFontFamily] as String? ??
+        globalPrefs.getString(_keyFontFamily);
+    return value == 'caveat' ? 'caveat' : 'ordinary';
+  }
+
+  static Future<void> saveFontFamily(String family) async {
+    final map = await _loadSettings();
+    map[_keyFontFamily] = family == 'caveat' ? 'caveat' : 'ordinary';
     await _saveSettings(map);
   }
 

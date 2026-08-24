@@ -78,8 +78,9 @@ Future<bool> showAdaOverlay({
       // приложении. Фокус включается при тапе на поле ввода через
       // MethodChannel (updateFlag('focusPointer')).
       flag: OverlayFlag.defaultFlag,
-      // enableDrag: true — окно и пузырь можно двигать пальцем,
-      // а пузырь при этом ещё и сам «катается» по экрану.
+      // Жест остаётся у Flutter: native только сливает координаты и
+      // применяет последнюю позицию на vsync. Два touch-владельца дают
+      // двойное перемещение и рывки.
       enableDrag: false,
       positionGravity: PositionGravity.none,
       overlayTitle: 'Keramika — Ада',

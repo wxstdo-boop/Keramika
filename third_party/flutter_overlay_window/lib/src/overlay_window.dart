@@ -91,8 +91,8 @@ class FlutterOverlayWindow {
 
   /// Closes overlay if open
   static Future<bool?> closeOverlay() async {
-    final bool? _res = await _channel.invokeMethod('closeOverlay');
-    return _res;
+    final bool? result = await _channel.invokeMethod('closeOverlay');
+    return result;
   }
 
   /// Broadcast data to and from overlay app
@@ -111,9 +111,9 @@ class FlutterOverlayWindow {
 
   /// Update the overlay flag while the overlay in action
   static Future<bool?> updateFlag(OverlayFlag flag) async {
-    final bool? _res = await _overlayChannel
+    final bool? result = await _overlayChannel
         .invokeMethod<bool?>('updateFlag', {'flag': flag.name});
-    return _res;
+    return result;
   }
 
   /// Update the overlay size in the screen
@@ -122,7 +122,7 @@ class FlutterOverlayWindow {
     int height,
     bool enableDrag,
   ) async {
-    final bool? _res = await _overlayChannel.invokeMethod<bool?>(
+    final bool? result = await _overlayChannel.invokeMethod<bool?>(
       'resizeOverlay',
       {
         'width': width,
@@ -130,7 +130,7 @@ class FlutterOverlayWindow {
         'enableDrag': enableDrag,
       },
     );
-    return _res;
+    return result;
   }
 
   /// Update the overlay position in the screen
@@ -139,27 +139,27 @@ class FlutterOverlayWindow {
   ///
   /// `return` true if the position updated successfully
   static Future<bool?> moveOverlay(OverlayPosition position) async {
-    final bool? _res = await _channel.invokeMethod<bool?>(
+    final bool? result = await _channel.invokeMethod<bool?>(
       'moveOverlay',
       position.toMap(),
     );
-    return _res;
+    return result;
   }
 
   /// Get the current overlay position
   ///
   /// `return` the current overlay position
   static Future<OverlayPosition> getOverlayPosition() async {
-    final Map<Object?, Object?>? _res = await _channel.invokeMethod(
+    final Map<Object?, Object?>? result = await _channel.invokeMethod(
       'getOverlayPosition',
     );
-    return OverlayPosition.fromMap(_res);
+    return OverlayPosition.fromMap(result);
   }
 
   /// Check if the current overlay is active
   static Future<bool> isActive() async {
-    final bool? _res = await _channel.invokeMethod<bool?>('isOverlayActive');
-    return _res ?? false;
+    final bool? result = await _channel.invokeMethod<bool?>('isOverlayActive');
+    return result ?? false;
   }
 
   /// Dispose overlay stream
