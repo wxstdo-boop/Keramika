@@ -202,7 +202,11 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     // Строковые и булевы настройки читаем РАЗДЕЛЬНЫМИ геттерами:
     // getBool() на строковом значении (например setting_theme='rose')
     // бросает TypeError и роняет экспорт целиком.
-    const stringSettingKeys = {'setting_theme', 'setting_locale'};
+    const stringSettingKeys = {
+      'setting_theme',
+      'setting_locale',
+      'setting_font_family',
+    };
     const boolSettingKeys = {
       'setting_peach_dark',
       'setting_experimental',
@@ -651,6 +655,7 @@ void main() async {
   final theme = await SettingsService.loadThemeMode();
   final lang = await SettingsService.loadLanguageCode();
   final peachDark = await SettingsService.loadPeachDark();
+  final fontFamily = await SettingsService.loadFontFamily();
   // Прогреваем живые флаги режимов до первого Home-кадра:
   // кнопка BERSERK и карточки не ждут открытия настроек.
   await SettingsService.loadPerfectionism();
@@ -661,6 +666,7 @@ void main() async {
       initialTheme: theme,
       initialLanguageCode: lang,
       initialPeachDark: peachDark,
+      initialFontFamily: fontFamily,
     ),
   );
   // Логотип прогреваем НЕ блокируя старт: сплэш анимируется 1.8с,
@@ -787,6 +793,7 @@ class KeramikaApp extends StatefulWidget {
   final String initialTheme;
   final String initialLanguageCode;
   final bool initialPeachDark;
+  final String initialFontFamily;
 
   const KeramikaApp({
     super.key,
@@ -794,6 +801,7 @@ class KeramikaApp extends StatefulWidget {
     this.initialTheme = 'light',
     this.initialLanguageCode = 'system',
     this.initialPeachDark = false,
+    this.initialFontFamily = 'ordinary',
   });
 
   @override
@@ -809,6 +817,7 @@ class KeramikaAppState extends State<KeramikaApp>
   late String _themeKey;
   late String _languageCode;
   late bool _peachDark;
+  late String _fontFamily;
   Key _appKey = UniqueKey();
   int _refreshCounter = 0;
   // Плавный переход при смене темы и языка: мягкое затухание и возврат
@@ -853,6 +862,15 @@ class KeramikaAppState extends State<KeramikaApp>
   }
 
   String get themeKey => _themeKey;
+
+  String get fontFamily => _fontFamily;
+
+  void setFontFamily(String family) {
+    final next = family == 'caveat' ? 'caveat' : 'ordinary';
+    if (next == _fontFamily) return;
+    setState(() => _fontFamily = next);
+    SettingsService.saveFontFamily(next);
+  }
 
   /// Current language code.
   /// If 'system', the app will pick the preferred locale from the device
@@ -967,6 +985,9 @@ class KeramikaAppState extends State<KeramikaApp>
     _themeKey = widget.initialTheme;
     _languageCode = widget.initialLanguageCode;
     _peachDark = widget.initialPeachDark;
+    _fontFamily = widget.initialFontFamily == 'caveat'
+        ? 'caveat'
+        : 'ordinary';
     _locked = widget.initialLocked;
     aiLockScreenVisible.value = _locked;
     WidgetsBinding.instance.addObserver(this);
@@ -1089,7 +1110,8 @@ class KeramikaAppState extends State<KeramikaApp>
     required bool isDark,
     required bool isGrokStyle,
   }) {
-    final cacheKey = '${scheme.hashCode}|$isGrokStyle';
+    final cacheKey = '${scheme.hashCode}|$isGrokStyle|$_fontFamily';
+    final appFontFamily = _fontFamily == 'caveat' ? 'Caveat' : null;
     final cached = isDark ? _darkThemeCache : _lightThemeCache;
     final cachedKey = isDark ? _darkThemeCacheKey : _lightThemeCacheKey;
     if (cached != null && cachedKey == cacheKey) return cached;
@@ -1100,7 +1122,7 @@ class KeramikaAppState extends State<KeramikaApp>
       // Caveat — рукописный «анимешный» шрифт с полной кириллицей
       // (4 начертания в assets/fonts). Применяется ко ВСЕМУ тексту темы;
       // экраны, задающие styles через copyWith, наследуют fontFamily.
-      fontFamily: 'Caveat',
+      fontFamily: appFontFamily,
       // Лёгкая цветокоррекция «приятнее глазу» без смены палитр: чуть
       // больше воздуха в тексте, мягче тени и скругления карточек,
       // деликатный размытый фон вместо сплошного — глаза меньше устают.
@@ -1111,7 +1133,7 @@ class KeramikaAppState extends State<KeramikaApp>
       textTheme: Typography.material2021(platform: TargetPlatform.android)
           .black
           .apply(
-            fontFamily: 'Caveat',
+            fontFamily: appFontFamily,
             bodyColor: scheme.onSurface,
             displayColor: scheme.onSurface,
           )
@@ -1119,39 +1141,39 @@ class KeramikaAppState extends State<KeramikaApp>
             // Немного выше стандарта, но без прежнего перекоса: прежний
             // глобальный коэффициент 1.35 не долетал до части экранов,
             // а эти размеры применяются везде, включая привычки и задачи.
-            titleMedium: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 22,
+            titleMedium: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 20 : 22,
               fontWeight: FontWeight.w600,
             ),
-            titleSmall: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 19,
+            titleSmall: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 17 : 19,
               fontWeight: FontWeight.w600,
             ),
-            bodyLarge: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 21,
+            bodyLarge: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 16 : 21,
               fontWeight: FontWeight.w500,
             ),
-            bodyMedium: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 20,
+            bodyMedium: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 14 : 20,
               fontWeight: FontWeight.w500,
             ),
-            bodySmall: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 18,
+            bodySmall: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 12 : 18,
               fontWeight: FontWeight.w500,
             ),
-            labelSmall: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 16,
+            labelSmall: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 11 : 16,
               fontWeight: FontWeight.w500,
             ),
-            labelMedium: const TextStyle(
-              fontFamily: 'Caveat',
-              fontSize: 17,
+            labelMedium: TextStyle(
+              fontFamily: appFontFamily,
+              fontSize: appFontFamily == null ? 12 : 17,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1466,9 +1488,9 @@ class KeramikaAppState extends State<KeramikaApp>
             isGrokStyle: isGrokStyle,
           ),
           themeMode: themeMode,
-          // Плавная смена темы: цвета интерфейса (фон, карточки, тексты)
-          // перетекают за 420 мс вместо резкого мгновенного переключения.
-          themeAnimationDuration: const Duration(milliseconds: 320),
+          // Смена шрифта должна происходить мгновенно, как смена языка:
+          // промежуточная AnimatedTheme-отрисовка давала белую вспышку.
+          themeAnimationDuration: const Duration(milliseconds: 90),
           themeAnimationCurve: Curves.easeOutCubic,
           home: _locked
               ? LockScreen(onUnlock: () => unlock())

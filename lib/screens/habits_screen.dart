@@ -908,6 +908,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                               child: AnimatedStrikeText(
                                 text: habit.name,
                                 style: theme.textTheme.titleMedium!.copyWith(
+                                  fontSize: 22.5,
                                   height: 1.25,
                                   color: theme.colorScheme.onSurface,
                                 ),

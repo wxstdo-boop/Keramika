@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen>
   // а не весь home (при быстром свайпе «первый → последний» раньше было
   // 2–3 полных пересборки home за свайп — отсюда подлагивания).
   late final ValueNotifier<int> _currentIndex;
+  late final ValueNotifier<double> _railPage;
   late final PageController _pageController;
   late final AnimationController _animCtrl;
   // Ленивый прогрев вкладок: первый кадр Home строит только текущую и
@@ -59,7 +60,9 @@ class _HomeScreenState extends State<HomeScreen>
     // Запускаемся в том разделе, где пользователь был в прошлый раз.
     final savedTab = (globalPrefs.getInt('last_home_tab') ?? 0).clamp(0, 3);
     _currentIndex = ValueNotifier<int>(savedTab);
-    _pageController = PageController(initialPage: savedTab);
+    _railPage = ValueNotifier<double>(savedTab.toDouble());
+    _pageController = PageController(initialPage: savedTab)
+      ..addListener(_onPageScroll);
     // AnimationController используется как Value<double> — без setState!
     _animCtrl = AnimationController(
       vsync: this,
@@ -88,8 +91,10 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     RealityCheckService().removeListener(_onRcChanged);
+    _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
     _animCtrl.dispose();
+    _railPage.dispose();
     _currentIndex.dispose();
     super.dispose();
   }
@@ -194,26 +199,38 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _onPageScroll() {
+    if (!_pageController.hasClients ||
+        !_pageController.position.hasContentDimensions) {
+      return;
+    }
+    final page = _pageController.page;
+    if (page != null && page.isFinite &&
+        (_railPage.value - page).abs() > 0.001) {
+      _railPage.value = page;
+    }
+  }
+
   void _onPageChanged(int index) {
     _currentIndex.value = index;
+    _railPage.value = index.toDouble();
     globalPrefs.setInt('last_home_tab', index);
   }
 
   void _onTabTap(int index) {
-    final current = _currentIndex.value;
-    final distance = (index - current).abs();
-    if (distance == 0) return;
-    // Подсветка чипа меняется СРАЗУ (страница ещё едет) — отклик
-    // мгновенный, без ожидания конца анимации.
+    final fromPage = _pageController.hasClients
+        ? (_pageController.page ?? _currentIndex.value.toDouble())
+        : _currentIndex.value.toDouble();
+    final distance = (index - fromPage).abs();
+    if (distance < 0.01) return;
+    Haptics.select();
+    // Индикатор не перескакивает к цели: он продолжает следовать page
+    // напрямую, пока PageView доезжает до выбранного раздела.
     _currentIndex.value = index;
-    // Все страницы заранее построены (scrollCacheExtent ниже), поэтому
-    // даже дальний переход «первый → последний» едет по готовым кадрам
-    // и остаётся плавным. Длительность короче прежнего и ограничена
-    // сверху: отклик быстрее, анимация мягкая (easeInOutCubic).
     _pageController.animateToPage(
       index,
       duration: Duration(
-        milliseconds: (140 + distance * 45).clamp(140, 260),
+        milliseconds: (300 + distance.round() * 70).clamp(300, 500),
       ),
       curve: Curves.easeInOutCubic,
     );
@@ -361,12 +378,28 @@ class _HomeScreenState extends State<HomeScreen>
                   onVerticalDragStart: (_) {
                     _dragActive = true;
                     _dragAccY = 0.0;
+                    _animCtrl.stop();
+                    _animCtrl.value = 0.0;
                   },
                   onVerticalDragUpdate: (details) {
                     _dragAccY += details.delta.dy;
+                    // Натяжение используется только как лёгкая отдача;
+                    // горизонтальное/вертикальное движение PageView не
+                    // должно уносить саму капсулу за экран.
+                    final stretch = (_dragAccY / 220.0).clamp(-0.16, 0.16);
+                    _animCtrl.value = stretch;
                   },
                   onVerticalDragEnd: (_) {
                     _finishDrag();
+                  },
+                  onVerticalDragCancel: () {
+                    _dragActive = false;
+                    _dragAccY = 0.0;
+                    _animCtrl.animateTo(
+                      0.0,
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                    );
                   },
                   behavior: HitTestBehavior.translucent,
                   child: Column(
@@ -376,23 +409,16 @@ class _HomeScreenState extends State<HomeScreen>
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                         child: ValueListenableBuilder<int>(
                           valueListenable: _currentIndex,
-                          builder: (context, current, _) =>
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: List.generate(tabs.length, (i) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: _TabChip(
-                                        selected: current == i,
-                                        icon: _icons[i],
-                                        label: tabs[i],
-                                        onTap: () => _onTabTap(i),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ),
+                          builder: (context, current, _) => ValueListenableBuilder<double>(
+                            valueListenable: _railPage,
+                            builder: (context, page, __) => _SectionRail(
+                              current: current,
+                              page: page,
+                              labels: tabs,
+                              icons: _icons.sublist(0, tabs.length),
+                              onTap: _onTabTap,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -435,41 +461,33 @@ class _HomeScreenState extends State<HomeScreen>
               // Закругление углов: растёт с натяжением (0 → 32px).
               final cornerRadius = (absOffset / 320.0 * 32.0).clamp(0.0, 32.0);
 
-              // Масштаб слегка сжимается при натяжении (1.0 → 0.85).
-              final tensionScale = 1.0 - (absOffset / 650.0).clamp(0.0, 0.15);
-
-              // Прозрачность: контент чуть тускнеет при натяжении.
-              final tensionOpacity = 1.0 - (absOffset / 380.0).clamp(0.0, 0.30);
-
               // Тень: появляется и растёт с натяжением.
               final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(0.0, 0.22);
               final shadowBlur = (absOffset / 320.0 * 24.0).clamp(0.0, 24.0);
               final shadowDy = (absOffset / 320.0 * 12.0).clamp(0.0, 12.0);
 
               return Transform.translate(
-                offset: Offset(0, offset),
+                // Ограничиваем оттягивание. Капсула остаётся привязанной к
+                // своему месту и не «уезжает» при pull слева/справа.
+                offset: Offset(0, offset.clamp(0.0, 42.0)),
                 child: Transform.scale(
-                  scale: tensionScale,
-                  alignment: offset < 0
-                      ? Alignment.bottomCenter
-                      : Alignment.topCenter,
+                  scale: 1.0 - (absOffset / 900.0).clamp(0.0, 0.045),
+                  alignment: Alignment.topCenter,
                   child: Opacity(
-                    opacity: tensionOpacity,
+                    opacity: 1.0 - (absOffset / 900.0).clamp(0.0, 0.08),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: shadowAlpha),
-                            blurRadius: shadowBlur,
-                            offset: Offset(0, shadowDy),
+                            color: Colors.black.withValues(alpha: shadowAlpha * 0.55),
+                            blurRadius: shadowBlur * 0.65,
+                            offset: Offset(0, shadowDy * 0.55),
                           ),
                         ],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(cornerRadius),
                         child: Container(
-                          // Перекрываем фон Stack'а, иначе ClipRRect «покажет»
-                          // skin даже когда тянули чуть-чуть.
                           color: Theme.of(context).scaffoldBackgroundColor,
                           child: child,
                         ),
@@ -490,100 +508,174 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-/// Плавный чип вкладки: фон, иконка и текст анимируются синхронно одним
-/// tween'ом, поэтому при переключении разделов нет «мигания» предыдущего
-/// чипа (у стандартного FilterChip иконка/текст меняются мгновенно,
-/// пока фон ещё анимируется).
-class _TabChip extends StatefulWidget {
-  final bool selected;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+/// Единая объемная капсула разделов главного экрана. Названия остаются
+/// доступны в tooltip/semantics, но визуально показываются только иконки:
+/// так ряд не распадается на отдельные кнопки и не скачет по ширине.
+class _SectionRail extends StatefulWidget {
+  final int current;
+  final double page;
+  final List<String> labels;
+  final List<IconData> icons;
+  final ValueChanged<int> onTap;
 
-  const _TabChip({
-    required this.selected,
-    required this.icon,
-    required this.label,
+  const _SectionRail({
+    required this.current,
+    required this.page,
+    required this.labels,
+    required this.icons,
     required this.onTap,
   });
 
   @override
-  State<_TabChip> createState() => _TabChipState();
+  State<_SectionRail> createState() => _SectionRailState();
 }
 
-class _TabChipState extends State<_TabChip>
-    with SingleTickerProviderStateMixin {
-  // Стартует с текущего состояния БЕЗ анимации, а при смене selected
-  // плавно перетекает (раньше begin==end — фон «появлялся» мгновенно).
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 260),
-    value: widget.selected ? 1.0 : 0.0,
-  );
-
-  @override
-  void didUpdateWidget(covariant _TabChip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.selected != oldWidget.selected) {
-      _ctrl.animateTo(widget.selected ? 1.0 : 0.0, curve: Curves.easeOutCubic);
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+class _SectionRailState extends State<_SectionRail> {
+  int? _pressedIndex;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final count = widget.icons.length;
+    if (count == 0) return const SizedBox.shrink();
 
-    final baseBg = isDark ? cs.surfaceContainerHighest : cs.secondaryContainer;
-    final selectedBg = isDark ? cs.primary : cs.primaryContainer;
-    final baseFg = cs.onSurfaceVariant;
-    final selectedFg = isDark ? cs.onPrimary : cs.onPrimaryContainer;
+    final rawPage = widget.page.isFinite
+        ? widget.page
+        : widget.current.toDouble();
+    final page = rawPage.clamp(0.0, (count - 1).toDouble());
+    final selectedIndex = page.round().clamp(0, count - 1);
+    final indicatorAlignment = count == 1
+        ? 0.0
+        : -1.0 + (2.0 * page / (count - 1));
 
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) {
-        final t = _ctrl.value;
-        final bg = Color.lerp(baseBg, selectedBg, t)!;
-        final fg = Color.lerp(baseFg, selectedFg, t)!;
-        // Пружинный «поп» выбранной вкладки: лёгкое увеличение с
-        // easeOutBack и плавным возвратом (без влияния на layout).
-        return AnimatedScale(
-          scale: widget.selected ? 1.07 : 1.0,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutBack,
-          child: Material(
-            color: bg,
-            borderRadius: BorderRadius.circular(20),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: widget.onTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(widget.icon, size: 18, color: fg),
-                    const SizedBox(width: 6),
-                    Text(
-                      widget.label,
-                      style: TextStyle(color: fg, fontWeight: FontWeight.w500),
+    return SizedBox(
+      width: 240,
+      height: 42,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              cs.surfaceContainerHighest.withValues(alpha: 0.96),
+              cs.surfaceContainerLow.withValues(alpha: 0.98),
+            ],
+          ),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.36),
+            width: 0.8,
+          ),
+          // Мягкий объём без тяжёлой нижней полосы: основной shadow
+          // рассеянный, а светлый блик остаётся только внутри верхнего края.
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.09),
+              blurRadius: 10,
+              spreadRadius: 0.1,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2.5),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(19.5),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Позиция индикатора берётся прямо из PageView. Здесь
+                // намеренно нет AnimatedAlign: implicit-анимации поверх
+                // page-скролла и создавали скачок при переходе через 1-2 таба.
+                Align(
+                  alignment: Alignment(indicatorAlignment, 0),
+                  child: FractionallySizedBox(
+                    widthFactor: 1 / count,
+                    heightFactor: 1,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18.5),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            cs.primary,
+                            Color.lerp(cs.primary, cs.tertiary, 0.42)!,
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: cs.primary.withValues(alpha: 0.22),
+                            blurRadius: 6,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                Row(
+                  children: List.generate(count, (i) {
+                    final label = i < widget.labels.length
+                        ? widget.labels[i]
+                        : '';
+                    final proximity = (1.0 - (page - i).abs()).clamp(0.0, 1.0);
+                    final iconColor = Color.lerp(
+                      cs.onSurfaceVariant,
+                      cs.onPrimary,
+                      proximity,
+                    );
+                    final isPressed = _pressedIndex == i;
+                    return Expanded(
+                      child: Tooltip(
+                        message: label,
+                        child: Semantics(
+                          button: true,
+                          selected: selectedIndex == i,
+                          label: label,
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18.5),
+                              splashColor: cs.onPrimary.withValues(alpha: 0.16),
+                              highlightColor: cs.onPrimary.withValues(alpha: 0.08),
+                              onTapDown: (_) =>
+                                  setState(() => _pressedIndex = i),
+                              onTapCancel: () {
+                                if (mounted) {
+                                  setState(() => _pressedIndex = null);
+                                }
+                              },
+                              onTap: () {
+                                setState(() => _pressedIndex = null);
+                                widget.onTap(i);
+                              },
+                              child: Center(
+                                child: AnimatedScale(
+                                  scale: isPressed
+                                      ? 0.88
+                                      : 1.0 + proximity * 0.08,
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  child: Icon(
+                                    widget.icons[i],
+                                    size: 19,
+                                    color: iconColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

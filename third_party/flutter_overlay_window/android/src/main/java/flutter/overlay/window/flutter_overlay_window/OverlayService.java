@@ -15,6 +15,7 @@ import android.graphics.Point;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.view.Choreographer;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -58,6 +59,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public static boolean isRunning = false;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
+    private boolean viewAttached = false;
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
     private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
@@ -65,8 +67,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private Handler mAnimationHandler = new Handler();
     private float lastX, lastY;
+    private float dragPositionX, dragPositionY;
     private int lastYPosition;
     private boolean dragging;
+    // Координаты движения сливаются в один updateViewLayout на vsync.
+    // Это не даёт MethodChannel и WindowManager накапливать старые кадры.
+    private boolean moveFramePosted = false;
+    private int moveFrameGeneration = 0;
+    private int pendingMoveX;
+    private int pendingMoveY;
     private static final float MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER = 0.8f;
     private Point szWindow = new Point();
     private Timer mTrayAnimationTimer;
@@ -82,12 +91,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public void onDestroy() {
         Log.d("OverLay", "Destroying the overlay window service");
-        if (windowManager != null) {
-            windowManager.removeView(flutterView);
-            windowManager = null;
-            flutterView.detachFromFlutterEngine();
-            flutterView = null;
-        }
+        removeOverlayViewSafely();
         isRunning = false;
         // Гарантированно снимаем уведомление сервиса: на Android < 14
         // foreground-уведомления после уничтожения сервиса иногда "зависают"
@@ -106,31 +110,34 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         mResources = getApplicationContext().getResources();
+        if (intent == null) {
+            Log.w("OverlayService", "Ignoring restart without overlay intent");
+            stopSelfResult(startId);
+            return START_NOT_STICKY;
+        }
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
         boolean isCloseWindow = intent.getBooleanExtra(INTENT_EXTRA_IS_CLOSE_WINDOW, false);
         if (isCloseWindow) {
-            if (windowManager != null) {
-                windowManager.removeView(flutterView);
-                windowManager = null;
-                flutterView.detachFromFlutterEngine();
-                stopSelf();
-            }
+            removeOverlayViewSafely();
             isRunning = false;
+            stopSelfResult(startId);
             return START_NOT_STICKY;
         }
-        if (windowManager != null) {
-            // Повторный showOverlay (окно уже открыто): просто пересоздаём
-            // view. Раньше здесь стоял stopSelf() — сервис умирал, а из-за
-            // START_STICKY система перезапускала его с null-intent: окно
-            // больше не открывалось, а уведомление мигало снова.
-            windowManager.removeView(flutterView);
-            windowManager = null;
-            flutterView.detachFromFlutterEngine();
+        if (windowManager != null || flutterView != null) {
+            // Повторный showOverlay может прийти до завершения предыдущего
+            // closeOverlay. Снимаем старую view идемпотентно, чтобы Android
+            // не получил updateViewLayout для уже удалённого окна.
+            removeOverlayViewSafely();
         }
         isRunning = true;
         Log.d("onStartCommand", "Service started");
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (engine == null || flutterChannel == null || overlayMessageChannel == null) {
+            Log.e("OverlayService", "Overlay engine/channels are not initialized");
+            stopSelfResult(startId);
+            return START_NOT_STICKY;
+        }
         engine.getLifecycleChannel().appIsResumed();
         // TextureView обязан быть ПРОЗРАЧНЫМ: иначе под скруглённой панелью
         // рисуется непрозрачный прямоугольник («квадратные углы»/белый фон
@@ -139,27 +146,41 @@ public class OverlayService extends Service implements View.OnTouchListener {
         textureView.setOpaque(false);
         flutterView = new FlutterView(getApplicationContext(), textureView);
         flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
-        flutterView.setFitsSystemWindows(true);
+        // Оверлей не участвует в расчёте системных inset'ов: при показе IME
+        // Android не должен добавлять к TextureView светлую незаполненную
+        // область и менять его геометрию.
+        flutterView.setFitsSystemWindows(false);
         flutterView.setFocusable(true);
         flutterView.setFocusableInTouchMode(true);
         flutterView.setBackgroundColor(Color.TRANSPARENT);
+        textureView.setAlpha(1.0f);
         flutterChannel.setMethodCallHandler((call, result) -> {
-            if (call.method.equals("updateFlag")) {
-                String flag = call.argument("flag").toString();
-                updateOverlayFlag(result, flag);
-            } else if (call.method.equals("updateOverlayPosition")) {
-                // Координаты приходят дробными dp — движение плавное, в
-                // пикселях, а не «ступеньками» по 1dp.
-                Object ax = call.argument("x");
-                Object ay = call.argument("y");
-                double x = ax instanceof Number ? ((Number) ax).doubleValue() : 0.0;
-                double y = ay instanceof Number ? ((Number) ay).doubleValue() : 0.0;
-                moveOverlay(x, y, result);
-            } else if (call.method.equals("resizeOverlay")) {
-                int width = call.argument("width");
-                int height = call.argument("height");
-                boolean enableDrag = call.argument("enableDrag");
-                resizeOverlay(width, height, enableDrag, result);
+            try {
+                if (call.method.equals("updateFlag")) {
+                    Object rawFlag = call.argument("flag");
+                    updateOverlayFlag(result, rawFlag == null ? "defaultFlag" : rawFlag.toString());
+                } else if (call.method.equals("updateOverlayPosition")) {
+                    // Координаты приходят дробными dp — движение плавное, в
+                    // пикселях, а не «ступеньками» по 1dp.
+                    Object ax = call.argument("x");
+                    Object ay = call.argument("y");
+                    double x = ax instanceof Number ? ((Number) ax).doubleValue() : 0.0;
+                    double y = ay instanceof Number ? ((Number) ay).doubleValue() : 0.0;
+                    moveOverlay(x, y, result);
+                } else if (call.method.equals("resizeOverlay")) {
+                    Object rawWidth = call.argument("width");
+                    Object rawHeight = call.argument("height");
+                    Object rawDrag = call.argument("enableDrag");
+                    int width = rawWidth instanceof Number ? ((Number) rawWidth).intValue() : -1;
+                    int height = rawHeight instanceof Number ? ((Number) rawHeight).intValue() : -1;
+                    boolean enableDrag = rawDrag instanceof Boolean && (Boolean) rawDrag;
+                    resizeOverlay(width, height, enableDrag, result);
+                } else {
+                    result.notImplemented();
+                }
+            } catch (RuntimeException error) {
+                Log.e("OverlayService", "Overlay method call failed: " + call.method, error);
+                result.error("OVERLAY_OPERATION_FAILED", error.getMessage(), null);
             }
         });
         overlayMessageChannel.setMessageHandler((message, reply) -> {
@@ -207,9 +228,50 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // фокусируемому TextField, размер оверлея остаётся стабильным.
         params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
         flutterView.setOnTouchListener(this);
-        windowManager.addView(flutterView, params);
+        try {
+            windowManager.addView(flutterView, params);
+            viewAttached = true;
+        } catch (RuntimeException error) {
+            Log.e("OverlayService", "Unable to attach overlay view", error);
+            removeOverlayViewSafely();
+            isRunning = false;
+            stopSelfResult(startId);
+            return START_NOT_STICKY;
+        }
         moveOverlay(dx, dy, null);
         return START_NOT_STICKY;
+    }
+
+    private void removeOverlayViewSafely() {
+        moveFrameGeneration++;
+        moveFramePosted = false;
+        if (mTrayAnimationTimer != null) {
+            mTrayAnimationTimer.cancel();
+            mTrayAnimationTimer = null;
+        }
+        if (mTrayTimerTask != null) {
+            mTrayTimerTask.cancel();
+            mTrayTimerTask = null;
+        }
+        final FlutterView view = flutterView;
+        final WindowManager manager = windowManager;
+        flutterView = null;
+        windowManager = null;
+        viewAttached = false;
+        if (manager != null && view != null) {
+            try {
+                manager.removeViewImmediate(view);
+            } catch (IllegalArgumentException | IllegalStateException error) {
+                Log.w("OverlayService", "Overlay view was already removed", error);
+            }
+        }
+        if (view != null) {
+            try {
+                view.detachFromFlutterEngine();
+            } catch (RuntimeException error) {
+                Log.w("OverlayService", "Overlay view was already detached", error);
+            }
+        }
     }
 
 
@@ -254,9 +316,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
 
     private void updateOverlayFlag(MethodChannel.Result result, String flag) {
-        if (windowManager != null) {
+        final WindowManager manager = windowManager;
+        final FlutterView view = flutterView;
+        if (manager == null || view == null || !viewAttached) {
+            result.success(false);
+            return;
+        }
+        try {
             WindowSetup.setFlag(flag);
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) view.getLayoutParams();
             params.flags = WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED;
@@ -266,54 +334,55 @@ public class OverlayService extends Service implements View.OnTouchListener {
             } else {
                 params.alpha = 1;
             }
-            windowManager.updateViewLayout(flutterView, params);
+            manager.updateViewLayout(view, params);
             result.success(true);
-        } else {
+        } catch (RuntimeException error) {
+            Log.w("OverlayService", "Ignoring flag update for closed overlay", error);
             result.success(false);
         }
     }
 
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
-        if (windowManager != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+        final WindowManager manager = windowManager;
+        final FlutterView view = flutterView;
+        if (manager == null || view == null || !viewAttached) {
+            result.success(false);
+            return;
+        }
+        try {
+            // Отбрасываем старую координату, которая могла быть запланирована
+            // ещё для предыдущего размера окна.
+            moveFrameGeneration++;
+            moveFramePosted = false;
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) view.getLayoutParams();
+            if (params == null) {
+                result.success(false);
+                return;
+            }
             params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
-            params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
+            params.height = (height == 1999 || height == -1) ? -1 : dpToPx(height);
             WindowSetup.enableDrag = enableDrag;
-            windowManager.updateViewLayout(flutterView, params);
-            // TextureView при смене LayoutParams может оставлять на экране
-            // старый кадр («след»): форсируем перерисовку.
-            flutterView.invalidate();
+            manager.updateViewLayout(view, params);
+            // Не вызываем invalidate: он конкурирует с TextureView во время
+            // resize и оставляет старый кадр на границе пузыря.
             result.success(true);
-        } else {
+        } catch (RuntimeException error) {
+            Log.w("OverlayService", "Ignoring resize for closed overlay", error);
             result.success(false);
         }
     }
 
     private void moveOverlay(double x, double y, MethodChannel.Result result) {
-        if (windowManager != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            int nx = (x == -1999.0 || x == -1.0) ? -1 : dpToPxF(x);
-            int ny = dpToPxF(y);
-            // Если пиксельная позиция не изменилась — НЕ трогаем layout:
-            // при дробных dp (с плавающими координатами) большинство
-            // обновлений между кадрами совпадают, и сотни лишних
-            // updateViewLayout давали «рывки» (двойной relayout в кадре).
-            if (nx == params.x && ny == params.y) {
-                if (result != null) result.success(true);
-                return;
-            }
-            params.x = nx;
-            params.y = ny;
-            // БЕЗ flutterView.invalidate(): TextureView рисует каждый кадр
-            // сам, а лишний invalidate при 60fps-перемещении приводил к
-            // конкуренции с движением и «дёрганью».
-            windowManager.updateViewLayout(flutterView, params);
-            if (result != null)
-                result.success(true);
-        } else {
-            if (result != null)
-                result.success(false);
+        if (windowManager == null || flutterView == null || !viewAttached) {
+            if (result != null) result.success(false);
+            return;
         }
+
+        pendingMoveX = (x == -1999.0 || x == -1.0) ? -1 : dpToPxF(x);
+        pendingMoveY = dpToPxF(y);
+        if (result != null) result.success(true);
+
+        postMoveFrame();
     }
 
     /// dp → px с дробной точностью: LayoutParams.x — int (пиксели), поэтому
@@ -326,28 +395,37 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
 
     public static Map<String, Double> getCurrentPosition() {
-        if (instance != null && instance.flutterView != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-            Map<String, Double> position = new HashMap<>();
-            position.put("x", instance.pxToDp(params.x));
-            position.put("y", instance.pxToDp(params.y));
-            return position;
+        final OverlayService service = instance;
+        if (service == null || service.flutterView == null || service.windowManager == null || !service.viewAttached) {
+            return null;
         }
-        return null;
+        try {
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) service.flutterView.getLayoutParams();
+            if (params == null) return null;
+            Map<String, Double> position = new HashMap<>();
+            position.put("x", service.pxToDp(params.x));
+            position.put("y", service.pxToDp(params.y));
+            return position;
+        } catch (RuntimeException error) {
+            Log.w("OverlayService", "Unable to read overlay position", error);
+            return null;
+        }
     }
 
     public static boolean moveOverlay(int x, int y) {
-        if (instance != null && instance.flutterView != null) {
-            if (instance.windowManager != null) {
-                WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                params.y = instance.dpToPx(y);
-                instance.windowManager.updateViewLayout(instance.flutterView, params);
-                return true;
-            } else {
-                return false;
-            }
-        } else {
+        final OverlayService service = instance;
+        if (service == null || service.flutterView == null || service.windowManager == null || !service.viewAttached) {
+            return false;
+        }
+        try {
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) service.flutterView.getLayoutParams();
+            if (params == null) return false;
+            params.x = (x == -1999 || x == -1) ? -1 : service.dpToPx(x);
+            params.y = service.dpToPx(y);
+            service.windowManager.updateViewLayout(service.flutterView, params);
+            return true;
+        } catch (RuntimeException error) {
+            Log.w("OverlayService", "Ignoring stale static overlay move", error);
             return false;
         }
     }
@@ -453,54 +531,74 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @Override
     public boolean onTouch(View view, MotionEvent event) {
-        if (windowManager != null && WindowSetup.enableDrag) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    dragging = false;
-                    lastX = event.getRawX();
-                    lastY = event.getRawY();
-                    break;
-                case MotionEvent.ACTION_MOVE:
-                    float dx = event.getRawX() - lastX;
-                    float dy = event.getRawY() - lastY;
-                    if (!dragging && dx * dx + dy * dy < 25) {
-                        return false;
-                    }
-                    lastX = event.getRawX();
-                    lastY = event.getRawY();
-                    boolean invertX = WindowSetup.gravity == (Gravity.TOP | Gravity.RIGHT)
-                            || WindowSetup.gravity == (Gravity.CENTER | Gravity.RIGHT)
-                            || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
-                    boolean invertY = WindowSetup.gravity == (Gravity.BOTTOM | Gravity.LEFT)
-                            || WindowSetup.gravity == Gravity.BOTTOM
-                            || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
-                    int xx = params.x + ((int) dx * (invertX ? -1 : 1));
-                    int yy = params.y + ((int) dy * (invertY ? -1 : 1));
-                    params.x = xx;
-                    params.y = yy;
-                    if (windowManager != null) {
-                        windowManager.updateViewLayout(flutterView, params);
-                    }
-                    dragging = true;
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    lastYPosition = params.y;
-                    if (!WindowSetup.positionGravity.equals("none")) {
-                        if (windowManager == null) return false;
-                        windowManager.updateViewLayout(flutterView, params);
-                        mTrayTimerTask = new TrayAnimationTimerTask();
-                        mTrayAnimationTimer = new Timer();
-                        mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
-                    }
-                    return false;
-                default:
-                    return false;
-            }
+        if (windowManager == null || flutterView == null || !WindowSetup.enableDrag) {
             return false;
         }
+        final WindowManager.LayoutParams params =
+                (WindowManager.LayoutParams) flutterView.getLayoutParams();
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                dragging = false;
+                lastX = event.getRawX();
+                lastY = event.getRawY();
+                dragPositionX = params.x;
+                dragPositionY = params.y;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                final float dx = event.getRawX() - lastX;
+                final float dy = event.getRawY() - lastY;
+                if (!dragging && dx * dx + dy * dy < 25) return false;
+                lastX = event.getRawX();
+                lastY = event.getRawY();
+                final boolean invertX = WindowSetup.gravity == (Gravity.TOP | Gravity.RIGHT)
+                        || WindowSetup.gravity == (Gravity.CENTER | Gravity.RIGHT)
+                        || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
+                final boolean invertY = WindowSetup.gravity == (Gravity.BOTTOM | Gravity.LEFT)
+                        || WindowSetup.gravity == Gravity.BOTTOM
+                        || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
+                dragPositionX += dx * (invertX ? -1 : 1);
+                dragPositionY += dy * (invertY ? -1 : 1);
+                pendingMoveX = Math.round(dragPositionX);
+                pendingMoveY = Math.round(dragPositionY);
+                dragging = true;
+                postMoveFrame();
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                lastYPosition = Math.round(dragPositionY);
+                if (!WindowSetup.positionGravity.equals("none")) {
+                    mTrayTimerTask = new TrayAnimationTimerTask();
+                    mTrayAnimationTimer = new Timer();
+                    mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
+                }
+                break;
+            default:
+                break;
+        }
         return false;
+    }
+
+    private void postMoveFrame() {
+        if (moveFramePosted) return;
+        moveFramePosted = true;
+        final int generation = moveFrameGeneration;
+        Choreographer.getInstance().postFrameCallback(frameTimeNanos -> {
+            moveFramePosted = false;
+            if (generation != moveFrameGeneration) return;
+            final WindowManager manager = windowManager;
+            final FlutterView view = flutterView;
+            if (manager == null || view == null || !viewAttached) return;
+            try {
+                final WindowManager.LayoutParams params =
+                        (WindowManager.LayoutParams) view.getLayoutParams();
+                if (params == null || params.x == pendingMoveX && params.y == pendingMoveY) return;
+                params.x = pendingMoveX;
+                params.y = pendingMoveY;
+                manager.updateViewLayout(view, params);
+            } catch (RuntimeException error) {
+                Log.w("OverlayService", "Ignoring stale overlay move", error);
+            }
+        });
     }
 
     private class TrayAnimationTimerTask extends TimerTask {
@@ -533,8 +631,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
             mAnimationHandler.post(() -> {
                 params.x = (2 * (params.x - mDestX)) / 3 + mDestX;
                 params.y = (2 * (params.y - mDestY)) / 3 + mDestY;
-                if (windowManager != null) {
-                    windowManager.updateViewLayout(flutterView, params);
+                final WindowManager manager = windowManager;
+                final FlutterView view = flutterView;
+                if (manager != null && view != null && viewAttached) {
+                    try {
+                        manager.updateViewLayout(view, params);
+                    } catch (RuntimeException error) {
+                        Log.w("OverlayService", "Ignoring stale tray animation frame", error);
+                        TrayAnimationTimerTask.this.cancel();
+                        if (mTrayAnimationTimer != null) mTrayAnimationTimer.cancel();
+                    }
                 }
                 if (Math.abs(params.x - mDestX) < 2 && Math.abs(params.y - mDestY) < 2) {
                     TrayAnimationTimerTask.this.cancel();

@@ -692,6 +692,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       final settingsKeys = <String>{
         'setting_theme',
         'setting_locale',
+        'setting_font_family',
         'setting_peach_dark',
         'setting_experimental',
         'setting_auto_save',
@@ -995,6 +996,66 @@ class _SettingsScreenState extends State<SettingsScreen>
               // аккуратный фирменный акцент внизу секции.
               const SizedBox(height: 14),
               const Center(child: _FlutterBadge()),
+            ],
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 8),
+      Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.text_fields_rounded,
+                      color: theme.colorScheme.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Шрифт',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment<String>(
+                    value: 'ordinary',
+                    icon: Icon(Icons.font_download_outlined),
+                    label: Text('Обычный'),
+                  ),
+                  ButtonSegment<String>(
+                    value: 'caveat',
+                    icon: Icon(Icons.draw_outlined),
+                    label: Text('Caveat'),
+                  ),
+                ],
+                selected: {appState.fontFamily},
+                onSelectionChanged: (value) {
+                  final next = value.isEmpty ? 'ordinary' : value.first;
+                  appState.setFontFamily(next);
+                },
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  padding: WidgetStateProperty.all(
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
