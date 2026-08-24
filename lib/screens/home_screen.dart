@@ -226,6 +226,9 @@ class _HomeScreenState extends State<HomeScreen>
     Haptics.select();
     // Индикатор не перескакивает к цели: он продолжает следовать page
     // напрямую, пока PageView доезжает до выбранного раздела.
+    // Отменяем незавершённый переход перед новым: иначе несколько быстрых
+    // тапов складывали очереди animateToPage и таблетка дёргалась.
+    _pageController.jumpTo(_pageController.position.pixels);
     _currentIndex.value = index;
     _pageController.animateToPage(
       index,
@@ -549,11 +552,11 @@ class _SectionRailState extends State<_SectionRail> {
         : -1.0 + (2.0 * page / (count - 1));
 
     return SizedBox(
-      width: 240,
-      height: 42,
+      width: 270,
+      height: 46,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(23),
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -570,10 +573,16 @@ class _SectionRailState extends State<_SectionRail> {
           // рассеянный, а светлый блик остаётся только внутри верхнего края.
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.09),
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 16,
+              spreadRadius: -1,
+              offset: const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: cs.primary.withValues(alpha: 0.07),
               blurRadius: 10,
-              spreadRadius: 0.1,
-              offset: const Offset(0, 3),
+              spreadRadius: -3,
+              offset: const Offset(0, -2),
             ),
           ],
         ),
@@ -582,6 +591,7 @@ class _SectionRailState extends State<_SectionRail> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(19.5),
             child: Stack(
+              clipBehavior: Clip.hardEdge,
               fit: StackFit.expand,
               children: [
                 // Позиция индикатора берётся прямо из PageView. Здесь
@@ -605,9 +615,10 @@ class _SectionRailState extends State<_SectionRail> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: cs.primary.withValues(alpha: 0.22),
-                            blurRadius: 6,
-                            offset: const Offset(0, 1),
+                            color: cs.primary.withValues(alpha: 0.30),
+                            blurRadius: 8,
+                            spreadRadius: -1,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
@@ -653,13 +664,13 @@ class _SectionRailState extends State<_SectionRail> {
                               child: Center(
                                 child: AnimatedScale(
                                   scale: isPressed
-                                      ? 0.88
-                                      : 1.0 + proximity * 0.08,
-                                  duration: const Duration(milliseconds: 220),
+                                      ? 0.92
+                                      : 1.0 + proximity * 0.06,
+                                  duration: const Duration(milliseconds: 260),
                                   curve: Curves.easeOutCubic,
                                   child: Icon(
                                     widget.icons[i],
-                                    size: 19,
+                                    size: 21,
                                     color: iconColor,
                                   ),
                                 ),
