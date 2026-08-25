@@ -1489,8 +1489,11 @@ class KeramikaAppState extends State<KeramikaApp>
           ),
           themeMode: themeMode,
           // Смена шрифта должна происходить мгновенно, как смена языка:
-          // промежуточная AnimatedTheme-отрисовка давала белую вспышку.
-          themeAnimationDuration: const Duration(milliseconds: 90),
+          // промежуточная AnimatedTheme-отрисовка давала белую вспышку
+          // и «дёрганье» (шрифт перекладывал весь текст за 90 мс).
+          // Тема-кнопки сами анимируют свои обводки — им общий кросс-фейд
+          // не нужен.
+          themeAnimationDuration: Duration.zero,
           themeAnimationCurve: Curves.easeOutCubic,
           home: _locked
               ? LockScreen(onUnlock: () => unlock())
@@ -1543,7 +1546,13 @@ class KeramikaAppState extends State<KeramikaApp>
               // своих затемнений, размытий и вспышек.
               child: KeyedSubtree(
                 key: const ValueKey('app_root'),
-                child: Stack(
+                // Глобальное скругление углов приложения: при оттягивании
+                // у крайних разделов (Будильники слева / РП справа) края
+                // экрана остаются мягко закруглёнными, а не квадратными.
+                // Радиус 22px — аккуратный «современный» скруглённый экран.
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Stack(
                   fit: StackFit.expand,
                   children: [
                     // Контент (Navigator) — всегда ОДИН слой, без анимации:
@@ -1583,6 +1592,7 @@ class KeramikaAppState extends State<KeramikaApp>
                         },
                       ),
                   ],
+                  ),
                 ),
               ),
             );

@@ -9,6 +9,7 @@ import '../l10n/translations.dart';
 import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
 import '../services/prefs.dart';
+import '../services/screen_reader_service.dart';
 import '../services/settings_service.dart';
 import '../overlay/overlay_bridge.dart';
 import 'ada_avatars.dart';
@@ -226,6 +227,10 @@ class _AiChatBodyState extends State<_AiChatBody>
   // Веб-поиск: значок перед быстрыми чипами плавно включает режим,
   // при котором Ада реально ищет в интернете (DuckDuckGo + Wikipedia).
   bool _webSearch = false;
+  // Контекст экрана: Ада «видит» текст активного окна другого
+  // приложения (мессенджер и т.п.) и может подсказать ответ собеседнику.
+  // Работает только при выданном разрешении «Специальные возможности».
+  bool _screenAware = false;
   // Плавная передача эстафеты «печатает…» → ответ: индикатор сначала
   // гаснет, и только потом ответ всплывает — без резкого щелчка.
   bool _typingFade = false;
@@ -297,6 +302,11 @@ class _AiChatBodyState extends State<_AiChatBody>
     // Веб-поиск: запоминаем, был ли он включён — переживает перезапуск.
     try {
       _webSearch = globalPrefs.getBool('ai_web_search') ?? false;
+    } catch (_) {}
+    // Контекст экрана: помним выключатель (разрешение «Спец. возможности»
+    // проверяем отдельно, при включении и при отправке).
+    try {
+      _screenAware = globalPrefs.getBool(ScreenReaderService.prefKey) ?? false;
     } catch (_) {}
   }
 
@@ -645,6 +655,133 @@ class _AiChatBodyState extends State<_AiChatBody>
     );
   }
 
+  /// Включает/выключает «контекст экрана». При включении без выданного
+  /// разрешения «Специальные возможности» — ведёт в системные настройки.
+  Future<void> _toggleScreenAware(BuildContext context) async {
+    Haptics.light();
+    final enabling = !_screenAware;
+    setState(() {
+      _screenAware = enabling;
+      try {
+        globalPrefs.setBool(ScreenReaderService.prefKey, enabling);
+      } catch (_) {}
+    });
+    if (!enabling) return;
+    // Разрешение уже есть — включаем сразу, без диалога.
+    final hasPerm = await ScreenReaderService.hasPermission();
+    if (!mounted) return;
+    if (hasPerm) return;
+    final cs = Theme.of(context).colorScheme;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.visibility_outlined, size: 44, color: cs.primary),
+        title: const Text('Ада видит экран'),
+        content: const Text(
+          'Чтобы Ада могла подсказать ответ собеседнику (например, в '
+          'мессенджере), разреши Keramika «Специальные возможности».\n\n'
+          'Текст экрана не сохраняется и никуда не отправляется — он '
+          'попадает в Аду только вместе с твоим сообщением.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Не сейчас'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Открыть настройки'),
+          ),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      await ScreenReaderService.openSystemSettings();
+    }
+  }
+
+  /// Таблетка «контекст экрана»: Ада видит текст активного окна другого
+  /// приложения (мессенджер, браузер) и может подсказать ответ собеседнику.
+  /// Стиль — как у веб-поиска, но пилюля с «глазом» и живой точкой:
+  /// включено — заливается фирменным цветом и пульсирует зелёной точкой
+  /// (если разрешение доступно), выключено — нейтральное.
+  Widget _buildScreenToggle(BuildContext context, ThemeData theme) {
+    final cs = theme.colorScheme;
+    return Tooltip(
+      message: _screenAware
+          ? 'Контекст экрана: включён — Ада видит текст на экране'
+          : 'Контекст экрана: выключен — Ада не читает экран',
+      waitDuration: const Duration(milliseconds: 400),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _toggleScreenAware(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          width: 40,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(17),
+            color: _screenAware ? cs.primary : cs.surface,
+            border: Border.all(
+              color: _screenAware
+                  ? cs.primary
+                  : cs.outline.withValues(alpha: 0.45),
+              width: 1.4,
+            ),
+            boxShadow: _screenAware
+                ? [
+                    BoxShadow(
+                      color: cs.primary.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
+                child: Icon(
+                  _screenAware
+                      ? Icons.visibility
+                      : Icons.visibility_outlined,
+                  key: ValueKey('screen_toggle_icon_$_screenAware'),
+                  size: 19,
+                  color: _screenAware
+                      ? cs.onPrimary
+                      : cs.onSurfaceVariant,
+                ),
+              ),
+              // «Живая» точка: зелёная, когда контекст экрана активен.
+              if (_screenAware)
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF4CD964),
+                      border: Border.all(color: cs.primary, width: 1),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// [keepUserBubble] — true при повторной отправке с плашки «ИИ на курорте»:
   /// сообщение уже на экране, дубликат не добавляем.
   Future<void> _send({String? text, bool keepUserBubble = false}) async {
@@ -670,6 +807,9 @@ class _AiChatBodyState extends State<_AiChatBody>
         history: _messages.take(_messages.length - 1).toList(),
         languageCode: _lang,
         useWebSearch: _webSearch,
+        screenContext: _screenAware
+            ? await ScreenReaderService.snapshot()
+            : null,
       );
       if (!mounted) return;
       // Эстафета «печатает…» → ответ: индикатор плавно гаснет, и только
@@ -1164,9 +1304,13 @@ class _AiChatBodyState extends State<_AiChatBody>
             // Быстрые действия: чип заполняет поле ввода шаблоном — дальше
             // локальный парсер выполнит команду мгновенно, без сети.
             _QuickChips(
-              // Значок веб-поиска — первый элемент списка, листается
-              // вместе с таблетками (не приклеен столбом слева).
-              leading: _buildWebSearchToggle(context, theme),
+              // Значки веб-поиска и контекста экрана — первые элементы
+              // списка, листаются вместе с таблетками (не приклеены
+              // столбом слева).
+              leading: [
+                _buildWebSearchToggle(context, theme),
+                _buildScreenToggle(context, theme),
+              ],
               onTap: (template) {
                 _inputCtrl.text = template;
                 _inputCtrl.selection = TextSelection.collapsed(
@@ -1856,10 +2000,11 @@ class _AnimatedErrorPlaque extends StatelessWidget {
 class _QuickChips extends StatelessWidget {
   final ValueChanged<String> onTap;
 
-  /// Необязательный элемент в начале списка (например, значок веб-поиска).
-  /// Листается горизонтально вместе с таблетками, а не приклеен столбом.
-  final Widget? leading;
-  const _QuickChips({required this.onTap, this.leading});
+  /// Необязательные элементы в начале списка (например, значок веб-поиска
+  /// и контекста экрана). Листаются горизонтально вместе с таблетками,
+  /// а не приклеены столбом.
+  final List<Widget> leading;
+  const _QuickChips({required this.onTap, this.leading = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -1879,18 +2024,17 @@ class _QuickChips extends StatelessWidget {
       ),
       (Translations.t('aiChipMeal', context, 'Еда'), 'запиши приём пищи'),
     ];
-    // Первый элемент — значок веб-поиска (если задан), дальше таблетки.
-    final hasLeading = leading != null;
+    final leadCount = leading.length;
     return SizedBox(
       height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        itemCount: hasLeading ? chips.length + 1 : chips.length,
+        itemCount: chips.length + leadCount,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (context, i) {
-          if (hasLeading && i == 0) return leading!;
-          final (label, template) = hasLeading ? chips[i - 1] : chips[i];
+          if (i < leadCount) return leading[i];
+          final (label, template) = chips[i - leadCount];
           return GestureDetector(
             onTap: () => onTap(template),
             child: AnimatedContainer(
@@ -2263,6 +2407,9 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
         userText: message,
         history: _messages.take(_messages.length - 1).toList(),
         languageCode: lang,
+        // Мини-окно поверх чужого приложения: Ада видит текст экрана
+        // (мессенджер и т.п.) и может подсказать ответ собеседнику.
+        screenContext: await ScreenReaderService.snapshot(),
       );
       if (!mounted) return;
       // Эстафета «печатает…» → ответ: точки плавно гаснут, потом ответ
