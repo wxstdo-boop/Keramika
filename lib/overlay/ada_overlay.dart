@@ -23,9 +23,9 @@ const MethodChannel _overlayChannel = MethodChannel('x-slayer/overlay');
 /// 320×360 (было 340×380, раньше 280×440 — вытянутое).
 // Пузырь компактный (40): не перекрывает контент под ним.
 // Чат-окно тоже чуть меньше — аккуратнее поверх чужого приложения.
-const double _bubbleSize = 40;
-const double _chatWidth = 320;
-const double _chatHeight = 360;
+const double _bubbleSize = 36;
+const double _chatWidth = 292;
+const double _chatHeight = 330;
 
 /// Точка входа для главного приложения: движок оверлея переживает закрытие
 /// окна, поэтому при каждом показе окна мы посылаем команду «сбросься и
@@ -833,7 +833,7 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Widget _buildBubble() {
-    final sz = _bubbleSize - 4;
+    final sz = _bubbleSize - 2;
     final colors = adaVariants[_avatarVariant].colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1284,7 +1284,7 @@ class _MiniBubble extends StatelessWidget {
                 ),
                 child: buildMarkdownText(
                   message.text,
-                  TextStyle(fontSize: 12.5, color: textColor, height: 1.3),
+                  TextStyle(fontSize: 12, color: textColor, height: 1.28),
                 ),
               ),
             ),

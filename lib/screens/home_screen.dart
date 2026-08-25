@@ -564,8 +564,8 @@ class _SectionRailState extends State<_SectionRail> {
         : -1.0 + (2.0 * page / (count - 1));
 
     return SizedBox(
-      width: 270,
-      height: 46,
+      width: 282,
+      height: 48,
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(23),
@@ -586,20 +586,20 @@ class _SectionRailState extends State<_SectionRail> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.14),
-              blurRadius: 16,
-              spreadRadius: -1,
-              offset: const Offset(0, 4),
+              blurRadius: 12,
+              spreadRadius: -3,
+              offset: const Offset(0, 2),
             ),
             BoxShadow(
               color: cs.primary.withValues(alpha: 0.07),
-              blurRadius: 10,
-              spreadRadius: -3,
-              offset: const Offset(0, -2),
+              blurRadius: 8,
+              spreadRadius: -4,
+              offset: const Offset(0, -1),
             ),
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(2.5),
+          padding: const EdgeInsets.all(3),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(19.5),
             child: Stack(
@@ -624,13 +624,12 @@ class _SectionRailState extends State<_SectionRail> {
                             cs.primary,
                             Color.lerp(cs.primary, cs.tertiary, 0.42)!,
                           ],
-                        ),
-                        boxShadow: [
+                        ),                          boxShadow: [
                           BoxShadow(
-                            color: cs.primary.withValues(alpha: 0.30),
-                            blurRadius: 8,
-                            spreadRadius: -1,
-                            offset: const Offset(0, 2),
+                            color: cs.primary.withValues(alpha: 0.34),
+                            blurRadius: 6,
+                            spreadRadius: -2,
+                            offset: const Offset(0, 1),
                           ),
                         ],
                       ),
@@ -678,7 +677,7 @@ class _SectionRailState extends State<_SectionRail> {
                                   scale: isPressed
                                       ? 0.92
                                       : 1.0 + proximity * 0.06,
-                                  duration: const Duration(milliseconds: 260),
+                                  duration: const Duration(milliseconds: 180),
                                   curve: Curves.easeOutCubic,
                                   child: Icon(
                                     widget.icons[i],
