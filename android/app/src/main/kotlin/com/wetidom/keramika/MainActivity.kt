@@ -1,6 +1,7 @@
 package com.wetidom.keramika
 
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
@@ -90,6 +91,37 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Контекст экрана для Ады: текст активного окна другого приложения
+        // читает ScreenReaderService (Специальные возможности). Канал только
+        // отвечает на вопросы «есть разрешение?» и «дай свежий снимок».
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.wetidom.keramika/screen_reader",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasPermission" -> result.success(isScreenReaderEnabled())
+                "getScreenText" -> {
+                    result.success(
+                        mapOf(
+                            "text" to ScreenReaderService.latestText,
+                            "package" to ScreenReaderService.latestPackage,
+                            "at" to ScreenReaderService.latestAt,
+                        ),
+                    )
+                }
+                "openAccessibilitySettings" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "openAccessibilitySettings failed: $e")
+                        result.success(false)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -129,6 +161,25 @@ class MainActivity : FlutterActivity() {
         // одноразовые setAlarmClock — просим Dart перепланировать будильники
         // и проверки реальности. Задержка: Dart ещё регистрирует обработчик.
         maybeNotifyBootReschedule()
+    }
+
+    /** Включён ли ScreenReaderService в системных Спец. возможностях. */
+    private fun isScreenReaderEnabled(): Boolean {
+        return try {
+            val cn = ComponentName(this, ScreenReaderService::class.java)
+            // Полная форма: com.pkg/com.pkg.ScreenReaderService
+            val full = cn.flattenToString()
+            // Короткая форма: com.pkg/.ScreenReaderService
+            val short = "$packageName/.${ScreenReaderService::class.java.simpleName}"
+            val enabled = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: return false
+            enabled.split(':').any { it.equals(short, true) || it.equals(full, true) }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "isScreenReaderEnabled failed: $e")
+            false
+        }
     }
 
     private fun maybeNotifyBootReschedule() {

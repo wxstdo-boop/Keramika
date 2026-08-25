@@ -213,7 +213,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onPageChanged(int index) {
     _currentIndex.value = index;
-    _railPage.value = index.toDouble();
+    // НЕ дёргаем индикатор к цели: он и так непрерывно следует за page
+    // через _onPageScroll. Раньше onPageChanged срабатывал при пересечении
+    // каждой границы во время animateToPage и телепортировал таблетку
+    // обратно к целочисленному индексу посреди перелёта — отсюда «дёрганье».
     globalPrefs.setInt('last_home_tab', index);
   }
 
