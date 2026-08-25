@@ -327,7 +327,8 @@ class _HomeScreenState extends State<HomeScreen>
     // даёт аккуратную дугу во всех углах — и при обычном виде, и при
     // оттягивании полосы.
     final content = ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(36),
+      clipBehavior: Clip.antiAlias,
       child: Scaffold(
       // НЕ уменьшать экран при появлении клавиатуры: иначе при открытом
       // ИИ-чате (bottom sheet) весь экран под ним пересчитывает layout на
@@ -475,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen>
               // Закругление углов: растёт с натяжением (0 → 32px).
               // Радиус не должен исчезать в нулевой точке: при pull край
               // всё равно должен оставаться круглым, иначе видны острые углы.
-              final cornerRadius = 28.0 + (absOffset / 320.0 * 8.0).clamp(0.0, 8.0);
+              final cornerRadius = 36.0 + (absOffset / 320.0 * 12.0).clamp(0.0, 12.0);
 
               // Тень: появляется и растёт с натяжением.
               final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(0.0, 0.22);
