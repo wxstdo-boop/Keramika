@@ -6,9 +6,17 @@
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
         <!-- Непрозрачное окно: иначе MIUI снимает «двойной» снапшот окна
-             в недавних приложениях (системный фон + контент). -->
+             в недавных приложениях (системный фон + контент). -->
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowDisablePreview">true</item>
+        <!-- Edge-to-edge: прозрачный/полупрозрачный статус-бар, чтобы контент
+             (со своим скруглением углов) рисовался под ним, а не под чёрной
+             работает на MIUI/HyperOS (обычный edge-to-edge они игнорируют). -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your
@@ -25,5 +33,10 @@
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowDisablePreview">true</item>
+        <!-- Edge-to-edge: прозрачный статус-бар, чтобы контент со скруглёнными
+             углами рисовался под ним (верхние углы экрана закруглены). -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

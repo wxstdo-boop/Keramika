@@ -18,6 +18,7 @@ import android.provider.Settings
 import java.util.LinkedHashSet
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -28,6 +29,18 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.wetidom.keramika/alarm_payload"
     private val HAPTICS_CHANNEL = "com.wetidom.keramika/haptics"
     private var methodChannel: MethodChannel? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
+        // глобальное скругление углов (ClipRRect в Dart) доходило и до
+        // верхних углов экрана. На MIUI/HyperOS сам по себе не включает
+        // прозрачный статус-бар, поэтому сверху остаётся чёрная полоса;
+        // её цвет подгоняем под фон приложения через SystemChrome в Dart.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

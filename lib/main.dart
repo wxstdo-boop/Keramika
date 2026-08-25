@@ -613,6 +613,16 @@ ui.Image? preDecodedLogo;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
+  // глобальное скругление углов (ClipRRect в корне) доходило и до верхних
+  // углов экрана. Без этого сверху остаётся чёрная квадратная полоса
+  // статус-бара, и при оттягивании крайних разделов (Будильники/РП)
+  // верхние края выглядят незакруглёнными.
+  // Вызов ДО runApp может быть сброшен первым кадром Flutter, поэтому
+  // повторяем его в postFrameCallback сразу после первого кадра.
+  if (!kIsWeb) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   // Декодируем логотип ДО первого кадра: на слабых телефонах Image.asset
   // не успевает прогрузиться к началу сплэша и картинка мигает.
   try {
@@ -669,6 +679,22 @@ void main() async {
       initialFontFamily: fontFamily,
     ),
   );
+  // Повторный edge-to-edge ПОСЛЕ первого кадра — на MIUI/HyperOS вызов
+  // до runApp не применяется (Flutter сбрасывает системный UI при старте).
+  // Без него сверху остаётся чёрная квадратная полоса статус-бара, и
+  // верхние углы экрана не закруглены при оттягивании крайних разделов.
+  if (!kIsWeb) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarContrastEnforced: false,
+        ),
+      );
+    });
+  }
   // Логотип прогреваем НЕ блокируя старт: сплэш анимируется 1.8с,
   // картинка успеет загрузиться к первому кадру. Так окно Android
   // (теперь фирменного цвета) не висит лишние секунды перед runApp.
@@ -1530,7 +1556,16 @@ class KeramikaAppState extends State<KeramikaApp>
                   // белую подложку на навбар поверх нашего цвета — отключаем,
                   // иначе внизу всё равно видна белая полоса.
                   systemNavigationBarContrastEnforced: false,
-                  statusBarColor: Colors.transparent,
+                  // Статус-бар красим в цвет фона приложения (не transparent):
+                  // MIUI/HyperOS игнорирует прозрачный статус-бар и рисует
+                  // чёрную квадратную полосу, из-за которой верхние углы
+                  // экрана не выглядят закруглёнными при оттягивании
+                  // крайних разделов. С фоном приложения полоса сливается.
+                  statusBarColor: theme.scaffoldBackgroundColor,
+                  statusBarIconBrightness:
+                      theme.brightness == Brightness.dark
+                      ? Brightness.light
+                      : Brightness.dark,
                 ),
               );
             });

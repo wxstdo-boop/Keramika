@@ -320,11 +320,19 @@ class _HomeScreenState extends State<HomeScreen>
         RepaintBoundary(child: RealityChecksScreen(onExit: () => _onTabTap(0))),
     ];
 
-    final content = Scaffold(
+    // Скругляем ВСЕ углы главного экрана (не только глобальным ClipRRect
+    // на корне): на MIUI статус-бар остаётся отдельной чёрной полосой, и
+    // при оттягивании крайних разделов (Будильники/РП) квадратные верхние
+    // углы AppBar/подложки выглядели незакруглёнными. Скруглённый Scaffold
+    // даёт аккуратную дугу во всех углах — и при обычном виде, и при
+    // оттягивании полосы.
+    final content = ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Scaffold(
       // НЕ уменьшать экран при появлении клавиатуры: иначе при открытом
       // ИИ-чате (bottom sheet) весь экран под ним пересчитывает layout на
       // каждом кадре подъёма/опускания IME — чат «тормозил». Клавиатуру
-      // обслуживает сам лист (viewInsets), фону ресайз не нужен.
+      // обслуживает сам лист (bodyInsets), фону ресайз не нужен.
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         leading: IconButton(
@@ -506,6 +514,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
+    ),
     );
     // Пятна крови темы MUTILATED теперь рисуются ГЛОБАЛЬНО в корневом
     // builder (main.dart) — поверх Navigator, включая drag-прокси при
