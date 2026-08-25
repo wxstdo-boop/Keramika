@@ -1145,10 +1145,8 @@ class KeramikaAppState extends State<KeramikaApp>
     final built = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      // Caveat — рукописный «анимешный» шрифт с полной кириллицей
-      // (4 начертания в assets/fonts). Применяется ко ВСЕМУ тексту темы;
-      // экраны, задающие styles через copyWith, наследуют fontFamily.
-      fontFamily: appFontFamily,
+      // Шрифт задаётся через DefaultTextStyle в builder'е — не через тему.
+      // Иначе AnimatedTheme анимирует смену шрифта вместе с палитрой.
       // Лёгкая цветокоррекция «приятнее глазу» без смены палитр: чуть
       // больше воздуха в тексте, мягче тени и скругления карточек,
       // деликатный размытый фон вместо сплошного — глаза меньше устают.
@@ -1159,7 +1157,6 @@ class KeramikaAppState extends State<KeramikaApp>
       textTheme: Typography.material2021(platform: TargetPlatform.android)
           .black
           .apply(
-            fontFamily: appFontFamily,
             bodyColor: scheme.onSurface,
             displayColor: scheme.onSurface,
           )
@@ -1168,37 +1165,30 @@ class KeramikaAppState extends State<KeramikaApp>
             // глобальный коэффициент 1.35 не долетал до части экранов,
             // а эти размеры применяются везде, включая привычки и задачи.
             titleMedium: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 20 : 22,
               fontWeight: FontWeight.w600,
             ),
             titleSmall: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 17 : 19,
               fontWeight: FontWeight.w600,
             ),
             bodyLarge: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 16 : 21,
               fontWeight: FontWeight.w500,
             ),
             bodyMedium: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 14 : 20,
               fontWeight: FontWeight.w500,
             ),
             bodySmall: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 12 : 18,
               fontWeight: FontWeight.w500,
             ),
             labelSmall: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 11 : 16,
               fontWeight: FontWeight.w500,
             ),
             labelMedium: TextStyle(
-              fontFamily: appFontFamily,
               fontSize: appFontFamily == null ? 12 : 17,
               fontWeight: FontWeight.w500,
             ),
@@ -1514,13 +1504,12 @@ class KeramikaAppState extends State<KeramikaApp>
             isGrokStyle: isGrokStyle,
           ),
           themeMode: themeMode,
-          // Смена шрифта должна происходить мгновенно, как смена языка:
-          // промежуточная AnimatedTheme-отрисовка давала белую вспышку
-          // и «дёрганье» (шрифт перекладывал весь текст за 90 мс).
-          // Тема-кнопки сами анимируют свои обводки — им общий кросс-фейд
-          // не нужен.
-          themeAnimationDuration: Duration.zero,
-          themeAnimationCurve: Curves.easeOutCubic,
+          // Шрифт меняется мгновенно через тот же rebuild, что и язык.
+          // Анимация темы возвращена: MaterialApp плавно интерполирует
+          // палитру, пока текстовая конфигурация обновляется без отдельного
+          // кросс-фейда.
+          themeAnimationDuration: const Duration(milliseconds: 300),
+          themeAnimationCurve: Curves.easeInOutCubic,
           home: _locked
               ? LockScreen(onUnlock: () => unlock())
               : SplashScreen(
@@ -1571,7 +1560,13 @@ class KeramikaAppState extends State<KeramikaApp>
             });
             // Системный textScaler оставляем как есть — пользователь мог
             // включить крупный шрифт в системе; дополнительно не трогаем.
-            return LocaleProvider(
+            // Шрифт задаётся DefaultTextStyle, а не ThemeData.fontFamily:
+            // AnimatedTheme анимирует ВСЕ свойства темы (включая шрифт),
+            // а DefaultTextStyle меняется мгновенно — как язык.
+            final appFontFamily = _fontFamily == 'caveat' ? 'Caveat' : null;
+            return DefaultTextStyle.merge(
+              style: TextStyle(fontFamily: appFontFamily),
+              child: LocaleProvider(
                 locale: resolved,
               // БЕЗ меняющегося key: при смене темы/языка не пересоздаём
               // Navigator и плавающее окошко (иначе открытый чат закрывался,
@@ -1630,8 +1625,9 @@ class KeramikaAppState extends State<KeramikaApp>
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          );
+        },
         );
       },
     );

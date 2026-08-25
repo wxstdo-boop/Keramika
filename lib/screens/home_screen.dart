@@ -326,15 +326,10 @@ class _HomeScreenState extends State<HomeScreen>
     // углы AppBar/подложки выглядели незакруглёнными. Скруглённый Scaffold
     // даёт аккуратную дугу во всех углах — и при обычном виде, и при
     // оттягивании полосы.
-    final content = DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(44),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(44),
-        clipBehavior: Clip.antiAliasWithSaveLayer,
-        child: Scaffold(
+    final content = ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      clipBehavior: Clip.antiAlias,
+      child: Scaffold(
       // НЕ уменьшать экран при появлении клавиатуры: иначе при открытом
       // ИИ-чате (bottom sheet) весь экран под ним пересчитывает layout на
       // каждом кадре подъёма/опускания IME — чат «тормозил». Клавиатуру
@@ -481,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen>
               // Закругление углов: растёт с натяжением (0 → 32px).
               // Радиус не должен исчезать в нулевой точке: при pull край
               // всё равно должен оставаться круглым, иначе видны острые углы.
-              final cornerRadius = 36.0 + (absOffset / 320.0 * 12.0).clamp(0.0, 12.0);
+              final cornerRadius = 56.0 + (absOffset / 320.0 * 16.0).clamp(0.0, 16.0);
 
               // Тень: появляется и растёт с натяжением.
               final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(0.0, 0.22);
@@ -526,8 +521,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
-        ),
-      ),
+    ),
     );
     // Пятна крови темы MUTILATED теперь рисуются ГЛОБАЛЬНО в корневом
     // builder (main.dart) — поверх Navigator, включая drag-прокси при
@@ -591,8 +585,8 @@ class _SectionRailState extends State<_SectionRail> {
             ],
           ),
           border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.36),
-            width: 0.8,
+            color: cs.outlineVariant.withValues(alpha: 0.55),
+            width: 1.3,
           ),
           // Мягкий объём без тяжёлой нижней полосы: основной shadow
           // рассеянный, а светлый блик остаётся только внутри верхнего края.
