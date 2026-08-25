@@ -14,15 +14,17 @@ abstract final class ScreenReaderService {
     'com.wetidom.keramika/screen_reader',
   );
 
-  /// Выключатель в настройках. По умолчанию ВКЛЮЧЁН: без системного
-  /// разрешения доступности он всё равно ничего не читает, а после выдачи
-  /// разрешения начинает работать сразу, без второго шага.
+  /// Выключатель в настройках. Сохраняется отдельно от системного
+  /// разрешения: выдача/отзыв разрешения не сбрасывает пользовательский
+  /// выбор. Без разрешения функция просто временно не читает экран.
   static const String prefKey = 'setting_screen_aware';
 
   static bool? _hasPermCache;
 
+  static void clearPermissionCache() => _hasPermCache = null;
+
   static Future<bool> isEnabledPref() async =>
-      globalPrefs.getBool(prefKey) ?? true;
+      globalPrefs.getBool(prefKey) ?? false;
 
   static Future<void> setEnabledPref(bool value) async {
     await globalPrefs.setBool(prefKey, value);
