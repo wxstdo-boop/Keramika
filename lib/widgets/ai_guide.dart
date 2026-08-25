@@ -753,19 +753,19 @@ class _AiChatBodyState extends State<_AiChatBody>
         behavior: HitTestBehavior.opaque,
         onTap: () => _toggleScreenAware(context),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          width: 40,
+          width: 34,
           height: 34,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(17),
-            color: _screenAware ? cs.primary : cs.surface,
+            color: Colors.transparent,
             border: Border.all(
               color: _screenAware
                   ? cs.primary
                   : cs.outline.withValues(alpha: 0.45),
-              width: 1.4,
+              width: 1.2,
             ),
             boxShadow: _screenAware
                 ? [
@@ -792,9 +792,9 @@ class _AiChatBodyState extends State<_AiChatBody>
                       : Icons.visibility_outlined,
                   key: ValueKey('screen_toggle_icon_$_screenAware'),
                   size: 19,
-                  color: _screenAware
-                      ? cs.onPrimary
-                      : cs.onSurfaceVariant,
+                          color: _screenAware
+                        ? cs.primary
+                        : cs.onSurfaceVariant,
                 ),
               ),
               // «Живая» точка: зелёная, когда контекст экрана активен.
@@ -808,7 +808,7 @@ class _AiChatBodyState extends State<_AiChatBody>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: const Color(0xFF4CD964),
-                      border: Border.all(color: cs.primary, width: 1),
+                      border: Border.all(color: cs.surface, width: 1),
                     ),
                   ),
                 ),
