@@ -318,13 +318,13 @@ class _AiChatBodyState extends State<_AiChatBody>
   /// Сверяет выключатель с реальным системным разрешением: без разрешения
   /// «Спец. возможности» значок глаза НЕ остаётся включённым.
   Future<void> _refreshScreenPerm() async {
+    ScreenReaderService.clearPermissionCache();
     final perm = await ScreenReaderService.hasPermission();
     if (!mounted) return;
-    if (!perm && _screenAware) {
-      setState(() => _screenAware = false);
-      try {
-        globalPrefs.setBool(ScreenReaderService.prefKey, false);
-      } catch (_) {}
+    final saved = globalPrefs.getBool(ScreenReaderService.prefKey) ?? false;
+    final visible = saved && perm;
+    if (_screenAware != visible) {
+      setState(() => _screenAware = visible);
     }
   }
 
@@ -701,7 +701,7 @@ class _AiChatBodyState extends State<_AiChatBody>
     if (hasPerm) {
       setState(() => _screenAware = true);
       try {
-        globalPrefs.setBool(ScreenReaderService.prefKey, true);
+        await globalPrefs.setBool(ScreenReaderService.prefKey, true);
       } catch (_) {}
       return;
     }
