@@ -14,23 +14,23 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
 
     if (bold != null) {
       spans.add(TextSpan(
-        text: _protectWords(bold),
+        text: _keepPunctuationWithWord(bold),
         style: baseStyle.copyWith(fontWeight: FontWeight.w600),
       ));
     } else if (italic != null) {
       spans.add(TextSpan(
-        text: _protectWords(italic),
+        text: _keepPunctuationWithWord(italic),
         style: baseStyle.copyWith(fontStyle: FontStyle.italic),
       ));
     } else if (code != null) {
       spans.add(TextSpan(
-        text: _protectWords(code),
+        text: _keepPunctuationWithWord(code),
         style: baseStyle.copyWith(
           backgroundColor: baseStyle.color?.withValues(alpha: 0.10),
         ),
       ));
     } else {
-      spans.add(TextSpan(text: _protectWords(full), style: baseStyle));
+      spans.add(TextSpan(text: _keepPunctuationWithWord(full), style: baseStyle));
     }
   }
 
@@ -41,23 +41,20 @@ TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
 /// This keeps words whole and also keeps `слово,` together, without inserting
 /// characters inside a word (which would split Caveat words). Spaces between
 /// different words stay ordinary and remain valid line-break points.
-String _protectWords(String text) {
+String _keepPunctuationWithWord(String text) {
+  // Запятая/точка остаётся обычным символом, но пробелы перед знаками
+  // превращаем в NBSP. Внутрь самого слова ничего не вставляем: Caveat
+  // не получает искусственной точки переноса.
   if (text.isEmpty) return text;
   final chars = text.runes.toList();
   final out = StringBuffer();
   for (var i = 0; i < chars.length; i++) {
     final c = chars[i];
-    if (c == 0x20 && i > 0 && i + 1 < chars.length) {
-      final prev = chars[i - 1];
-      final next = chars[i + 1];
-      // Space before punctuation: make the preceding punctuation unit
-      // indivisible only when it is after a word. Normal word spaces remain.
-      if (_isPunctuation(next) || _isPunctuation(prev)) {
-        out.writeCharCode(0x00A0);
-        continue;
-      }
+    if (c == 0x20 && i + 1 < chars.length && _isPunctuation(chars[i + 1])) {
+      out.writeCharCode(0x00A0);
+    } else {
+      out.write(String.fromCharCode(c));
     }
-    out.write(String.fromCharCode(c));
   }
   return out.toString();
 }
