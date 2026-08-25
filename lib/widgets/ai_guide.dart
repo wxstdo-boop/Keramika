@@ -206,7 +206,7 @@ class _AiChatBody extends StatefulWidget {
 }
 
 class _AiChatBodyState extends State<_AiChatBody>
-    with SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   static const _historyKey = 'ai_chat_history';
   static const _pinsKey = 'ai_pinned_messages';
   static const int _maxPins = 10;
@@ -308,6 +308,31 @@ class _AiChatBodyState extends State<_AiChatBody>
     try {
       _screenAware = globalPrefs.getBool(ScreenReaderService.prefKey) ?? false;
     } catch (_) {}
+    // Следим за возвратом из системных настроек: если пользователь выдал
+    // разрешение «Спец. возможности» — значок включится сам; если отозвал
+    // — сам выключится (не должен оставаться «включённым» без разрешения).
+    WidgetsBinding.instance.addObserver(this);
+    _refreshScreenPerm();
+  }
+
+  /// Сверяет выключатель с реальным системным разрешением: без разрешения
+  /// «Спец. возможности» значок глаза НЕ остаётся включённым.
+  Future<void> _refreshScreenPerm() async {
+    final perm = await ScreenReaderService.hasPermission();
+    if (!mounted) return;
+    if (!perm && _screenAware) {
+      setState(() => _screenAware = false);
+      try {
+        globalPrefs.setBool(ScreenReaderService.prefKey, false);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Вернулись из системных настроек «Спец. возможности» — обновляем
+    // состояние значка по фактическому разрешению.
+    if (state == AppLifecycleState.resumed) _refreshScreenPerm();
   }
 
   /// Догоняет пропущенный отчёт Ады (если время наступило) и подхватывает
@@ -382,6 +407,7 @@ class _AiChatBodyState extends State<_AiChatBody>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     AiGuideService.adaReportTick.removeListener(_onAdaReportTick);
     AiGuideService.modelLabelTick.removeListener(_onModelLabelTick);
     _syncTimer?.cancel();
@@ -655,22 +681,33 @@ class _AiChatBodyState extends State<_AiChatBody>
     );
   }
 
-  /// Включает/выключает «контекст экрана». При включении без выданного
-  /// разрешения «Специальные возможности» — ведёт в системные настройки.
+  /// Включает/выключает «контекст экрана». Значок включается ТОЛЬКО когда
+  /// системное разрешение «Специальные возможности» реально выдано: без
+  /// него значок не остаётся включённым (нельзя обещать «Ада видит экран»,
+  /// если сервис не работает).
   Future<void> _toggleScreenAware(BuildContext context) async {
     Haptics.light();
-    final enabling = !_screenAware;
-    setState(() {
-      _screenAware = enabling;
+    if (_screenAware) {
+      // Выключение — мгновенное.
+      setState(() => _screenAware = false);
       try {
-        globalPrefs.setBool(ScreenReaderService.prefKey, enabling);
+        globalPrefs.setBool(ScreenReaderService.prefKey, false);
       } catch (_) {}
-    });
-    if (!enabling) return;
-    // Разрешение уже есть — включаем сразу, без диалога.
+      return;
+    }
+    // Включение: сначала проверяем реальное разрешение.
     final hasPerm = await ScreenReaderService.hasPermission();
     if (!mounted) return;
-    if (hasPerm) return;
+    if (hasPerm) {
+      setState(() => _screenAware = true);
+      try {
+        globalPrefs.setBool(ScreenReaderService.prefKey, true);
+      } catch (_) {}
+      return;
+    }
+    // Разрешения нет — объясняем и ведём в настройки. Значок при этом
+    // НЕ включается: вернёшься с выданным разрешением — включится сам
+    // (didChangeAppLifecycleState → _refreshScreenPerm).
     final cs = Theme.of(context).colorScheme;
     final go = await showDialog<bool>(
       context: context,
