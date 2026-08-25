@@ -473,7 +473,9 @@ class _HomeScreenState extends State<HomeScreen>
               final absOffset = offset.abs().clamp(0.0, 320.0);
 
               // Закругление углов: растёт с натяжением (0 → 32px).
-              final cornerRadius = (absOffset / 320.0 * 32.0).clamp(0.0, 32.0);
+              // Радиус не должен исчезать в нулевой точке: при pull край
+              // всё равно должен оставаться круглым, иначе видны острые углы.
+              final cornerRadius = 28.0 + (absOffset / 320.0 * 8.0).clamp(0.0, 8.0);
 
               // Тень: появляется и растёт с натяжением.
               final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(0.0, 0.22);
@@ -500,9 +502,13 @@ class _HomeScreenState extends State<HomeScreen>
                         ],
                       ),
                       child: ClipRRect(
+                        clipBehavior: Clip.antiAlias,
                         borderRadius: BorderRadius.circular(cornerRadius),
-                        child: Container(
-                          color: Theme.of(context).scaffoldBackgroundColor,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).scaffoldBackgroundColor,
+                            borderRadius: BorderRadius.circular(cornerRadius),
+                          ),
                           child: child,
                         ),
                       ),
