@@ -326,10 +326,15 @@ class _HomeScreenState extends State<HomeScreen>
     // углы AppBar/подложки выглядели незакруглёнными. Скруглённый Scaffold
     // даёт аккуратную дугу во всех углах — и при обычном виде, и при
     // оттягивании полосы.
-    final content = ClipRRect(
-      borderRadius: BorderRadius.circular(36),
-      clipBehavior: Clip.antiAlias,
-      child: Scaffold(
+    final content = DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(44),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(44),
+        clipBehavior: Clip.antiAliasWithSaveLayer,
+        child: Scaffold(
       // НЕ уменьшать экран при появлении клавиатуры: иначе при открытом
       // ИИ-чате (bottom sheet) весь экран под ним пересчитывает layout на
       // каждом кадре подъёма/опускания IME — чат «тормозил». Клавиатуру
@@ -521,7 +526,8 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
-    ),
+        ),
+      ),
     );
     // Пятна крови темы MUTILATED теперь рисуются ГЛОБАЛЬНО в корневом
     // builder (main.dart) — поверх Navigator, включая drag-прокси при
