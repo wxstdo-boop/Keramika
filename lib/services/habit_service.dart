@@ -15,6 +15,9 @@ class HabitService extends ChangeNotifier {
 
   List<Habit> get habits => List.unmodifiable(_habits);
 
+  /// Данные уже загружены с диска (в main() до первого кадра).
+  bool get isLoaded => _loaded;
+
   /// Текущий момент по Москве (UTC+3, без DST). Все сравнения
   /// «отмечено сегодня» идут через него, чтобы галочка сбрасывалась
   /// ровно в 00:00 МСК независимо от часового пояса телефона.
@@ -64,8 +67,12 @@ class HabitService extends ChangeNotifier {
       // Если их не обнулить, первая же отметка «оживит» старый счётчик
       // и стрик поведёт себя так, будто сброса не было.
       if (h.streak > 0) {
-        return h.copyWith(streak: 0, doneToday: false);
+        // Старые данные могли содержать streak без даты. Не уничтожаем его
+        // при обычном запуске: дата нужна для расчёта продолжения, но сам
+        // счётчик должен пережить нормализацию.
+        return h.doneToday ? h.copyWith(doneToday: false) : h;
       }
+
       return h.doneToday ? h.copyWith(doneToday: false) : h;
     }
     final today = mskToday();
@@ -100,7 +107,12 @@ class HabitService extends ChangeNotifier {
     // Дату тоже очищаем: state (streak=0, lastDone=null) всегда честный,
     // и следующая отметка идёт по ветке «первая в жизни» (стрик = 1).
     if (today.difference(lastDay).inDays >= 2) {
-      return h.copyWith(doneToday: false, streak: 0, lastDoneDate: null);
+      // Не обнуляем сохранённый streak: это исторический максимум серии,
+      // а не временная отметка «сегодня». День разрыва учитываем только при
+      // следующей отметке, когда toggle() начнёт новую серию с 1. Так
+      // возврат в приложение после пропуска не уничтожает статистику и не
+      // выглядит как самопроизвольный сброс.
+      return h.copyWith(doneToday: false);
     }
     return h.copyWith(doneToday: false);
   }

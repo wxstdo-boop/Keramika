@@ -120,14 +120,14 @@ class _SplashScreenState extends State<SplashScreen>
                           // телефонах аватарка не «дёргается».
                           RepaintBoundary(
                             child: Container(
-                              width: 258,
-                              height: 258,
-                              padding: const EdgeInsets.all(8),
+                              width: 104,
+                              height: 104,
+                              padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
                                 // «Скруглый» (squircle) — круглее квадрата, но
                                 // НЕ круг: нижняя подпись на логотипе не
                                 // обрезается кружком и остаётся читаемой.
-                                borderRadius: BorderRadius.circular(72),
+                                borderRadius: BorderRadius.circular(30),
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
@@ -162,30 +162,30 @@ class _SplashScreenState extends State<SplashScreen>
                               child: Container(
                                 padding: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(62),
+                                  borderRadius: BorderRadius.circular(25),
                                   border: Border.all(
                                     color: Colors.white.withValues(alpha: 0.55),
                                   ),
                                 ),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(58),
+                                  borderRadius: BorderRadius.circular(23),
                                   // Логотип уже декодирован в main() до первого
                                   // кадра — RawImage рисует его мгновенно, без
                                   // «мигания» и подгрузки на слабых телефонах.
                                   child: preDecodedLogo != null
                                       ? RawImage(
                                           image: preDecodedLogo,
-                                          width: 238,
-                                          height: 238,
+                                          width: 94,
+                                          height: 94,
                                           fit: BoxFit.contain,
                                           filterQuality: FilterQuality.high,
                                         )
                                       : Image.asset(
                                           'assets/keramika.png',
-                                          width: 238,
-                                          height: 238,
-                                          cacheWidth: 1024,
-                                          cacheHeight: 1024,
+                                          width: 94,
+                                          height: 94,
+                                          cacheWidth: 512,
+                                          cacheHeight: 512,
                                           filterQuality: FilterQuality.high,
                                           isAntiAlias: true,
                                           fit: BoxFit.contain,

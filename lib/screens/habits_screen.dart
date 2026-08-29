@@ -218,8 +218,17 @@ class _HabitsScreenState extends State<HabitsScreen>
   @override
   void initState() {
     super.initState();
+    // Данные уже загружены в main() до первого кадра — показываем их
+    // СРАЗУ, без ожидания повторного load() (иначе после Splash раздел
+    // привычек мигает: кадр пустоты → резкое появление списка).
+    // Повторный load() всё равно делаем в фоне: он дешёвый и подхватит
+    // изменения, если кто-то ещё писал в файл.
+    if (_service.isLoaded) {
+      _loaded = true;
+    }
     _service.load().then((_) {
-      if (mounted) setState(() => _loaded = true);
+      if (!mounted) return;
+      setState(() => _loaded = true);
     });
     _loadPerfectionismMode();
     SettingsService.perfectionismEnabled.addListener(_onPerfectionismChanged);
@@ -474,28 +483,12 @@ class _HabitsScreenState extends State<HabitsScreen>
                     // только загрузились — список появляется сразу.
                     child: !_loaded
                         ? const SizedBox.shrink(key: ValueKey('habits_loading'))
-                        : AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 320),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            transitionBuilder: (child, animation) =>
-                                FadeTransition(
-                                  opacity: animation,
-                                  child: ScaleTransition(
-                                    scale: Tween<double>(
-                                      begin: 0.98,
-                                      end: 1.0,
-                                    ).animate(animation),
-                                    child: child,
-                                  ),
-                                ),
-                            child: habits.length > 0
-                                ? SizedBox.expand(
-                                    key: const ValueKey('list'),
-                                    child: _buildBody(context, theme, habits),
-                                  )
-                                : _buildEmpty(context, theme),
-                          ),
+                        : habits.isNotEmpty
+                            ? SizedBox.expand(
+                                key: const ValueKey('list'),
+                                child: _buildBody(context, theme, habits),
+                              )
+                            : _buildEmpty(context, theme),
                   ),
                 ],
               ),
@@ -556,22 +549,12 @@ class _HabitsScreenState extends State<HabitsScreen>
       // при коротком списке — иначе жест «хватается» только у самого
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 420),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.97, end: 1.0).animate(animation),
-            child: child,
-          ),
-        ),
-        // Ключ меняется при каждом закрепе/открепе: список плавно
-        // «перетекает» в новую раскладку, а не прыгает позициями.
-        child: KeyedSubtree(
-          key: ValueKey('pin_rev_$_pinRev'),
-          child: Column(
+      child: KeyedSubtree(
+        // Анимация списка нужна только при изменении закрепления. Не
+        // запускаем её на первом кадре после Splash — именно этот внешний
+        // AnimatedSwitcher создавал рывок «пусто → привычки».
+        key: ValueKey('pin_rev_$_pinRev'),
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (_perfectionismMode) _buildPerfectionismStrip(context, theme),
@@ -587,7 +570,6 @@ class _HabitsScreenState extends State<HabitsScreen>
             ],
           ),
         ),
-      ),
     );
   }
 

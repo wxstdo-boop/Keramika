@@ -10,6 +10,7 @@ import '../services/ai_guide_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
+import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../widgets/swipe_to_delete.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
@@ -853,11 +854,14 @@ class _TasksScreenState extends State<TasksScreen>
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                note,
+                sanitizeTextForWrap(note),
                 // ВЕСЬ текст заметки всегда виден: без maxLines длинная
                 // заметка (до 150 символов) переносится целиком, а карточка
                 // плавно растёт под неё. Раньше кап 3 строки резал текст
                 // многоточием — «видно не все 150 символов».
+                // NBSP/невидимые символы из копипасты вычищаем, иначе
+                // слова «слипаются» и длинное слово сползает на новую
+                // строку, хотя на текущей полно места.
                 maxLines: null,
                 softWrap: true,
                 style: theme.textTheme.bodySmall?.copyWith(
