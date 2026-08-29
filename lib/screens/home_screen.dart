@@ -440,30 +440,44 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 Expanded(
-                  child: RepaintBoundary(
-                    // При выезде чата/другого route слой текущего раздела
-                    // двигается готовой текстурой, без повторной отрисовки
-                    // четырёх заранее созданных экранов.
-                    child: PageView(
-                      controller: _pageController,
-                      onPageChanged: _onPageChanged,
-                      // Соседние разделы строятся/раскладываются ЗАРАНЕЕ (до
-                      // появления на экране), а не в момент свайпа. Без этого
-                      // быстрый свайп «первый → последний» каждый раз рендерил
-                      // новую страницу на лету — отсюда подлагивания.
-                      allowImplicitScrolling: true,
-                      // Кэш на 3 вьюпорта (после прогрева): при 4 разделах
-                      // строятся ВСЕ страницы заранее, поэтому дальний переход
-                      // «первый → последний» анимируется по готовым кадрам.
-                      // На первом кадре — 1 вьюпорт (текущая + соседняя),
-                      // остальные достраиваются в фоне, не нагружая вход.
-                      scrollCacheExtent: ScrollCacheExtent.viewport(
-                        _cacheWarmed ? 3.0 : 1.0,
+                  // ClipRRect вокруг PageView скругляет края при
+                  // overscroll (BouncingScrollPhysics) — когда тянем
+                  // влево на Будильниках или вправо на РП, видимый
+                  // контент за краем остаётся скруглённым.
+                  child: ClipRRect(
+                    // PageView должен клипаться именно в родительском
+                    // контейнере: его собственный overscroll иначе рисует
+                    // соседний кадр поверх квадратного края.
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(22),
+                      bottom: Radius.circular(22),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: RepaintBoundary(
+                      // При выезде чата/другого route слой текущего раздела
+                      // двигается готовой текстурой, без повторной отрисовки
+                      // четырёх заранее созданных экранов.
+                      child: PageView(
+                        controller: _pageController,
+                        onPageChanged: _onPageChanged,
+                        // Соседние разделы строятся/раскладываются ЗАРАНЕЕ (до
+                        // появления на экране), а не в момент свайпа. Без этого
+                        // быстрый свайп «первый → последний» каждый раз рендерил
+                        // новую страницу на лету — отсюда подлагивания.
+                        allowImplicitScrolling: true,
+                        // Кэш на 3 вьюпорта (после прогрева): при 4 разделах
+                        // строятся ВСЕ страницы заранее, поэтому дальний переход
+                        // «первый → последний» анимируется по готовым кадрам.
+                        // На первом кадре — 1 вьюпорт (текущая + соседняя),
+                        // остальные достраиваются в фоне, не нагружая вход.
+                        scrollCacheExtent: ScrollCacheExtent.viewport(
+                          _cacheWarmed ? 3.0 : 1.0,
+                        ),
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        children: screens,
                       ),
-                      physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-                      children: screens,
                     ),
                   ),
                 ),
@@ -476,7 +490,10 @@ class _HomeScreenState extends State<HomeScreen>
               // Закругление углов: растёт с натяжением (0 → 32px).
               // Радиус не должен исчезать в нулевой точке: при pull край
               // всё равно должен оставаться круглым, иначе видны острые углы.
-              final cornerRadius = 56.0 + (absOffset / 320.0 * 16.0).clamp(0.0, 16.0);
+              // Этот радиус относится только к движущемуся блоку разделов,
+              // а не к корню приложения. Не округляем весь экран: именно
+              // это давало мигание при запуске.
+              final cornerRadius = 22.0 + (absOffset / 320.0 * 10.0).clamp(0.0, 10.0);
 
               // Тень: появляется и растёт с натяжением.
               final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(0.0, 0.22);
@@ -509,6 +526,10 @@ class _HomeScreenState extends State<HomeScreen>
                           decoration: BoxDecoration(
                             color: Theme.of(context).scaffoldBackgroundColor,
                             borderRadius: BorderRadius.circular(cornerRadius),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.18),
+                              width: 0.8,
+                            ),
                           ),
                           child: child,
                         ),

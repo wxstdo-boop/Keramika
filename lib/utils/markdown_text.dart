@@ -1,96 +1,102 @@
 import 'package:flutter/material.dart';
 
-/// Parses inline markdown into a list of [TextSpan]s.
-/// Supports **bold**, *italic*, `code`.
-///
-/// After parsing, trailing punctuation is merged into the previous span
-/// so that "word," stays as one unit — Skia won't break the comma onto
-/// a new line because it's in the same span as the word.
+/// Чистит текст перед рендером от невидимых символов, которые ломают
+/// перенос строк:
+///  — NBSP (U+00A0) склеивает слова и запрещает перенос: длинное слово
+///    «сползает» на следующую строку, хотя на текущей куча места.
+///  — ZWSP/BOM/word-joiner/soft-hyphen (попадают из ИИ/копипасты) дают
+///    ложные точки переноса или «лишнюю ширину» перед пунктуацией.
+String sanitizeTextForWrap(String text) {
+  if (text.isEmpty) return text;
+  final sb = StringBuffer();
+  for (final rune in text.runes) {
+    if (rune == 0x00A0 || rune == 0x2007 || rune == 0x202F) {
+      sb.write(' '); // NBSP -> обычный пробел (разрешает перенос)
+    } else if (rune == 0xFEFF ||
+        rune == 0x200B ||
+        rune == 0x200C ||
+        rune == 0x200D ||
+        rune == 0x2060 ||
+        rune == 0x00AD) {
+      // невидимые служебные — выкидываем совсем
+    } else {
+      sb.writeCharCode(rune);
+    }
+  }
+  return sb.toString();
+}
+
+/// Возвращает true, если спан заканчивается словом с хвостовой пунктуацией
+/// (например "Steqtoq,"). В таком случае в слово вставляется ZWSP перед
+/// последней буквой: "Steqto\u200Bq,". Если «слово,» не влезает, перенос
+/// идёт ВНУТРИ слова, и запятая уходит на новую строку ВМЕСТЕ со слогом,
+/// а не сиротой. В обычном случае (когда влезает) переноса нет вообще.
+String glueTrailingPunctuation(String value) {
+  final m = RegExp(r'^(.+?)([,.;!?…:»]+)$').firstMatch(value);
+  if (m == null || m.group(1)!.isEmpty) return value;
+  final word = m.group(1)!;
+  final punct = m.group(2)!;
+  // Последний символ слова — буква/цифра? (не ставить ZWSP после дефиса)
+  final last = word.runes.last;
+  final isLetter = (last >= 0x30 && last <= 0x39) || // digit
+      (last >= 0x41 && last <= 0x5A) || // A-Z
+      (last >= 0x61 && last <= 0x7A) || // a-z
+      (last >= 0x400 && last <= 0x4FF); // cyrillic
+  if (!isLetter) return value;
+  final split = word.length - 1;
+  // ZWSP между предпоследней и последней буквой — точка переноса,
+  // которая срабатывает ТОЛЬКО когда слово+запятая не влезают.
+  return '${word.substring(0, split)}\u200B${word.substring(split)}$punct';
+}
+
+/// Inline markdown renderer. Punctuation is kept with the preceding word by
+/// making it part of the same span; this also works across bold/italic/code
+/// boundaries without inserting visible characters into copied text.
 TextSpan parseMarkdownSpans(String text, TextStyle baseStyle) {
-  final raw = <InlineSpan>[];
+  final spans = <TextSpan>[];
   final regex = RegExp(r'(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|[^*`]+)');
 
-  for (final match in regex.allMatches(text)) {
-    final full = match.group(0)!;
+  for (final match in regex.allMatches(sanitizeTextForWrap(text))) {
     final bold = match.group(2);
     final italic = match.group(3);
     final code = match.group(4);
+    final style = bold != null
+        ? baseStyle.copyWith(fontWeight: FontWeight.w600)
+        : italic != null
+            ? baseStyle.copyWith(fontStyle: FontStyle.italic)
+            : code != null
+                ? baseStyle.copyWith(
+                    backgroundColor: baseStyle.color?.withValues(alpha: 0.10),
+                  )
+                : baseStyle;
+    final value = bold ?? italic ?? code ?? match.group(0)!;
 
-    if (bold != null) {
-      raw.add(TextSpan(
-        text: bold,
-        style: baseStyle.copyWith(fontWeight: FontWeight.w600),
-      ));
-    } else if (italic != null) {
-      raw.add(TextSpan(
-        text: italic,
-        style: baseStyle.copyWith(fontStyle: FontStyle.italic),
-      ));
-    } else if (code != null) {
-      raw.add(TextSpan(
-        text: code,
-        style: baseStyle.copyWith(
-          backgroundColor: baseStyle.color?.withValues(alpha: 0.10),
-        ),
-      ));
+    if (spans.isNotEmpty && _startsWithPunctuation(value)) {
+      final previous = spans.removeLast();
+      final punctuation = _takeLeadingPunctuation(value);
+      spans.add(TextSpan(text: '${previous.text}$punctuation', style: previous.style));
+      final rest = value.substring(punctuation.length);
+      if (rest.isNotEmpty) spans.add(TextSpan(text: rest, style: style));
     } else {
-      raw.add(TextSpan(text: full, style: baseStyle));
+      spans.add(TextSpan(text: glueTrailingPunctuation(value), style: style));
     }
   }
 
-  // Merge trailing punctuation into the previous span.  Skia treats each
-  // span as an independent break opportunity — if a comma ends up in its
-  // own plain span (after a bold word, for instance), it can strand on
-  // the next line.  Merging it into the previous span makes "word,"
-  // break as a unit.
-  final merged = _mergePunctuation(raw);
-  return TextSpan(style: baseStyle, children: merged.isNotEmpty ? merged : null);
+  return TextSpan(style: baseStyle, children: spans);
 }
 
-bool _isWordChar(int c) =>
-    (c >= 0x30 && c <= 0x39) || // 0-9
-    (c >= 0x41 && c <= 0x5A) || // A-Z
-    (c >= 0x61 && c <= 0x7A) || // a-z
-    (c >= 0x400 && c <= 0x45F) || // Cyrillic
-    (c >= 0x410 && c <= 0x44F);
+bool _startsWithPunctuation(String value) =>
+    RegExp(r'^(?:[ \t]*[,.;!?…:»]+|[ \t]*[—–])').hasMatch(value);
 
-List<InlineSpan> _mergePunctuation(List<InlineSpan> spans) {
-  if (spans.length < 2) return spans;
-  final out = <InlineSpan>[];
-  for (var i = 0; i < spans.length; i++) {
-    final prev = out.isNotEmpty ? out.last : null;
-    final cur = spans[i];
-    final curText = (cur is TextSpan) ? (cur.text ?? '') : '';
-
-    if (prev != null && curText.isNotEmpty) {
-      final prevSpan = prev as TextSpan;
-      final prevText = prevSpan.text ?? '';
-      // Does current span start with trailing punctuation (possibly
-      // preceded by a space: " ," or " —")?
-      final m = RegExp(r'^( ?[,.!?;:»…]| ?—| ?–)').firstMatch(curText);
-      if (m != null && prevText.isNotEmpty) {
-        final tail = m.group(0)!;
-        final lastChar =
-            prevText.isNotEmpty ? prevText.codeUnitAt(prevText.length - 1) : -1;
-        if (_isWordChar(lastChar)) {
-          out[out.length - 1] = TextSpan(
-            text: prevText + tail,
-            style: prevSpan.style,
-          );
-          final rest = curText.substring(tail.length);
-          if (rest.isNotEmpty) {
-            out.add(TextSpan(text: rest, style: prevSpan.style));
-          }
-          continue;
-        }
-      }
-    }
-    out.add(cur);
-  }
-  return out;
+String _takeLeadingPunctuation(String value) {
+  final match = RegExp(r'^(?:[ \t]*[,.;!?…:»]+|[ \t]*[—–])').firstMatch(value);
+  return match?.group(0) ?? '';
 }
 
-/// Simple inline markdown renderer for non-selectable contexts.
 Widget buildMarkdownText(String text, TextStyle baseStyle) {
-  return RichText(text: parseMarkdownSpans(text, baseStyle));
-}
+  return RichText(
+    text: parseMarkdownSpans(text, baseStyle),
+    softWrap: true,
+    overflow: TextOverflow.clip,
+  );
+}

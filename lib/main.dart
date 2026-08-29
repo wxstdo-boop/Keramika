@@ -1136,8 +1136,14 @@ class KeramikaAppState extends State<KeramikaApp>
     required bool isDark,
     required bool isGrokStyle,
   }) {
-    final cacheKey = '${scheme.hashCode}|$isGrokStyle|$_fontFamily';
+    // Шрифт задаётся ПРЯМО в текстовых стилях темы (copyWith ниже):
+    // AnimatedTheme не умеет интерполировать fontFamily (строка), поэтому
+    // смена шрифта происходит мгновенно, а палитра тем перетекает плавно.
+    // cacheKey включает _fontFamily, чтобы при переключении шрифта тема
+    // пересобиралась с новым шрифтом (иначе остаётся закэшированная тема
+    // со старым шрифтом — Caveat не переключался).
     final appFontFamily = _fontFamily == 'caveat' ? 'Caveat' : null;
+    final cacheKey = '${scheme.hashCode}|$isGrokStyle|$_fontFamily';
     final cached = isDark ? _darkThemeCache : _lightThemeCache;
     final cachedKey = isDark ? _darkThemeCacheKey : _lightThemeCacheKey;
     if (cached != null && cachedKey == cacheKey) return cached;
@@ -1145,8 +1151,6 @@ class KeramikaAppState extends State<KeramikaApp>
     final built = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      // Шрифт задаётся через DefaultTextStyle в builder'е — не через тему.
-      // Иначе AnimatedTheme анимирует смену шрифта вместе с палитрой.
       // Лёгкая цветокоррекция «приятнее глазу» без смены палитр: чуть
       // больше воздуха в тексте, мягче тени и скругления карточек,
       // деликатный размытый фон вместо сплошного — глаза меньше устают.
@@ -1159,37 +1163,43 @@ class KeramikaAppState extends State<KeramikaApp>
           .apply(
             bodyColor: scheme.onSurface,
             displayColor: scheme.onSurface,
+            // fontFamily ВО ВСЕХ стилях сразу (apply применяет его ко
+            // всему TextTheme): иначе часть стилей (headline, display и
+            // т.п.) остаётся с явным Roboto из .black и Caveat выглядит
+            // «не подстроенным». При обычном шрифте — null, остаётся
+            // системный Roboto. AnimatedTheme не интерполирует строку
+            // fontFamily — смена мгновенная.
+            fontFamily: appFontFamily,
           )
           .copyWith(
-            // Немного выше стандарта, но без прежнего перекоса: прежний
-            // глобальный коэффициент 1.35 не долетал до части экранов,
-            // а эти размеры применяются везде, включая привычки и задачи.
+            // Для Caveat размеры чуть больше: у него маленькая x-высота,
+            // иначе текст выглядит мельче Roboto.
             titleMedium: TextStyle(
-              fontSize: appFontFamily == null ? 20 : 22,
+              fontSize: appFontFamily == null ? 17 : 21,
               fontWeight: FontWeight.w600,
             ),
             titleSmall: TextStyle(
-              fontSize: appFontFamily == null ? 17 : 19,
+              fontSize: appFontFamily == null ? 15 : 19,
               fontWeight: FontWeight.w600,
             ),
             bodyLarge: TextStyle(
-              fontSize: appFontFamily == null ? 16 : 21,
+              fontSize: appFontFamily == null ? 14 : 18,
               fontWeight: FontWeight.w500,
             ),
             bodyMedium: TextStyle(
-              fontSize: appFontFamily == null ? 14 : 20,
+              fontSize: appFontFamily == null ? 12 : 16,
               fontWeight: FontWeight.w500,
             ),
             bodySmall: TextStyle(
-              fontSize: appFontFamily == null ? 12 : 18,
+              fontSize: appFontFamily == null ? 11 : 15,
               fontWeight: FontWeight.w500,
             ),
             labelSmall: TextStyle(
-              fontSize: appFontFamily == null ? 11 : 16,
+              fontSize: appFontFamily == null ? 10 : 14,
               fontWeight: FontWeight.w500,
             ),
             labelMedium: TextStyle(
-              fontSize: appFontFamily == null ? 12 : 17,
+              fontSize: appFontFamily == null ? 12 : 16,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1504,10 +1514,8 @@ class KeramikaAppState extends State<KeramikaApp>
             isGrokStyle: isGrokStyle,
           ),
           themeMode: themeMode,
-          // Шрифт меняется мгновенно через тот же rebuild, что и язык.
-          // Анимация темы возвращена: MaterialApp плавно интерполирует
-          // палитру, пока текстовая конфигурация обновляется без отдельного
-          // кросс-фейда.
+          // Цвета тем переходят плавно. Шрифт не входит в ThemeData и не
+          // участвует в этом переходе — он меняется сразу, как язык.
           themeAnimationDuration: const Duration(milliseconds: 300),
           themeAnimationCurve: Curves.easeInOutCubic,
           home: _locked
@@ -1560,9 +1568,9 @@ class KeramikaAppState extends State<KeramikaApp>
             });
             // Системный textScaler оставляем как есть — пользователь мог
             // включить крупный шрифт в системе; дополнительно не трогаем.
-            // Шрифт задаётся DefaultTextStyle, а не ThemeData.fontFamily:
-            // AnimatedTheme анимирует ВСЕ свойства темы (включая шрифт),
-            // а DefaultTextStyle меняется мгновенно — как язык.
+            // Шрифт живёт в DefaultTextStyle — НЕ в ThemeData. AnimatedTheme
+            // тогда не интерполирует fontFamily, и шрифт меняется мгновенно
+            // (как язык), а палитра тем перетекает плавно.
             final appFontFamily = _fontFamily == 'caveat' ? 'Caveat' : null;
             return DefaultTextStyle.merge(
               style: TextStyle(fontFamily: appFontFamily),
@@ -1622,14 +1630,14 @@ class KeramikaAppState extends State<KeramikaApp>
                         },
                       ),
                   ],
-                  ),
                 ),
               ),
             ),
-          );
-        },
+          ),
         );
       },
     );
-  }
+  },
+);
+}
 }
