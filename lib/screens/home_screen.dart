@@ -676,12 +676,19 @@ class _SectionRailState extends State<_SectionRail> {
                       proximity,
                     );
                     final isPressed = _pressedIndex == i;
+                    final isSelected = selectedIndex == i;
+                    // Единственный scale-таргет: выбранный чуть увеличен,
+                    // остальные 1.0. При нажатии — плавное единое сжатие
+                    // (выбранный чуть меньше, чтобы не «нырять» глубоко),
+                    // а не два переключения, которые выглядели как мигание.
+                    final restingScale = isSelected ? 1.05 : 1.0;
+                    final pressedScale = isSelected ? 0.96 : 0.90;
                     return Expanded(
                       child: Tooltip(
                         message: label,
                         child: Semantics(
                           button: true,
-                          selected: selectedIndex == i,
+                          selected: isSelected,
                           label: label,
                           child: Material(
                             type: MaterialType.transparency,
@@ -703,9 +710,9 @@ class _SectionRailState extends State<_SectionRail> {
                               child: Center(
                                 child: AnimatedScale(
                                   scale: isPressed
-                                      ? 0.92
-                                      : 1.0 + proximity * 0.06,
-                                  duration: const Duration(milliseconds: 180),
+                                      ? pressedScale
+                                      : restingScale,
+                                  duration: const Duration(milliseconds: 160),
                                   curve: Curves.easeOutCubic,
                                   child: Icon(
                                     widget.icons[i],

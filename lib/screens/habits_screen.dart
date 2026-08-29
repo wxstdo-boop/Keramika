@@ -926,9 +926,13 @@ class _HabitsScreenState extends State<HabitsScreen>
                             if (habit.notes.isNotEmpty ||
                                 habit.status.isNotEmpty)
                               _compactIconButton(
-                                icon: (_expandedNotes[habit.id] ?? false)
-                                    ? Icons.keyboard_arrow_up
-                                    : Icons.keyboard_arrow_down,
+                                // Плавно поворачиваем стрелку на 180° при
+                                // открытии/закрытии заметки, а не рвём её
+                                // между двумя разными иконками.
+                                icon: Icons.keyboard_arrow_down,
+                                rotation: (_expandedNotes[habit.id] ?? false)
+                                    ? 3.14159 // пи — стрелка вверх
+                                    : 0,
                                 color: (_expandedNotes[habit.id] ?? false)
                                     ? theme.colorScheme.primary
                                     : theme.colorScheme.onSurfaceVariant,
@@ -1216,6 +1220,7 @@ class _HabitsScreenState extends State<HabitsScreen>
     required IconData icon,
     required Color color,
     required VoidCallback onPressed,
+    double rotation = 0,
   }) {
     return Padding(
       padding: const EdgeInsets.only(left: 2),
@@ -1224,7 +1229,12 @@ class _HabitsScreenState extends State<HabitsScreen>
         radius: 18,
         child: Padding(
           padding: const EdgeInsets.all(4),
-          child: Icon(icon, size: 18, color: color),
+          child: AnimatedRotation(
+            turns: rotation / 3.14159 / 2,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOutCubic,
+            child: Icon(icon, size: 18, color: color),
+          ),
         ),
       ),
     );
