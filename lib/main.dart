@@ -1151,6 +1151,12 @@ class KeramikaAppState extends State<KeramikaApp>
     final built = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      // ШРИФТ ЗАДАН В САМОЙ ТЕМЕ: ThemeData(fontFamily:) задаёт его как
+      // базовый для ВСЕЙ иерархии — DefaultTextStyle, Text из theme.textTheme,
+      // Material-виджеты (AppBar, капсулы, кнопки) и т.д. Это гарантирует,
+      // что Caveat применится везде, а не только в виджетах, вытягивающих
+      // стиль из textTheme. При обычном шрифте — null (системный Roboto).
+      fontFamily: appFontFamily,
       // Лёгкая цветокоррекция «приятнее глазу» без смены палитр: чуть
       // больше воздуха в тексте, мягче тени и скругления карточек,
       // деликатный размытый фон вместо сплошного — глаза меньше устают.

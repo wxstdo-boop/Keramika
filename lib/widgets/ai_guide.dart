@@ -254,6 +254,13 @@ class _AiChatBodyState extends State<_AiChatBody>
     vsync: this,
     duration: const Duration(milliseconds: 900),
   );
+  // Плавное выделение поля ввода при фокусе: обводка мягко разгорается
+  // (цвет primary) при тапе и гаснет обратно при снятии фокуса. Раньше
+  // переключалась мгновенно — @@@@@@ просто «щёлкала».
+  late final AnimationController _focusAnim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  );
 
   @override
   void initState() {
@@ -346,6 +353,13 @@ class _AiChatBodyState extends State<_AiChatBody>
   }
 
   void _onInputFocus() {
+    // Плавная обводка поля ввода: разгорается при фокусе, гаснет при
+    // снятии (тап по пузырю сообщения и т.п.).
+    if (_inputFocus.hasFocus) {
+      _focusAnim.forward();
+    } else {
+      _focusAnim.reverse();
+    }
     if (!_inputFocus.hasFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollCtrl.hasClients) return;
@@ -413,6 +427,7 @@ class _AiChatBodyState extends State<_AiChatBody>
     _syncTimer?.cancel();
     _clearCtrl.dispose();
     _dotsCtrl.dispose();
+    _focusAnim.dispose();
     _inputCtrl.dispose();
     _inputFocus.dispose();
     _scrollCtrl.dispose();
@@ -1450,24 +1465,31 @@ class _AiChatBodyState extends State<_AiChatBody>
                 child: Row(
                   children: [
                     Expanded(
-                      // Обводка поля — МГНОВЕННАЯ по фокусу (без 220мс
-                      // анимации: при первом тапе она тормозила появление
-                      // клавиатуры и поле «дёргалось»).
+                      // Обводка поля плавно «разгорается» при фокусе и гаснет
+                      // при снятии (короткая 220мс анимация, чтобы не тормозить
+                      // клавиатуру, но и не «щёлкать» цветом).
                       child: AnimatedBuilder(
-                        animation: _inputFocus,
-                        builder: (context, child) => Container(
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: _inputFocus.hasFocus
-                                  ? cs.primary.withValues(alpha: 0.65)
-                                  : cs.outlineVariant.withValues(alpha: 0.4),
-                              width: 1.5,
+                        animation: _focusAnim,
+                        builder: (context, child) {
+                          final t = Curves.easeOutCubic.transform(
+                            _focusAnim.value,
+                          );
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Color.lerp(
+                                  cs.outlineVariant.withValues(alpha: 0.4),
+                                  cs.primary.withValues(alpha: 0.7),
+                                  t,
+                                )!,
+                                width: 1.5 + t * 0.4,
+                              ),
                             ),
-                          ),
-                          child: child,
-                        ),
+                            child: child,
+                          );
+                        },
                         child: Stack(
                           children: [
                             // Предпросмотр markdown убран: прозрачный

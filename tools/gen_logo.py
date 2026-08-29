@@ -173,11 +173,51 @@ def build_monochrome(size):
     return canvas.resize((w, h), Image.LANCZOS)
 
 
+def build_legacy(size):
+    """Legacy full-bleed icon (recipient of the launcher on pre-adaptive
+    systems and as a fallback) — the same tile with K + sparkle."""
+    w = h = size
+    W = H = w * SS
+    colors = ((232, 96, 132), (255, 158, 120))
+    grad = Image.new("RGB", (W, H))
+    gpx = grad.load()
+    c1, c2 = colors
+    for y in range(H):
+        for x in range(W):
+            t = (x / max(1, W - 1) + y / max(1, H - 1)) / 2
+            gpx[x, y] = tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+    canvas = grad.convert("RGBA")
+    glow = Image.new("L", (W, H), 0)
+    gd = ImageDraw.Draw(glow)
+    cx, cy = W / 2, H / 2
+    rg = W * 0.42
+    for i in range(60, 0, -1):
+        rr = rg * i / 60
+        alpha = int(35 * (i / 60) ** 2)
+        gd.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=alpha)
+    white = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+    mask = Image.new("L", (W, H), 255)
+    canvas.paste(white, (0, 0), Image.composite(glow, Image.new("L", (W, H), 0), mask))
+    d = ImageDraw.Draw(canvas)
+    s = 0.21 * W
+    draw_k(d, 0.5 * W, 0.52 * H, s, int(0.16 * W), (255, 255, 255, 255),
+           shadow=(int(0.015 * W), int(0.04 * H)))
+    draw_sparkle(d, 0.70 * W, 0.30 * H, 0.075 * W, (255, 251, 240, 255))
+    return canvas.resize((w, h), Image.LANCZOS)
+
+
 def main():
     build_logo(768).save("assets/keramika.png")
     build_foreground(432).save("android/app/src/main/res/drawable/ic_launcher_foreground.png")
     build_monochrome(432).save("android/app/src/main/res/drawable/ic_launcher_monochrome.png")
     build_logo(216).save("android/app/src/main/res/drawable-nodpi/ic_notification_large.png")
+    # Legacy fallback icons — replace the old tree logo everywhere the launcher
+    # doesn't use adaptive icons (and for icon caches that keep legacy PNGs).
+    for d, size in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72),
+                    ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144),
+                    ("mipmap-xxxhdpi", 192)]:
+        build_legacy(size).convert("RGB").save(
+            f"android/app/src/main/res/{d}/ic_launcher.png")
     print("done")
 
 
