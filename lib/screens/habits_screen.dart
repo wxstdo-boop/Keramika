@@ -472,6 +472,8 @@ class _HabitsScreenState extends State<HabitsScreen>
             // Без своего AppBar: белая полоса под таблеткой разделов убрана,
             // контент начинается сразу под ней.
             body: FabScrollListener(
+              visible: sectionPillVisible,
+              child: FabScrollListener(
               visible: _fabVisible,
               child: Column(
                 children: [
@@ -489,6 +491,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                             : _buildEmpty(context, theme),
                   ),
                 ],
+              ),
               ),
             ),
             // SingleChildScrollView is now inside _buildBody and _buildEmpty

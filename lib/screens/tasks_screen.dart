@@ -49,10 +49,19 @@ class _TasksScreenState extends State<TasksScreen>
   void initState() {
     super.initState();
     _service.load();
+    // Кнопка управления категориями живёт на уровне главной таблетки:
+    // её нажатие тикает счётчик, а этот экран по слушателю открывает диалог.
+    manageCategoriesTick.addListener(_onManageCategoriesTick);
+  }
+
+  void _onManageCategoriesTick() {
+    if (!mounted) return;
+    _manageCategories();
   }
 
   @override
   void dispose() {
+    manageCategoriesTick.removeListener(_onManageCategoriesTick);
     _fabVisible.dispose();
     super.dispose();
   }
@@ -291,17 +300,15 @@ class _TasksScreenState extends State<TasksScreen>
             // управления категориями стоит в ОДНОЙ строке с самим выбором
             // категорий у самого верха, под таблеткой — без белых зазоров.
             body: FabScrollListener(
+              visible: sectionPillVisible,
+              child: FabScrollListener(
               visible: _fabVisible,
               child: Column(
                 children: [
-                  // Категории + кнопка управления в одной строке: и то, и
-                  // другое на уровне большой таблетки (категории максимально
-                  // высоко, лишний белый низ обрезан).
+                  // Категории — по центру, на всю ширину; кнопка управления
+                  // категориями переехала на уровень главной таблетки.
                   if (_service.categories.isNotEmpty)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SlidingPicker<String>(
+                    SlidingPicker<String>(
                       items: chips,
                       selected: _filter,
                       // Высота ужата (52 → 40) и отступы таблеток меньше —
@@ -369,43 +376,6 @@ class _TasksScreenState extends State<TasksScreen>
                           ),
                         );
                       },
-                          ),
-                        ),
-                        // Кнопка управления категориями — в той же строке,
-                        // справа от карусели, на уровне большой таблетки.
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: IconButton(
-                            icon: const Icon(Icons.folder_outlined),
-                            tooltip: Translations.t('manageCategories', context),
-                            onPressed: _manageCategories,
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(
-                              minWidth: 40,
-                              minHeight: 40,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    // Категорий нет — кнопка управления всё равно нужна,
-                    // стоит у верха, под таблеткой.
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: IconButton(
-                          icon: const Icon(Icons.folder_outlined),
-                          tooltip: Translations.t('manageCategories', context),
-                          onPressed: _manageCategories,
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
-                          ),
-                        ),
-                      ),
                     ),
                   Expanded(
                     // Плавная и медленная смена задач при переключении
@@ -443,6 +413,7 @@ class _TasksScreenState extends State<TasksScreen>
                     ),
                   ),
                 ],
+              ),
               ),
             ),
             floatingActionButton: AnimatedFabRow(
