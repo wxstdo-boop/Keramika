@@ -19,6 +19,7 @@ class SmoothHover extends StatefulWidget {
   final double hoverScale;
   final Duration duration;
   final Curve curve;
+  final Alignment pressAlignment;
 
   const SmoothHover({
     super.key,
@@ -29,6 +30,7 @@ class SmoothHover extends StatefulWidget {
     this.hoverScale = 1.012,
     this.duration = const Duration(milliseconds: 180),
     this.curve = Curves.easeOutCubic,
+    this.pressAlignment = Alignment.center,
   });
 
   /// Счётчик активных drag-proxy (см. buildDragProxy). Увеличивается при
@@ -80,7 +82,9 @@ class _SmoothHoverState extends State<SmoothHover>
 
   void _onEnter(PointerEnterEvent _) => _ctrl.forward();
   void _onExit(PointerExitEvent _) => _ctrl.reverse();
-  void _onDown(PointerDownEvent _) => _ctrl.forward();
+  void _onDown(PointerDownEvent _) {
+    if (!_ctrl.isAnimating && _ctrl.value == 0) _ctrl.forward();
+  }
   void _onUp(PointerUpEvent _) => _ctrl.reverse();
   void _onCancel(PointerCancelEvent _) => _ctrl.reverse();
 
@@ -98,7 +102,11 @@ class _SmoothHoverState extends State<SmoothHover>
           animation: _ctrl,
           builder: (context, child) {
             final s = 1.0 + (widget.hoverScale - 1.0) * _scale.value;
-            return Transform.scale(scale: s, child: child);
+            return Transform.scale(
+              scale: s,
+              alignment: widget.pressAlignment,
+              child: child,
+            );
           },
           child: widget.child,
         ),
