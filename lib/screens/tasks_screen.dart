@@ -287,22 +287,24 @@ class _TasksScreenState extends State<TasksScreen>
           }).toList();
           final hasTasks = tasks.isNotEmpty;
           return Scaffold(
-            appBar: AppBar(
-              // Название раздела не показываем: оно дублирует таблетку
-              // разделов над списком (пользователь просил убрать текст).
-              centerTitle: true,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.folder_outlined),
-                  tooltip: Translations.t('manageCategories', context),
-                  onPressed: _manageCategories,
-                ),
-              ],
-            ),
+            // Без своего AppBar: белая полоса под таблеткой убрана, а кнопка
+            // управления категориями и сам выбор категорий подняты к верху.
             body: FabScrollListener(
               visible: _fabVisible,
               child: Column(
                 children: [
+                  // Кнопка управления категориями — вверху справа, под таблеткой.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        icon: const Icon(Icons.folder_outlined),
+                        tooltip: Translations.t('manageCategories', context),
+                        onPressed: _manageCategories,
+                      ),
+                    ),
+                  ),
                   if (_service.categories.isNotEmpty)
                     SlidingPicker<String>(
                       items: chips,

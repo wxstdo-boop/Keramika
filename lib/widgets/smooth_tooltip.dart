@@ -102,7 +102,7 @@ class _SmoothTooltipState extends State<SmoothTooltip>
               child: ScaleTransition(
                 scale: _scale,
                 alignment: useAbove ? Alignment.bottomCenter : Alignment.topCenter,
-                child: _Bubble(message: widget.message),
+                child: _Bubble(message: widget.message, above: useAbove),
               ),
             ),
           ),
@@ -157,27 +157,31 @@ class _SmoothTooltipState extends State<SmoothTooltip>
 
 class _Bubble extends StatelessWidget {
   final String message;
-  const _Bubble({required this.message});
+
+  /// true — пузырь над кнопкой (стрелка снизу, указывает на кнопку),
+  /// false — под кнопкой (стрелка сверху).
+  final bool above;
+
+  const _Bubble({required this.message, required this.above});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    // Плашка под тему: светлая тема → светлая плашка, тёмная → тёмная.
-    // Плашка под тему: светлая тема → светлая плашка с тёмным текстом,
-    // тёмная тема → тёмная плашка со светлым текстом.
-    final bg = dark ? cs.surfaceContainerHigh : cs.surfaceContainerLowest;
+    // Лёгкий фирменный оттенок вместо чистого белого: такой пузырь не
+    // читается как системная «спеллчек»-подсказка.
+    final bg = dark
+        ? cs.surfaceContainerHigh
+        : Color.lerp(cs.surfaceContainerLowest, cs.primary, 0.08)!;
     final fg = cs.onSurface;
-    return Container(
+    final edge = cs.outlineVariant.withValues(alpha: 0.65);
+    final bubble = Container(
       constraints: const BoxConstraints(maxWidth: 240),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.6),
-          width: 1,
-        ),
+        border: Border.all(color: edge, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: dark ? 0.35 : 0.12),
@@ -197,5 +201,71 @@ class _Bubble extends StatelessWidget {
         ),
       ),
     );
+    final arrow = CustomPaint(
+      size: const Size(14, 7),
+      painter: _BubbleArrowPainter(
+        fill: bg,
+        stroke: edge,
+        pointingUp: !above,
+      ),
+    );
+    // Стрелка-хвостик смотрит на кнопку: сверху (пузырь снизу) или снизу.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: above
+          ? [bubble, arrow]
+          : [arrow, bubble],
+    );
   }
+}
+
+/// Маленькая стрелка-хвостик пузыря: равнобедренный треугольник.
+class _BubbleArrowPainter extends CustomPainter {
+  final Color fill;
+  final Color stroke;
+
+  /// true — остриё сверху (пузырь под кнопкой), false — остриё снизу.
+  final bool pointingUp;
+
+  const _BubbleArrowPainter({
+    required this.fill,
+    required this.stroke,
+    required this.pointingUp,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final path = Path();
+    if (pointingUp) {
+      path.moveTo(0, h);
+      path.lineTo(w, h);
+      path.lineTo(w / 2, 0);
+    } else {
+      path.moveTo(0, 0);
+      path.lineTo(w, 0);
+      path.lineTo(w / 2, h);
+    }
+    path.close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = fill
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = stroke
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleArrowPainter oldDelegate) =>
+      oldDelegate.fill != fill ||
+      oldDelegate.stroke != stroke ||
+      oldDelegate.pointingUp != pointingUp;
 }
