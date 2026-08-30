@@ -259,11 +259,13 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('renameSound', context, 'Rename sound')),
-        content: TextField(
+        content: TextField(cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
           maxLength: 20,
+          enableSuggestions: false,
+          autocorrect: false,
           buildCounter: smoothCharCounterBuilder,
           decoration: InputDecoration(
             labelText: Translations.t('soundName', context),
@@ -559,12 +561,14 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: TextField(
+                    child: TextField(cursorOpacityAnimates: true,
                       magnifierConfiguration:
                           TextMagnifierConfiguration.disabled,
                       controller: _labelCtrl,
                       contextMenuBuilder: minimalContextMenuBuilder,
                       maxLength: 100,
+                      enableSuggestions: false,
+                      autocorrect: false,
                       maxLines: 2,
                       buildCounter: smoothCharCounterBuilder,
                       decoration: InputDecoration(

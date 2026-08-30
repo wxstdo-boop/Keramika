@@ -9,6 +9,7 @@ import '../services/habit_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
+import '../widgets/press_scale.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
 import '../widgets/smooth_hover.dart';
@@ -474,24 +475,26 @@ class _HabitsScreenState extends State<HabitsScreen>
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(
-              visible: _fabVisible,
-              child: Column(
-                children: [
-                  Expanded(
-                    // Пока данные не загрузились — ничего не показываем
-                    // (без кросс-фейда «пусто → список» на старте). Как
-                    // только загрузились — список появляется сразу.
-                    child: !_loaded
-                        ? const SizedBox.shrink(key: ValueKey('habits_loading'))
-                        : habits.isNotEmpty
-                            ? SizedBox.expand(
-                                key: const ValueKey('list'),
-                                child: _buildBody(context, theme, habits),
-                              )
-                            : _buildEmpty(context, theme),
-                  ),
-                ],
-              ),
+                visible: _fabVisible,
+                child: Column(
+                  children: [
+                    Expanded(
+                      // Пока данные не загрузились — ничего не показываем
+                      // (без кросс-фейда «пусто → список» на старте). Как
+                      // только загрузились — список появляется сразу.
+                      child: !_loaded
+                          ? const SizedBox.shrink(
+                              key: ValueKey('habits_loading'),
+                            )
+                          : habits.isNotEmpty
+                          ? SizedBox.expand(
+                              key: const ValueKey('list'),
+                              child: _buildBody(context, theme, habits),
+                            )
+                          : _buildEmpty(context, theme),
+                    ),
+                  ],
+                ),
               ),
             ),
             // SingleChildScrollView is now inside _buildBody and _buildEmpty
@@ -503,7 +506,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                 children: [
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
-                  BerserkFabStack(
+                  PressScale(
+                    child: BerserkFabStack(
                     // Долгое зажатие «плюса» открывает режим BERSERK.
                     child: GestureDetector(
                       onLongPress: () => showBerserkSheet(context),
@@ -516,6 +520,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                       ),
                     ),
                   ),
+                ),
                 ],
               ),
             ),
@@ -550,54 +555,60 @@ class _HabitsScreenState extends State<HabitsScreen>
       // при коротком списке — иначе жест «хватается» только у самого
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
-      // Ключ анимации — сама раскладка закрепления: при закрепе/открепе
-      // сервис переставляет карточку, сигнатура меняется, и AnimatedSwitcher
-      // плавно «перетекает» из старого порядка в новый (без телепорта).
-      // Ручной drag порядок без смены пинов сигнатуру не меняет — вспышек
-      // нет. На первом кадре после Splash анимации нет (первый build без
-      // предыдущего ребёнка), поэтому рывка «пусто → привычки» не бывает.
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 380),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.985, end: 1.0).animate(animation),
-            child: child,
-          ),
-        ),
-        // Ключ на РЕБЁНКЕ (не на самом переключателе): при смене раскладки
-        // закрепления AnimatedSwitcher видит новый ключ и кросс-фейдит
-        // старый порядок в новый. Ручной drag сигнатуру не меняет — вспышек нет.
-        child: KeyedSubtree(
-          key: ValueKey('pin_sig_${sorted.map((h) => h.pinned ? '1' : '0').join()}'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Полоса «борьбы с неидеальным» раскрывается плавно (и на
-              // старте синхронно уже присутствует — без резкого впрыгива-
-              // ния и мигания после сплэша).
-              AnimatedSize(
-                duration: const Duration(milliseconds: 320),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                child: _perfectionismMode
-                    ? _buildPerfectionismStrip(context, theme)
-                    : const SizedBox.shrink(),
+      child: Column(
+        children: [
+          // Ключ анимации — сама раскладка закрепления: при закрепе/открепе
+          // сервис переставляет карточку, сигнатура меняется, и AnimatedSwitcher
+          // плавно «перетекает» из старого порядка в новый (без телепорта).
+          // Ручной drag порядок без смены пинов сигнатуру не меняет — вспышек
+          // нет. На первом кадре после Splash анимации нет (первый build без
+          // предыдущего ребёнка), поэтому рывка «пусто → привычки» не бывает.
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 380),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.985, end: 1.0).animate(animation),
+                child: child,
               ),
-              splitSections
-                  ? _buildSectionedList(
-                      context,
-                      theme,
-                      sorted,
-                      goodHabits,
-                      badHabits,
-                    )
-                  : _buildFlatList(context, theme, sorted),
-            ],
+            ),
+            // Ключ на РЕБЁНКЕ (не на самом переключателе): при смене раскладки
+            // закрепления AnimatedSwitcher видит новый ключ и кросс-фейдит
+            // старый порядок в новый. Ручной drag сигнатуру не меняет — вспышек нет.
+            child: KeyedSubtree(
+              key: ValueKey(
+                'pin_sig_${sorted.map((h) => h.pinned ? '1' : '0').join()}',
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Полоса «борьбы с неидеальным» раскрывается плавно (и на
+                  // старте синхронно уже присутствует — без резкого впрыгива-
+                  // ния и мигания после сплэша).
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: _perfectionismMode
+                        ? _buildPerfectionismStrip(context, theme)
+                        : const SizedBox.shrink(),
+                  ),
+                  splitSections
+                      ? _buildSectionedList(
+                          context,
+                          theme,
+                          sorted,
+                          goodHabits,
+                          badHabits,
+                        )
+                      : _buildFlatList(context, theme, sorted),
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -798,6 +809,10 @@ class _HabitsScreenState extends State<HabitsScreen>
       },
       onDismissed: (_) => _service.remove(habit.id),
       child: SmoothHover(
+        // «Вдавливание» при зажатии (меньше 1 — карточка мягко
+        // уменьшается, как значки в таблетке), а не «вздутие».
+        hoverScale: 0.98,
+        duration: const Duration(milliseconds: 160),
         child: Card(
           key: ValueKey('card_${habit.id}'),
           clipBehavior: Clip.antiAlias,
@@ -885,17 +900,34 @@ class _HabitsScreenState extends State<HabitsScreen>
                               width: 2,
                             ),
                           ),
-                          child: habit.doneToday
-                              ? const Icon(
-                                  Icons.check,
-                                  size: 23,
-                                  color: Colors.white,
-                                )
-                              : Icon(
-                                  habit.icon,
-                                  size: 23,
-                                  color: theme.colorScheme.onSurfaceVariant,
+                          // Плавная смена значка: привычка → галка с лёгким
+                          // «попом» (fade + scale), а не резкий щелчок.
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            switchInCurve: Curves.easeOutBack,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) =>
+                                ScaleTransition(
+                                  scale: animation,
+                                  child: FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  ),
                                 ),
+                            child: habit.doneToday
+                                ? const Icon(
+                                    Icons.check,
+                                    key: ValueKey('habit_done_check'),
+                                    size: 23,
+                                    color: Colors.white,
+                                  )
+                                : Icon(
+                                    habit.icon,
+                                    key: const ValueKey('habit_icon'),
+                                    size: 23,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                          ),
                         ),
                       ),
                     ),
@@ -1072,11 +1104,12 @@ class _HabitsScreenState extends State<HabitsScreen>
                                         context,
                                         'TODAY CLEARED',
                                       ).toUpperCase(),
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: Colors.red.shade600,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 0.4,
-                                      ),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: Colors.red.shade600,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.4,
+                                          ),
                                     ),
                                   ),
                                 )
@@ -1142,9 +1175,10 @@ class _HabitsScreenState extends State<HabitsScreen>
                                           if (habit.notes.isNotEmpty)
                                             const SizedBox(height: 8),
                                         ],
-                                        if (habit.notes.isNotEmpty)                            Text(
-                              habit.notes,
-                              style: theme.textTheme.bodyMedium
+                                        if (habit.notes.isNotEmpty)
+                                          Text(
+                                            habit.notes,
+                                            style: theme.textTheme.bodyMedium
                                                 ?.copyWith(
                                                   color: theme
                                                       .colorScheme
@@ -1350,7 +1384,6 @@ class _HabitsScreenState extends State<HabitsScreen>
       ),
     );
   }
-
 }
 
 /// Drag-ручка карточки привычки: долгое нажатие начинает перетаскивание

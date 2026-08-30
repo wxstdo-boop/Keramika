@@ -74,18 +74,30 @@ class _SplashScreenState extends State<SplashScreen>
     final isDark = theme.brightness == Brightness.dark;
     // Цвет обводки логотипа — primary выбранной темы (rose/peach/grok/...).
     final accent = theme.colorScheme.primary;
+    final cs = theme.colorScheme;
 
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
+          // Фон сплеша под темы — как у экрана PIN-кода: градиент от
+          // поверхности к лёгкому фирменному оттенку primaryContainer,
+          // а не жёсткий серый/чёрный. Светлый/тёмный по текущей теме.
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: isDark
-                ? [Colors.grey[900]!, Colors.black87]
-                : [Colors.white, Colors.grey[100]!],
+                ? [
+                    cs.surface,
+                    cs.surfaceContainerLow,
+                    Color.lerp(cs.surface, cs.primaryContainer, 0.28)!,
+                  ]
+                : [
+                    cs.surfaceContainerLowest,
+                    cs.surface,
+                    Color.lerp(cs.surface, cs.primaryContainer, 0.35)!,
+                  ],
           ),
         ),
         child: SafeArea(
@@ -207,7 +219,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 48),
                   child: Text(
-                    'by Wetidom',
+                    'by Wetcorp.',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,

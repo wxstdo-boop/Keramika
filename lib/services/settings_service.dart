@@ -297,6 +297,21 @@ class SettingsService {
     await _saveSettings(map);
   }
 
+  static const _keyGeminiKey = 'setting_gemini_key';
+
+  /// Ключ Google AI Studio (Gemini) — необязательный, но лучший провайдер:
+  /// живая «подружка»-персона, понимает контекст и флирт.
+  static Future<String> loadGeminiKey() async {
+    final map = await _loadSettings();
+    return (map[_keyGeminiKey] as String?) ?? '';
+  }
+
+  static Future<void> saveGeminiKey(String value) async {
+    final map = await _loadSettings();
+    map[_keyGeminiKey] = value.trim();
+    await _saveSettings(map);
+  }
+
   /// Ада-трекинг: утренний отчёт «что сегодня по плану» + вечерний разбор.
   static Future<bool> loadAiTracking() async {
     final map = await _loadSettings();

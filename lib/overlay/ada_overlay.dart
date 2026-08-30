@@ -428,7 +428,7 @@ class _OverlayChatState extends State<_OverlayChat>
       _sendPos();
     } else {
       // Первый запуск — синхронизируемся с реальным положением окошка
-      // (нативные координаты), чтобы первый драг не «прыгал». 
+      // (нативные координаты), чтобы первый драг не «прыгал».
       try {
         final p = await FlutterOverlayWindow.getOverlayPosition();
         if (mounted) {
@@ -647,10 +647,16 @@ class _OverlayChatState extends State<_OverlayChat>
     if (message.isEmpty || _busy) return;
     _inputCtrl.clear();
     setState(() {
-      _messages.add(AiMessage(isUser: true, text: message));
+      _messages.add(AiMessage(
+        isUser: true,
+        text: message,
+        ts: DateTime.now().millisecondsSinceEpoch,
+      ));
       _busy = true;
       _typingFade = false;
     });
+    // Горячий стрик: общение из мини-окошка тоже считается.
+    unawaited(AiGuideService.bumpAdaStreak());
     _saveHistory();
     _scrollToBottom();
 
@@ -671,7 +677,11 @@ class _OverlayChatState extends State<_OverlayChat>
       await Future.delayed(const Duration(milliseconds: 180));
       if (!mounted) return;
       setState(() {
-        _messages.add(AiMessage(isUser: false, text: reply));
+        _messages.add(AiMessage(
+          isUser: false,
+          text: reply,
+          ts: DateTime.now().millisecondsSinceEpoch,
+        ));
         _busy = false;
         _typingFade = false;
       });
@@ -702,6 +712,7 @@ class _OverlayChatState extends State<_OverlayChat>
               context,
               'ИИ на курорте, подожди немного',
             ),
+            ts: DateTime.now().millisecondsSinceEpoch,
           ),
         );
         _busy = false;
@@ -1108,7 +1119,9 @@ class _OverlayChatState extends State<_OverlayChat>
       child: Row(
         children: [
           Expanded(
-            child: TextField(
+            child: Stack(
+              children: [
+                TextField(
               magnifierConfiguration: TextMagnifierConfiguration.disabled,
               // Поле мини-окна не должно открывать выделение/тулбар:
               // long-press оставляем для обычного ввода, без полупрозрачного
@@ -1160,16 +1173,10 @@ class _OverlayChatState extends State<_OverlayChat>
                 color: cs.onSurface,
               ),
               cursorColor: cs.primary,
+              // Каретка мигает плавно (fade), а не резко вкл/выкл.
+              cursorOpacityAnimates: true,
               decoration: InputDecoration(
-                hintText: Translations.t(
-                  'aiInputHint',
-                  context,
-                  'Message…',
-                ),
-                hintStyle: TextStyle(
-                  fontSize: 12,
-                  color: cs.onSurfaceVariant,
-                ),
+                counterText: '',
                 isDense: true,
                 filled: true,
                 fillColor: cs.surfaceContainerHigh,
@@ -1182,6 +1189,37 @@ class _OverlayChatState extends State<_OverlayChat>
                   borderSide: BorderSide.none,
                 ),
               ),
+            ),
+                // Плавная подсказка: гаснет при вводе, мягко возвращается
+                // при очистке поля.
+                IgnorePointer(
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _inputCtrl,
+                    builder: (context, v, _) => AnimatedOpacity(
+                      opacity: v.text.isEmpty ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 9,
+                        ),
+                        child: Text(
+                          Translations.t(
+                            'aiInputHint',
+                            context,
+                            'Message…',
+                          ),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 5),

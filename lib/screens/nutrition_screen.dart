@@ -163,11 +163,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
             const SizedBox(height: 16),
             _buildTipsRow(context, theme),
             const SizedBox(height: 16),
-            TextField(
+            TextField(cursorOpacityAnimates: true,
               magnifierConfiguration: TextMagnifierConfiguration.disabled,
               controller: _mealCtrl,
               contextMenuBuilder: minimalContextMenuBuilder,
               maxLength: 100,
+              enableSuggestions: false,
+              autocorrect: false,
               buildCounter: smoothCharCounterBuilder,
               decoration: InputDecoration(
                 labelText: Translations.t('addMeal', context),
@@ -177,7 +179,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
+            TextField(cursorOpacityAnimates: true,
               magnifierConfiguration: TextMagnifierConfiguration.disabled,
               controller: _calCtrl,
               contextMenuBuilder: minimalContextMenuBuilder,

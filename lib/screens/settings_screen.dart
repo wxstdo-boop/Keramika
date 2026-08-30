@@ -11,6 +11,7 @@ import '../main.dart';
 import '../utils/android_settings.dart';
 import '../services/pin_service.dart';
 import '../services/reality_check_service.dart';
+import '../widgets/press_scale.dart';
 import '../services/alarm_service.dart';
 import '../services/settings_service.dart';
 import '../services/timer_service.dart';
@@ -259,6 +260,309 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// Красивая адаптивная плашка «Разрешения не выданы»: работает и на
   /// светлых, и на тёмных темах (вместо жёстко-красного errorContainer
   /// с белой кнопкой, который на тёмных темах выглядел плохо).
+  /// Название текущего языка для поля выбора.
+  String _languageLabel(BuildContext context, String code) {
+    switch (code) {
+      case 'system':
+        return Translations.followSystemOf(context);
+      case 'en':
+        return Translations.englishOf(context);
+      case 'ru':
+        return Translations.russianOf(context);
+      case 'fr':
+        return Translations.frenchOf(context);
+      default:
+        return Translations.followSystemOf(context);
+    }
+  }
+
+  /// Меню выбора языка: компактный квадрат со скруглёнными углами, который
+  /// появляется МЕЛКИМ и плавно растёт в полный рост (scale + fade),
+  /// вместо стандартной анимации выпадашки.
+  Future<void> _showLanguageMenu(
+    BuildContext context,
+    KeramikaAppState appState,
+  ) async {
+    // Язык выбирается БЕЗ закрытия окна: тап по пункту сразу переключает
+    // язык и плавно обновляет фон/галочку, а само меню закрывается ТОЛЬКО
+    // тапом вне квадрата (барьер). Раньше тап по пункту сразу «щёлкал»
+    // окно закрытием и не давал попробовать другие языки подряд.
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 340),
+      pageBuilder: (ctx, _, __) {
+        final theme = Theme.of(ctx);
+        final cs = theme.colorScheme;
+        final codes = ['system', 'en', 'ru', 'fr'];
+        return StatefulBuilder(
+          builder: (ctx, setState) => Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                // Урезано по бокам: квадрат, а не растянутая лента.
+                width: 230,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final code in codes)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          appState.setLanguageCode(code);
+                          setState(() {});
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 13,
+                          ),
+                          decoration: BoxDecoration(
+                            color: code == appState.languageCode
+                                ? cs.primary.withValues(alpha: 0.16)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: AnimatedDefaultTextStyle(
+                                  duration:
+                                      const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  style: theme.textTheme.bodyLarge!.copyWith(
+                                    color: code == appState.languageCode
+                                        ? cs.primary
+                                        : cs.onSurface,
+                                    fontWeight: code == appState.languageCode
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                  ),
+                                  child: Text(_languageLabel(context, code)),
+                                ),
+                              ),
+                              // Галочка плавно появляется/исчезает и
+                              // «проскальзывает» при смене выбранного языка.
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                switchInCurve: Curves.easeOutBack,
+                                switchOutCurve: Curves.easeIn,
+                                transitionBuilder:
+                                    (child, anim) => ScaleTransition(
+                                  scale: anim,
+                                  child: FadeTransition(
+                                    opacity: anim,
+                                    child: child,
+                                  ),
+                                ),
+                                child: code == appState.languageCode
+                                    ? Icon(
+                                        Icons.check_rounded,
+                                        key: const ValueKey('check'),
+                                        size: 20,
+                                        color: cs.primary,
+                                      )
+                                    : const SizedBox(
+                                        key: ValueKey('no_check'),
+                                        width: 20,
+                                        height: 20,
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      // Мелкий квадрат → плавный полный рост.
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.2, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
+      },
+    );
+  }
+
+  Future<void> _showFontMenu(
+    BuildContext context,
+    KeramikaAppState appState,
+  ) async {
+    // Шрифт выбирается ТАК ЖЕ, как язык: меню-квадрат с иконками и
+    // плавной обводкой/галочкой, которое не закрывается при выборе —
+    // только тапом вне квадрата.
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 340),
+      pageBuilder: (ctx, _, __) {
+        final theme = Theme.of(ctx);
+        final cs = theme.colorScheme;
+        final fonts = [
+          ('ordinary', Icons.font_download_outlined),
+          ('caveat', Icons.draw_outlined),
+        ];
+        String fontLabel(String f) => f == 'caveat' ? 'Caveat' : 'Обычный';
+        return StatefulBuilder(
+          builder: (ctx, setState) => Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 230,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final (f, icon) in fonts)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          appState.setFontFamily(f);
+                          setState(() {});
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 13,
+                          ),
+                          decoration: BoxDecoration(
+                            color: f == appState.fontFamily
+                                ? cs.primary.withValues(alpha: 0.16)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                child: Icon(
+                                  icon,
+                                  key: ValueKey(icon),
+                                  size: 20,
+                                  color: f == appState.fontFamily
+                                      ? cs.primary
+                                      : cs.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AnimatedDefaultTextStyle(
+                                  duration:
+                                      const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  style: theme.textTheme.bodyLarge!.copyWith(
+                                    color: f == appState.fontFamily
+                                        ? cs.primary
+                                        : cs.onSurface,
+                                    fontWeight: f == appState.fontFamily
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                  ),
+                                  child: Text(
+                                    fontLabel(f),
+                                    style: f == 'caveat'
+                                        ? const TextStyle(
+                                            fontFamily: 'Caveat',
+                                            fontSize: 24,
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                switchInCurve: Curves.easeOutBack,
+                                switchOutCurve: Curves.easeIn,
+                                transitionBuilder:
+                                    (child, anim) => ScaleTransition(
+                                  scale: anim,
+                                  child: FadeTransition(
+                                    opacity: anim,
+                                    child: child,
+                                  ),
+                                ),
+                                child: f == appState.fontFamily
+                                    ? Icon(
+                                        Icons.check_rounded,
+                                        key: const ValueKey('check'),
+                                        size: 20,
+                                        color: cs.primary,
+                                      )
+                                    : const SizedBox(
+                                        key: ValueKey('no_check'),
+                                        width: 20,
+                                        height: 20,
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      // Мелкий квадрат → плавный полный рост.
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.2, end: 1.0).animate(curved),
+          child: FadeTransition(opacity: anim, child: child),
+        );
+      },
+    );
+  }
+
   Widget _buildPermissionWarning(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
@@ -1026,33 +1330,51 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment<String>(
-                    value: 'ordinary',
-                    icon: Icon(Icons.font_download_outlined),
-                    label: Text('Обычный'),
-                  ),
-                  ButtonSegment<String>(
-                    value: 'caveat',
-                    icon: Icon(Icons.draw_outlined),
-                    label: Text('Caveat'),
-                  ),
-                ],
-                selected: {appState.fontFamily},
-                onSelectionChanged: (value) {
-                  final next = value.isEmpty ? 'ordinary' : value.first;
-                  appState.setFontFamily(next);
-                },
-                showSelectedIcon: false,
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  padding: WidgetStateProperty.all(
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  ),
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+              // Шрифт выбирается так же, как язык: тап по плитке открывает
+              // меню-квадрат с иконками, плавной обводкой и галочкой —
+              // окно не закрывается при выборе, только тапом вне квадрата.
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _showFontMenu(context, appState),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.3),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          appState.fontFamily == 'caveat'
+                              ? Icons.draw_outlined
+                              : Icons.font_download_outlined,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            appState.fontFamily == 'caveat'
+                                ? 'Caveat'
+                                : 'Обычный',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.expand_more,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1099,44 +1421,49 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: appState.languageCode,
-                isExpanded: true,
-                borderRadius: BorderRadius.circular(12),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.language),
-                  border: const OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
+              // Своё «выпадающее» меню вместо DropdownButton: появляется
+              // мелким квадратом и плавно растёт в полный рост (scale +
+              // fade), по бокам урезано — компактный квадрат со скруглёнными
+              // углами, как просил.
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _showLanguageMenu(context, appState),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.3),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.language,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _languageLabel(context, appState.languageCode),
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                        ),
+                        Icon(
+                          Icons.expand_more,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.3),
                 ),
-                items: [
-                  DropdownMenuItem(
-                    value: 'system',
-                    child: Text(Translations.followSystemOf(context)),
-                  ),
-                  DropdownMenuItem(
-                    value: 'en',
-                    child: Text(Translations.englishOf(context)),
-                  ),
-                  DropdownMenuItem(
-                    value: 'ru',
-                    child: Text(Translations.russianOf(context)),
-                  ),
-                  DropdownMenuItem(
-                    value: 'fr',
-                    child: Text(Translations.frenchOf(context)),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v != null) appState.setLanguageCode(v);
-                },
               ),
             ],
           ),
@@ -1586,7 +1913,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ListTile(
+                  PressScale(child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(Translations.notificationsDescOf(context)),
                     leading: AnimatedSwitcher(
@@ -1642,8 +1969,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       },
                       activeColor: theme.colorScheme.primary,
                     ),
-                  ),
-                  ListTile(
+                  )),
+                  PressScale(child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(Translations.fullscreenNotifDescOf(context)),
                     leading: AnimatedSwitcher(
@@ -1684,7 +2011,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       onChanged: (v) => notificationService.setFullscreen(v),
                       activeColor: theme.colorScheme.primary,
                     ),
-                  ),
+                  )),
                 ],
               ),
             ),
@@ -1707,7 +2034,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1732,9 +2059,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     );
                   }
                 },
-              ),
+              )),
               const Divider(height: 1),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1765,9 +2092,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     );
                   }
                 },
-              ),
+              )),
               const Divider(height: 1),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1798,7 +2125,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     );
                   }
                 },
-              ),
+              )),
             ],
           ),
         ),
@@ -1809,7 +2136,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: ListTile(
+          child: PressScale(child: ListTile(
             contentPadding: EdgeInsets.zero,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -1831,7 +2158,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 KeramikaApp.of(context).refreshApp();
               }
             },
-          ),
+          )),
         ),
       ),
       const SizedBox(height: 8),
@@ -1845,7 +2172,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               // «Экспериментальное» — показ/скрытие секции таймеров на экране
               // будильников. Только видимость: таймеры при выключении НЕ
               // удаляются, они остаются в хранилище.
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1883,9 +2210,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   activeColor: theme.colorScheme.primary,
                 ),
-              ),
+              )),
               const Divider(height: 1),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1924,9 +2251,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   activeColor: theme.colorScheme.primary,
                 ),
-              ),
+              )),
               const Divider(height: 1),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1944,7 +2271,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 20),
                 onTap: _clearCache,
-              ),
+              )),
             ],
           ),
         ),
@@ -1988,7 +2315,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
               const SizedBox(height: 4),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -2023,7 +2350,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   activeColor: theme.colorScheme.primary,
                 ),
-              ),
+              )),
               // Поле ключа появляется/исчезает плавно (SizeTransition + fade).
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 420),
@@ -2065,7 +2392,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       curve: Curves.easeOutCubic,
                                     ),
                                   ),
-                              child: TextField(
+                              child: TextField(cursorOpacityAnimates: true,
                                 magnifierConfiguration:
                                     TextMagnifierConfiguration.disabled,
                                 controller: _aiKeyController,
@@ -2073,6 +2400,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 obscureText: !_aiKeyVisible,
                                 textInputAction: TextInputAction.done,
                                 maxLength: 500,
+                                enableSuggestions: false,
+                                autocorrect: false,
                                 maxLines: 1,
                                 decoration: InputDecoration(
                                   isDense: true,
@@ -2141,7 +2470,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                             const Divider(height: 20),
                             // Ада-трекинг: утренний отчёт + вечерний разбор.
-                            ListTile(
+                            PressScale(child: ListTile(
                               contentPadding: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -2173,7 +2502,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 onChanged: _toggleAiTracking,
                                 activeColor: theme.colorScheme.primary,
                               ),
-                            ),
+                            )),
                           ],
                         ),
                       )
@@ -2267,7 +2596,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       horizontal: 16,
                       vertical: 12,
                     ),
-                    child: ListTile(
+                    child: PressScale(child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -2304,7 +2633,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         activeColor: const Color(0xFFB39DDB),
                         size: 32,
                       ),
-                    ),
+                    )),
                   ),
                 ),
               ),
@@ -2341,16 +2670,34 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
               const SizedBox(height: 8),
-              ListTile(
+              PressScale(child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                leading: Icon(
-                  Icons.schedule_outlined,
-                  color: _autoExport
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
+                // Значок плавно меняется при включении/выключении:
+                // контурные часы → залитые + галочка, с fade и «попом».
+                leading: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) =>
+                      ScaleTransition(
+                        scale: Tween(begin: 0.85, end: 1.0).animate(animation),
+                        child: FadeTransition(
+                          opacity: animation,
+                          child: child,
+                        ),
+                      ),
+                  child: Icon(
+                    _autoExport
+                        ? Icons.schedule
+                        : Icons.schedule_outlined,
+                    key: ValueKey('autoexport_$_autoExport'),
+                    color: _autoExport
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 title: Text(Translations.t('autoExport', context)),
                 subtitle: Text(
@@ -2382,7 +2729,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   activeColor: theme.colorScheme.primary,
                 ),
-              ),
+              )),
               const Divider(height: 1),
               const SizedBox(height: 12),
               Row(
@@ -2846,13 +3193,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(Translations.t('devMode', context)),
-        content: TextField(
+        content: TextField(cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
           keyboardType: TextInputType.number,
           obscureText: true,
           maxLength: 50,
+          enableSuggestions: false,
+          autocorrect: false,
           buildCounter: smoothCharCounterBuilder,
           decoration: InputDecoration(
             hintText: '7720',
@@ -2895,7 +3244,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    return ListTile(
+    return PressScale(child: ListTile(
       contentPadding: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       leading: Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
@@ -2903,7 +3252,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       trailing: const Icon(Icons.play_arrow_outlined, size: 20),
       dense: true,
       onTap: onTap,
-    );
+    ));
   }
 
   Future<void> _runDiag(int id, String title, String body) async {
