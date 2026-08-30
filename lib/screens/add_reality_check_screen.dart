@@ -127,11 +127,13 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: TextField(
+                child: TextField(cursorOpacityAnimates: true,
                   magnifierConfiguration: TextMagnifierConfiguration.disabled,
                   controller: _questionCtrl,
                   contextMenuBuilder: minimalContextMenuBuilder,
                   maxLength: 200,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   maxLines: 3,
                   buildCounter: smoothCharCounterBuilder,
                   textInputAction: TextInputAction.done,

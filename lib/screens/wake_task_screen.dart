@@ -382,7 +382,7 @@ class _MathChallengeState extends State<_MathChallenge> {
           const SizedBox(height: 24),
           SizedBox(
             width: 200,
-            child: TextField(
+            child: TextField(cursorOpacityAnimates: true,
               magnifierConfiguration: TextMagnifierConfiguration.disabled,
               controller: _ctrl,
               contextMenuBuilder: minimalContextMenuBuilder,
@@ -708,7 +708,7 @@ class _MemoryChallengeState extends State<_MemoryChallenge> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
-                      child: TextField(
+                      child: TextField(cursorOpacityAnimates: true,
                         magnifierConfiguration:
                             TextMagnifierConfiguration.disabled,
                         controller: _ctrls[i],
@@ -719,6 +719,8 @@ class _MemoryChallengeState extends State<_MemoryChallenge> {
                         textAlignVertical: TextAlignVertical.center,
                         style: theme.textTheme.titleLarge,
                         maxLength: 1,
+                        enableSuggestions: false,
+                        autocorrect: false,
                         decoration: const InputDecoration(
                           counterText: '',
                           border: InputBorder.none,

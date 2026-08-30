@@ -10,6 +10,7 @@ import '../services/ai_guide_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
+import '../widgets/press_scale.dart';
 import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../widgets/swipe_to_delete.dart';
 import '../utils/page_transitions.dart';
@@ -49,19 +50,10 @@ class _TasksScreenState extends State<TasksScreen>
   void initState() {
     super.initState();
     _service.load();
-    // Кнопка управления категориями живёт на уровне главной таблетки:
-    // её нажатие тикает счётчик, а этот экран по слушателю открывает диалог.
-    manageCategoriesTick.addListener(_onManageCategoriesTick);
-  }
-
-  void _onManageCategoriesTick() {
-    if (!mounted) return;
-    _manageCategories();
   }
 
   @override
   void dispose() {
-    manageCategoriesTick.removeListener(_onManageCategoriesTick);
     _fabVisible.dispose();
     super.dispose();
   }
@@ -205,7 +197,7 @@ class _TasksScreenState extends State<TasksScreen>
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
+                        child: TextField(cursorOpacityAnimates: true,
                           magnifierConfiguration:
                               TextMagnifierConfiguration.disabled,
                           controller: ctrl,
@@ -288,7 +280,6 @@ class _TasksScreenState extends State<TasksScreen>
         listenable: _service,
         builder: (context, _) {
           final all = _service.tasks;
-          final chips = <String>['', ..._service.categories];
           final tasks = all.where((t) {
             if (_filter == '') return true;
             if (_filter == '__uncat__') return t.category.isEmpty;
@@ -302,118 +293,49 @@ class _TasksScreenState extends State<TasksScreen>
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(
-              visible: _fabVisible,
-              child: Column(
-                children: [
-                  // Категории — по центру, на всю ширину; кнопка управления
-                  // категориями переехала на уровень главной таблетки.
-                  if (_service.categories.isNotEmpty)
-                    SlidingPicker<String>(
-                      items: chips,
-                      selected: _filter,
-                      // Высота ужата (52 → 40) и отступы таблеток меньше —
-                      // раньше вокруг категорий был большой белый зазор
-                      // сверху и снизу, между ними и текстом задач.
-                          height: 34,
-                          viewportFraction: 0.55,
-                          onChanged: (c) => setState(() => _filter = c),
-                          itemBuilder: (context, c, selected) {
-                            final label =
-                                c == '' ? Translations.allOf(context) : c;
-                            return Center(
-                              child: Padding(
-                                // Безопасные отступы по бокам карусели: длинная
-                                // категория у края вьюпорта не «упирается» в
-                                // границу и её последний символ не обрезается.
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                ),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 110),
-                                  curve: Curves.easeOutCubic,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(18),
-                                    color: selected
-                                        ? theme.colorScheme.primary
-                                        : theme
-                                              .colorScheme
-                                              .surfaceContainerHighest,
-                                    boxShadow: selected
-                                        ? [
-                                            BoxShadow(
-                                              color: theme.colorScheme.primary
-                                                  .withValues(alpha: 0.25),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                  // FittedBox: длинное название масштабируется,
-                                  // чтобы ПОМЕСТИТЬСЯ целиком — последний символ
-                                  // всегда виден (раньше обрезался краем/троеточием).
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      label,
-                                      softWrap: false,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: selected
-                                        ? theme.colorScheme.onPrimary
-                                        : theme.colorScheme.onSurfaceVariant,
-                                    fontWeight: selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ),
+                visible: _fabVisible,
+                child: Column(
+                  children: [
+                    // Таблетка разделов и выбор категорий переехали ВНУТРЬ
+                    // скролла списка (header): листаются вместе с задачами,
+                    // как обычный контент. Управление категориями (создание
+                    // и удаление) — прямо в выборе, рядом с каруселью.
+                    Expanded(
+                      // Плавная и медленная смена задач при переключении
+                      // категории: старый список мягко гаснет (fade + лёгкий
+                      // сдвиг вниз на 4%), новый плавно «выезжает снизу» и
+                      // проявляется (300 мс, easeInOutCubic — без резких
+                      // рывков). Фильтр применяется МГНОВЕННО (см.
+                      // SlidingPicker), анимация чисто визуальная.
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        switchInCurve: Curves.easeInOutCubic,
+                        switchOutCurve: Curves.easeInOutCubic,
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.06),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
                           ),
-                        );
-                      },
-                    ),
-                  Expanded(
-                    // Плавная и медленная смена задач при переключении
-                    // категории: старый список мягко гаснет (fade + лёгкий
-                    // сдвиг вниз на 4%), новый плавно «выезжает снизу» и
-                    // проявляется (300 мс, easeInOutCubic — без резких
-                    // рывков). Фильтр применяется МГНОВЕННО (см.
-                    // SlidingPicker), анимация чисто визуальная.
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      switchInCurve: Curves.easeInOutCubic,
-                      switchOutCurve: Curves.easeInOutCubic,
-                      transitionBuilder: (child, animation) =>
-                          FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.06),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          ),
-                      child: hasTasks
-                          ? KeyedSubtree(
-                              key: ValueKey('list_$_filter'),
-                              child: RepaintBoundary(
-                                child: _buildList(context, theme, tasks, all),
+                        ),
+                        child: hasTasks
+                            ? KeyedSubtree(
+                                key: ValueKey('list_$_filter'),
+                                child: RepaintBoundary(
+                                  child: _buildList(context, theme, tasks, all),
+                                ),
+                              )
+                            : KeyedSubtree(
+                                key: ValueKey('empty_$_filter'),
+                                child: _buildEmpty(context, theme),
                               ),
-                            )
-                          : KeyedSubtree(
-                              key: ValueKey('empty_$_filter'),
-                              child: _buildEmpty(context, theme),
-                            ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               ),
             ),
             floatingActionButton: AnimatedFabRow(
@@ -424,7 +346,8 @@ class _TasksScreenState extends State<TasksScreen>
                 children: [
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
-                  BerserkFabStack(
+                  PressScale(
+                    child: BerserkFabStack(
                     // Долгое зажатие «плюса» открывает BERSERK.
                     child: GestureDetector(
                       onLongPress: () => showBerserkSheet(context),
@@ -437,6 +360,7 @@ class _TasksScreenState extends State<TasksScreen>
                       ),
                     ),
                   ),
+                ),
                 ],
               ),
             ),
@@ -449,6 +373,9 @@ class _TasksScreenState extends State<TasksScreen>
   Widget _buildEmpty(BuildContext context, ThemeData theme) {
     return PremiumEmptyState(
       key: ValueKey('empty_$_filter'),
+      // Таблетка разделов + выбор категорий сверху пустого состояния:
+      // листаются вместе с ним.
+      header: _buildCategoryHeader(context, theme),
       icon: Icons.task_alt_outlined,
       title: Translations.noTasksOf(context),
       hint: Translations.t('emptyTaskHint', context),
@@ -459,6 +386,103 @@ class _TasksScreenState extends State<TasksScreen>
         Haptics.light();
         _addTask();
       },
+    );
+  }
+
+  /// Выбор категорий + кнопка управления (создание, удаление). Живёт в
+  /// header скролла задач — листается вместе с ними.
+  Widget _buildCategoryHeader(BuildContext context, ThemeData theme) {
+    final chips = <String>['', ..._service.categories];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Категории по центру; рядом — управление (папка). Длинное название
+        // масштабируется (FittedBox), чтобы последний символ не обрезался.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: _service.categories.isEmpty
+                    ? const SizedBox.shrink()
+                    : SlidingPicker<String>(
+                        items: chips,
+                        selected: _filter,
+                        height: 34,
+                        viewportFraction: 0.55,
+                        onChanged: (c) => setState(() => _filter = c),
+                        itemBuilder: (context, c, selected) {
+                          final label = c == ''
+                              ? Translations.allOf(context)
+                              : c;
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
+                              child: AnimatedContainer(
+                                // Плавная смена выделения категории.
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeInOutCubic,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  color: selected
+                                      ? theme.colorScheme.primary
+                                      : theme
+                                            .colorScheme
+                                            .surfaceContainerHighest,
+                                  boxShadow: selected
+                                      ? [
+                                          BoxShadow(
+                                            color: theme.colorScheme.primary
+                                                .withValues(alpha: 0.25),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    label,
+                                    softWrap: false,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: selected
+                                          ? theme.colorScheme.onPrimary
+                                          : theme.colorScheme.onSurfaceVariant,
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              // Управление категориями — создание и УДАЛЕНИЕ — прямо в выборе.
+              IconButton(
+                icon: Icon(
+                  Icons.folder_outlined,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                tooltip: Translations.t('manageCategories', context),
+                onPressed: _manageCategories,
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -476,6 +500,9 @@ class _TasksScreenState extends State<TasksScreen>
     // десятками задач.
     return ReorderableListView.builder(
       key: const ValueKey('list'),
+      // Таблетка разделов + выбор категорий — первый (непереставляемый)
+      // элемент списка: листаются вместе с задачами, как обычный контент.
+      header: _buildCategoryHeader(context, theme),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
       buildDefaultDragHandles: false,
@@ -544,6 +571,9 @@ class _TasksScreenState extends State<TasksScreen>
       },
       onDismissed: (_) => _service.remove(task.id),
       child: SmoothHover(
+        // «Вдавливание» при зажатии — карточка мягко уменьшается.
+        hoverScale: 0.98,
+        duration: const Duration(milliseconds: 160),
         child: _TaskHoldNote(
           onHold: () => _showTaskNote(task),
           child: Card(
@@ -597,17 +627,34 @@ class _TasksScreenState extends State<TasksScreen>
                               width: 2,
                             ),
                           ),
-                          child: task.done
-                              ? const Icon(
-                                  Icons.check,
-                                  size: 23,
-                                  color: Colors.white,
-                                )
-                              : Icon(
-                                  task.icon,
-                                  size: 23,
-                                  color: theme.colorScheme.onSurfaceVariant,
+                          // Плавная смена значка: иконка задачи → галка с
+                          // лёгким «попом» (fade + scale), как в привычках.
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            switchInCurve: Curves.easeOutBack,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) =>
+                                ScaleTransition(
+                                  scale: animation,
+                                  child: FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  ),
                                 ),
+                            child: task.done
+                                ? const Icon(
+                                    Icons.check,
+                                    key: ValueKey('task_done_check'),
+                                    size: 23,
+                                    color: Colors.white,
+                                  )
+                                : Icon(
+                                    task.icon,
+                                    key: const ValueKey('task_icon'),
+                                    size: 23,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                          ),
                         ),
                       ),
                     ],
@@ -928,7 +975,6 @@ class _TasksScreenState extends State<TasksScreen>
       },
     );
   }
-
 }
 
 /// Долгое зажатие задачи (3 секунды): без пульсации, кружка прогресса
@@ -1154,10 +1200,12 @@ class _TaskNoteSheetState extends State<_TaskNoteSheet> {
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: TextField(
+              child: TextField(cursorOpacityAnimates: true,
                 controller: _ctrl,
                 focusNode: _focus,
                 maxLength: 150,
+                enableSuggestions: false,
+                autocorrect: false,
                 // ВСЕ строки заметки всегда видны: поле растёт под весь
                 // текст без ограничения строк (раньше кап 10 строк срезал
                 // длинные заметки), а общее окно скроллится при нехватке

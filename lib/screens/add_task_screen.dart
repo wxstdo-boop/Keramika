@@ -68,7 +68,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('newCategory', context)),
-        content: TextField(
+        content: TextField(cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
@@ -123,11 +123,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('category', context)),
-        content: TextField(
+        content: TextField(cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
           maxLength: 15,
+          enableSuggestions: false,
+          autocorrect: false,
           buildCounter: smoothCharCounterBuilder,
           decoration: InputDecoration(
             labelText: Translations.t('categoryName', context),
@@ -344,11 +346,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: TextField(
+                  child: TextField(cursorOpacityAnimates: true,
                     magnifierConfiguration: TextMagnifierConfiguration.disabled,
                     controller: _titleCtrl,
                     contextMenuBuilder: minimalContextMenuBuilder,
                     maxLength: 250,
+                    enableSuggestions: false,
+                    autocorrect: false,
                     maxLines: 5,
                     buildCounter: smoothCharCounterBuilder,
                     decoration: InputDecoration(

@@ -8,6 +8,7 @@ import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/smooth_hover.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/volumetric_switch.dart';
@@ -310,7 +311,8 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
               children: [
                 const AiGuideFloatingButton(),
                 const SizedBox(width: 10),
-                BerserkFabStack(
+                PressScale(
+                  child: BerserkFabStack(
                   // Долгое зажатие «плюса» открывает режим BERSERK.
                   child: GestureDetector(
                     onLongPress: () => showBerserkSheet(context),
@@ -319,6 +321,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                       child: const Icon(Icons.add),
                     ),
                   ),
+                ),
                 ),
               ],
             ),
@@ -371,6 +374,9 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
               _scheduleReminders();
             },
             child: SmoothHover(
+              // «Вдавливание» при зажатии — карточка мягко уменьшается.
+              hoverScale: 0.98,
+              duration: const Duration(milliseconds: 160),
               child: Card(
                 key: ValueKey(check.id),
                 clipBehavior: Clip.antiAlias,
@@ -413,17 +419,36 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                                     width: 2,
                                   ),
                                 ),
-                                child: check.isDoneToday
-                                    ? const Icon(
-                                        Icons.check,
-                                        size: 22,
-                                        color: Colors.white,
-                                      )
-                                    : Icon(
-                                        check.icon,
-                                        size: 21,
-                                        color: theme.colorScheme.primary,
+                                // Плавная смена значка: значок проверки → галка
+                                // с лёгким «попом» (fade + scale), как в
+                                // привычках и задачах.
+                                child: AnimatedSwitcher(
+                                  duration:
+                                      const Duration(milliseconds: 280),
+                                  switchInCurve: Curves.easeOutBack,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) =>
+                                      ScaleTransition(
+                                        scale: animation,
+                                        child: FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
                                       ),
+                                  child: check.isDoneToday
+                                      ? const Icon(
+                                          Icons.check,
+                                          key: ValueKey('rc_done_check'),
+                                          size: 22,
+                                          color: Colors.white,
+                                        )
+                                      : Icon(
+                                          check.icon,
+                                          key: const ValueKey('rc_icon'),
+                                          size: 21,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),

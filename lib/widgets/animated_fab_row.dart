@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 /// Каждый из четырёх разделов сообщает сюда о своей прокрутке.
 final ValueNotifier<bool> sectionPillVisible = ValueNotifier<bool>(true);
 
-/// Тик запроса управления категориями: кнопка в главной таблетке (на
-/// уровне разделов) дёргает счётчик, а экран Задач по слушателю открывает
-/// диалог управления категориями.
-final ValueNotifier<int> manageCategoriesTick = ValueNotifier<int>(0);
+/// Текущий скролл активного раздела (px от верха). Главная таблетка
+/// «уезжает» ПРОПОРЦИОНАЛЬНО прокрутке — листается вместе с контентом,
+/// как обычный элемент списка, без отдельной анимации-скачка.
+final ValueNotifier<double> sectionScrollOffset = ValueNotifier<double>(0);
 
 /// Плавно прячет/возвращает ряд FAB-кнопок (плюс + Ада) при прокрутке.
 ///
@@ -64,7 +64,16 @@ class FabScrollListener extends StatelessWidget {
   Widget build(BuildContext context) {
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
+        // ТОЛЬКО вертикальный скролл раздела сворачивает таблетку разделов:
+        // горизонтальные карусели (плашки борьбы с перфекционизмом в
+        // привычках, категории задач) раньше слали свой horizontal-офсет в
+        // общий слот — таблетка «пропадала насовсем» при листании плашек.
+        if (n.metrics.axis != Axis.vertical) return false;
         final pixels = n.metrics.pixels;
+        // Скролл активного раздела — таблетка следует за ним напрямую.
+        if ((sectionScrollOffset.value - pixels).abs() > 0.5) {
+          sectionScrollOffset.value = pixels < 0 ? 0 : pixels;
+        }
         if (pixels > hideThreshold && visible.value) {
           visible.value = false;
         } else if (pixels <= showThreshold && !visible.value) {

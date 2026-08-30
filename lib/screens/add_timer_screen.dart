@@ -331,12 +331,14 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextField(
+                    TextField(cursorOpacityAnimates: true,
                       magnifierConfiguration:
                           TextMagnifierConfiguration.disabled,
                       controller: _labelCtrl,
                       contextMenuBuilder: minimalContextMenuBuilder,
                       maxLength: 20,
+                      enableSuggestions: false,
+                      autocorrect: false,
                       buildCounter: smoothCharCounterBuilder,
                       decoration: InputDecoration(
                         hintText: AppTimer.formatDuration(_totalSeconds),

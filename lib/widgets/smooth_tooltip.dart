@@ -9,6 +9,11 @@ class SmoothTooltip extends StatefulWidget {
   final String message;
   final Duration? waitDuration;
   final Duration showDuration;
+
+  /// Всегда показывать подсказку НАД кнопкой (с увеличенным зазором),
+  /// если сверху есть место. Для таблетки разделов: обычная позиция
+  /// кладёт пузырь на саму таблетку, и он прячется за пальцем.
+  final bool preferredAbove;
   final Widget child;
 
   const SmoothTooltip({
@@ -16,6 +21,7 @@ class SmoothTooltip extends StatefulWidget {
     required this.message,
     this.waitDuration,
     this.showDuration = const Duration(seconds: 5),
+    this.preferredAbove = false,
     required this.child,
   });
 
@@ -90,7 +96,9 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     final bubbleWidth = _estimateWidth();
     final left = (pos.dx + box.size.width / 2 - bubbleWidth / 2)
         .clamp(4.0, overlayBox.size.width - bubbleWidth - 4);
-    final above = pos.dy - 8;
+    // preferredAbove: пузырь поднимается ВЫШЕ (зазор ~30px) — не ложится
+    // на кнопку и не прячется за пальцем; обычный режим — ближе, как было.
+    final above = widget.preferredAbove ? pos.dy - 34 : pos.dy - 8;
     final below = pos.dy + box.size.height + 8;
     final useAbove = above >= 6.0;
     _entry = OverlayEntry(
@@ -174,14 +182,13 @@ class _Bubble extends StatelessWidget {
         ? cs.surfaceContainerHigh
         : Color.lerp(cs.surfaceContainerLowest, cs.primary, 0.08)!;
     final fg = cs.onSurface;
-    final edge = cs.outlineVariant.withValues(alpha: 0.65);
     final bubble = Container(
       constraints: const BoxConstraints(maxWidth: 240),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: edge, width: 1),
+        // Обводка убрана: тонкая рамка только шумела и мешала глазу.
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: dark ? 0.35 : 0.12),
@@ -205,7 +212,6 @@ class _Bubble extends StatelessWidget {
       size: const Size(14, 7),
       painter: _BubbleArrowPainter(
         fill: bg,
-        stroke: edge,
         pointingUp: !above,
       ),
     );
@@ -222,14 +228,12 @@ class _Bubble extends StatelessWidget {
 /// Маленькая стрелка-хвостик пузыря: равнобедренный треугольник.
 class _BubbleArrowPainter extends CustomPainter {
   final Color fill;
-  final Color stroke;
 
   /// true — остриё сверху (пузырь под кнопкой), false — остриё снизу.
   final bool pointingUp;
 
   const _BubbleArrowPainter({
     required this.fill,
-    required this.stroke,
     required this.pointingUp,
   });
 
@@ -254,18 +258,10 @@ class _BubbleArrowPainter extends CustomPainter {
         ..color = fill
         ..style = PaintingStyle.fill,
     );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = stroke
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
-    );
   }
 
   @override
   bool shouldRepaint(covariant _BubbleArrowPainter oldDelegate) =>
       oldDelegate.fill != fill ||
-      oldDelegate.stroke != stroke ||
       oldDelegate.pointingUp != pointingUp;
 }

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import '../widgets/press_scale.dart';
 import '../models/alarm.dart';
 import '../models/app_timer.dart';
 import '../models/wake_task.dart';
@@ -279,7 +280,8 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                 children: [
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
-                  BerserkFabStack(
+                  PressScale(
+                    child: BerserkFabStack(
                     // Долгое зажатие «плюса» открывает режим BERSERK.
                     child: GestureDetector(
                       onLongPress: () => showBerserkSheet(context),
@@ -289,6 +291,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                       ),
                     ),
                   ),
+                ),
                 ],
               ),
             ),
@@ -361,6 +364,9 @@ class _AlarmsScreenState extends State<AlarmsScreen>
             notificationService.cancelAlarm(alarm.id);
           },
           child: SmoothHover(
+            // «Вдавливание» при зажатии — карточка мягко уменьшается.
+            hoverScale: 0.98,
+            duration: const Duration(milliseconds: 160),
             child: Card(
               key: ValueKey('card_${alarm.id}'),
               clipBehavior: Clip.antiAlias,

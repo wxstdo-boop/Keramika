@@ -42,48 +42,61 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
 
   @override
   Widget build(BuildContext context) {
-    // Ёлочка + «Keramika» в одном squircle-плашке. Наклон даёт лёгкий
-    // курсив, обводка совпадает с цветом выбранной темы — «живая» и и
-    // адаптируется вместо того, чтобы «залипать» стандартным курсивом.
-    final cs = Theme.of(context).colorScheme;
-    // Обводка — ТОЛЬКО вокруг ёлочки, не вокруг всего заголовка, как просил.
-    // Сам «Keramika» остаётся наклонным, жирным, без рамки.
+    // «Keramika» без ёлочки. Новогодняя шапочка — НАСТОЯЩИЙ эмодзи 🎅,
+    // обрезанный до самой шапки (красный конус + белая оторочка), а не
+    // рисованная картинка. Сидит точно на букве «r»: заголовок собран из
+    // трёх частей (Ke + r + amika) в Row, шапочка кладётся в Stack вместе
+    // с «r» и перекрывает её верх.
+    final style = const TextStyle(
+      fontSize: 27,
+      fontWeight: FontWeight.w700,
+      fontStyle: FontStyle.italic,
+      letterSpacing: -0.8,
+    );
     return GestureDetector(
       onTap: _toggle,
       behavior: HitTestBehavior.opaque,
       child: FadeTransition(
         opacity: CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: cs.primary.withValues(alpha: 0.70),
-                  width: 1.2,
-                ),
-              ),
-              child: const Text('🎄', style: TextStyle(fontSize: 11)),
-            ),
-            const SizedBox(width: 8),
-            const Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'Keramika',
-                  style: TextStyle(
-                    fontSize: 27,
-                    fontWeight: FontWeight.w700,
-                    fontStyle: FontStyle.italic,
-                    letterSpacing: -0.8,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Ke', style: style),
+              // Буква «r» с шапочкой поверх неё (перекрывает верх буквы —
+              // ничего не вылезает за AppBar, ничего не обрезается).
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Text('r', style: style),
+                  Positioned(
+                    top: -3,
+                    left: -1,
+                    // Эмодзи Санты, обрезанный до шапки: FittedBox cover +
+                    // topCenter показывает только верхнюю часть глифа
+                    // (красный конус с белой оторочкой), лицо скрыто.
+                    child: SizedBox(
+                      width: 27,
+                      height: 11,
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        clipBehavior: Clip.hardEdge,
+                        // Шапочка — настоящий цветной эмодзи 🎅 (как просил
+                        // вернуть), обрезанный до самой шапки.
+                        child: const Text(
+                          '🎅',
+                          style: TextStyle(fontSize: 27, height: 1),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ),
-          ],
+              Text('amika', style: style),
+            ],
+          ),
         ),
       ),
     );

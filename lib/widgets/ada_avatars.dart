@@ -11,7 +11,12 @@ import '../services/prefs.dart';
 class AdaVariant {
   final List<Color> colors;
   final IconData icon;
-  const AdaVariant(this.colors, this.icon);
+
+  /// Приблизительный оттенок (0-360): при смене аватарки избегаем вариантов
+  /// с близким оттенком, чтобы аватарка не «дублировалась» похожими
+  /// градиентами подряд.
+  final double hue;
+  const AdaVariant(this.colors, this.icon, {this.hue = 0});
 }
 
 /// Все варианты Ады: 6 авторских + 114 сгенерированных = 120 уникальных
@@ -26,32 +31,32 @@ List<AdaVariant> _buildAdaVariants() {
       Color(0xFFFF9EC6),
       Color(0xFFB06AB3),
       Color(0xFF7C4DFF),
-    ], Icons.favorite),
+    ], Icons.favorite, hue: 335),
     AdaVariant([
       Color(0xFFFFB199),
       Color(0xFFFF6B9D),
       Color(0xFFE63946),
-    ], Icons.local_florist),
+    ], Icons.local_florist, hue: 350),
     AdaVariant([
       Color(0xFF9BE8FF),
       Color(0xFF7C4DFF),
       Color(0xFF2E3192),
-    ], Icons.auto_awesome),
+    ], Icons.auto_awesome, hue: 268),
     AdaVariant([
       Color(0xFF8BF0C8),
       Color(0xFF2BB3A0),
       Color(0xFF0F6E6E),
-    ], Icons.wb_sunny),
+    ], Icons.wb_sunny, hue: 168),
     AdaVariant([
       Color(0xFFFFD166),
       Color(0xFFFF8C42),
       Color(0xFFD62828),
-    ], Icons.star),
+    ], Icons.star, hue: 36),
     AdaVariant([
       Color(0xFFC9B8FF),
       Color(0xFF8E7CFF),
       Color(0xFF4A3F9E),
-    ], Icons.psychology),
+    ], Icons.psychology, hue: 255),
   ];
   // Набор значков: повторяется через каждые 24 варианта, но hue каждый раз
   // другой (шаг 47° по цветовому кругу) — комбинации не повторяются.
@@ -80,6 +85,22 @@ List<AdaVariant> _buildAdaVariants() {
     Icons.wb_twilight,
     Icons.air,
     Icons.blur_on,
+    Icons.whatshot,
+    Icons.mood,
+    Icons.emoji_nature,
+    Icons.self_improvement,
+    Icons.waving_hand,
+    Icons.sentiment_very_satisfied,
+    Icons.volcano,
+    Icons.flutter_dash,
+    Icons.nightlight,
+    Icons.brightness_5,
+    Icons.waves,
+    Icons.local_fire_department,
+    Icons.eco,
+    Icons.psychology_alt,
+    Icons.heart_broken,
+    Icons.emoji_objects,
   ];
   final generated = <AdaVariant>[];
   for (var i = 0; i < 114; i++) {
@@ -100,7 +121,9 @@ List<AdaVariant> _buildAdaVariants() {
       sat,
       (light - 0.20).clamp(0.0, 1.0),
     ).toColor();
-    generated.add(AdaVariant([c1, c2, c3], icons[i % icons.length]));
+    generated.add(
+      AdaVariant([c1, c2, c3], icons[i % icons.length], hue: hue.toDouble()),
+    );
   }
   return [...specials, ...generated];
 }
@@ -187,12 +210,19 @@ class AdaAvatar extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: adaAvatarVariant,
       builder: (context, idx, _) => AnimatedSwitcher(
-        duration: const Duration(milliseconds: 320),
-        switchInCurve: Curves.easeOutCubic,
+        // Чуть дольше и с мягкой пружинкой: смена аватарки читается как
+        // «живой» поворот значка, а не резкий щелчок.
+        duration: const Duration(milliseconds: 400),
+        switchInCurve: Curves.easeOutBack,
         switchOutCurve: Curves.easeInCubic,
         transitionBuilder: (child, anim) => FadeTransition(
           opacity: anim,
-          child: ScaleTransition(scale: anim, child: child),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.72, end: 1.0).animate(
+              CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+            ),
+            child: child,
+          ),
         ),
         child: KeyedSubtree(
           key: ValueKey('ada_av_$idx'),

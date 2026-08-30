@@ -138,17 +138,28 @@ class _LockScreenState extends State<LockScreen>
       );
     }
 
+    final cs = theme.colorScheme;
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
+          // Фон под темы (а не жёсткий фиолетовый): градиент от поверхности
+          // к лёгкому фирменному оттенку — светлый/тёмный по текущей теме.
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [Colors.grey[900]!, Colors.deepPurple[900]!, Colors.black87]
-                : [Colors.purple[50]!, Colors.white, Colors.pink[50]!],
+                ? [
+                    cs.surface,
+                    cs.surfaceContainerLow,
+                    Color.lerp(cs.surface, cs.primaryContainer, 0.28)!,
+                  ]
+                : [
+                    cs.surfaceContainerLowest,
+                    cs.surface,
+                    Color.lerp(cs.surface, cs.primaryContainer, 0.35)!,
+                  ],
           ),
         ),
         child: SafeArea(
@@ -158,12 +169,12 @@ class _LockScreenState extends State<LockScreen>
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.white.withValues(alpha: 0.6),
+                    ? cs.surfaceContainerLow.withValues(alpha: 0.5)
+                    : cs.surface.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: isDark
-                      ? Colors.white.withValues(alpha: 0.15)
+                      ? cs.outlineVariant.withValues(alpha: 0.35)
                       : Colors.white.withValues(alpha: 0.8),
                   width: 1,
                 ),
