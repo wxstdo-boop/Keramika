@@ -230,6 +230,11 @@ class _HabitsScreenState extends State<HabitsScreen>
       if (!mounted) return;
       setState(() => _loaded = true);
     });
+    // Значение уже синхронно загружено в main() до первого кадра — берём
+    // его СРАЗУ, а не после асинхронной загрузки. Иначе полоса «борьба с
+    // неидеальным» на первом кадре отсутствует и потом резко впрыгивает
+    // поверх списка (мигание/рывок после сплэша).
+    _perfectionismMode = SettingsService.perfectionismEnabled.value;
     _loadPerfectionismMode();
     SettingsService.perfectionismEnabled.addListener(_onPerfectionismChanged);
     // Проверка смены дня: приложение может жить в фореграунде через полночь —
@@ -557,7 +562,17 @@ class _HabitsScreenState extends State<HabitsScreen>
         child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_perfectionismMode) _buildPerfectionismStrip(context, theme),
+              // Полоса «борьбы с неидеальным» раскрывается плавно (и на
+              // старте синхронно уже присутствует — без резкого впрыгива-
+              // ния и мигания после сплэша).
+              AnimatedSize(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: _perfectionismMode
+                    ? _buildPerfectionismStrip(context, theme)
+                    : const SizedBox.shrink(),
+              ),
               splitSections
                   ? _buildSectionedList(
                       context,
