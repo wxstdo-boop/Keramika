@@ -17,6 +17,7 @@ import '../utils/snackbar.dart';
 import '../utils/context_menu.dart';
 import '../utils/markdown_text.dart';
 import '../widgets/beautiful_selection.dart';
+import '../widgets/smooth_tooltip.dart';
 
 export 'berserk_sheet.dart';
 
@@ -637,7 +638,7 @@ class _AiChatBodyState extends State<_AiChatBody>
   /// Фон свой (нейтральный), НЕ таблетный — значок всегда различим.
   Widget _buildWebSearchToggle(BuildContext context, ThemeData theme) {
     final cs = theme.colorScheme;
-    return Tooltip(
+    return SmoothTooltip(
       message: Translations.t(
         _webSearch ? 'aiWebSearchOn' : 'aiWebSearch',
         context,
@@ -759,7 +760,7 @@ class _AiChatBodyState extends State<_AiChatBody>
   /// (если разрешение доступно), выключено — нейтральное.
   Widget _buildScreenToggle(BuildContext context, ThemeData theme) {
     final cs = theme.colorScheme;
-    return Tooltip(
+    return SmoothTooltip(
       message: _screenAware
           ? 'Контекст экрана: включён — Ада видит текст на экране'
           : 'Контекст экрана: выключен — Ада не читает экран',
@@ -1861,7 +1862,7 @@ class _ActionIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
+    return SmoothTooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 600),
       child: GestureDetector(

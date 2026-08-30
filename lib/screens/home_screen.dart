@@ -686,9 +686,10 @@ class _SectionRailState extends State<_SectionRail> {
                     final restingScale = isSelected ? 1.05 : 1.0;
                     final pressedScale = isSelected ? 0.96 : 0.90;
                     return Expanded(
-                      child: Tooltip(
-                        message: label,
-                        child: Semantics(
+                      // Без всплывающего названия раздела с белой плашкой:
+                      // название остаётся только в Semantics (доступность), а
+                      // снизу таблетки ничего не выскакивает.
+                      child: Semantics(
                           button: true,
                           selected: isSelected,
                           label: label,
@@ -733,8 +734,7 @@ class _SectionRailState extends State<_SectionRail> {
                             ),
                           ),
                         ),
-                      ),
-                    );
+                      );
                   }),
                 ),
               ],
