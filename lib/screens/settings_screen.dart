@@ -2677,26 +2677,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 // Значок плавно меняется при включении/выключении:
                 // контурные часы → залитые + галочка, с fade и «попом».
+                // Значок автоэкспорта плавно меняется при включении/выключении:
+                // чистый кроссфейд (без «попа»-масштаба, который дёргал) между
+                // двумя РАЗНЫМИ значками — ещё и цвет мягко анимируется, чтобы
+                // переход был ощутимо плавным, а не щелчком.
                 leading: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
+                  duration: const Duration(milliseconds: 320),
+                  switchInCurve: Curves.easeInOutCubic,
+                  switchOutCurve: Curves.easeInOutCubic,
                   transitionBuilder: (child, animation) =>
-                      ScaleTransition(
-                        scale: Tween(begin: 0.85, end: 1.0).animate(animation),
-                        child: FadeTransition(
-                          opacity: animation,
-                          child: child,
-                        ),
-                      ),
+                      FadeTransition(opacity: animation, child: child),
                   child: Icon(
                     _autoExport
-                        ? Icons.schedule
-                        : Icons.schedule_outlined,
+                        ? Icons.cloud_done_outlined
+                        : Icons.cloud_sync_outlined,
                     key: ValueKey('autoexport_$_autoExport'),
-                    color: _autoExport
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
+                    color: theme.colorScheme.primary.withValues(
+                      alpha: _autoExport ? 1.0 : 0.45,
+                    ),
                   ),
                 ),
                 title: Text(Translations.t('autoExport', context)),

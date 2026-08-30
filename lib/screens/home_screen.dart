@@ -324,6 +324,8 @@ class _HomeScreenState extends State<HomeScreen>
           // Плавная отдача при зажатии у всех значков шапки (обновить,
           // статистика, питание, настройки) — мягко вдавливаются.
           leading: PressScale(
+            pressedScale: 0.90,
+            duration: const Duration(milliseconds: 200),
             child: IconButton(
               icon: const Icon(Icons.refresh_outlined),
               tooltip: Translations.refreshOf(context),
@@ -334,6 +336,8 @@ class _HomeScreenState extends State<HomeScreen>
           centerTitle: false,
           actions: [
             PressScale(
+              pressedScale: 0.90,
+              duration: const Duration(milliseconds: 200),
               child: IconButton(
                 icon: const Icon(Icons.bar_chart_outlined),
                 onPressed: () => Navigator.of(context).push(
@@ -344,6 +348,8 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             PressScale(
+              pressedScale: 0.90,
+              duration: const Duration(milliseconds: 200),
               child: IconButton(
                 icon: const Icon(Icons.restaurant_outlined),
                 onPressed: () => Navigator.of(context).push(
@@ -352,6 +358,8 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             PressScale(
+              pressedScale: 0.90,
+              duration: const Duration(milliseconds: 200),
               child: IconButton(
                 icon: const Icon(Icons.settings_outlined),
                 onPressed: () => Navigator.of(
