@@ -287,76 +287,76 @@ class _TasksScreenState extends State<TasksScreen>
           }).toList();
           final hasTasks = tasks.isNotEmpty;
           return Scaffold(
-            // Без своего AppBar: белая полоса под таблеткой убрана, а кнопка
-            // управления категориями и сам выбор категорий подняты к верху.
+            // Без своего AppBar: белая полоса под таблеткой убрана. Кнопка
+            // управления категориями стоит в ОДНОЙ строке с самим выбором
+            // категорий у самого верха, под таблеткой — без белых зазоров.
             body: FabScrollListener(
               visible: _fabVisible,
               child: Column(
                 children: [
-                  // Кнопка управления категориями — вверху справа, под таблеткой.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        icon: const Icon(Icons.folder_outlined),
-                        tooltip: Translations.t('manageCategories', context),
-                        onPressed: _manageCategories,
-                      ),
-                    ),
-                  ),
+                  // Категории + кнопка управления в одной строке: и то, и
+                  // другое на уровне большой таблетки (категории максимально
+                  // высоко, лишний белый низ обрезан).
                   if (_service.categories.isNotEmpty)
-                    SlidingPicker<String>(
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SlidingPicker<String>(
                       items: chips,
                       selected: _filter,
                       // Высота ужата (52 → 40) и отступы таблеток меньше —
                       // раньше вокруг категорий был большой белый зазор
                       // сверху и снизу, между ними и текстом задач.
-                      height: 34,
-                      viewportFraction: 0.55,
-                      onChanged: (c) => setState(() => _filter = c),
-                      itemBuilder: (context, c, selected) {
-                        final label = c == '' ? Translations.allOf(context) : c;
-                        return Center(
-                          child: Padding(
-                            // Безопасные отступы по бокам карусели: длинная
-                            // категория у края вьюпорта не «упирается» в
-                            // границу и её последний символ не обрезается.
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 110),
-                              curve: Curves.easeOutCubic,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                color: selected
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.surfaceContainerHighest,
-                                boxShadow: selected
-                                    ? [
-                                        BoxShadow(
-                                          color: theme.colorScheme.primary
-                                              .withValues(alpha: 0.25),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              // FittedBox: длинное название масштабируется,
-                              // чтобы ПОМЕСТИТЬСЯ целиком — последний символ
-                              // всегда виден (раньше обрезался краем/троеточием).
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  label,
-                                  softWrap: false,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
+                          height: 34,
+                          viewportFraction: 0.55,
+                          onChanged: (c) => setState(() => _filter = c),
+                          itemBuilder: (context, c, selected) {
+                            final label =
+                                c == '' ? Translations.allOf(context) : c;
+                            return Center(
+                              child: Padding(
+                                // Безопасные отступы по бокам карусели: длинная
+                                // категория у края вьюпорта не «упирается» в
+                                // границу и её последний символ не обрезается.
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 110),
+                                  curve: Curves.easeOutCubic,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
                                     color: selected
+                                        ? theme.colorScheme.primary
+                                        : theme
+                                              .colorScheme
+                                              .surfaceContainerHighest,
+                                    boxShadow: selected
+                                        ? [
+                                            BoxShadow(
+                                              color: theme.colorScheme.primary
+                                                  .withValues(alpha: 0.25),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  // FittedBox: длинное название масштабируется,
+                                  // чтобы ПОМЕСТИТЬСЯ целиком — последний символ
+                                  // всегда виден (раньше обрезался краем/троеточием).
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      label,
+                                      softWrap: false,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: selected
                                         ? theme.colorScheme.onPrimary
                                         : theme.colorScheme.onSurfaceVariant,
                                     fontWeight: selected
@@ -369,6 +369,43 @@ class _TasksScreenState extends State<TasksScreen>
                           ),
                         );
                       },
+                          ),
+                        ),
+                        // Кнопка управления категориями — в той же строке,
+                        // справа от карусели, на уровне большой таблетки.
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: IconButton(
+                            icon: const Icon(Icons.folder_outlined),
+                            tooltip: Translations.t('manageCategories', context),
+                            onPressed: _manageCategories,
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 40,
+                              minHeight: 40,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    // Категорий нет — кнопка управления всё равно нужна,
+                    // стоит у верха, под таблеткой.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: IconButton(
+                          icon: const Icon(Icons.folder_outlined),
+                          tooltip: Translations.t('manageCategories', context),
+                          onPressed: _manageCategories,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                        ),
+                      ),
                     ),
                   Expanded(
                     // Плавная и медленная смена задач при переключении
