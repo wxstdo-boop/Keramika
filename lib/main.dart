@@ -1051,6 +1051,7 @@ class KeramikaAppState extends State<KeramikaApp>
     try {
       final lang = await SettingsService.loadLanguageCode();
       await AiGuideService.maybeDeliverAdaReports(lang);
+      await AiGuideService.maybeDeliverAdaNudge(lang);
     } catch (_) {}
     _armAdaTrackingTimer();
   }
@@ -1257,33 +1258,37 @@ class KeramikaAppState extends State<KeramikaApp>
         ),
       ),
       // Тултипы (долгое зажатие кнопок — «Ада», «Будильники» и т.п.):
-      // тематические, мягкие, с чётким текстом вместо серо-чёрной плашки.
+      // ЕДИНЫЙ стиль для ВСЕХ — как у плавного тултипа таблетки разделов:
+      // светлая плашка на светлой теме, тёмная на тёмной, с мягкой обводкой.
+      // Никакой тёмной «спеллчек»-плашки поверх светлого интерфейса.
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
-          color: scheme.inverseSurface,
-          borderRadius: BorderRadius.circular(12),
+          color: isDark
+              ? scheme.surfaceContainerHigh
+              : scheme.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: scheme.primary.withValues(alpha: 0.4),
+            color: scheme.outlineVariant.withValues(alpha: 0.6),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
+              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
               blurRadius: 14,
-              offset: const Offset(0, 5),
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         textStyle: TextStyle(
-          color: scheme.onInverseSurface,
+          color: scheme.onSurface,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
+          height: 1.25,
+          fontWeight: FontWeight.w500,
         ),
-        waitDuration: const Duration(milliseconds: 450),
-        showDuration: const Duration(milliseconds: 2500),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        waitDuration: const Duration(milliseconds: 350),
+        showDuration: const Duration(seconds: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),
       textSelectionTheme: const TextSelectionThemeData(),
     );

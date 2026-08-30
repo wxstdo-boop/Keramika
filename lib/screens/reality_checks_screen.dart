@@ -231,7 +231,8 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
         // ListView внутри SingleChildScrollView пытается занять место.
         return Scaffold(
           appBar: AppBar(
-            title: Text(Translations.realityChecksOf(context)),
+            // Название раздела не показываем: оно дублирует таблетку
+            // разделов над списком (пользователь просил убрать текст).
             centerTitle: true,
             leading: widget.onExit == null
                 ? null

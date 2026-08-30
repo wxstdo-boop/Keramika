@@ -1471,6 +1471,39 @@ class AiGuideService {
 
   static bool _deliveringReports = false;
 
+  /// Инициативное сообщение Ады: вызывается только при явном включении
+  /// пользователем. Не отправляет уведомления и не создаёт сообщения чаще
+  /// одного раза в сутки.
+  static Future<void> maybeDeliverAdaNudge(String languageCode) async {
+    final now = DateTime.now();
+    final day = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    if (globalPrefs.getString('ada_proactive_day') == day) return;
+    var text = '';
+    try {
+      text = await send(
+        userText: 'Напиши одно оригинальное короткое сообщение пользователю первой: живое, тёплое, немного неожиданное, с учётом его текущих задач и привычек. Не задавай шаблонный вопрос, не упоминай этот запрос и не используй списки.',
+        history: const [],
+        languageCode: languageCode,
+      );
+    } catch (_) {
+      text = await _offlineNudge(languageCode);
+    }
+    if (text.isEmpty) return;
+    await _appendToChatHistory([AiMessage(isUser: false, text: text)]);
+    await globalPrefs.setString('ada_proactive_day', day);
+    adaReportTick.value++;
+  }
+
+  static Future<String> _offlineNudge(String languageCode) async {
+    await Future.wait([TaskService().load(), HabitService().load()]);
+    final ru = languageCode == 'ru' || languageCode == 'system';
+    final tasks = TaskService().tasks.length;
+    final habits = HabitService().habits.length;
+    return ru
+        ? 'Я рядом 😊 У тебя сегодня $tasks задач и $habits привычек. Хочешь, помогу выбрать один маленький шаг?'
+        : 'I’m here 😊 You have $tasks tasks and $habits habits today. Want help choosing one small step?';
+  }
+
   /// Доставляет отчёты Ады в ЧАТ, если наступило время и они ещё не
   /// доставлены сегодня: утро — после 08:00, вечер — после 21:00.
   /// Пишет прямо в историю чата (переживает перезапуск) и поднимает

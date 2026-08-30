@@ -221,7 +221,8 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           final hasAlarms = alarms.isNotEmpty;
           return Scaffold(
             appBar: AppBar(
-              title: Text(Translations.alarmsOf(context)),
+              // Название раздела не показываем: оно дублирует таблетку
+              // разделов над списком (пользователь просил убрать текст).
               centerTitle: true,
             ),
             body: FabScrollListener(

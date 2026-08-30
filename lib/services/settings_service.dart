@@ -308,4 +308,8 @@ class SettingsService {
     map[_keyAiTracking] = value;
     await _saveSettings(map);
   }
+
+  static Future<bool> loadAdaProactive() async => true;
+
+  static Future<void> saveAdaProactive(bool value) async {}
 }
