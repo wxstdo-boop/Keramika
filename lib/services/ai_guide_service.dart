@@ -2850,12 +2850,14 @@ class AiGuideService {
 
   // ---- HuggingFace (встроенная модель Ады) ----
 
-  /// POST на HF с фолбэком: сначала router.huggingface.co, при любой
-  /// ошибке/недоступности — api-inference.huggingface.co (тот же формат).
+  /// POST на HF с перебором хостов. Принимается ТОЛЬКО HTTP 200 — на любой
+  /// другой статус идём к следующему хосту. Раньше первый хост (Space Ады)
+  /// при 4xx «закорачивал» всю ветку и возвращал ответ сразу — рабочий ключ
+  /// никогда не доходил до router/api-inference, и Ада падала в бесплатные
+  /// фолбэки, хотя токен валиден.
   static Future<http.Response> _hfPost(
     List<Map<String, dynamic>> messages,
   ) async {
-    http.Response? resp;
     // Свой Space Ады пробуем ПЕРВЫМ: ему не нужен рабочий ключ HF (встроенный
     // токен мог протухнуть — тогда router/api-inference отвечают 401), и после
     // простоя Space «просыпается» (первый запрос идёт до нескольких секунд).
@@ -2868,9 +2870,10 @@ class AiGuideService {
       _hfMirror: 5,
     };
     http.Response? authError;
+    http.Response? lastNonOk;
     for (final entry in hosts.entries) {
       try {
-        resp = await http
+        final resp = await http
             .post(
               Uri.parse(entry.key),
               headers: {
@@ -2885,28 +2888,20 @@ class AiGuideService {
               }),
             )
             .timeout(Duration(seconds: entry.value));
-        // 401/403 — ключ не подошёл: на остальных HF-хостах ключ тот же,
-        // НО Space/mirror могут работать без него — запоминаем ошибку
-        // и пробуем дальше вместо мгновенного отказа.
+        if (resp.statusCode == 200) return resp;
+        // 401/403 — ключ не подошёл: запоминаем (если ни один хост не
+        // сработает), но продолжаем — Space/mirror могут работать без него.
         if (resp.statusCode == 401 || resp.statusCode == 403) {
           authError ??= resp;
-          continue;
+        } else {
+          lastNonOk = resp;
         }
-        // 402 (credits depleted) — роутер отверг ключ, но api-inference
-        // может принять тот же ключ по другому тарифу (бесплатный Space).
-        // Прочие 4xx — ошибка запроса, не сети: дальше не ретраим.
-        if (resp.statusCode < 500 &&
-            resp.statusCode != 429 &&
-            resp.statusCode != 402) {
-          return resp;
-        }
+        // Любой другой статус — идём дальше по списку хостов.
       } catch (_) {}
     }
     if (authError != null) return authError;
-    if (resp == null) {
-      throw Exception('HF unavailable');
-    }
-    return resp;
+    if (lastNonOk != null) return lastNonOk;
+    throw Exception('HF unavailable');
   }
 
   static Future<String> _sendHuggingFace(

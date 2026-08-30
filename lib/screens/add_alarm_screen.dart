@@ -401,9 +401,32 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   ),
                   child: ListTile(
                     leading: const Icon(Icons.access_time),
-                    title: Text(
-                      _time.format(context),
-                      style: theme.textTheme.headlineMedium,
+                    title: ClipRect(
+                      // Выбранное время в окне правки плавно «проезжает»
+                      // при смене (как ролик в пикере), а не щёлкает.
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) =>
+                            SlideTransition(
+                          position: Tween(
+                            begin: const Offset(0, 0.4),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        ),
+                        child: Text(
+                          _time.format(context),
+                          key: ValueKey(
+                            'alarmedit_${_time.format(context)}',
+                          ),
+                          style: theme.textTheme.headlineMedium,
+                        ),
+                      ),
                     ),
                     subtitle: Text(Translations.tapToChangeOf(context)),
                     onTap: _pickTime,
