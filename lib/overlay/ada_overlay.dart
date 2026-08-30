@@ -834,7 +834,7 @@ class _OverlayChatState extends State<_OverlayChat>
 
   Widget _buildBubble() {
     final sz = _bubbleSize - 2;
-    final colors = adaVariants[_avatarVariant].colors;
+    final colors = themeAdaColors(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleSize,
