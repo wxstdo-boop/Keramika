@@ -230,23 +230,28 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
         // чтобы избежать двойной прокрутки и проблем рендеринга, когда
         // ListView внутри SingleChildScrollView пытается занять место.
         return Scaffold(
-          appBar: AppBar(
-            // Название раздела не показываем: оно дублирует таблетку
-            // разделов над списком (пользователь просил убрать текст).
-            centerTitle: true,
-            leading: widget.onExit == null
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    tooltip: Translations.backOf(context),
-                    onPressed: widget.onExit,
-                  ),
-          ),
-          // Плавный кросс-фейд: список ↔ пустое состояние (удаление
-          // последней проверки больше не дёргает экран).
+          // Без своего AppBar: белая полоса под таблеткой убрана, кнопка
+          // «назад» поднята к верху, рядом с таблеткой.
           body: FabScrollListener(
             visible: _fabVisible,
-            child: AnimatedSwitcher(
+            child: Column(
+              children: [
+                if (widget.onExit != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        tooltip: Translations.backOf(context),
+                        onPressed: widget.onExit,
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  // Плавный кросс-фейд: список ↔ пустое состояние (удаление
+                  // последней проверки больше не дёргает экран).
+                  child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
@@ -306,6 +311,9 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                   ],
                 ),
               ),
+            ),
+                ),
+              ],
             ),
           ),
           floatingActionButton: AnimatedFabRow(

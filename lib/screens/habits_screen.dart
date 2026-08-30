@@ -192,9 +192,6 @@ class _HabitsScreenState extends State<HabitsScreen>
   final ValueNotifier<bool> _fabVisible = ValueNotifier<bool>(true);
   final Map<String, bool> _expandedNotes = {};
   Timer? _dayTimer;
-  // Ревизия порядка: при закрепе/открепе список привычек плавно
-  // «перетекает» в новую раскладку (кросс-фейд), а не прыгает позициями.
-  int _pinRev = 0;
   bool _perfectionismMode = false;
   bool _perfScreenOpened = false;
 
@@ -346,11 +343,9 @@ class _HabitsScreenState extends State<HabitsScreen>
     final updated = habit.copyWith(pinned: !habit.pinned);
     await _service.update(updated);
     if (!mounted) return;
-    // Плавный кросс-фейд списка в новую раскладку (закреплённая карточка
-    // оказывается сверху). Без снимков, «перелётов» и вспышек: ничего не
-    // растягивается, не дёргается и не подтормаживает (раньше тут был
-    // полный toImage карточки + полёт RawImage поверх списка).
-    setState(() => _pinRev++);
+    // Кросс-фейд списка в новую раскладку запускает сам AnimatedSwitcher:
+    // ключ (раскладка закрепления) меняется вместе с перестановкой, и
+    // карточка плавно «перетекает» наверх без телепорта.
     showBeautifulSnackBar(
       context,
       message: updated.pinned
@@ -474,11 +469,8 @@ class _HabitsScreenState extends State<HabitsScreen>
         builder: (context, _) {
           final habits = _orderForDisplay(_service.habits);
           return Scaffold(
-            appBar: AppBar(
-              // Название раздела не показываем: оно дублирует таблетку
-              // разделов над списком (пользователь просил убрать текст).
-              centerTitle: true,
-            ),
+            // Без своего AppBar: белая полоса под таблеткой разделов убрана,
+            // контент начинается сразу под ней.
             body: FabScrollListener(
               visible: _fabVisible,
               child: Column(
@@ -555,9 +547,11 @@ class _HabitsScreenState extends State<HabitsScreen>
       // при коротком списке — иначе жест «хватается» только у самого
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
-      // При закрепе/открепе список плавно «перетекает» в новую раскладку:
-      // старая позиция карточки тает, новая проявляется — без телепорта.
-      // На первом кадре после Splash анимации нет (первый build без
+      // Ключ анимации — сама раскладка закрепления: при закрепе/открепе
+      // сервис переставляет карточку, сигнатура меняется, и AnimatedSwitcher
+      // плавно «перетекает» из старого порядка в новый (без телепорта).
+      // Ручной drag порядок без смены пинов сигнатуру не меняет — вспышек
+      // нет. На первом кадре после Splash анимации нет (первый build без
       // предыдущего ребёнка), поэтому рывка «пусто → привычки» не бывает.
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 380),
@@ -570,8 +564,11 @@ class _HabitsScreenState extends State<HabitsScreen>
             child: child,
           ),
         ),
+        // Ключ на РЕБЁНКЕ (не на самом переключателе): при смене раскладки
+        // закрепления AnimatedSwitcher видит новый ключ и кросс-фейдит
+        // старый порядок в новый. Ручной drag сигнатуру не меняет — вспышек нет.
         child: KeyedSubtree(
-          key: ValueKey('pin_rev_$_pinRev'),
+          key: ValueKey('pin_sig_${sorted.map((h) => h.pinned ? '1' : '0').join()}'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

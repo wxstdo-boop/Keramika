@@ -220,11 +220,8 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           final timers = _timerSvc.timers;
           final hasAlarms = alarms.isNotEmpty;
           return Scaffold(
-            appBar: AppBar(
-              // Название раздела не показываем: оно дублирует таблетку
-              // разделов над списком (пользователь просил убрать текст).
-              centerTitle: true,
-            ),
+            // Без своего AppBar: белая полоса под таблеткой разделов убрана,
+            // контент начинается сразу под ней.
             body: FabScrollListener(
               visible: _fabVisible,
               child: Column(
