@@ -191,6 +191,8 @@ class AdaAvatar extends StatelessWidget {
   }
 
   Widget _core(BuildContext context, AdaVariant v) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: size,
       height: size,
@@ -200,6 +202,15 @@ class AdaAvatar extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: v.colors,
+        ),
+        // Тонкое адаптивное кольцо: в светлой теме оно оттенка primary,
+        // в тёмной — мягкий белый, чтобы аватарка аккуратно «садилась»
+        // в темы, а не просто торчала цветным кружком.
+        border: Border.all(
+          color: dark
+              ? Colors.white.withValues(alpha: 0.10)
+              : cs.primary.withValues(alpha: 0.16),
+          width: 1.6,
         ),
         // Без тени: в мини-окошке blur-тень обрезается прямоугольной
         // границей окна и выглядит как «квадрат» за круглой аватаркой.
@@ -220,7 +231,7 @@ class AdaAvatar extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withValues(alpha: 0.55),
+                    Colors.white.withValues(alpha: dark ? 0.30 : 0.55),
                     Colors.white.withValues(alpha: 0.0),
                   ],
                 ),

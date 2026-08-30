@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import '../services/haptics.dart';
@@ -714,10 +716,17 @@ class _SectionRailState extends State<_SectionRail> {
                                       : restingScale,
                                   duration: const Duration(milliseconds: 160),
                                   curve: Curves.easeOutCubic,
-                                  child: Icon(
-                                    widget.icons[i],
-                                    size: 21,
-                                    color: iconColor,
+                                  child: _GeoBadge(
+                                    index: i,
+                                    size: 27,
+                                    color: isSelected
+                                        ? cs.onPrimary.withValues(alpha: 0.30)
+                                        : cs.primary.withValues(alpha: 0.13),
+                                    child: Icon(
+                                      widget.icons[i],
+                                      size: 15,
+                                      color: iconColor,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -735,4 +744,79 @@ class _SectionRailState extends State<_SectionRail> {
       ),
     );
   }
+}
+
+/// Значок раздела в главной таблетке: иконка сидит внутри своей геометри-
+/// ческой фигуры (круг, квадрат, ромб, гексагон) — у каждого раздела свой
+/// контур, так получилось нагляднее и красивее.
+class _GeoBadge extends StatelessWidget {
+  final int index;
+  final double size;
+  final Color color;
+  final Widget child;
+
+  const _GeoBadge({
+    required this.index,
+    required this.size,
+    required this.color,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _ShapePainter(index, color),
+        child: Center(
+          child: SizedBox(
+            width: size * 0.58,
+            height: size * 0.58,
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShapePainter extends CustomPainter {
+  final int index;
+  final Color color;
+
+  const _ShapePainter(this.index, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 - 1.0;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    // У каждого раздела свой контур: 🔵 круг, ⬜ квадрат, 💠 ромб, ⬡ гексагон.
+    if (index == 0) {
+      canvas.drawCircle(center, r, paint);
+      return;
+    }
+    final n = index == 3 ? 6 : 4;
+    final rot = index == 2 ? pi / 4 : 0.0;
+    final start = -pi / 2 + rot;
+    final path = Path();
+    for (var i = 0; i < n; i++) {
+      final a = start + 2 * pi * i / n;
+      final p = Offset(center.dx + r * cos(a), center.dy + r * sin(a));
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShapePainter oldDelegate) =>
+      oldDelegate.index != index || oldDelegate.color != color;
 }
