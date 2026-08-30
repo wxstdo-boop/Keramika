@@ -20,6 +20,7 @@ import '../utils/context_menu.dart';
 import '../utils/markdown_text.dart';
 import '../widgets/beautiful_selection.dart';
 import '../widgets/smooth_tooltip.dart';
+import '../widgets/model_label.dart';
 
 export 'berserk_sheet.dart';
 
@@ -1296,10 +1297,10 @@ class _AiChatBodyState extends State<_AiChatBody>
                                       child: child,
                                     ),
                                   ),
-                              child: Text(
-                                _modelLabel,
+                              child: ModelLabel(
                                 key: ValueKey(_modelLabel),
-                                style: theme.textTheme.bodySmall?.copyWith(
+                                label: _modelLabel,
+                                textStyle: theme.textTheme.bodySmall?.copyWith(
                                   color: cs.onSurfaceVariant,
                                   fontWeight: FontWeight.w600,
                                 ),

@@ -15,6 +15,7 @@ import '../services/json_file.dart';
 import '../services/prefs.dart';
 import '../services/settings_service.dart';
 import '../widgets/ada_avatars.dart';
+import '../widgets/model_label.dart';
 
 /// Канал системного оверлея.
 const MethodChannel _overlayChannel = MethodChannel('x-slayer/overlay');
@@ -995,12 +996,12 @@ class _OverlayChatState extends State<_OverlayChat>
                           switchOutCurve: Curves.easeIn,
                           transitionBuilder: (child, anim) =>
                               FadeTransition(opacity: anim, child: child),
-                          child: Text(
-                            _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
+                          child: ModelLabel(
                             key: ValueKey(
                               _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
                             ),
-                            style: TextStyle(
+                            label: _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
+                            textStyle: TextStyle(
                               fontSize: 10,
                               color: cs.onSurfaceVariant,
                             ),

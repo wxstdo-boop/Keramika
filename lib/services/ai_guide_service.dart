@@ -102,7 +102,7 @@ class AiGuideService {
   /// Встроенный ключ Ады — обфусцирован (XOR + base64), чтобы в бинарнике
   /// не лежал открытый токен. Декодируется только в рантайме.
   static const _hfKeyObf =
-      'AwMtFAIgJBRBCAwJSF9ZZUcxKDsZNS0BAGAjBzZOfFx1XTgGBA==';
+      'AwMtBzU/GxBVJRIRS1BRQHchEjwpHxsEN18JEApqU39lZyUhGg==';
   static const _hfKeyPass = 'keramika-ada-2026';
   static const _builtinHfModel = 'Qwen/Qwen2.5-7B-Instruct';
 
