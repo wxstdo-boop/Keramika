@@ -99,20 +99,42 @@ class AiGuideService {
       'https://keramika-ada.hf.space/v1/chat/completions';
   static const _hfMirror = 'https://hf-mirror.com/v1/chat/completions';
 
-  /// Встроенный ключ Ады — обфусцирован (XOR + base64), чтобы в бинарнике
-  /// не лежал открытый токен. Декодируется только в рантайме.
-  static const _hfKeyObf =
-      'AwMtBzU/GxBVJRIRS1BRQHchEjwpHxsEN18JEApqU39lZyUhGg==';
+  /// Встроенный ключ Ады — обфусцирован, чтобы в бинарнике не лежал
+  /// открытый токен. Защита «мощнее» простого XOR: ключ разбит на несколько
+  /// фрагментов (лежат в разных константах, не рядом), а байты зашифрованы
+  /// потоковым ключом псевдослучайной последовательности, которая
+  /// детерминированно генерируется из пароля (FNV-1a seed + LCG).
+  /// Чтобы прочитать токен — нужно заново реализовать всю схему.
+  /// Декодируется только в рантайме.
+  static const _hfKeyFrag1 = 'obAU2cuLpKkpTfe8C';
+  static const _hfKeyFrag2 = 'nFTVgEB66YabZd+Bx';
+  static const _hfKeyFrag3 = '5qx6XPsKjsXbs+zQ==';
   static const _hfKeyPass = 'keramika-ada-2026';
   static const _builtinHfModel = 'Qwen/Qwen2.5-7B-Instruct';
 
+  /// FNV-1a (32 бит) от пароля — зерно LCG для потокового ключа.
+  static int _seedOf(String s) {
+    var h = 0x811c9dc5;
+    for (final code in s.codeUnits) {
+      h ^= code;
+      h = (h * 0x01000193) & 0xffffffff;
+    }
+    return h;
+  }
+
   static String get _builtinHfKey {
     try {
-      final bytes = base64Decode(_hfKeyObf);
-      return String.fromCharCodes([
-        for (var i = 0; i < bytes.length; i++)
-          bytes[i] ^ _hfKeyPass.codeUnitAt(i % _hfKeyPass.length),
-      ]);
+      final b64 = '$_hfKeyFrag1$_hfKeyFrag2$_hfKeyFrag3';
+      final bytes = base64Decode(b64);
+      // Тот же LCG, что в генераторе: seed 0x6dd36b58, каждый байт — старшие
+      // 8 бит следующего значения LCG (x = (x*1103515245+12345)&0x7fffffff).
+      var x = _seedOf(_hfKeyPass); // == 0x6dd36b58
+      final out = StringBuffer();
+      for (var i = 0; i < bytes.length; i++) {
+        x = (x * 1103515245 + 12345) & 0x7fffffff;
+        out.writeCharCode(bytes[i] ^ ((x >> 16) & 0xff));
+      }
+      return out.toString();
     } catch (_) {
       return '';
     }

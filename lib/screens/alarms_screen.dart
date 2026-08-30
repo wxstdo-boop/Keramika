@@ -454,14 +454,19 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                             Row(
                               children: [
                                 Expanded(
-                                  child: Text(
-                                    alarm.timeLabel,
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(
+                                  // Время в окне будильника меняется ПЛАВНО:
+                                  // при правке времени новая цифра плавно
+                                  // «проезжает» поверх старой (скольжение + fade),
+                                  // как ролик в пикере, а не щёлкает.
+                                  child: _AnimatedAlarmTime(
+                                    label: alarm.timeLabel,
+                                    style: (theme.textTheme.headlineSmall
+                                            ?.copyWith(
                                       color: alarm.enabled
                                           ? null
                                           : theme.colorScheme.onSurfaceVariant,
-                                    ),
+                                    ) ??
+                                        const TextStyle(fontSize: 24)),
                                   ),
                                 ),
                                 // Тестовый будильник — значок ТОЛЬКО на первом
@@ -917,5 +922,41 @@ class _TimerPulseState extends State<_TimerPulse>
   @override
   Widget build(BuildContext context) {
     return ScaleTransition(scale: _scale, child: widget.child);
+  }
+}
+
+/// Время будильника в карточке — плавная смена при переключении времени:
+/// новые цифры «проезжают» поверх старых (скольжение + fade) вместо резкого
+/// щелчка. Ключ = сам текст времени, поэтому при смене «07:30 -> 07:45»
+/// происходит плавный кроссфейд со слайдом.
+class _AnimatedAlarmTime extends StatelessWidget {
+  final String label;
+  final TextStyle style;
+
+  const _AnimatedAlarmTime({required this.label, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          // Плавный подъём новой цифры снизу + fade — читается, не дёргается.
+          return SlideTransition(
+            position:
+                Tween(begin: const Offset(0, 0.4), end: Offset.zero)
+                    .animate(animation),
+            child: FadeTransition(opacity: animation, child: child),
+          );
+        },
+        child: Text(
+          label,
+          key: ValueKey('alarmtime_$label'),
+          style: style,
+        ),
+      ),
+    );
   }
 }
