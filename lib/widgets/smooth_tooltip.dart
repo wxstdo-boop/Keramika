@@ -36,11 +36,11 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 340),
     );
     final curved = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOutCubic,
+      curve: Curves.easeOutQuart,
       reverseCurve: Curves.easeInCubic,
     );
     _fade = curved;
@@ -154,15 +154,24 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    // Плашка под тему: светлая тема → светлая плашка, тёмная → тёмная.
+    // Плашка под тему: светлая тема → светлая плашка с тёмным текстом,
+    // тёмная тема → тёмная плашка со светлым текстом.
+    final bg = dark ? cs.surfaceContainerHigh : cs.surfaceContainerLowest;
+    final fg = cs.onSurface;
     return Container(
       constraints: const BoxConstraints(maxWidth: 240),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: dark ? cs.surfaceContainerHigh : cs.inverseSurface,
+        color: bg,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.6),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: dark ? 0.35 : 0.18),
+            color: Colors.black.withValues(alpha: dark ? 0.35 : 0.12),
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -174,7 +183,8 @@ class _Bubble extends StatelessWidget {
         style: TextStyle(
           fontSize: 13,
           height: 1.25,
-          color: dark ? cs.onSurface : cs.onInverseSurface,
+          fontWeight: FontWeight.w500,
+          color: fg,
         ),
       ),
     );

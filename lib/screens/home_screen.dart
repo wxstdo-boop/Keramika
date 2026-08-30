@@ -1,8 +1,11 @@
 import 'dart:math';
 
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import '../services/haptics.dart';
+import '../widgets/smooth_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/physics.dart';
@@ -596,15 +599,21 @@ class _SectionRailState extends State<_SectionRail> {
     return SizedBox(
       width: 282,
       height: 48,
-      child: DecoratedBox(
+      // Эффект «стекла»: полупрозрачная капсула с лёгким размытием того, что
+      // за ней, — будто видишь сквозь неё контент позади.
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(23),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(23),
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              cs.surfaceContainerHighest.withValues(alpha: 0.96),
-              cs.surfaceContainerLow.withValues(alpha: 0.98),
+              cs.surfaceContainerHighest.withValues(alpha: 0.42),
+              cs.surfaceContainerLow.withValues(alpha: 0.55),
             ],
           ),
           border: Border.all(
@@ -686,10 +695,13 @@ class _SectionRailState extends State<_SectionRail> {
                     final restingScale = isSelected ? 1.05 : 1.0;
                     final pressedScale = isSelected ? 0.96 : 0.90;
                     return Expanded(
-                      // Без всплывающего названия раздела с белой плашкой:
-                      // название остаётся только в Semantics (доступность), а
-                      // снизу таблетки ничего не выскакивает.
-                      child: Semantics(
+                      // Подсказка-пояснение у кнопки раздела: плавная и под тему
+                      // (светлая на светлых, тёмная на тёмных). Отдельные тексты
+                      // под таблеткой не показываем.
+                      child: SmoothTooltip(
+                        message: label,
+                        waitDuration: const Duration(milliseconds: 350),
+                        child: Semantics(
                           button: true,
                           selected: isSelected,
                           label: label,
@@ -734,13 +746,16 @@ class _SectionRailState extends State<_SectionRail> {
                             ),
                           ),
                         ),
-                      );
+                      ),
+                    );
                   }),
                 ),
               ],
             ),
           ),
         ),
+      ),
+      ),
       ),
     );
   }
