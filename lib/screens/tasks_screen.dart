@@ -288,7 +288,8 @@ class _TasksScreenState extends State<TasksScreen>
           final hasTasks = tasks.isNotEmpty;
           return Scaffold(
             appBar: AppBar(
-              title: Text(Translations.tasksOf(context)),
+              // Название раздела не показываем: оно дублирует таблетку
+              // разделов над списком (пользователь просил убрать текст).
               centerTitle: true,
               actions: [
                 IconButton(

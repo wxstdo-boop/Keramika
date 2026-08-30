@@ -434,35 +434,11 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                           children: List.generate(7, (i) {
                             final day = i + 1;
                             final selected = _repeatDays.contains(day);
-                            return AnimatedContainer(
-                              duration: const Duration(milliseconds: 260),
-                              curve: Curves.easeOutCubic,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: selected
-                                    ? [
-                                        BoxShadow(
-                                          color: theme.colorScheme.primary
-                                              .withValues(alpha: 0.20),
-                                          blurRadius: 8,
-                                          spreadRadius: -2,
-                                        ),
-                                      ]
-                                    : const [],
-                              ),
-                              child: FilterChip(
-                                selected: selected,
-                                label: Text(dayNames[i]),
-                                onSelected: (_) => _toggleDay(day),
-                                showCheckmark: false,
-                                selectedColor: theme.colorScheme.primaryContainer,
-                                side: BorderSide(
-                                  color: selected
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.outlineVariant,
-                                  width: selected ? 1.2 : 1,
-                                ),
-                              ),
+                            return _AlarmDayChip(
+                              day: day,
+                              label: dayNames[i],
+                              selected: selected,
+                              onTap: () => _toggleDay(day),
                             );
                           }),
                         ),
@@ -690,7 +666,9 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                 onTap: () => setState(() => _soundName = s),
                                 // Зажатие звука — удаление (свой файл или встроенный).
                                 onLongPress: () => _deleteSound(s),
-                                child: Container(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 260),
+                                  curve: Curves.easeOutCubic,
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 4,
                                     vertical: 4,
@@ -846,6 +824,85 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
               ),
               const SizedBox(height: 32),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Плавный чип дня недели будильника — ровно как в повторении привычки:
+/// цвет/граница/галочка анимируются (240 мс) вместо резкого FilterChip.
+class _AlarmDayChip extends StatelessWidget {
+  final int day;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AlarmDayChip({
+    required this.day,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: selected
+            ? cs.primary
+            : cs.surfaceContainerHigh.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: selected ? cs.primary : cs.outlineVariant,
+          width: 1.2,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: Tween<double>(begin: 0.6, end: 1).animate(animation),
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: selected
+                      ? Icon(
+                          Icons.check,
+                          key: ValueKey('alarm_day_on_$day'),
+                          size: 14,
+                          color: cs.onPrimary,
+                        )
+                      : const SizedBox(
+                          key: ValueKey('alarm_day_off'),
+                          width: 14,
+                        ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

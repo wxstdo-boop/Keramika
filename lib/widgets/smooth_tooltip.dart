@@ -8,12 +8,14 @@ import 'package:flutter/material.dart';
 class SmoothTooltip extends StatefulWidget {
   final String message;
   final Duration? waitDuration;
+  final Duration showDuration;
   final Widget child;
 
   const SmoothTooltip({
     super.key,
     required this.message,
     this.waitDuration,
+    this.showDuration = const Duration(seconds: 5),
     required this.child,
   });
 
@@ -25,6 +27,7 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     with SingleTickerProviderStateMixin {
   final GlobalKey _anchorKey = GlobalKey();
   Timer? _showTimer;
+  Timer? _dismissTimer;
   OverlayEntry? _entry;
   bool _locked = false;
   late final AnimationController _controller;
@@ -50,6 +53,7 @@ class _SmoothTooltipState extends State<SmoothTooltip>
   @override
   void dispose() {
     _showTimer?.cancel();
+    _dismissTimer?.cancel();
     _dismount();
     _controller.dispose();
     super.dispose();
@@ -66,12 +70,13 @@ class _SmoothTooltipState extends State<SmoothTooltip>
 
   void _onHoldEnd() {
     _showTimer?.cancel();
-    _hide();
+    // Если таймер успел показать подсказку, оставляем её до конца показа.
   }
 
   /// Плавно показываем подсказку у зажатой кнопки.
   void _show() {
     if (!mounted || _locked) return;
+    _dismissTimer?.cancel();
     final anchorContext = _anchorKey.currentContext;
     final box = anchorContext?.findRenderObject();
     if (anchorContext == null || box is! RenderBox) return;
@@ -106,6 +111,8 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     );
     overlay.insert(_entry!);
     _controller.forward();
+    // Не исчезать сразу после отпускания: тултип остаётся читаемым 5 секунд.
+    _dismissTimer = Timer(widget.showDuration, _hide);
   }
 
   void _hide() {
@@ -113,12 +120,15 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     if (!_controller.isAnimating && _controller.value == 0) {
       _dismount();
       return;
-    }    _controller.reverse().then((_) {
+    }
+    _controller.reverse().then((_) {
       if (mounted) _dismount();
     });
   }
 
   void _dismount() {
+    _dismissTimer?.cancel();
+    _dismissTimer = null;
     _locked = false;
     _entry?.remove();
     _entry = null;

@@ -434,6 +434,8 @@ class _HomeScreenState extends State<HomeScreen>
                             builder: (context, page, __) => _SectionRail(
                               current: current,
                               page: page,
+                              // Подписи доступны только внутри тултипов;
+                              // отдельного ряда названий под таблеткой нет.
                               labels: tabs,
                               icons: _icons.sublist(0, tabs.length),
                               onTap: _onTabTap,

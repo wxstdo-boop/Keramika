@@ -700,6 +700,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         'setting_auto_export',
         'setting_ai_guide',
         'setting_ai_key',
+        'setting_ada_proactive',
       };
       for (final entry in decoded.entries) {
         if (entry.value == null) continue;

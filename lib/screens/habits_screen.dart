@@ -475,7 +475,8 @@ class _HabitsScreenState extends State<HabitsScreen>
           final habits = _orderForDisplay(_service.habits);
           return Scaffold(
             appBar: AppBar(
-              title: Text(Translations.habitsOf(context)),
+              // Название раздела не показываем: оно дублирует таблетку
+              // разделов над списком (пользователь просил убрать текст).
               centerTitle: true,
             ),
             body: FabScrollListener(
@@ -554,12 +555,24 @@ class _HabitsScreenState extends State<HabitsScreen>
       // при коротком списке — иначе жест «хватается» только у самого
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
-      child: KeyedSubtree(
-        // Анимация списка нужна только при изменении закрепления. Не
-        // запускаем её на первом кадре после Splash — именно этот внешний
-        // AnimatedSwitcher создавал рывок «пусто → привычки».
-        key: ValueKey('pin_rev_$_pinRev'),
-        child: Column(
+      // При закрепе/открепе список плавно «перетекает» в новую раскладку:
+      // старая позиция карточки тает, новая проявляется — без телепорта.
+      // На первом кадре после Splash анимации нет (первый build без
+      // предыдущего ребёнка), поэтому рывка «пусто → привычки» не бывает.
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 380),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.985, end: 1.0).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(
+          key: ValueKey('pin_rev_$_pinRev'),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Полоса «борьбы с неидеальным» раскрывается плавно (и на
@@ -585,6 +598,7 @@ class _HabitsScreenState extends State<HabitsScreen>
             ],
           ),
         ),
+      ),
     );
   }
 

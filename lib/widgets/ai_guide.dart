@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import '../services/haptics.dart';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -180,18 +181,24 @@ class _AiChatSheetState extends State<_AiChatSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: insets),
       child: RepaintBoundary(
-        child: Container(
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: Container(
           height: sheetHeight,
           decoration: BoxDecoration(
-            color: theme.scaffoldBackgroundColor,
+            color: theme.scaffoldBackgroundColor.withValues(alpha: 0.72),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           // Тело чата не получает покадровые IME-инсеты: меняется только
           // внешний лёгкий Padding, а лента и её TextFields не пересобираются.
-          child: MediaQuery.removeViewInsets(
-            context: context,
-            removeBottom: true,
-            child: const _AiChatBody(),
+              child: MediaQuery.removeViewInsets(
+                context: context,
+                removeBottom: true,
+                child: const _AiChatBody(),
+              ),
+            ),
           ),
         ),
       ),
@@ -273,6 +280,9 @@ class _AiChatBodyState extends State<_AiChatBody>
     // наступил, а в чат ещё не писался — Ада пишет его сюда. История
     // загружается сразу, сообщение подхватится через _onAdaReportTick.
     _ensureReports();
+    // Если пользователь включил инициативную Аду, она может написать первой
+    // после открытия чата; лимит — одно сообщение в сутки.
+    unawaited(AiGuideService.maybeDeliverAdaNudge('system'));
     // Открытый чат слушает доставку и перечитывает историю — отчёт
     // появляется в ленте в момент доставки, без переоткрытия.
     AiGuideService.adaReportTick.addListener(_onAdaReportTick);
