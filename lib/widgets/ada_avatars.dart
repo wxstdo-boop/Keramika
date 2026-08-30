@@ -105,6 +105,18 @@ List<AdaVariant> _buildAdaVariants() {
   return [...specials, ...generated];
 }
 
+/// Тональная «монохромная» гамма аватарки Ады из текущей темы. Общая для
+/// основного чата и мини-окошка, чтобы они выглядели одинаково и менялись
+/// вместе с темой.
+List<Color> themeAdaColors(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  return <Color>[
+    cs.primary,
+    Color.lerp(cs.primary, cs.tertiary, 0.55)!,
+    cs.tertiary,
+  ];
+}
+
 /// Сохранённый индекс варианта (переживает перезапуск; общий для движков).
 int savedAdaAvatarIndex() => (globalPrefs.getInt('ada_avatar_variant') ?? 0)
     .clamp(0, adaVariants.length - 1);
@@ -193,6 +205,10 @@ class AdaAvatar extends StatelessWidget {
   Widget _core(BuildContext context, AdaVariant v) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
+    // Монохромная тональная гамма из ТЕКУЩЕЙ темы: аватарка автоматически
+    // подстраивается под смену темы (primary → secondary → tertiary),
+    // а не остаётся ярким цветным кружком в любой теме.
+    final ramp = themeAdaColors(context);
     return Container(
       width: size,
       height: size,
@@ -201,7 +217,7 @@ class AdaAvatar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: v.colors,
+          colors: ramp,
         ),
         // Тонкое адаптивное кольцо: в светлой теме оно оттенка primary,
         // в тёмной — мягкий белый, чтобы аватарка аккуратно «садилась»
