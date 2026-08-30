@@ -70,7 +70,9 @@ class _SmoothTooltipState extends State<SmoothTooltip>
 
   void _onHoldEnd() {
     _showTimer?.cancel();
-    // Если таймер успел показать подсказку, оставляем её до конца показа.
+    // Функционал как у остальных тултипов: отпустил палец — подсказка
+    // плавно уходит (никаких зависших на 5 секунд пузырей-«спеллчеков»).
+    _hide();
   }
 
   /// Плавно показываем подсказку у зажатой кнопки.
@@ -111,8 +113,6 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     );
     overlay.insert(_entry!);
     _controller.forward();
-    // Не исчезать сразу после отпускания: тултип остаётся читаемым 5 секунд.
-    _dismissTimer = Timer(widget.showDuration, _hide);
   }
 
   void _hide() {

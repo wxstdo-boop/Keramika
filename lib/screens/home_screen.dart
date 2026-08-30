@@ -690,6 +690,10 @@ class _SectionRailState extends State<_SectionRail> {
                     );
                     final isPressed = _pressedIndex == i;
                     final isSelected = selectedIndex == i;
+                    // Фон фигуры следует за положением страницы (непрерывно),
+                    // а не за дискретным isSelected: при переключении разделов
+                    // подсветка фигур переливается плавно вместе с индикатором.
+                    final badgeT = proximity;
                     // Единственный scale-таргет: выбранный чуть увеличен,
                     // остальные 1.0. При нажатии — плавное единое сжатие
                     // (выбранный чуть меньше, чтобы не «нырять» глубоко),
@@ -734,9 +738,11 @@ class _SectionRailState extends State<_SectionRail> {
                                   child: _GeoBadge(
                                     index: i,
                                     size: 27,
-                                    color: isSelected
-                                        ? cs.onPrimary.withValues(alpha: 0.30)
-                                        : cs.primary.withValues(alpha: 0.13),
+                                    color: Color.lerp(
+                                      cs.primary.withValues(alpha: 0.13),
+                                      cs.onPrimary.withValues(alpha: 0.30),
+                                      badgeT,
+                                    )!,
                                     child: Icon(
                                       widget.icons[i],
                                       size: 15,

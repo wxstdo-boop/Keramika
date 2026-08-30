@@ -238,13 +238,18 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
               children: [
                 if (widget.onExit != null)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                    padding: const EdgeInsets.fromLTRB(2, 0, 2, 0),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: IconButton(
                         icon: const Icon(Icons.arrow_back),
                         tooltip: Translations.backOf(context),
                         onPressed: widget.onExit,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 40,
+                          minHeight: 40,
+                        ),
                       ),
                     ),
                   ),
