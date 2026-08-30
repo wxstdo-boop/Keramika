@@ -218,6 +218,8 @@ def main():
                     ("mipmap-xxxhdpi", 192)]:
         build_legacy(size).convert("RGB").save(
             f"android/app/src/main/res/{d}/ic_launcher.png")
+        build_legacy(size).convert("RGB").save(
+            f"android/app/src/main/res/{d}/ic_launcher_round.png")
     print("done")
 
 

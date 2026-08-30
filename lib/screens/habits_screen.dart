@@ -798,37 +798,46 @@ class _HabitsScreenState extends State<HabitsScreen>
               // Bigger hit-target (padding 6+8, icon 26) matches what works
               // in tasks/alarms screen — same Dismissible wrapper,
               // immediate drag works there, so we keep that here.
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                transitionBuilder: (child, animation) =>
-                    ScaleTransition(scale: animation, child: child),
-                child: habit.pinned
-                    ? const Padding(
-                        key: ValueKey('pin'),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 8,
-                        ),
-                        child: Icon(
-                          Icons.push_pin,
-                          size: 26,
-                          color: Colors.grey,
-                        ),
-                      )
-                    : _HabitDragHandle(
-                        index: dragIndex,
-                        child: const Padding(
+              // Фиксированная ширина слота: при смене пин↔драг-хэндл текст
+              // не сдвигается, а сам значок меняется кросс-фейдом + scale.
+              SizedBox(
+                width: 38,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: animation, child: child),
+                  ),
+                  child: habit.pinned
+                      ? const Padding(
+                          key: ValueKey('pin'),
                           padding: EdgeInsets.symmetric(
-                            horizontal: 4,
+                            horizontal: 6,
                             vertical: 8,
                           ),
                           child: Icon(
-                            Icons.drag_indicator,
+                            Icons.push_pin,
                             size: 26,
                             color: Colors.grey,
                           ),
+                        )
+                      : _HabitDragHandle(
+                          index: dragIndex,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 8,
+                            ),
+                            child: Icon(
+                              Icons.drag_indicator,
+                              size: 26,
+                              color: Colors.grey,
+                            ),
+                          ),
                         ),
-                      ),
+                ),
               ),
               // Чекбокс (сверху) + тип привычки (снизу).
               // Колонка уже (40) и значок крупнее (23) — иконка ближе
@@ -1041,54 +1050,19 @@ class _HabitsScreenState extends State<HabitsScreen>
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 8,
                                   ),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(20),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.red.shade400,
-                                          Colors.deepOrange.shade400,
-                                        ],
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      Translations.t(
+                                        'todayErased',
+                                        context,
+                                        'TODAY CLEARED',
+                                      ).toUpperCase(),
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: Colors.red.shade600,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.4,
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.red.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.shield_outlined,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          Translations.t(
-                                            'todayErased',
-                                            context,
-                                            'Today cleared',
-                                          ),
-                                          style: theme.textTheme.bodyMedium
-                                              ?.copyWith(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 0.3,
-                                              ),
-                                        ),
-                                      ],
                                     ),
                                   ),
                                 )
@@ -1097,8 +1071,9 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 ),
                         ),
                         AnimatedSize(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
+                          duration: const Duration(milliseconds: 380),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.topCenter,
                           child:
                               (_expandedNotes[habit.id] ?? false) &&
                                   (habit.notes.isNotEmpty ||
@@ -1153,10 +1128,9 @@ class _HabitsScreenState extends State<HabitsScreen>
                                           if (habit.notes.isNotEmpty)
                                             const SizedBox(height: 8),
                                         ],
-                                        if (habit.notes.isNotEmpty)
-                                          Text(
-                                            habit.notes,
-                                            style: theme.textTheme.bodyMedium
+                                        if (habit.notes.isNotEmpty)                            Text(
+                              habit.notes,
+                              style: theme.textTheme.bodyMedium
                                                 ?.copyWith(
                                                   color: theme
                                                       .colorScheme
@@ -1294,11 +1268,14 @@ class _HabitsScreenState extends State<HabitsScreen>
               itemBuilder: (context, i) {
                 final p = plaques[i];
                 return SmoothHover(
-                  hoverScale: 1.03,
+                  hoverScale: 1.025,
+                  duration: const Duration(milliseconds: 280),
+                  pressAlignment: Alignment.center,
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(18),
+                      splashFactory: InkRipple.splashFactory,
                       onTap: () => _showPerfFullScreen(
                         Translations.t(p.bodyKey, context),
                         Translations.t(p.titleKey, context),

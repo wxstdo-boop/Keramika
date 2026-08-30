@@ -709,8 +709,8 @@ class _SectionRailState extends State<_SectionRail> {
                             type: MaterialType.transparency,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(18.5),
-                              splashColor: cs.onPrimary.withValues(alpha: 0.16),
-                              highlightColor: cs.onPrimary.withValues(alpha: 0.08),
+                              splashColor: Colors.transparent,
+                              highlightColor: Colors.transparent,
                               onTapDown: (_) =>
                                   setState(() => _pressedIndex = i),
                               onTapCancel: () {

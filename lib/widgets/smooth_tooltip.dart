@@ -44,7 +44,7 @@ class _SmoothTooltipState extends State<SmoothTooltip>
       reverseCurve: Curves.easeInCubic,
     );
     _fade = curved;
-    _scale = Tween<double>(begin: 0.94, end: 1.0).animate(curved);
+    _scale = Tween<double>(begin: 0.97, end: 1.0).animate(curved);
   }
 
   @override
@@ -113,8 +113,7 @@ class _SmoothTooltipState extends State<SmoothTooltip>
     if (!_controller.isAnimating && _controller.value == 0) {
       _dismount();
       return;
-    }
-    _controller.reverse().then((_) {
+    }    _controller.reverse().then((_) {
       if (mounted) _dismount();
     });
   }

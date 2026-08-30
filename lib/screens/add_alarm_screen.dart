@@ -165,9 +165,12 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     if (name == 'Custom') {
       setState(() {
         _customSoundPath = null;
-        _soundName = _availableSounds.isNotEmpty
-            ? _availableSounds.first
-            : 'Default';
+        // Оставляем карточку «Свой» выбранной даже после удаления файла:
+        // следующий файл можно добавить в тот же слот без скачка на Default.
+        _soundName = 'Custom';
+        if (!_availableSounds.contains('Custom')) {
+          _availableSounds.add('Custom');
+        }
       });
       return;
     }
@@ -431,11 +434,35 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                           children: List.generate(7, (i) {
                             final day = i + 1;
                             final selected = _repeatDays.contains(day);
-                            return FilterChip(
-                              selected: selected,
-                              label: Text(dayNames[i]),
-                              onSelected: (_) => _toggleDay(day),
-                              showCheckmark: false,
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 260),
+                              curve: Curves.easeOutCubic,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: selected
+                                    ? [
+                                        BoxShadow(
+                                          color: theme.colorScheme.primary
+                                              .withValues(alpha: 0.20),
+                                          blurRadius: 8,
+                                          spreadRadius: -2,
+                                        ),
+                                      ]
+                                    : const [],
+                              ),
+                              child: FilterChip(
+                                selected: selected,
+                                label: Text(dayNames[i]),
+                                onSelected: (_) => _toggleDay(day),
+                                showCheckmark: false,
+                                selectedColor: theme.colorScheme.primaryContainer,
+                                side: BorderSide(
+                                  color: selected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outlineVariant,
+                                  width: selected ? 1.2 : 1,
+                                ),
+                              ),
                             );
                           }),
                         ),
@@ -620,7 +647,15 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                         ),
                         const SizedBox(height: 8),
                         AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 360),
+                          duration: const Duration(milliseconds: 520),
+                          layoutBuilder: (currentChild, previousChildren) =>
+                              Stack(
+                                alignment: Alignment.center,
+                                children: <Widget>[
+                                  ...previousChildren,
+                                  if (currentChild != null) currentChild,
+                                ],
+                              ),
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           transitionBuilder: (child, animation) =>
@@ -678,7 +713,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                           ? theme.colorScheme.primary
                                           : theme.colorScheme.outlineVariant
                                                 .withValues(alpha: 0.6),
-                                      width: selected ? 2 : 1,
+                                      width: selected ? 1.5 : 1,
                                     ),
                                   ),
                                   child: Column(
