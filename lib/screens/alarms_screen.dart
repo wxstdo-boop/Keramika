@@ -223,6 +223,8 @@ class _AlarmsScreenState extends State<AlarmsScreen>
             // Без своего AppBar: белая полоса под таблеткой разделов убрана,
             // контент начинается сразу под ней.
             body: FabScrollListener(
+              visible: sectionPillVisible,
+              child: FabScrollListener(
               visible: _fabVisible,
               child: Column(
                 children: [
@@ -266,6 +268,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                     ),
                   ),
                 ],
+              ),
               ),
             ),
             floatingActionButton: AnimatedFabRow(

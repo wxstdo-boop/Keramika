@@ -233,30 +233,13 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
           // Без своего AppBar: белая полоса под таблеткой убрана, кнопка
           // «назад» поднята к верху, рядом с таблеткой.
           body: FabScrollListener(
+            visible: sectionPillVisible,
+            child: FabScrollListener(
             visible: _fabVisible,
-            child: Column(
-              children: [
-                if (widget.onExit != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(2, 0, 2, 0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        tooltip: Translations.backOf(context),
-                        onPressed: widget.onExit,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 40,
-                          minHeight: 40,
-                        ),
-                      ),
-                    ),
-                  ),
-                Expanded(
-                  // Плавный кросс-фейд: список ↔ пустое состояние (удаление
-                  // последней проверки больше не дёргает экран).
-                  child: AnimatedSwitcher(
+            // Плавный кросс-фейд: список ↔ пустое состояние (удаление
+            // последней проверки больше не дёргает экран). Кнопка «назад»
+            // убрана вовсе — раздел листается таблеткой разделов.
+            child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
@@ -317,8 +300,6 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                 ),
               ),
             ),
-                ),
-              ],
             ),
           ),
           floatingActionButton: AnimatedFabRow(

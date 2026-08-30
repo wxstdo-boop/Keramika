@@ -1,7 +1,7 @@
 name: keramika
 description: "FOSS alarm clock with tasks — Material You design."
 publish_to: 'none'
-version: 1.6.14+27079
+version: 1.6.15+27080
 
 environment:
   sdk: ^3.12.2

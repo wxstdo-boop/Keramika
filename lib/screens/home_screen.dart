@@ -23,6 +23,7 @@ import '../utils/android_settings.dart';
 import '../services/prefs.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/animated_blur_title.dart';
+import '../widgets/animated_fab_row.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -392,58 +393,126 @@ class _HomeScreenState extends State<HomeScreen>
                 // под ними. NotificationListener НЕ работает на Android: там
                 // ClampingScrollPhysics и нет overscroll. Поэтому жест только
                 // через GestureDetector на чипах.
-                GestureDetector(
-                  // Вертикальный свайп над областью чипов переключает табы.
-                  // Горизонтальная прокрутка чипов остаётся у SingleChildScrollView.
-                  onVerticalDragStart: (_) {
-                    _dragActive = true;
-                    _dragAccY = 0.0;
-                    _animCtrl.stop();
-                    _animCtrl.value = 0.0;
-                  },
-                  onVerticalDragUpdate: (details) {
-                    _dragAccY += details.delta.dy;
-                    // Натяжение используется только как лёгкая отдача;
-                    // горизонтальное/вертикальное движение PageView не
-                    // должно уносить саму капсулу за экран.
-                    final stretch = (_dragAccY / 220.0).clamp(-0.16, 0.16);
-                    _animCtrl.value = stretch;
-                  },
-                  onVerticalDragEnd: (_) {
-                    _finishDrag();
-                  },
-                  onVerticalDragCancel: () {
-                    _dragActive = false;
-                    _dragAccY = 0.0;
-                    _animCtrl.animateTo(
-                      0.0,
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                    );
-                  },
-                  behavior: HitTestBehavior.translucent,
-                  child: Column(
-                    children: [
-                      // Разделы ближе к верху — уменьшенные отступы.
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: _currentIndex,
-                          builder: (context, current, _) => ValueListenableBuilder<double>(
-                            valueListenable: _railPage,
-                            builder: (context, page, __) => _SectionRail(
-                              current: current,
-                              page: page,
-                              // Подписи доступны только внутри тултипов;
-                              // отдельного ряда названий под таблеткой нет.
-                              labels: tabs,
-                              icons: _icons.sublist(0, tabs.length),
-                              onTap: _onTabTap,
-                            ),
+                // Таблетка разделов вместе с белым фоном плавно сворачивается
+                // вверх при прокрутке вниз (как кнопки «плюс» и Ада) и
+                // возвращается при долистывании до верха.
+                ValueListenableBuilder<bool>(
+                  valueListenable: sectionPillVisible,
+                  builder: (context, pillOn, _) => AnimatedSlide(
+                    offset: pillOn ? Offset.zero : const Offset(0, -1.4),
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      opacity: pillOn ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOut,
+                      child: IgnorePointer(
+                        ignoring: !pillOn,
+                        child: GestureDetector(
+                          // Вертикальный свайп над областью чипов переключает табы.
+                          // Горизонтальная прокрутка чипов остаётся у SingleChildScrollView.
+                          onVerticalDragStart: (_) {
+                            _dragActive = true;
+                            _dragAccY = 0.0;
+                            _animCtrl.stop();
+                            _animCtrl.value = 0.0;
+                          },
+                          onVerticalDragUpdate: (details) {
+                            _dragAccY += details.delta.dy;
+                            // Натяжение используется только как лёгкая отдача;
+                            // горизонтальное/вертикальное движение PageView не
+                            // должно уносить саму капсулу за экран.
+                            final stretch = (_dragAccY / 220.0).clamp(-0.16, 0.16);
+                            _animCtrl.value = stretch;
+                          },
+                          onVerticalDragEnd: (_) {
+                            _finishDrag();
+                          },
+                          onVerticalDragCancel: () {
+                            _dragActive = false;
+                            _dragAccY = 0.0;
+                            _animCtrl.animateTo(
+                              0.0,
+                              duration: const Duration(milliseconds: 260),
+                              curve: Curves.easeOutCubic,
+                            );
+                          },
+                          behavior: HitTestBehavior.translucent,
+                          child: Column(
+                            children: [
+                              // Разделы ближе к верху — уменьшенные отступы:
+                              // сама таблетка чуть выше, белый фон на месте.
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    ValueListenableBuilder<int>(
+                                      valueListenable: _currentIndex,
+                                      builder: (context, current, _) =>
+                                          ValueListenableBuilder<double>(
+                                        valueListenable: _railPage,
+                                        builder: (context, page, __) =>
+                                            _SectionRail(
+                                              current: current,
+                                              page: page,
+                                              // Подписи доступны только внутри
+                                              // тултипов; отдельного ряда названий
+                                              // под таблеткой нет.
+                                              labels: tabs,
+                                              icons: _icons.sublist(
+                                                0,
+                                                tabs.length,
+                                              ),
+                                              onTap: _onTabTap,
+                                            ),
+                                      ),
+                                    ),
+                                    // Управление категориями — на уровне таблетки,
+                                    // справа; виден только на разделе Задач.
+                                    Positioned(
+                                      right: 2,
+                                      child: ValueListenableBuilder<int>(
+                                        valueListenable: _currentIndex,
+                                        builder: (context, current, _) =>
+                                            AnimatedOpacity(
+                                              opacity: current == 2 ? 1.0 : 0.0,
+                                              duration: const Duration(
+                                                milliseconds: 220,
+                                              ),
+                                              curve: Curves.easeOutCubic,
+                                              child: IgnorePointer(
+                                                ignoring: current != 2,
+                                                child: IconButton(
+                                                  icon: const Icon(
+                                                    Icons.folder_outlined,
+                                                  ),
+                                                  tooltip: Translations.t(
+                                                    'manageCategories',
+                                                    context,
+                                                  ),
+                                                  onPressed: () =>
+                                                      manageCategoriesTick.value++,
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                        minWidth: 34,
+                                                        minHeight: 34,
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
                 Expanded(

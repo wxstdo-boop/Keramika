@@ -1,5 +1,16 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
+
+/// Общая видимость главной таблетки разделов: при прокрутке вниз таблетка
+/// вместе со своим белым фоном плавно сворачивается вверх (как кнопки
+/// «плюс» и Ада), при долистывании до верха — возвращается.
+/// Каждый из четырёх разделов сообщает сюда о своей прокрутке.
+final ValueNotifier<bool> sectionPillVisible = ValueNotifier<bool>(true);
+
+/// Тик запроса управления категориями: кнопка в главной таблетке (на
+/// уровне разделов) дёргает счётчик, а экран Задач по слушателю открывает
+/// диалог управления категориями.
+final ValueNotifier<int> manageCategoriesTick = ValueNotifier<int>(0);
 
 /// Плавно прячет/возвращает ряд FAB-кнопок (плюс + Ада) при прокрутке.
 ///
