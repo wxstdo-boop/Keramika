@@ -27,6 +27,7 @@ Future<bool> showAdaOverlay({
   double? devicePixelRatio,
   double? screenWidth,
   double? screenHeight,
+  double? topKeepout,
 }) async {
   if (!Platform.isAndroid) return false;
   try {
@@ -41,6 +42,14 @@ Future<bool> showAdaOverlay({
     if (screenWidth != null && screenHeight != null) {
       await globalPrefs.setDouble('ada_overlay_sw', screenWidth);
       await globalPrefs.setDouble('ada_overlay_sh', screenHeight);
+    }
+    // Верхний запретный пояс в dp: окошко Ады лежит НАД приложением, и без
+    // него при перетаскивании вверх оно забиралось на шапку и таблетку
+    // разделов («Полезные/Вредные»). Нативное окно ставится с
+    // FLAG_LAYOUT_NO_LIMITS, то есть y=0 — физический верх экрана, поэтому
+    // пояс считают со статус-баром в основном движке и передают сюда.
+    if (topKeepout != null) {
+      await globalPrefs.setDouble('ada_overlay_top', topKeepout);
     }
     final sw = screenWidth ?? 400;
     final sh = screenHeight ?? 850;
@@ -100,6 +109,7 @@ Future<bool> ensureAdaOverlay({
   double? devicePixelRatio,
   double? screenWidth,
   double? screenHeight,
+  double? topKeepout,
 }) async {
   if (!Platform.isAndroid) return false;
   try {
@@ -115,6 +125,7 @@ Future<bool> ensureAdaOverlay({
       devicePixelRatio: devicePixelRatio,
       screenWidth: screenWidth,
       screenHeight: screenHeight,
+      topKeepout: topKeepout,
     );
   } catch (_) {
     return false;

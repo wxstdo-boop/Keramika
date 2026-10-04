@@ -11,10 +11,12 @@ Future<bool> showAdaOverlay({
   double? devicePixelRatio,
   double? screenWidth,
   double? screenHeight,
+  double? topKeepout,
 }) => bridge.showAdaOverlay(
   devicePixelRatio: devicePixelRatio,
   screenWidth: screenWidth,
   screenHeight: screenHeight,
+  topKeepout: topKeepout,
 );
 
 /// Запрашивает разрешение «поверх других приложений» и показывает оверлей.
@@ -23,10 +25,12 @@ Future<bool> ensureAdaOverlay({
   double? devicePixelRatio,
   double? screenWidth,
   double? screenHeight,
+  double? topKeepout,
 }) => bridge.ensureAdaOverlay(
   devicePixelRatio: devicePixelRatio,
   screenWidth: screenWidth,
   screenHeight: screenHeight,
+  topKeepout: topKeepout,
 );
 
 /// Закрывает системный оверлей.

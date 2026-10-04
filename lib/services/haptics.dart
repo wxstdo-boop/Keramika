@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Надёжная тактильная отдача по всему приложению.
@@ -15,6 +18,8 @@ class Haptics {
     'com.wetidom.keramika/haptics',
   );
 
+  static DateTime? _lastFire;
+
   /// Лёгкий «клик» — выбор, отметка галочки.
   static Future<void> select() => _invoke('select');
 
@@ -29,6 +34,15 @@ class Haptics {
 
   static Future<void> _invoke(String kind) async {
     if (kIsWeb) return;
+    // Глобальный троттл: TapHapticsSplash бьёт на появлении плеска (tap-down),
+    // а виджеты зовут Haptics сами на tap-up — без окна подавления один тап
+    // давал бы двойную вибрацию.
+    final now = DateTime.now();
+    if (_lastFire != null &&
+        now.difference(_lastFire!) < const Duration(milliseconds: 90)) {
+      return;
+    }
+    _lastFire = now;
     try {
       await _channel.invokeMethod<void>(kind);
     } catch (_) {
@@ -46,5 +60,31 @@ class Haptics {
         }
       } catch (_) {}
     }
+  }
+}
+
+/// Тактильный отклик на тап по ЛЮБОМУ [InkResponse] (кнопки, плитки, вкладки):
+/// Flutter сам по себе не вибрирует на кнопках, а на HyperOS системная
+/// «обратная связь при касании» подавлена. Оборачивает штатный splashFactory
+/// темы: плеск создаётся только при целевом нажатии, на скролл не реагирует.
+///
+/// [_inner] и аргументы [create] прокидываются через [noSuchMethod], чтобы не
+/// зависеть от точной сигнатуры фабрики в текущей версии Flutter.
+class TapHapticsSplash implements InteractiveInkFeatureFactory {
+  const TapHapticsSplash(this._inner);
+
+  final InteractiveInkFeatureFactory _inner;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    if (invocation.memberName == #create) {
+      unawaited(Haptics.light());
+      return Function.apply(
+        _inner.create,
+        invocation.positionalArguments,
+        invocation.namedArguments,
+      );
+    }
+    return super.noSuchMethod(invocation);
   }
 }

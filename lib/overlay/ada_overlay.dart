@@ -28,6 +28,10 @@ const double _bubbleSize = 36;
 const double _chatWidth = 292;
 const double _chatHeight = 330;
 
+/// Верхний пояс, в который окошко не заезжает (dp), если основное приложение
+/// не успело передать реальный.
+const double _kAdaTopKeepoutFallback = 120;
+
 /// Точка входа для главного приложения: движок оверлея переживает закрытие
 /// окна, поэтому при каждом показе окна мы посылаем команду «сбросься и
 /// покажись» — только так повторное открытие гарантированно видимо.
@@ -105,6 +109,7 @@ class _OverlayChatState extends State<_OverlayChat>
   /// закрытие окна). [onHostReset] вызывается из ГЛАВНОГО приложения по
   /// каналу сообщений — переоткрытие окна не зависит от lifecycle.
   static _OverlayChatState? _live;
+
   /// Первое появление (initState) НЕ должно повторять сброс: lifecycle
   /// «resumed» приходит на старте движка ДО первого кадра, и повторный
   /// сброс съедал плавный вход (fade успевал закончиться до показа).
@@ -155,6 +160,9 @@ class _OverlayChatState extends State<_OverlayChat>
     // getOverlayPosition (иначе окно «жило» в центре, хотя было вверху,
     // и первый сдвиг прыгал в центр — это и казалось «следом»).
     s._load();
+    // Окно снова на экране — возвращаем опрос синхронизации (его тик заодно
+    // подхватывает аватарку/модель, изменённые, пока окно было закрыто).
+    s._startSync();
     // Окно появляется через ~300-400 мс после команды (пересоздание
     // сервиса). Запускаем анимацию именно тогда.
     s._appearTimer?.cancel();
@@ -233,11 +241,28 @@ class _OverlayChatState extends State<_OverlayChat>
     // Опрос файла синхронизации с ГЛАВНЫМ чатом: аватарка/модель меняются
     // в мини-окошке при ближайшем тике (~0.7с). Праксис надёжнее канала
     // сообщений между двумя движками (prefs кэшируется отдельно).
+    _startSync();
+  }
+
+  /// Запуск опроса синхронизации — ТОЛЬКО пока окно живое.
+  ///
+  /// Движок оверлея после закрытия не умирает (его кэширует сервис), а
+  /// `dispose()` при закрытии не вызывается. Раньше `Timer.periodic`
+  /// переживал закрытие и продолжал дёргать файл каждые 0.7 с до конца
+  /// жизни процесса — фоновая нагрузка на слабый телефон и батарею при
+  /// полностью невидимом окне.
+  void _startSync() {
+    _syncTimer?.cancel();
     _syncTick();
     _syncTimer = Timer.periodic(
       const Duration(milliseconds: 700),
       (_) => _syncTick(),
     );
+  }
+
+  void _stopSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
   }
 
   Future<void> _syncTick() async {
@@ -295,8 +320,7 @@ class _OverlayChatState extends State<_OverlayChat>
       // к последнему сообщению, чтобы оно не пряталось под полем.
       if (f && _scrollCtrl.hasClients) {
         final pos = _scrollCtrl.position;
-        if (pos.maxScrollExtent > 0 &&
-            pos.pixels < pos.maxScrollExtent - 16) {
+        if (pos.maxScrollExtent > 0 && pos.pixels < pos.maxScrollExtent - 16) {
           _scrollCtrl.jumpTo(pos.maxScrollExtent);
         }
       }
@@ -362,20 +386,41 @@ class _OverlayChatState extends State<_OverlayChat>
     _scheduleSend();
   }
 
+  /// Верхний запретный пояс в dp: статус-бар + шапка + таблетка разделов
+  /// основного экрана. Окно лежит НАД приложением, и без пояса при
+  /// перетаскивании вверх оно забиралось на категории «Полезные/Вредные».
+  /// Пишет основное приложение (`showAdaOverlay`); окно ставится нативом с
+  /// FLAG_LAYOUT_NO_LIMITS, поэтому y=0 — физический верх экрана.
+  double get _topKeepout =>
+      (globalPrefs.getDouble('ada_overlay_top') ?? _kAdaTopKeepoutFallback)
+          .clamp(0.0, 400.0);
+
+  /// Позиция, зажатая в границах экрана для окна [w]×[h]: сверху — запретный
+  /// пояс, снизу — запас 36dp под системную навигацию (иначе окно ложилось на
+  /// навбар), по бокам — поля экрана. Если доступной высоты не хватает даже
+  /// на пояс, держим верхнюю границу: clamp с lowerLimit > upperLimit бросает
+  /// исключение.
+  Offset _clamped(Offset pos, double w, double h) {
+    final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
+    final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
+    final top = _topKeepout;
+    final bottom = sh - h - 36;
+    return Offset(
+      pos.dx.clamp(0.0, sw - w < 0 ? 0.0 : sw - w),
+      pos.dy.clamp(top, bottom < top ? top : bottom),
+    );
+  }
+
   /// Шлёт текущую позицию на нативную сторону, удерживая окошко в границах
   /// экрана. Координаты передаются дробными (dp) — нативная сторона сама
   /// переводит их в пиксели, поэтому движение получается плавным, а не
   /// «ступеньками» по 1dp.
   void _sendPos() {
-    final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
-    final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
-    final w = _collapsed ? _bubbleSize : _chatWidth;
-    final h = _collapsed ? _bubbleSize : _chatHeight;
-    final x = _pos.dx.clamp(0.0, sw - w);
-    // Нижняя граница не даёт окну лечь на навбар (белая полоса под
-    // клавиатурой/внизу) — запас 36dp под системную навигацию.
-    final y = _pos.dy.clamp(0.0, sh - h - 36);
-    _pos = Offset(x, y);
+    _pos = _clamped(
+      _pos,
+      _collapsed ? _bubbleSize : _chatWidth,
+      _collapsed ? _bubbleSize : _chatHeight,
+    );
     // Не складываем MethodChannel-вызовы в очередь: если native ещё
     // применяет предыдущую позицию, оставляем только самую свежую.
     _pendingNativePosition = _pos;
@@ -474,7 +519,8 @@ class _OverlayChatState extends State<_OverlayChat>
         if (!mounted) return;
         setState(() => _collapsed = false);
         _resizeKeepCenter(_bubbleSize, _bubbleSize, _chatWidth, _chatHeight);
-        final resized = await FlutterOverlayWindow.resizeOverlay(
+        final resized =
+            await FlutterOverlayWindow.resizeOverlay(
               _chatWidth.round(),
               _chatHeight.round(),
               false,
@@ -504,7 +550,8 @@ class _OverlayChatState extends State<_OverlayChat>
         if (!mounted) return;
         setState(() => _collapsed = true);
         _resizeKeepCenter(_chatWidth, _chatHeight, _bubbleSize, _bubbleSize);
-        final resized = await FlutterOverlayWindow.resizeOverlay(
+        final resized =
+            await FlutterOverlayWindow.resizeOverlay(
               _bubbleSize.round(),
               _bubbleSize.round(),
               false,
@@ -543,12 +590,7 @@ class _OverlayChatState extends State<_OverlayChat>
 
   /// Пересчитывает _pos так, чтобы ЦЕНТР окна не сдвинулся при смене
   /// размеров (нативный ресайз идёт от верхнего левого угла).
-  void _resizeKeepCenter(
-    double fromW,
-    double fromH,
-    double toW,
-    double toH,
-  ) {
+  void _resizeKeepCenter(double fromW, double fromH, double toW, double toH) {
     final cx = _pos.dx + fromW / 2;
     final cy = _pos.dy + fromH / 2;
     _pos = Offset(cx - toW / 2, cy - toH / 2);
@@ -583,27 +625,27 @@ class _OverlayChatState extends State<_OverlayChat>
     _ensurePos();
     final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
     final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
+    final top = _topKeepout;
     var x = _pos.dx + _vx;
     var y = _pos.dy + _vy;
     if (x <= 4 || x >= sw - _bubbleSize - 4) _vx = -_vx;
-    if (y <= 4 || y >= sh - _bubbleSize - 4) _vy = -_vy;
+    // Дрейф отрабатывает и от верхнего пояса: иначе «самокатаясь» по экрану,
+    // пузырь периодически наползал на категории разделов.
+    if (y <= top || y >= sh - _bubbleSize - 4) _vy = -_vy;
     x = x.clamp(4.0, sw - _bubbleSize - 4);
-    y = y.clamp(4.0, sh - _bubbleSize - 4);
+    y = y.clamp(top, (sh - _bubbleSize - 4) < top ? top : sh - _bubbleSize - 4);
     if ((x - _pos.dx).abs() < 0.01 && (y - _pos.dy).abs() < 0.01) return;
     _pos = Offset(x, y);
     _scheduleSend();
   }
 
   Future<void> _clampToScreen() async {
-    final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
-    final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
-    final x = _pos.dx.clamp(2.0, sw - _chatWidth - 2);
-    final y = _pos.dy.clamp(2.0, sh - _chatHeight - 2 - 36);
-    _pos = Offset(x, y);
+    final clamped = _clamped(_pos, _chatWidth, _chatHeight);
+    _pos = clamped;
     try {
       await _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
-        'x': x,
-        'y': y,
+        'x': clamped.dx,
+        'y': clamped.dy,
       });
     } catch (_) {}
   }
@@ -648,11 +690,13 @@ class _OverlayChatState extends State<_OverlayChat>
     if (message.isEmpty || _busy) return;
     _inputCtrl.clear();
     setState(() {
-      _messages.add(AiMessage(
-        isUser: true,
-        text: message,
-        ts: DateTime.now().millisecondsSinceEpoch,
-      ));
+      _messages.add(
+        AiMessage(
+          isUser: true,
+          text: message,
+          ts: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
       _busy = true;
       _typingFade = false;
     });
@@ -678,11 +722,13 @@ class _OverlayChatState extends State<_OverlayChat>
       await Future.delayed(const Duration(milliseconds: 180));
       if (!mounted) return;
       setState(() {
-        _messages.add(AiMessage(
-          isUser: false,
-          text: reply,
-          ts: DateTime.now().millisecondsSinceEpoch,
-        ));
+        _messages.add(
+          AiMessage(
+            isUser: false,
+            text: reply,
+            ts: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
         _busy = false;
         _typingFade = false;
       });
@@ -778,6 +824,8 @@ class _OverlayChatState extends State<_OverlayChat>
     if (_closing) return;
     _closing = true;
     _stopDrift();
+    // Движок после закрытия живёт — фоновый опрос диска ему не нужен.
+    _stopSync();
     _persistPosition();
     // Замораживаем движение: отменяем отложенную отправку позиции
     // (иначе окно могло «уехать» в момент закрытия) и фиксируем её.
@@ -1000,7 +1048,9 @@ class _OverlayChatState extends State<_OverlayChat>
                             key: ValueKey(
                               _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
                             ),
-                            label: _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
+                            label: _modelLabel.isEmpty
+                                ? 'ada-0.0.3'
+                                : _modelLabel,
                             textStyle: TextStyle(
                               fontSize: 10,
                               color: cs.onSurfaceVariant,
@@ -1123,74 +1173,78 @@ class _OverlayChatState extends State<_OverlayChat>
             child: Stack(
               children: [
                 TextField(
-              magnifierConfiguration: TextMagnifierConfiguration.disabled,
-              // Поле мини-окна не должно открывать выделение/тулбар:
-              // long-press оставляем для обычного ввода, без полупрозрачного
-              // selection overlay поверх оверлея.
-              contextMenuBuilder: (_, __) => const SizedBox.shrink(),
-              selectionControls: null,
-              enableInteractiveSelection: false,
-              controller: _inputCtrl,
-              focusNode: _inputFocus,
-              minLines: 1,
-              maxLines: 3,
-              scrollPadding: EdgeInsets.zero,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              onTap: () async {
-                // Первый тап: окно становится фокусирующим, поле — фокусом.
-                // Некоторые прошивки «съедают» первый requestFocus, пока
-                // натив применяет флаг — пробуем до 6 раз, плюс прямой
-                // показ IME, плюс страховка на следующий кадр.
-                for (var i = 0; i < 6 && mounted; i++) {
-                  await _setFocusable(true);
-                  if (!mounted) return;
-                  _inputFocus.requestFocus();
-                  try {
-                    await SystemChannels.textInput
-                        .invokeMethod<void>('TextInput.show');
-                  } catch (_) {}
-                  if (!mounted) return;
-                  if (_inputFocus.hasFocus) break;
-                  await Future<void>.delayed(const Duration(milliseconds: 110));
-                }
-                if (mounted && !_inputFocus.hasFocus) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
+                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                  // Поле мини-окна не должно открывать выделение/тулбар:
+                  // long-press оставляем для обычного ввода, без полупрозрачного
+                  // selection overlay поверх оверлея.
+                  contextMenuBuilder: (_, __) => const SizedBox.shrink(),
+                  selectionControls: null,
+                  enableInteractiveSelection: false,
+                  controller: _inputCtrl,
+                  focusNode: _inputFocus,
+                  minLines: 1,
+                  maxLines: 3,
+                  scrollPadding: EdgeInsets.zero,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  onTap: () async {
+                    // Первый тап: окно становится фокусирующим, поле — фокусом.
+                    // Некоторые прошивки «съедают» первый requestFocus, пока
+                    // натив применяет флаг — пробуем до 6 раз, плюс прямой
+                    // показ IME, плюс страховка на следующий кадр.
+                    for (var i = 0; i < 6 && mounted; i++) {
+                      await _setFocusable(true);
+                      if (!mounted) return;
                       _inputFocus.requestFocus();
                       try {
-                        SystemChannels.textInput
-                            .invokeMethod<void>('TextInput.show');
+                        await SystemChannels.textInput.invokeMethod<void>(
+                          'TextInput.show',
+                        );
                       } catch (_) {}
+                      if (!mounted) return;
+                      if (_inputFocus.hasFocus) break;
+                      await Future<void>.delayed(
+                        const Duration(milliseconds: 110),
+                      );
                     }
-                  });
-                }
-              },
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.3,
-                // Окошко ВСЕГДА тёмное (ThemeData.dark): буквы светлые,
-                // а не чёрные — фон поля тёмный.
-                color: cs.onSurface,
-              ),
-              cursorColor: cs.primary,
-              // Каретка мигает плавно (fade), а не резко вкл/выкл.
-              cursorOpacityAnimates: true,
-              decoration: InputDecoration(
-                counterText: '',
-                isDense: true,
-                filled: true,
-                fillColor: cs.surfaceContainerHigh,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
+                    if (mounted && !_inputFocus.hasFocus) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _inputFocus.requestFocus();
+                          try {
+                            SystemChannels.textInput.invokeMethod<void>(
+                              'TextInput.show',
+                            );
+                          } catch (_) {}
+                        }
+                      });
+                    }
+                  },
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.3,
+                    // Окошко ВСЕГДА тёмное (ThemeData.dark): буквы светлые,
+                    // а не чёрные — фон поля тёмный.
+                    color: cs.onSurface,
+                  ),
+                  cursorColor: cs.primary,
+                  // Каретка мигает плавно (fade), а не резко вкл/выкл.
+                  cursorOpacityAnimates: true,
+                  decoration: InputDecoration(
+                    counterText: '',
+                    isDense: true,
+                    filled: true,
+                    fillColor: cs.surfaceContainerHigh,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
                 // Плавная подсказка: гаснет при вводе, мягко возвращается
                 // при очистке поля.
                 IgnorePointer(
@@ -1206,11 +1260,7 @@ class _OverlayChatState extends State<_OverlayChat>
                           vertical: 9,
                         ),
                         child: Text(
-                          Translations.t(
-                            'aiInputHint',
-                            context,
-                            'Message…',
-                          ),
+                          Translations.t('aiInputHint', context, 'Message…'),
                           style: TextStyle(
                             fontSize: 12,
                             color: cs.onSurfaceVariant,
@@ -1405,7 +1455,11 @@ class _TypingBubbleState extends State<_TypingBubble>
                         // Без вертикального прыжка: только альфа пульсирует
                         // (плавный «печатает…» на слабых устройствах —
                         // transform каждой точки каждый кадр дёргал UI).
-                        color: cs.primary.withValues(alpha: 0.4 + 0.6 * (.5 - .5 * cos((t * 2 * pi) - i * 0.9))),
+                        color: cs.primary.withValues(
+                          alpha:
+                              0.4 +
+                              0.6 * (.5 - .5 * cos((t * 2 * pi) - i * 0.9)),
+                        ),
                       ),
                   ],
                 );

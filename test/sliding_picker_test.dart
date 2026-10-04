@@ -38,27 +38,33 @@ Future<List<String>> _run(
 }
 
 void main() {
-  testWidgets('drag settles on neighbor — onChanged fires once with it',
-      (tester) async {
-    final calls =
-        await _run(tester, () => tester.drag(find.byType(PageView), const Offset(-500, 0)));
+  testWidgets('drag settles on neighbor — onChanged fires once with it', (
+    tester,
+  ) async {
+    final calls = await _run(
+      tester,
+      () => tester.drag(find.byType(PageView), const Offset(-500, 0)),
+    );
     expect(calls, ['work']);
   });
 
-  testWidgets('fast fling through 2 pages — fires ONLY the final item',
-      (tester) async {
-    final calls =
-        await _run(tester, () => tester.fling(find.byType(PageView), const Offset(-700, 0), 3000));
+  testWidgets('fast fling through 2 pages — fires ONLY the final item', (
+    tester,
+  ) async {
+    final calls = await _run(
+      tester,
+      () => tester.fling(find.byType(PageView), const Offset(-700, 0), 3000),
+    );
     debugPrint('FLING calls: $calls');
     expect(calls, ['home']);
   });
 
-  testWidgets('tap the visible part of a neighbor chip — applies immediately',
-      (tester) async {
+  testWidgets('tap the visible part of a neighbor chip — applies immediately', (
+    tester,
+  ) async {
     // Соседняя таблетка выступает справа от центрального слота; её центр
     // за экраном, поэтому тапаем в видимую часть слота страницы 1.
-    final calls =
-        await _run(tester, () => tester.tapAt(const Offset(700, 20)));
+    final calls = await _run(tester, () => tester.tapAt(const Offset(700, 20)));
     expect(calls, ['work']);
   });
 }

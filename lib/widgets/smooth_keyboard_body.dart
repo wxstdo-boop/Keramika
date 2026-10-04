@@ -16,12 +16,22 @@ import 'package:flutter/material.dart';
 /// а body обернуть: `body: SmoothKeyboardBody(child: ...)`.
 class SmoothKeyboardBody extends StatelessWidget {
   final Widget child;
-  const SmoothKeyboardBody({super.key, required this.child});
+
+  /// Подложка ПОД отступом клавиатуры. По умолчанию — цвет scaffold.
+  ///
+  /// На экранах со своим градиентом (задачи пробуждения) сюда отдают
+  /// [Colors.transparent] и вешают `DecoratedBox` НАД этой обёрткой: тогда
+  /// полоса высотой с клавиатуру, которая открывается снизу при подъёме
+  /// контента, красится тем же градиентом, а не плоским цветом scaffold —
+  /// иначе над клавиатурой торчит чужеродная « лишняя» лента другого цвета.
+  final Color? background;
+
+  const SmoothKeyboardBody({super.key, required this.child, this.background});
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final bg = background ?? Theme.of(context).scaffoldBackgroundColor;
     return ColoredBox(
       color: bg,
       child: Padding(

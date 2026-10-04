@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import java.util.LinkedHashSet
 import android.util.Log
@@ -22,6 +23,8 @@ import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import androidx.core.content.FileProvider
+import java.security.MessageDigest
 import java.io.File
 import java.io.FileOutputStream
 
@@ -40,11 +43,64 @@ class MainActivity : FlutterActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        applyAlarmWindowFlags()
+    }
+
+    /**
+     * Оконные флаги для срабатывающего будильника.
+     *
+     * Манифестных `showWhenLocked`/`turnScreenOn` недостаточно: они
+     * описывают окно, но не включают экран и не снимают ключгейрд, когда
+     * активность уже была создана ранее (переиспользование задачи). Здесь
+     * то же самое делается программно — это работает и при холодном старте,
+     * и при `onNewIntent` по живой активности.
+     *
+     * `FLAG_KEEP_SCREEN_ON` намеренно висит до [clearAlarmWakeFlags]:
+     * будильник, который гаснет через 5 секунд, пользователь просто
+     * не успевает решить.
+     */
+    private fun applyAlarmWindowFlags() {
+        val isAlarm = intent?.getBooleanExtra("alarm_launch", false) == true ||
+            (intent?.getStringExtra("payload")?.startsWith("alarm:") == true)
+        if (!isAlarm) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            )
+        }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Снимаем ключгейрд. С PIN/отпечатком система всё равно покажет
+        // экран разблокировки — но НАША активность рисуется поверх него
+        // (благодаря showWhenLocked), как у системного будильника.
+        try {
+            val km = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                km.requestDismissKeyguard(this, null)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "requestDismissKeyguard failed: $e")
+        }
+    }
+
+    /** Снимает «не гасить экран» после того, как будильник отзвонил. */
+    private fun clearAlarmWakeFlags() {
+        try {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } catch (_: Exception) {}
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         AlarmSchedulerPlugin.registerWith(flutterEngine, applicationContext)
+        registerUpdaterChannel(flutterEngine)
 
         // Уведомления НЕ отменяем — fullScreenIntent только что показал
         // alarm-нотификацию с играющим звуком. cancelAlarmNotifications()
@@ -54,27 +110,64 @@ class MainActivity : FlutterActivity() {
         // Надёжная тактильная отдача: системный HapticFeedback на MIUI часто
         // подавлен настройками «обратной связи», поэтому бьём напрямую через
         // Vibrator с короткими VibrationEffect (VIBRATE-пермишен уже есть).
+        // Любая ошибка обязана уйти в result.error — тогда Dart-фолбэк
+        // (HapticFeedback из Flutter) действительно попробует достучаться.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HAPTICS_CHANNEL)
             .setMethodCallHandler { call, result ->
-                val vib = getSystemService(VIBRATOR_SERVICE) as Vibrator
-                val effect = when (call.method) {
-                    // Усилено: раньше импульсы 8–32 мс на слабом вибромоторе
-                    // Redmi Note 12 были практически неощутимы.
-                    "select" -> VibrationEffect.createOneShot(30, 200)
-                    "light" -> VibrationEffect.createOneShot(50, 255)
-                    "medium" -> VibrationEffect.createOneShot(75, 255)
-                    "heavy" -> VibrationEffect.createOneShot(95, 255)
-                    else -> null
+                val kind = call.method
+                // Длительности короткие (14-26 мс): длинные one-shot на
+                // 30-95 мс, что были раньше, на линейном моторе звучали как
+                // «гул», а отдача от кнопок должна быть сухой щёлкающей.
+                val fallback = when (kind) {
+                    "select" -> 14 to 140
+                    "light" -> 17 to 160
+                    "medium" -> 22 to 190
+                    "heavy" -> 26 to 225
+                    else -> 0 to 0
                 }
-                if (effect != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vib.vibrate(effect)
+                if (fallback.first == 0) {
+                    result.error("UNKNOWN_KIND", call.method, null)
+                    return@setMethodCallHandler
+                }
+                try {
+                    val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager)
+                            .defaultVibrator
                     } else {
                         @Suppress("DEPRECATION")
-                        vib.vibrate(20)
+                        getSystemService(VIBRATOR_SERVICE) as Vibrator
                     }
+                    // ГЛОБАЛЬНЫЙ фикс HyperOS/MIUI: вибрация без явного
+                    // назначения система относит к usage UNKNOWN, а у
+                    // пользователя в «Силе вибрации» UNKNOWN и TOUCH стоят в
+                    // OFF (замер dumpsys vibrator_manager на Redmi Note 12:
+                    // "TOUCH = OFF, UNKNOWN = OFF", мотор при этом жив).
+                    // Поэтому просим HARDWARE_FEEDBACK — его люди в life
+                    // не трогают, он MEDIUM по умолчанию.
+                    val effect = buildHapticEffect(vib, kind, fallback.first, fallback.second)
+                    if (effect != null) {
+                        // Перегрузка vibrate(effect, attributes) появилась
+                        // только в Android 13 (API 33): на 12 вызов упал бы
+                        // NoSuchMethodError, поэтому права USAGE_* просим
+                        // ровно там, где они есть.
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            val attrs = android.os.VibrationAttributes.Builder()
+                                .setUsage(android.os.VibrationAttributes.USAGE_HARDWARE_FEEDBACK)
+                                .build()
+                            vib.vibrate(effect, attrs)
+                        } else {
+                            vib.vibrate(effect)
+                        }
+                    } else {
+                        // Android 8.0 ещё не умеет VibrationEffect.
+                        @Suppress("DEPRECATION")
+                        vib.vibrate(fallback.first.toLong())
+                    }
+                    result.success(true)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "haptics failed: $e")
+                    result.error("VIBRATE_FAILED", e.message, null)
                 }
-                result.success(true)
             }
 
         // Полноэкранные уведомления (поверх блокировки): проверяем, выдано ли
@@ -84,23 +177,19 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "com.wetidom.keramika/fullscreen",
         ).setMethodCallHandler { call, result ->
-            if (call.method == "canUseFullScreenIntent") {
-                val canUse = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                    try {
-                        nm.canUseFullScreenIntent()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "canUseFullScreenIntent failed: $e")
-                        @Suppress("DEPRECATION")
-                        Settings.canDrawOverlays(this)
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    Settings.canDrawOverlays(this)
-                }
-                result.success(canUse)
-            } else {
-                result.notImplemented()
+            when (call.method) {
+                "canUseFullScreenIntent" -> result.success(canUseFullScreenIntent())
+                "requestUseFullScreenIntent" -> result.success(
+                    // Право уже выдано — НЕ открываем настройки: этот вызов
+                    // часть цепочки «Выдать», где следом открывается экран
+                    // точных будильников, и два системных экрана поверх друг
+                    // друга только путают.
+                    if (canUseFullScreenIntent()) false else openFullScreenGrantSettings(),
+                )
+                // Явное действие пользователя («Открыть настройки» в строке
+                // полноэкранных уведомлений) — экран нужен всегда.
+                "openGrantSettings" -> result.success(openFullScreenGrantSettings())
+                else -> result.notImplemented()
             }
         }
 
@@ -144,8 +233,14 @@ class MainActivity : FlutterActivity() {
                     intent?.removeExtra("payload")
                 }
                 "stopAlarmSound" -> {
-                    AlarmReceiver.stopActiveSound()
+                    // Пользователь решил задачу пробуждения (или отменил
+                    // будильник): снимаем непрерывный звонок сервиса и
+                    // убираем уведомление.
+                    AlarmForegroundService.stop(applicationContext)
                     cancelAlarmNotifications()
+                    // Будильник отзвонил — экран может гаснуть по обычным
+                    // правилам, иначе телефон не уснёт никогда.
+                    clearAlarmWakeFlags()
                     result.success(true)
                 }
                 "getTimeZone" -> {
@@ -191,6 +286,201 @@ class MainActivity : FlutterActivity() {
             enabled.split(':').any { it.equals(short, true) || it.equals(full, true) }
         } catch (e: Exception) {
             Log.e("MainActivity", "isScreenReaderEnabled failed: $e")
+            false
+        }
+    }
+
+    /**
+     * Форма тактильного импульса.
+     *
+     * Два уровня отдачи, и оба — короткие, чтобы ощущаться как щелчок, а не
+     * как «гул» длинного one-shot на полной амплитуде:
+     *
+     * 1. Системные примитивы (Android 12+), НО только если мотор задаёт им
+     *    НЕНУЛЕВУЮ длительность. `areAllPrimitivesSupported()` на это прошивке
+     *    врёт: замер `dumpsys vibrator_manager` на Redmi Note 12 показывает
+     *    `supportedPrimitives = [CLICK(0ms), TICK(0ms), ...]` — примитивы
+     *    «поддерживаются», но длятся 0 мс, поэтому композиция из них даёт
+     *    молчание (так хаптика и пропала целиком).
+     * 2. Иначе — короткий one-shot, а для `heavy` двойной щелчок через
+     *    `createWaveform(timings, -1)`: без амплитудных данных (мотор этого
+     *    не умеет — `capabilities = [ON_CALLBACK, PERFORM_CALLBACK]`) паузы
+     *    в таком массиве честные, и 26+46+18 мс читаются как «тук-тук».
+     *
+     * Заранее определённые эффекты (`EFFECT_TICK`/`EFFECT_CLICK`) убраны
+     * вовсе: `supportedEffects` тут пустой список, а `createPredefined()` на
+     * неподдерживаемом эффекте не бросает исключение, а молча ничего не
+     * делает — то есть была бы ветка, которая гарантированно молчит.
+     */
+    private fun buildHapticEffect(
+        vib: Vibrator,
+        kind: String,
+        fallbackMs: Int,
+        fallbackAmp: Int,
+    ): VibrationEffect? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val comp = realPrimitiveComposition(vib, kind)
+            if (comp != null) return comp
+        }
+        if (kind == "heavy") {
+            return VibrationEffect.createWaveform(
+                longArrayOf(0, fallbackMs.toLong(), 46, (fallbackMs * 0.7).toLong()),
+                -1,
+            )
+        }
+        return VibrationEffect.createOneShot(
+            fallbackMs.toLong(),
+            amplitudeOf(vib, fallbackAmp),
+        )
+    }
+
+    /**
+     * Композиция примитивов, если мотор РЕАЛЬНО её воспроизводит: все
+     * запрошенные примитивы поддержаны и имеют ненулевую длительность.
+     * `null` — значит полагаться на короткий one-shot.
+     */
+    private fun realPrimitiveComposition(
+        vib: Vibrator,
+        kind: String,
+    ): VibrationEffect? {
+        val ids = intArrayOf(
+            VibrationEffect.Composition.PRIMITIVE_TICK,
+            VibrationEffect.Composition.PRIMITIVE_CLICK,
+        )
+        val durations = try {
+            vib.getPrimitiveDurations(*ids)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "getPrimitiveDurations failed: $e")
+            return null
+        }
+        if (durations.size != ids.size || !durations.all { it > 0 }) return null
+        if (!vib.areAllPrimitivesSupported(*ids)) return null
+
+        val tick = VibrationEffect.Composition.PRIMITIVE_TICK
+        val click = VibrationEffect.Composition.PRIMITIVE_CLICK
+        return when (kind) {
+            // «Тик» при выборе/скролле — минимальный и очень короткий.
+            "select" -> VibrationEffect.startComposition()
+                .addPrimitive(tick, 0.55f)
+                .compose()
+            "light" -> VibrationEffect.startComposition()
+                .addPrimitive(tick, 0.9f)
+                .compose()
+            "medium" -> VibrationEffect.startComposition()
+                .addPrimitive(click, 0.85f)
+                .compose()
+            // Тяжёлый отклик — двойной щелчок: ощущается как «стук»,
+            // а не как гул той же длительности.
+            "heavy" -> VibrationEffect.startComposition()
+                .addPrimitive(click, 1f)
+                .addPrimitive(click, 0.7f, 36)
+                .compose()
+            else -> null
+        }
+    }
+
+    /** Часть моторов не умеет амплитуду — с ней createOneShot бросает исключение. */
+    @Suppress("DEPRECATION")
+    private fun amplitudeOf(vib: Vibrator, amp: Int): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !vib.hasAmplitudeControl()) {
+            VibrationEffect.DEFAULT_AMPLITUDE
+        } else {
+            amp
+        }
+
+    /** Разрешено ли приложению показывать полноэкранные уведомления (поверх блокировки). */
+    private fun canUseFullScreenIntent(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            try {
+                nm.canUseFullScreenIntent()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "canUseFullScreenIntent failed: $e")
+                @Suppress("DEPRECATION")
+                Settings.canDrawOverlays(this)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            Settings.canDrawOverlays(this)
+        }
+    }
+
+    /**
+     * Открывает ТОТ экран, где реально лежит тумблер «Полноэкранные
+     * уведомления».
+     *
+     * С Android 14 (API 34) доступ к full-screen intent больше не является
+     * обычным runtime-разрешением: это app-op `USE_FULL_SCREEN_INTENT`,
+     * который по умолчанию стоит в `ignore` у всех, кроме звонилок и
+     * будильников-приложений. Замер на телефоне автора (Android 15/HyperOS,
+     * `cmd appops get com.wetidom.keramika`) показал ровно это:
+     * `USE_FULL_SCREEN_INTENT: ignore`, а `rejectTime` совпал с моментом
+     * срабатывания будильника — система отказывала ровно тогда, когда
+     * AlarmReceiver вызывал setFullScreenIntent. Поэтому будильник
+     * «приходит только уведомлением».
+     *
+     * Раньше цепочка вела пользователя в MIUI-редактор разрешений и в
+     * обычные настройки уведомлений — там этого тумблера на Android 14+
+     * уже нет (он переехал в отдельный список «Специальный доступ →
+     * Уведомления с полноэкранным показом»). Теперь первым шагом идёт
+     * прямой системный экран выдачи именно этого права.
+     */
+    private fun openFullScreenGrantSettings(): Boolean {
+        // 1. Android 14+: персональный экран права USE_FULL_SCREEN_INTENT.
+        //    Фильтр этого экрана в Settings (проверено на телефоне автора:
+        //    com.android.settings/.AppManageFullScreenIntent) объявляет
+        //    Scheme: "package", то есть интент БЕЗ data не резолвится вообще
+        //    (`cmd package query-activities -a …` → "No activities found").
+        //    Поэтому пакет кладём И в data-URI, и в extra.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            tryStart(
+                Intent(
+                    "android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT",
+                    Uri.fromParts("package", packageName, null),
+                ).putExtra("android.provider.extra.APP_PACKAGE", packageName),
+            )
+        ) {
+            return true
+        }
+        // 2. MIUI/HyperOS: редактор разрешений приложения.
+        if (tryStart(
+                Intent("miui.intent.action.APP_PERM_EDITOR")
+                    .setClassName(
+                        "com.miui.securitycenter",
+                        "com.miui.permcenter.permissions.PermissionsEditorActivity",
+                    )
+                    .putExtra("extra_pkgname", packageName),
+            )
+        ) {
+            return true
+        }
+        // 3. Настройки уведомлений приложения.
+        if (tryStart(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra("android.provider.extra.APP_PACKAGE", packageName),
+            )
+        ) {
+            return true
+        }
+        // 4. Карточка приложения в системных настройках.
+        return tryStart(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.fromParts("package", packageName, null)),
+        )
+    }
+
+    /** Запускает экран настроек с FLAG_ACTIVITY_NEW_TASK; true если открылся. */
+    private fun tryStart(i: Intent): Boolean {
+        return try {
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Никакого resolveActivity(): с Android 11+ пакетная видимость
+            // делает такие запросы бесполезными (Settings виден для запуска,
+            // но не для резолва). Проверяем самим запуском.
+            startActivity(i)
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "open settings failed: $e")
             false
         }
     }
@@ -385,9 +675,125 @@ class MainActivity : FlutterActivity() {
         return ids.toList()
     }
 
+    /**
+     * Канал автообновления `com.wetidom.keramika/updater`.
+     *
+     * Отдаёт версию установленного APK и ABI, разрешает ли установку из этого
+     * источника, открывает системные настройки и ЗАПУСКАЕТ установку
+     * скачанного APK. Перед установкой при заданном [sha256] сверяет SHA-256
+     * файла с хешем из GitHub-релиза — при расхождении установку не даём.
+     */
+    private fun registerUpdaterChannel(flutterEngine: FlutterEngine) {
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.wetidom.keramika/updater",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "appInfo" -> {
+                    try {
+                        @Suppress("DEPRECATION")
+                        val pi = packageManager.getPackageInfo(packageName, 0)
+                        val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            pi.longVersionCode
+                        } else {
+                            @Suppress("DEPRECATION")
+                            pi.versionCode.toLong()
+                        }
+                        result.success(
+                            mapOf(
+                                "versionCode" to code,
+                                "versionName" to (pi.versionName ?: "0"),
+                            ),
+                        )
+                    } catch (e: Exception) {
+                        result.error("APP_INFO", e.message, null)
+                    }
+                }
+                "supportedAbi" -> {
+                    result.success(Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a")
+                }
+                "canInstall" -> {
+                    val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        packageManager.canRequestPackageInstalls()
+                    } else {
+                        true
+                    }
+                    result.success(ok)
+                }
+                "openInstallSettings" -> {
+                    try {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:$packageName"),
+                            ),
+                        )
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    val expected = call.argument<String>("sha256")
+                    if (path.isNullOrEmpty()) {
+                        result.error("BAD_ARGS", "path is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val file = File(path)
+                        if (!file.exists()) {
+                            result.error("NO_FILE", path, null)
+                            return@setMethodCallHandler
+                        }
+                        if (!expected.isNullOrEmpty()) {
+                            val md = MessageDigest.getInstance("SHA-256")
+                            file.inputStream().use { input ->
+                                val buf = ByteArray(64 * 1024)
+                                var n = input.read(buf)
+                                while (n > 0) {
+                                    md.update(buf, 0, n)
+                                    n = input.read(buf)
+                                }
+                            }
+                            val actual = md.digest()
+                                .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+                            if (!actual.equals(expected, ignoreCase = true)) {
+                                result.error("HASH_MISMATCH", actual, null)
+                                return@setMethodCallHandler
+                            }
+                        }
+                        val uri = FileProvider.getUriForFile(
+                            this,
+                            "$packageName.fileprovider",
+                            file,
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_ACTIVITY_NEW_TASK,
+                            )
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "installApk failed: $e")
+                        result.error("INSTALL", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Активность уже жива (приложение было на экране) — флаги
+        // «поверх блокировки / не гасить экран» нужно ставить заново,
+        // в onCreate они уже не попадут.
+        applyAlarmWindowFlags()
 
         // Уведомления НЕ отменяем здесь — fullScreenIntent только что
         // открыл приложение и убийство нотификации закроет WakeTaskScreen.

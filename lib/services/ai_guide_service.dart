@@ -87,69 +87,12 @@ class AiGuideService {
 
   /// OpenAI-совместимый эндпоинт Pollinations (работает: POST с model openai).
   static const _pollinationsUrl = 'https://text.pollinations.ai/openai';
-  static const _hfRouterUrl =
-      'https://router.huggingface.co/v1/chat/completions';
-  // Запасной хост HF: если router заблокирован/недоступен (бывает на
-  // некоторых сетях), пробуем api-inference — тот же OpenAI-формат.
-  static const _hfApiInferenceUrl =
-      'https://api-inference.huggingface.co/v1/chat/completions';
-  static const _hfDirectUrl = 'https://api.huggingface.co/v1/chat/completions';
-  // Зеркала для обхода блокировок: те же API, другие домены.
-  static const _hfSpaceProxy =
-      'https://keramika-ada.hf.space/v1/chat/completions';
-  static const _hfMirror = 'https://hf-mirror.com/v1/chat/completions';
-
-  /// Встроенный ключ Ады — обфусцирован, чтобы в бинарнике не лежал
-  /// открытый токен. Защита «мощнее» простого XOR: ключ разбит на несколько
-  /// фрагментов (лежат в разных константах, не рядом), а байты зашифрованы
-  /// потоковым ключом псевдослучайной последовательности, которая
-  /// детерминированно генерируется из пароля (FNV-1a seed + LCG).
-  /// Чтобы прочитать токен — нужно заново реализовать всю схему.
-  /// Декодируется только в рантайме.
-  static const _hfKeyFrag1 = 'obAU2cuLpKkpTfe8C';
-  static const _hfKeyFrag2 = 'nFTVgEB66YabZd+Bx';
-  static const _hfKeyFrag3 = '5qx6XPsKjsXbs+zQ==';
-  static const _hfKeyPass = 'keramika-ada-2026';
-  static const _builtinHfModel = 'Qwen/Qwen2.5-7B-Instruct';
-
-  /// FNV-1a (32 бит) от пароля — зерно LCG для потокового ключа.
-  static int _seedOf(String s) {
-    var h = 0x811c9dc5;
-    for (final code in s.codeUnits) {
-      h ^= code;
-      h = (h * 0x01000193) & 0xffffffff;
-    }
-    return h;
-  }
-
-  static String get _builtinHfKey {
-    try {
-      final b64 = '$_hfKeyFrag1$_hfKeyFrag2$_hfKeyFrag3';
-      final bytes = base64Decode(b64);
-      // Тот же LCG, что в генераторе: seed 0x6dd36b58, каждый байт — старшие
-      // 8 бит следующего значения LCG (x = (x*1103515245+12345)&0x7fffffff).
-      var x = _seedOf(_hfKeyPass); // == 0x6dd36b58
-      final out = StringBuffer();
-      for (var i = 0; i < bytes.length; i++) {
-        x = (x * 1103515245 + 12345) & 0x7fffffff;
-        out.writeCharCode(bytes[i] ^ ((x >> 16) & 0xff));
-      }
-      return out.toString();
-    } catch (_) {
-      return '';
-    }
-  }
 
   /// Суточный лимит бесплатных сообщений через встроенную HF-модель.
   static const int dailyHfLimit = 100;
   // HF может вернуть 402 после исчерпания месячного кредита. Не повторяем
   // заведомо бесполезный запрос на каждом сообщении: временно переходим
   // к бесплатным резервам и не заставляем пользователя ждать 10 секунд.
-  static DateTime? _hfUnavailableUntil;
-
-  static bool get _hfTemporarilyUnavailable =>
-      _hfUnavailableUntil != null &&
-      DateTime.now().isBefore(_hfUnavailableUntil!);
 
   /// Кулдауны провайдеров-неудачников: после ошибки сети/таймаута хост не
   /// пробуем 10 минут. Иначе при заблокированной сети (РФ/DPI) каждое
@@ -698,7 +641,6 @@ class AiGuideService {
     for (final key in _cooldownUntil.keys.toList()) {
       _cooldownUntil.remove(key);
     }
-    _hfUnavailableUntil = null;
   }
 
   /// Источники в веб-поиске ВСЕГДА переписываем в едином формате:
@@ -785,8 +727,7 @@ class AiGuideService {
     for (var i = lines.length - 1; i >= 0; i--) {
       final line = lines[i].trim();
       if (line.isEmpty) continue;
-      if (bareDomainRe.hasMatch(line) ||
-          describedDomainRe.hasMatch(line)) {
+      if (bareDomainRe.hasMatch(line) || describedDomainRe.hasMatch(line)) {
         // tailStart обновляем на КАЖДОЙ совпавшей строке, чтобы в итоге
         // это был самый верхний индекс хвоста (иначе режется не весь хвост).
         tailStart = i;
@@ -858,10 +799,24 @@ class AiGuideService {
   /// Домены-«помойки»: выдача этих хостов почти всегда не по запросу
   /// (поисковики/порталы) либо дублирует наши собственные источники.
   static const Set<String> _junkHosts = {
-    'bing.com', 'go.microsoft.com', 'microsoft.com', 'google.com',
-    'yandex.ru', 'yandex.com', 'mail.ru', 'rambler.ru', 'duckduckgo.com',
-    'wikipedia.org', 'youtube.com', 'pinterest.com', 'facebook.com',
-    'instagram.com', 'tiktok.com', 'vk.com', 'twitter.com', 'x.com',
+    'bing.com',
+    'go.microsoft.com',
+    'microsoft.com',
+    'google.com',
+    'yandex.ru',
+    'yandex.com',
+    'mail.ru',
+    'rambler.ru',
+    'duckduckgo.com',
+    'wikipedia.org',
+    'youtube.com',
+    'pinterest.com',
+    'facebook.com',
+    'instagram.com',
+    'tiktok.com',
+    'vk.com',
+    'twitter.com',
+    'x.com',
   };
 
   /// Содержательные слова запроса: без стоп-слов и короткого мусора.
@@ -869,9 +824,9 @@ class AiGuideService {
   static List<String> _searchKeywords(String text) {
     final seen = <String>{};
     final out = <String>[];
-    for (final w in text
-        .toLowerCase()
-        .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))) {
+    for (final w in text.toLowerCase().split(
+      RegExp(r'[^\p{L}\p{N}]+', unicode: true),
+    )) {
       if (w.length < 3) continue;
       if (_searchStopwords.contains(w)) continue;
       if (seen.add(w)) out.add(w);
@@ -1017,8 +972,7 @@ class AiGuideService {
           final snip = sm != null ? clean(sm.group(1) ?? '') : '';
           if (!relevant('$title $snip')) continue;
           // Заголовок без сниппета — почти всегда «связанный запрос»/мусор.
-          if (snip.length < 40 &&
-              !keywords.any(title.toLowerCase().contains)) {
+          if (snip.length < 40 && !keywords.any(title.toLowerCase().contains)) {
             continue;
           }
           if (!domainBudget(host, 2)) continue;
@@ -1062,7 +1016,10 @@ class AiGuideService {
         final itemRe = RegExp(r'<item>.*?</item>', dotAll: true);
         final titleRe = RegExp(r'<title>(.*?)</title>', dotAll: true);
         final linkRe = RegExp(r'<link>(.*?)</link>', dotAll: true);
-        final descRe = RegExp(r'<description>(.*?)</description>', dotAll: true);
+        final descRe = RegExp(
+          r'<description>(.*?)</description>',
+          dotAll: true,
+        );
         for (final m in itemRe.allMatches(body)) {
           if (results.length >= 10) break;
           final item = m.group(0)!;
@@ -1074,15 +1031,12 @@ class AiGuideService {
           final snip = clean(descRe.firstMatch(item)?.group(1) ?? '');
           if (!relevant('$title $snip')) continue;
           // Заголовок без сниппета — почти всегда «связанный запрос»/мусор.
-          if (snip.length < 40 &&
-              !keywords.any(title.toLowerCase().contains)) {
+          if (snip.length < 40 && !keywords.any(title.toLowerCase().contains)) {
             continue;
           }
           if (!domainBudget(host, 2)) continue;
           final src = ' [$host]';
-          results.add(
-            snip.length >= 40 ? '$title — $snip$src' : '$title$src',
-          );
+          results.add(snip.length >= 40 ? '$title — $snip$src' : '$title$src');
         }
       } catch (_) {}
     }
@@ -1258,234 +1212,72 @@ class AiGuideService {
     }
   }
 
-  /// Gemini (Google AI Studio) — по ключу пользователя. Лучшая «живая»
-  /// модель в цепочке: горячая персона, глубокий контекст, флирт. Пробует
-  /// несколько моделей по порядку (новые flash → старые), при 401/403
-  /// (плохой ключ) — бросает сразу, остальные ошибки — следующая модель.
-  static Future<String> _sendGemini(
-    String userText,
-    List<AiMessage> history,
-    String languageCode,
-    String apiKey,
-  ) async {
-    final contents = <Map<String, dynamic>>[];
-    for (final m in history) {
-      final text = m.text.trim();
-      if (text.isEmpty) continue;
-      contents.add({
-        'role': m.isUser ? 'user' : 'model',
-        'parts': [
-          {'text': text},
-        ],
-      });
-    }
-    contents.add({
-      'role': 'user',
-      'parts': [
-        {'text': userText},
-      ],
-    });
-    final body = jsonEncode({
-      'systemInstruction': {
-        'parts': [
-          {'text': systemPrompt(languageCode, withContext: true)},
-        ],
-      },
-      'contents': contents,
-      'generationConfig': {
-        'temperature': 0.95,
-        'topP': 0.95,
-        'maxOutputTokens': 1024,
-      },
-    });
-    String? lastErr;
-    for (final model in const [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-    ]) {
-      try {
-        final resp = await http
-            .post(
-              Uri.parse(
-                'https://generativelanguage.googleapis.com/v1beta/models/'
-                '$model:generateContent?key=$apiKey',
-              ),
-              headers: const {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 25));
-        if (resp.statusCode == 200) {
-          final data =
-              jsonDecode(utf8.decode(resp.bodyBytes));
-          final candidates = data['candidates'] as List? ?? [];
-          if (candidates.isEmpty) {
-            final fb = data['promptFeedback'] as Map<String, dynamic>?;
-            final br = fb?['blockReason'];
-            if (br is String && br.isNotEmpty) return '';
-            return '';
-          }
-          final content = (candidates.first
-              as Map<String, dynamic>)['content'] as Map<String, dynamic>?;
-          final parts = content?['parts'] as List? ?? [];
-          final sb = StringBuffer();
-          for (final p in parts) {
-            if (p is Map<String, dynamic> && p['text'] is String) {
-              sb.write(p['text']);
-            }
-          }
-          final out = sb.toString().trim();
-          if (out.isNotEmpty) return out;
-          return '';
-        }
-        lastErr = 'HTTP ${resp.statusCode}';
-        // Плохой/отозванный ключ — остальные модели не помогут.
-        if (resp.statusCode == 401 || resp.statusCode == 403) break;
-      } catch (e) {
-        lastErr = e.toString();
-      }
-    }
-    throw Exception('Gemini: $lastErr');
-  }
-
-  /// Цепочка моделей: ключ Gemini (если есть) → Ада (HF) → ПАРАЛЛЕЛЬНЫЙ
-  /// раунд бесплатных анонимных (Kilo + LLM7 + Pollinations одновременно,
-  /// кто первый) → AI Horde → OVHcloud → ключ Poolside. Упавшие хосты
-  /// уходят в кулдаун (3 мин), чтобы при заблокированной сети ответ падал
-  /// на живой резерв быстро.
   static Future<String> _sendChain(
     String userText,
     List<AiMessage> history,
     String languageCode, {
-    // false — пропустить встроенную Аду (HF): нужно для повтора-«лингвогарда»,
-    // чтобы не жечь суточный лимит 100 сообщений дважды на одно сообщение.
+    // false оставлен для совместимости вызывающего кода.
     bool useHf = true,
   }) async {
     final sw = Stopwatch()..start();
+    assert(sw.isRunning);
 
     // Перед каждым новым запросом забываем временные сетевые кулдауны:
     // провайдер мог восстановиться, пока приложение было открыто.
     _clearCooldowns();
 
-    // 0. Ключ Gemini (Google AI Studio) — если вставлен, пробуем его
-    //    ПЕРВЫМ: это лучшая «горячая подружка» из всех доступных моделей.
-    if (!_onCooldown('gemini')) {
-      final geminiKey = await SettingsService.loadGeminiKey();
-      if (geminiKey.isNotEmpty) {
-        try {
-          final answer = await _sendGemini(
-            userText,
-            history,
-            languageCode,
-            geminiKey,
-          ).timeout(const Duration(seconds: 32));
-          if (_isRefusal(answer)) {
-            _markCooldown('gemini');
-          } else if (answer.trim().isNotEmpty) {
-            _setModel('Gemini 2.5 Flash');
-            return answer;
-          }
-        } catch (_) {
-          _markCooldown('gemini');
-        }
-      }
-    }
-
-    // 1. Встроенная Ада — главный путь (100 сообщений в день).
-    if (useHf &&
-        await _hfQuotaAvailable() &&
-        !_hfTemporarilyUnavailable &&
-        !_onCooldown('hf')) {
-      try {
-        final answer = await _sendHuggingFace(
-          userText,
-          history,
-          languageCode,
-        ).timeout(const Duration(seconds: 22));
-        await _incrementHfQuota();
+    // Ада — это Poolside: если ключ задан, отвечает она (метка ada-0.0.3
+    // с плашками PREMIUM и POOL). Без ключа — сразу бесплатные резервы.
+    final poolsideKey = await SettingsService.loadAiKey();
+    if (poolsideKey.isNotEmpty) {
+      final answer = await _tryProvider(
+        'poolside',
+        () => _sendPoolside(userText, history, poolsideKey, languageCode),
+        12,
+      );
+      if (answer != null && answer.trim().isNotEmpty) {
         _setModel('ada-0.0.3');
         return answer;
-      } catch (e) {
-        // 402 — исчерпанный кредит, 401/403 — невалидный ключ. Раньше тут
-        // был бан на 15 минут — но СВОЙ Space Ады работает БЕЗ встроенного
-        // ключа, и бан мешал повторной попытке после его «пробуждения».
-        // Короткого кулдауна (3 мин) достаточно.
-        _markCooldown('hf');
       }
     }
 
-    // 2. Параллельный раунд: три бесплатных анонимных провайдера разом,
-    //    ждём не дольше 8 секунд суммарно. Кто первый ответил — того
-    //    и берём (метку модели провайдер выставляет сам).
-    final round = await Future.wait([
-      _tryProvider('kilo', () => _sendKilo(userText, languageCode), 12),
-      _tryProvider('llm7', () => _sendLLM7(userText, languageCode), 12),
-      _tryProvider(
+    // Резервы по ключам: Agnes → Zen (ключей обычно нет — пропускаем мгновенно).
+    final agnesKey = await SettingsService.loadAgnesKey();
+    if (agnesKey.isNotEmpty) {
+      final answer = await _tryProvider(
+        'agnes',
+        () => _sendAgnes(userText, history, agnesKey, languageCode),
+        8,
+      );
+      if (answer != null && answer.trim().isNotEmpty) return answer;
+    }
+    final zenKey = await SettingsService.loadZenKey();
+    if (zenKey.isNotEmpty) {
+      final answer = await _tryProvider(
+        'zen',
+        () => _sendZen(userText, history, zenKey, languageCode),
+        8,
+      );
+      if (answer != null && answer.trim().isNotEmpty) return answer;
+    }
+
+    // Бесплатные резервы — ПАРАЛЛЕЛЬНО: Kilo + Pollinations + OVH стартуют
+    // одновременно, побеждает первый ответивший. Так суммарное время
+    // остаётся в пределах лимита и ответ приходит всегда.
+    final fallbacks = <Future<String?> Function()>[
+      () => _tryProvider('kilo', () => _sendKilo(userText, languageCode), 12),
+      () => _tryProvider(
         'pollinations',
         () => _sendPollinations(userText, languageCode),
         12,
       ),
-    ]);
-    for (final answer in round) {
+      () =>
+          _tryProvider('ovh', () => _sendOvhcloud(userText, languageCode), 12),
+    ];
+    final results = await Future.wait(fallbacks.map((fn) => fn()));
+    for (final answer in results) {
       if (answer != null && answer.trim().isNotEmpty) return answer;
     }
-
-    // Дальше — только если ещё остался бюджет времени.
-    if (sw.elapsed > const Duration(seconds: 22)) {
-      throw Exception('Бюджет времени исчерпан');
-    }
-
-    // 3. AI Horde — очередь, может занять время; отдельный бюджет 16 с.
-    final horde = await _tryProvider(
-      'horde',
-      () => _sendAiHorde(userText, languageCode),
-      16,
-    );
-    if (horde != null && horde.trim().isNotEmpty) {
-      _setModel('AI Horde');
-      return horde;
-    }
-
-    // 4. OVHcloud AI Endpoints — бесплатный резерв.
-    final ovh = await _tryProvider(
-      'ovh',
-      () => _sendOvhcloud(userText, languageCode),
-      8,
-    );
-    if (ovh != null && ovh.trim().isNotEmpty) {
-      _setModel('OVHCloud');
-      return ovh;
-    }
-
-    // 5. Ключ Poolside/Laguna — самый последний резерв, если есть.
-    if (!_onCooldown('poolside')) {
-      final poolsideKey = await SettingsService.loadAiKey();
-      if (poolsideKey.isNotEmpty) {
-        try {
-          final answer = await _sendPoolside(
-            userText,
-            history,
-            poolsideKey,
-            languageCode,
-          ).timeout(const Duration(seconds: 20));
-          if (_isRefusal(answer)) {
-            throw Exception('Laguna safety refusal');
-          }
-          _setModel('Laguna');
-          return answer;
-        } catch (e) {
-          _markCooldown('poolside');
-          final s = e.toString();
-          if (s.contains('401') ||
-              s.contains('403') ||
-              s.contains('Unauthorized')) {
-            // Недействительный ключ — стираем, чтобы не пробовать вечно.
-            await SettingsService.saveAiKey('');
-          }
-        }
-      }
-    }
-
     throw Exception('Все провайдеры недоступны');
   }
 
@@ -1551,67 +1343,26 @@ class AiGuideService {
     }
   }
 
-  // ---- Лимит 100 сообщений в день (встроенная HF-модель) ----
-
-  static const _hfDateKey = 'ai_hf_date';
-  static const _hfCountKey = 'ai_hf_count';
-
   static String _todayKey() {
     final now = DateTime.now().toUtc();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
-  static Future<bool> _hfQuotaAvailable() async {
-    final date = globalPrefs.getString(_hfDateKey);
-    final count = globalPrefs.getInt(_hfCountKey) ?? 0;
-    if (date != _todayKey()) return true;
-    return count < dailyHfLimit;
-  }
+  /// Совместимость со старыми элементами UI: HF больше не используется.
+  static Future<int> hfRemainingToday() async => 0;
 
-  static Future<void> _incrementHfQuota() async {
-    final date = globalPrefs.getString(_hfDateKey);
-    final count =
-        (date == _todayKey() ? globalPrefs.getInt(_hfCountKey) ?? 0 : 0) + 1;
-    await globalPrefs.setString(_hfDateKey, _todayKey());
-    await globalPrefs.setInt(_hfCountKey, count);
-  }
-
-  /// Сколько сообщений через Аду осталось сегодня (для подсказки в чате).
-  static Future<int> hfRemainingToday() async {
-    final date = globalPrefs.getString(_hfDateKey);
-    if (date != _todayKey()) return dailyHfLimit;
-    final count = globalPrefs.getInt(_hfCountKey) ?? 0;
-    return (dailyHfLimit - count).clamp(0, dailyHfLimit);
-  }
-
-  /// Какая модель реально ответила (заполняется цепочкой _sendChain).
   static String _lastModel = '';
   static String get lastUsedModel => _lastModel;
-  static void _setModel(String label) => _lastModel = label;
-
-  /// Тик «модель сменилась»: открытый чат слушает и перечитывает лейбл —
-  /// в том числе когда ответила модель из МИНИ-ОКОШКА (отдельный движок,
-  /// сообщение приходит по мосту сообщений).
-  static final ValueNotifier<int> modelLabelTick = ValueNotifier<int>(0);
-
-  /// Запоминает, какая модель ответила. Вызывается из минимального окошка
-  /// (там свой экземпляр статики) — через bridge-сообщение доходит сюда,
-  /// чтобы общий чат показывал ту же модель.
-  static void recordModelUsed(String label) {
-    if (label.isNotEmpty) _setModel(label);
+  static void _setModel(String label) {
+    _lastModel = label;
     modelLabelTick.value++;
   }
 
-  /// Текущая модель: если кто-то уже отвечал в этой сессии — показываем его
-  /// (например «Kilo · openrouter/free»); иначе дефолт по квоте Ады.
-  static Future<String> currentModelLabel() async {
-    if (_lastModel.isNotEmpty) return _lastModel;
-    if (await hfRemainingToday() > 0) return 'ada-0.0.3';
-    final key = await SettingsService.loadAiKey();
-    if (key.isNotEmpty) return 'Laguna';
-    return 'FREE';
-  }
+  static final ValueNotifier<int> modelLabelTick = ValueNotifier<int>(0);
+  static void recordModelUsed(String label) => _setModel(label);
+
+  static Future<String> currentModelLabel() async =>
+      _lastModel.isEmpty ? 'ada-0.0.3' : _lastModel;
 
   // ---- Ада-трекинг: утренний отчёт и вечерний разбор прямо в ЧАТ ----
 
@@ -1629,12 +1380,14 @@ class AiGuideService {
   /// одного раза в сутки.
   static Future<void> maybeDeliverAdaNudge(String languageCode) async {
     final now = DateTime.now();
-    final day = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final day =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     if (globalPrefs.getString('ada_proactive_day') == day) return;
     var text = '';
     try {
       text = await send(
-        userText: 'Напиши одно оригинальное короткое сообщение пользователю первой: живое, тёплое, немного неожиданное, с учётом его текущих задач и привычек. Не задавай шаблонный вопрос, не упоминай этот запрос и не используй списки.',
+        userText:
+            'Напиши одно оригинальное короткое сообщение пользователю первой: живое, тёплое, немного неожиданное, с учётом его текущих задач и привычек. Не задавай шаблонный вопрос, не упоминай этот запрос и не используй списки.',
         history: const [],
         languageCode: languageCode,
       );
@@ -1737,10 +1490,10 @@ class AiGuideService {
         return;
       }
       final today = _localDayKey();
-      final yesterday =
-          _localDayKey(DateTime.now().subtract(const Duration(days: 1)));
-      adaStreak.value =
-          (last == today || last == yesterday) ? count : 0;
+      final yesterday = _localDayKey(
+        DateTime.now().subtract(const Duration(days: 1)),
+      );
+      adaStreak.value = (last == today || last == yesterday) ? count : 0;
     } catch (_) {
       adaStreak.value = 0;
     }
@@ -2848,157 +2601,119 @@ class AiGuideService {
     }
   }
 
-  // ---- HuggingFace (встроенная модель Ады) ----
+  // ---- Agnes AI (нужен свой ключ) ----
+  static const _agnesUrl = 'https://apihub.agnes-ai.com/v1/chat/completions';
+  static const _agnesModel = 'agnes-2.0-flash';
 
-  /// POST на HF с перебором хостов. Принимается ТОЛЬКО HTTP 200 — на любой
-  /// другой статус идём к следующему хосту. Раньше первый хост (Space Ады)
-  /// при 4xx «закорачивал» всю ветку и возвращал ответ сразу — рабочий ключ
-  /// никогда не доходил до router/api-inference, и Ада падала в бесплатные
-  /// фолбэки, хотя токен валиден.
-  static Future<http.Response> _hfPost(
-    List<Map<String, dynamic>> messages,
-  ) async {
-    // Свой Space Ады пробуем ПЕРВЫМ: ему не нужен рабочий ключ HF (встроенный
-    // токен мог протухнуть — тогда router/api-inference отвечают 401), и после
-    // простоя Space «просыпается» (первый запрос идёт до нескольких секунд).
-    // Остальные хосты — тот же OpenAI-формат со встроенным ключом.
-    final hosts = <String, int>{
-      _hfSpaceProxy: 8,
-      _hfRouterUrl: 5,
-      _hfApiInferenceUrl: 5,
-      _hfDirectUrl: 4,
-      _hfMirror: 5,
-    };
-    http.Response? authError;
-    http.Response? lastNonOk;
-    for (final entry in hosts.entries) {
-      try {
-        final resp = await http
-            .post(
-              Uri.parse(entry.key),
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $_builtinHfKey',
-              },
-              body: jsonEncode({
-                'model': _builtinHfModel,
-                'messages': messages,
-                'tools': _tools(),
-                'max_tokens': 500,
-              }),
-            )
-            .timeout(Duration(seconds: entry.value));
-        if (resp.statusCode == 200) return resp;
-        // 401/403 — ключ не подошёл: запоминаем (если ни один хост не
-        // сработает), но продолжаем — Space/mirror могут работать без него.
-        if (resp.statusCode == 401 || resp.statusCode == 403) {
-          authError ??= resp;
-        } else {
-          lastNonOk = resp;
-        }
-        // Любой другой статус — идём дальше по списку хостов.
-      } catch (_) {}
-    }
-    if (authError != null) return authError;
-    if (lastNonOk != null) return lastNonOk;
-    throw Exception('HF unavailable');
-  }
-
-  static Future<String> _sendHuggingFace(
+  static Future<String> _sendAgnes(
     String userText,
     List<AiMessage> history,
+    String apiKey,
     String languageCode,
   ) async {
-    final ctx = _trimContext(history);
     final messages = <Map<String, dynamic>>[
       {
         'role': 'system',
         'content': systemPrompt(languageCode, withContext: true),
       },
-      for (final m in ctx)
+      for (final m in _trimContext(history))
         {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
       {'role': 'user', 'content': userText},
     ];
-
-    // Раунд 1: модель может вернуть tool_calls.
-    final resp1 = await _hfPost(messages);
-    if (resp1.statusCode != 200) {
-      throw Exception('HF ${resp1.statusCode}');
-    }
-    final body1 = _asMap(jsonDecode(resp1.body));
-    final choices1 = _asList(body1['choices']);
-    if (choices1.isEmpty) {
-      throw Exception('HF empty response');
-    }
-    final msg1 = _asMap(_asMap(choices1.first)['message']);
-    // Выполняем ТОЛЬКО первый tool-call — так одно сообщение не может
-    // создать две проверки реальности и т.п.
-    final toolCalls = _asList(msg1['tool_calls']).take(1).toList();
-
-    // Нет tool_calls — обычный ответ.
-    if (toolCalls.isEmpty) {
-      final text = _asString(msg1['content']);
-      if (text == null || text.trim().isEmpty) {
-        throw Exception('HF empty text');
-      }
-      final cleaned = _cleanText(text);
-      if (_isRefusal(cleaned)) {
-        throw Exception('HF safety refusal');
-      }
-      return cleaned;
-    }
-
-    // Есть tool_calls — выполняем и делаем раунд 2 с результатами.
-    final executed = <Map<String, dynamic>>[];
-    for (var i = 0; i < toolCalls.length; i++) {
-      final tc = _asMap(toolCalls[i]);
-      final fn = _asMap(tc['function']);
-      final fnName = _asString(fn['name']) ?? '';
-      final callId = _asString(tc['id']) ?? 'call_$i';
-      final args = _decodeArguments(fn['arguments']);
-      String result;
-      try {
-        result = await _executeTool(fnName, args);
-      } catch (e) {
-        result = 'Ошибка: $e';
-      }
-      executed.add({'tool_call_id': callId, 'name': fnName, 'result': result});
-    }
-
-    // Раунд 2: подкладываем tool-результаты и просим финальный ответ.
-    final messages2 = <Map<String, dynamic>>[
-      ...messages,
-      {
-        'role': 'assistant',
-        'content': msg1['content'],
-        'tool_calls': toolCalls,
-      },
-      for (final e in executed)
-        {
-          'role': 'tool',
-          'tool_call_id': e['tool_call_id'],
-          'content': e['result'],
-        },
-      {'role': 'user', 'content': 'Подтверди, что сделано, кратко и тепло.'},
-    ];
-
-    final resp2 = await _hfPost(messages2);
-    if (resp2.statusCode != 200) {
-      throw Exception('HF ${resp2.statusCode}');
-    }
-    final body2 = _asMap(jsonDecode(resp2.body));
-    final choices2 = _asList(body2['choices']);
-    if (choices2.isEmpty) {
-      throw Exception('HF empty response');
-    }
-    final msg2 = _asMap(_asMap(choices2.first)['message']);
-    final text = _asString(msg2['content']);
+    final resp = await http
+        .post(
+          Uri.parse(_agnesUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $apiKey',
+          },
+          body: jsonEncode({
+            'model': _agnesModel,
+            'messages': messages,
+            'max_tokens': 500,
+          }),
+        )
+        .timeout(const Duration(seconds: 14));
+    if (resp.statusCode != 200) throw Exception('Agnes ${resp.statusCode}');
+    final body = _asMap(jsonDecode(resp.body));
+    final choices = _asList(body['choices']);
+    if (choices.isEmpty) throw Exception('Agnes empty response');
+    final text = _asString(_asMap(_asMap(choices.first)['message'])['content']);
     if (text == null || text.trim().isEmpty) {
-      // Модель снова вернула tool_calls — вторая итерация не нужна,
-      // возвращаем краткое подтверждение сами.
-      return 'Готово! Я создала всё, что ты просил. Проверь разделы приложения.';
+      throw Exception('Agnes empty text');
     }
-    return _cleanText(text);
+    final cleaned = _cleanText(text);
+    if (_isRefusal(cleaned)) throw Exception('Agnes refusal');
+    _setModel('Agnes AI');
+    return cleaned;
+  }
+
+  // ---- OpenCode Zen (нужен свой ключ) ----
+  static const _zenUrl = 'https://opencode.ai/zen/v1/chat/completions';
+  static const _zenModel = 'openai/gpt-5.1';
+  static const _zenFallbackModels = ['anthropic/claude-sonnet-4'];
+
+  static Future<String> _sendZen(
+    String userText,
+    List<AiMessage> history,
+    String apiKey,
+    String languageCode,
+  ) async {
+    final messages = <Map<String, dynamic>>[
+      {
+        'role': 'system',
+        'content': systemPrompt(languageCode, withContext: true),
+      },
+      for (final m in _trimContext(history))
+        {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
+      {'role': 'user', 'content': userText},
+    ];
+    var lastErr = '';
+    for (final model in [_zenModel, ..._zenFallbackModels]) {
+      try {
+        final resp = await http
+            .post(
+              Uri.parse(_zenUrl),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $apiKey',
+              },
+              body: jsonEncode({
+                'model': model,
+                'messages': messages,
+                'max_tokens': 500,
+              }),
+            )
+            .timeout(const Duration(seconds: 14));
+        if (resp.statusCode != 200) {
+          lastErr = 'Zen ${resp.statusCode}';
+          continue;
+        }
+        final body = _asMap(jsonDecode(resp.body));
+        final choices = _asList(body['choices']);
+        if (choices.isEmpty) {
+          lastErr = 'Zen empty response';
+          continue;
+        }
+        final text = _asString(
+          _asMap(_asMap(choices.first)['message'])['content'],
+        );
+        if (text == null || text.trim().isEmpty) {
+          lastErr = 'Zen empty text';
+          continue;
+        }
+        final cleaned = _cleanText(text);
+        if (_isRefusal(cleaned)) {
+          lastErr = 'Zen refusal';
+          continue;
+        }
+        _setModel('Zen');
+        return cleaned;
+      } catch (e) {
+        lastErr = e.toString();
+      }
+    }
+    throw Exception('Zen: $lastErr');
   }
 
   // ---- Poolside / Laguna (нужен свой ключ) ----
@@ -3359,164 +3074,5 @@ class AiGuideService {
       }
     }
     throw Exception('Kilo unavailable');
-  }
-
-  /// LLM7.io — анонимный доступ без ключа (api_key 'unused'):
-  /// до 500 000 токенов/день, 60 запросов/час. Селекторы default/fast/pro.
-  static const _llm7Url = 'https://api.llm7.io/v1/chat/completions';
-  // Проверено вживую: 'fast' отвечает быстро (Codestral), default — тоже.
-  static const _llm7Models = <String>['fast', 'default', 'pro'];
-
-  static Future<String> _sendLLM7(String userText, String languageCode) async {
-    final prompt = _freePrompt(userText, languageCode);
-    for (final model in _llm7Models) {
-      try {
-        final resp = await http
-            .post(
-              Uri.parse(_llm7Url),
-              headers: {
-                'Content-Type': 'application/json',
-                // 'unused' — официальный анонимный доступ (без аккаунта).
-                'Authorization': 'Bearer unused',
-                'User-Agent': 'KeramikaApp/1.3.0',
-              },
-              body: jsonEncode({
-                'model': model,
-                'messages': [
-                  {'role': 'user', 'content': prompt},
-                ],
-              }),
-            )
-            .timeout(const Duration(seconds: 15));
-        if (resp.statusCode == 200 &&
-            resp.body.trim().isNotEmpty &&
-            !resp.body.trimLeft().startsWith('<')) {
-          final text = _extractOpenAiText(resp.body);
-          if (text != null && text.trim().isNotEmpty) {
-            _setModel('LLM7 · ${_extractModelName(resp.body) ?? model}');
-            return _cleanText(text);
-          }
-        }
-      } catch (_) {
-        rethrow;
-      }
-    }
-    throw Exception('LLM7 unavailable');
-  }
-
-  /// AI Horde — анонимный текстовый генератор без ключа (apikey '0000000000'
-  /// = гость). Запрос ставится в очередь воркеров; статус/результат отдаёт
-  /// ОДИН эндпоинт (finished + generations). Проверено вживую: анонимный
-  /// ответ приходит за несколько секунд, даже когда Pollinations лежит.
-  static const _hordeAsyncUrl =
-      'https://aihorde.net/api/v2/generate/text/async';
-  static const _hordeStatusUrl =
-      'https://aihorde.net/api/v2/generate/text/status/';
-  // Модели с реально работающими анонимными воркерами (список динамический,
-  // поэтому держим несколько текущих + запасные).
-  static const _hordeModels = <String>[
-    'aphrodite/TheDrummer/Skyfall-31B-v4.2',
-    'google/gemma-4-31b',
-    'koboldcpp/mini-magnum-12b-v1.1',
-    'koboldcpp/Mistral-Nemo-12B-Instruct',
-    'koboldcpp/Llama-3.2-3B',
-  ];
-  static const _hordeHeaders = <String, String>{
-    'Content-Type': 'application/json',
-    // Анонимный гость: любой ключ в таком виде = без авторизации.
-    'apikey': '0000000000',
-    // Horde отдаёт 403 без client-agent/User-Agent.
-    'client-agent': 'KeramikaApp/1.2.0',
-    'User-Agent': 'KeramikaApp/1.2.0',
-  };
-
-  static Future<String> _sendAiHorde(
-    String userText,
-    String languageCode,
-  ) async {
-    final prompt = _freePrompt(userText, languageCode);
-    final fullPrompt = '### Instruction:\n$prompt\n\n### Response:\n';
-
-    final resp = await http
-        .post(
-          Uri.parse(_hordeAsyncUrl),
-          headers: _hordeHeaders,
-          body: jsonEncode({
-            'prompt': fullPrompt,
-            'params': {
-              'max_length': 320,
-              'temperature': 0.7,
-              'top_p': 0.95,
-              'rep_pen': 1.1,
-            },
-            'models': _hordeModels,
-            'trusted_workers': false,
-            'slow_workers': true,
-          }),
-        )
-        .timeout(const Duration(seconds: 12));
-
-    if (resp.statusCode != 200 && resp.statusCode != 202) {
-      throw Exception('Horde ${resp.statusCode}');
-    }
-    final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final id = body['id'] as String?;
-    if (id == null || id.isEmpty) throw Exception('Horde no id');
-
-    // Опрос статуса: максимум 8 раундов (~16 с) — больше ждать нельзя,
-    // иначе цепочка фолбэков раздувается в минуту.
-    for (var i = 0; i < 8; i++) {
-      await Future.delayed(const Duration(seconds: 2));
-      http.Response status;
-      try {
-        status = await http
-            .get(Uri.parse('$_hordeStatusUrl$id'), headers: _hordeHeaders)
-            .timeout(const Duration(seconds: 10));
-      } catch (_) {
-        continue;
-      }
-      if (status.statusCode != 200) continue;
-      Map<String, dynamic> st;
-      try {
-        st = jsonDecode(status.body) as Map<String, dynamic>;
-      } catch (_) {
-        continue;
-      }
-      final finished = st['finished'] is bool
-          ? (st['finished'] as bool)
-          : st['finished'] is num
-          ? (st['finished'] as num) != 0
-          : false;
-      final isPossible = st['is_possible'] is bool
-          ? (st['is_possible'] as bool)
-          : st['is_possible'] is num
-          ? (st['is_possible'] as num) != 0
-          : true;
-      if (finished) {
-        final gens = st['generations'] as List? ?? [];
-        if (gens.isNotEmpty) {
-          final text = _asString(_asMap(gens.first)['text']) ?? '';
-          final cleaned = _cleanHordeText(text);
-          if (cleaned.isNotEmpty) return cleaned;
-        }
-        throw Exception('Horde empty');
-      }
-      if (!isPossible) throw Exception('Horde impossible');
-    }
-    throw Exception('Horde timeout');
-  }
-
-  /// Вычищает ответ Horde: убирает «### Response:»-префикс, эхо инструкции
-  /// и всё, что начинается со следующей «###»-секции.
-  static String _cleanHordeText(String t) {
-    var s = t;
-    final responseIdx = s.indexOf('### Response');
-    if (responseIdx >= 0) {
-      s = s.substring(responseIdx);
-      s = s.replaceFirst(RegExp(r'^###\s*Response:?\s*'), '');
-    }
-    final nextSection = s.indexOf('\n### ');
-    if (nextSection >= 0) s = s.substring(0, nextSection);
-    return _cleanText(s);
   }
 }

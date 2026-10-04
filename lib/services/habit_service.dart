@@ -153,10 +153,16 @@ class HabitService extends ChangeNotifier {
 
   /// Keeps pinned habits at the top of the list while preserving the
   /// user-defined relative order inside each group.
+  ///
+  /// Вредную привычку закрепить нельзя: «закрепить» — значит держать перед
+  /// глазами, а перед глазами держат то, что хотят сделать. Флаг снимается
+  /// здесь же, иначе он остался бы висеть в файле и привычка вернулась бы на
+  /// верх после перезагрузки.
   void _normalizeOrder() {
     final pinned = <Habit>[];
     final unpinned = <Habit>[];
     for (final h in _habits) {
+      if (h.pinned && h.type != 'good') h.pinned = false;
       if (h.pinned) {
         pinned.add(h);
       } else {
@@ -251,12 +257,21 @@ class HabitService extends ChangeNotifier {
         h.lastDoneDate!.day,
       );
       final gap = todayDayUtc.difference(lastDayUtc).inDays;
-      if (gap >= 2) {
-        // Пропуск — цепочка оборвана, начинаем новую.
+      // БАГ «стрик слетает на привычках с выбранными днями»: раньше любой
+      // календарный gap >= 2 рвал цепочку. Но для привычки с расписанием
+      // (activeDays) дни вне расписания отмечать не обязательно — пропуск
+      // «не положенного» дня НЕ должен ломать стрик. Считаем только
+      // пропущенные ПОЛОЖЕННЫЕ дни: ни один не пропущен → цепочка
+      // продолжается (streak + 1), пропущен хотя бы один → новая серия (1).
+      // Для привычек без расписания «положен» каждый день — поведение
+      // прежнее (gap >= 2 = пропуск).
+      final missedDue = _missedDueDays(lastDayUtc, todayDayUtc, h.activeDays);
+      if (gap >= 2 && missedDue >= 1) {
+        // Пропущен положенный день — цепочка оборвана, начинаем новую.
         newStreak = 1;
         newLastDate = today;
-      } else if (gap == 1) {
-        // Соседний день — продлеваем цепочку.
+      } else if (gap >= 1) {
+        // Соседний день (или gap через «не положенные» дни) — продлеваем.
         newStreak = h.streak + 1;
         newLastDate = today;
       } else if (gap <= 0) {
@@ -281,6 +296,30 @@ class HabitService extends ChangeNotifier {
 
   static bool _sameLocalDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Сколько «положенных» дней пропущено МЕЖДУ последней отметкой и
+  /// сегодня (границы не считаются: lastDay уже отмечен, today
+  /// отмечается прямо сейчас). Для привычек без activeDays «положен»
+  /// каждый день — результат = календарный gap − 1. Для привычек с
+  /// расписанием считаются только дни, чей weekday входит в activeDays.
+  /// Loop ограничен 366 итерациями: за год каждый weekday встречается,
+  /// дальнейший подсчёт не имеет смысла.
+  static int _missedDueDays(
+    DateTime lastDayUtc,
+    DateTime todayUtc,
+    List<int> activeDays,
+  ) {
+    if (activeDays.isEmpty) {
+      return todayUtc.difference(lastDayUtc).inDays - 1;
+    }
+    var missed = 0;
+    var d = lastDayUtc.add(const Duration(days: 1));
+    for (var i = 0; i < 366 && d.isBefore(todayUtc); i++) {
+      if (activeDays.contains(d.weekday)) missed++;
+      d = d.add(const Duration(days: 1));
+    }
+    return missed;
+  }
 
   Future<void> update(Habit habit) async {
     final idx = _habits.indexWhere((h) => h.id == habit.id);

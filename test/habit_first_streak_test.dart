@@ -13,14 +13,16 @@ void main() {
     svc.debugClear();
     await svc.load();
     for (final h in habits) {
-      await svc.add(Habit(
-        id: h.id,
-        name: h.name,
-        streak: h.streak,
-        lastDoneDate: h.lastDoneDate,
-        doneToday: h.doneToday,
-        type: h.type,
-      ));
+      await svc.add(
+        Habit(
+          id: h.id,
+          name: h.name,
+          streak: h.streak,
+          lastDoneDate: h.lastDoneDate,
+          doneToday: h.doneToday,
+          type: h.type,
+        ),
+      );
     }
     return svc;
   }
@@ -33,32 +35,41 @@ void main() {
     ]);
 
     // Вчера все три были отмечены (chain 1 день).
-    await svc.update(Habit(
-      id: 'h1',
-      name: 'First',
-      type: 'good',
-      streak: 1,
-      lastDoneDate: day(1),
-    ));
-    await svc.update(Habit(
-      id: 'h2',
-      name: 'Second',
-      type: 'good',
-      streak: 1,
-      lastDoneDate: day(1),
-    ));
-    await svc.update(Habit(
-      id: 'h3',
-      name: 'Third',
-      type: 'good',
-      streak: 1,
-      lastDoneDate: day(1),
-    ));
+    await svc.update(
+      Habit(
+        id: 'h1',
+        name: 'First',
+        type: 'good',
+        streak: 1,
+        lastDoneDate: day(1),
+      ),
+    );
+    await svc.update(
+      Habit(
+        id: 'h2',
+        name: 'Second',
+        type: 'good',
+        streak: 1,
+        lastDoneDate: day(1),
+      ),
+    );
+    await svc.update(
+      Habit(
+        id: 'h3',
+        name: 'Third',
+        type: 'good',
+        streak: 1,
+        lastDoneDate: day(1),
+      ),
+    );
 
     // Отмечаем ПЕРВУЮ (h1).
     await svc.toggle('h1');
-    expect(svc.habits.firstWhere((h) => h.id == 'h1').streak, 2,
-        reason: 'h1 (first) streak after check today');
+    expect(
+      svc.habits.firstWhere((h) => h.id == 'h1').streak,
+      2,
+      reason: 'h1 (first) streak after check today',
+    );
 
     // Отмечаем остальных.
     await svc.toggle('h2');
@@ -73,51 +84,58 @@ void main() {
     expect(svc.habits.firstWhere((h) => h.id == 'h1').streak, 2);
   });
 
-  test('orphaned state streak0+dateToday heals on check (real phone data)',
-      () async {
-    // Точное состояние первой привычки на телефоне: streak 0, дата =
-    // сегодня, галочка снята. Осталось от старого бага, когда снятие
-    // галочки не очищало lastDoneDate. Отметка должна дать стрик 1,
-    // а не застрять на 0 в ветке re-mark.
-    final svc = await makeSvc([
-      Habit(
-        id: 'h1',
-        name: 'First',
-        type: 'good',
-        streak: 0,
-        lastDoneDate: HabitService.mskToday(),
-        doneToday: false,
-      ),
-    ]);
+  test(
+    'orphaned state streak0+dateToday heals on check (real phone data)',
+    () async {
+      // Точное состояние первой привычки на телефоне: streak 0, дата =
+      // сегодня, галочка снята. Осталось от старого бага, когда снятие
+      // галочки не очищало lastDoneDate. Отметка должна дать стрик 1,
+      // а не застрять на 0 в ветке re-mark.
+      final svc = await makeSvc([
+        Habit(
+          id: 'h1',
+          name: 'First',
+          type: 'good',
+          streak: 0,
+          lastDoneDate: HabitService.mskToday(),
+          doneToday: false,
+        ),
+      ]);
 
-    await svc.toggle('h1');
-    final h = svc.habits.first;
-    expect(h.streak, 1, reason: 'check on orphaned state gives streak 1');
-    expect(h.doneToday, true);
-  });
+      await svc.toggle('h1');
+      final h = svc.habits.first;
+      expect(h.streak, 1, reason: 'check on orphaned state gives streak 1');
+      expect(h.doneToday, true);
+    },
+  );
 
-  test('normalizeIfDayChanged heals orphaned state (streak0+dateToday)',
-      () async {
-    final svc = await makeSvc([
-      Habit(
-        id: 'h1',
-        name: 'First',
-        type: 'good',
-        streak: 0,
-        lastDoneDate: HabitService.mskToday(),
-        doneToday: false,
-      ),
-    ]);
-    // Вызываем нормализацию — «осиротевший» след должен стереться:
-    // дата сегодня при нулевом стрике и снятой галочке — бессмыслица.
-    svc.normalizeIfDayChanged();
-    final h = svc.habits.first;
-    expect(h.lastDoneDate, isNull,
-        reason: 'orphaned today-date cleared by normalize');
-    expect(h.streak, 0);
+  test(
+    'normalizeIfDayChanged heals orphaned state (streak0+dateToday)',
+    () async {
+      final svc = await makeSvc([
+        Habit(
+          id: 'h1',
+          name: 'First',
+          type: 'good',
+          streak: 0,
+          lastDoneDate: HabitService.mskToday(),
+          doneToday: false,
+        ),
+      ]);
+      // Вызываем нормализацию — «осиротевший» след должен стереться:
+      // дата сегодня при нулевом стрике и снятой галочке — бессмыслица.
+      svc.normalizeIfDayChanged();
+      final h = svc.habits.first;
+      expect(
+        h.lastDoneDate,
+        isNull,
+        reason: 'orphaned today-date cleared by normalize',
+      );
+      expect(h.streak, 0);
 
-    // После очистки отметка идёт по ветке «первая в жизни» — стрик 1.
-    await svc.toggle('h1');
-    expect(svc.habits.first.streak, 1);
-  });
+      // После очистки отметка идёт по ветке «первая в жизни» — стрик 1.
+      await svc.toggle('h1');
+      expect(svc.habits.first.streak, 1);
+    },
+  );
 }

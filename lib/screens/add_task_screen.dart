@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show SmoothTooltip, BackButtonTooltip;
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../models/task.dart';
@@ -10,6 +11,7 @@ import '../widgets/icon_picker_sheet.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../utils/snackbar.dart';
 import '../widgets/stagger_in.dart';
+import '../widgets/priority_selector.dart';
 import '../widgets/smooth_keyboard_body.dart';
 import '../services/haptics.dart';
 
@@ -68,7 +70,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('newCategory', context)),
-        content: TextField(cursorOpacityAnimates: true,
+        content: TextField(
+          cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
@@ -92,10 +95,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       ),
     );
     if (name != null && name.isNotEmpty && mounted) {
-      if (_taskSvc.categories.length >= 15) {
+      if (_taskSvc.categories.length >= _taskSvc.maxCategories) {
         showBeautifulSnackBar(
           context,
-          message: Translations.t('maxCat', context),
+          message: Translations.t(
+            'maxCat',
+            context,
+            'Максимум {n} категорий',
+          ).replaceAll('{n}', '${_taskSvc.maxCategories}'),
           icon: Icons.warning_amber_outlined,
           iconColor: Colors.orange,
         );
@@ -123,7 +130,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('category', context)),
-        content: TextField(cursorOpacityAnimates: true,
+        content: TextField(
+          cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
@@ -282,6 +290,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ? Translations.t('editTask', context)
               : Translations.t('newTask', context),
         ),
+        leading: const BackButtonTooltip(),
         centerTitle: true,
         actions: [
           TextButton(
@@ -346,7 +355,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: TextField(cursorOpacityAnimates: true,
+                  child: TextField(
+                    cursorOpacityAnimates: true,
                     magnifierConfiguration: TextMagnifierConfiguration.disabled,
                     controller: _titleCtrl,
                     contextMenuBuilder: minimalContextMenuBuilder,
@@ -393,10 +403,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           ),
                           const Spacer(),
                           if (_category.isNotEmpty)
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              tooltip: Translations.t('category', context),
-                              onPressed: () => _renameCategory(_category),
+                            SmoothTooltip(
+                              message: Translations.t('category', context),
+                              preferredAbove: true,
+                              child: IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                onPressed: () => _renameCategory(_category),
+                              ),
                             ),
                         ],
                       ),
@@ -411,7 +424,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                               scrollDirection: Axis.horizontal,
                               children: [
                                 for (final c in cats) _categoryChip(ctx, c),
-                                if (_taskSvc.categories.length < 15)
+                                if (_taskSvc.categories.length <
+                                    _taskSvc.maxCategories)
                                   _newCategoryChip(ctx),
                               ],
                             );
@@ -445,29 +459,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      SegmentedButton<int>(
-                        segments: [
-                          ButtonSegment(
-                            value: 0,
-                            label: Text(Translations.t('priorityLow', context)),
-                          ),
-                          ButtonSegment(
-                            value: 1,
-                            label: Text(
-                              Translations.t('priorityMedium', context),
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: 2,
-                            label: Text(
-                              Translations.t('priorityHigh', context),
-                            ),
-                          ),
-                        ],
-                        selected: {_priority},
-                        onSelectionChanged: (s) =>
-                            setState(() => _priority = s.first),
-                        showSelectedIcon: false,
+                      // Свой селектор вместо SegmentedButton: капсулы с
+                      // градиентом, бликом и цветным свечением выбранного
+                      // уровня — тот же визуальный язык, что у таблетки
+                      // приоритета в списке задач, но «глубже».
+                      PrioritySelector(
+                        value: _priority,
+                        onChanged: (p) => setState(() => _priority = p),
                       ),
                     ],
                   ),

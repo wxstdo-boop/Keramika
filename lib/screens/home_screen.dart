@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import '../services/haptics.dart';
 import '../widgets/section_pill.dart';
-import '../widgets/animated_fab_row.dart' show sectionScrollOffset;
+import '../widgets/animated_fab_row.dart'
+    show sectionOffsetByPage, sectionScrollOffset;
 import '../widgets/press_scale.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'alarms_screen.dart';
 import 'habits_screen.dart';
 import 'reality_checks_screen.dart';
@@ -19,7 +19,11 @@ import '../l10n/translations.dart';
 import '../utils/android_settings.dart';
 import '../services/prefs.dart';
 import '../utils/page_transitions.dart';
+import '../utils/jank_probe.dart';
 import '../widgets/animated_blur_title.dart';
+import '../widgets/new_year_event_banner.dart';
+import '../services/new_year_event_service.dart';
+import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -43,12 +47,6 @@ class _HomeScreenState extends State<HomeScreen>
   // Сброс таблетки в видимое состояние делается только при смене этого
   // значения — не при каждом пересечении границы (иначе «скачки»).
   int _lastSettledPage = 0;
-  // Ленивый прогрев вкладок: первый кадр Home строит только текущую и
-  // соседнюю вкладки, остальные достраиваются через полсекунды в фоне.
-  // Раньше все 4 раздела (со списками и их каскадными анимациями)
-  // строились в ОДНОМ кадре — на слабых телефонах вход в приложение
-  // «подтормаживал» именно в момент перехода сплэш → главная.
-  bool _cacheWarmed = false;
 
   @override
   void initState() {
@@ -59,6 +57,13 @@ class _HomeScreenState extends State<HomeScreen>
     _lastSettledPage = savedTab;
     sectionCurrentIndex.value = savedTab;
     sectionRailPage.value = savedTab.toDouble();
+    // Первый раздел тоже подписываем: после разблокировки ПИН-экрана
+    // домашний экран монтируется впервые, а `_onPageChanged` на этом не
+    // срабатывает. Это БАЗОВАЯ метка: вкладки — не роуты, и наблюдатель за
+    // роутами откатывается к ней после закрытия любого диалога.
+    JankProbe.setBaseLabel(
+      const ['home:alarms', 'home:habits', 'home:tasks', 'home:rc'][savedTab],
+    );
     // Тап по разделу таблетки (таблетка живёт в скролл-контенте экранов)
     // приходит сюда тиком — доезжаем до выбранной страницы.
     sectionTabTap.addListener(_onSectionTabTap);
@@ -67,20 +72,13 @@ class _HomeScreenState extends State<HomeScreen>
     // AnimationController используется как Value<double> — без setState!
     _animCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 420),
       value: 0.0,
     );
     // РП-тумблер живёт в ChangeNotifier — слушаем его, чтобы вкладка
     // появлялась/исчезала СРАЗУ при переключении в настройках.
     RealityCheckService().addListener(_onRcChanged);
     _showWelcomeOnce();
-    // Первый кадр — только видимые вкладки; через полсекунды расширяем
-    // кэш до всех четырёх, чтобы дальние свайпы оставались плавными.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 450), () {
-        if (mounted) setState(() => _cacheWarmed = true);
-      });
-    });
   }
 
   void _onRcChanged() {
@@ -201,6 +199,42 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  /// Показывает окно ивента «Новый год» по тапу на Деду Морозу в
+  /// заголовке. НЕ автоматически при запуске.
+  /// Гвард _eventModalOpen предотвращает двойной диалог (из-за
+  /// которого «фон оставался» после закрытия).
+  bool _eventModalOpen = false;
+  void _showEventModal() {
+    if (!NewYearEventService.isActive) return;
+    if (_eventModalOpen || !mounted) return;
+    _eventModalOpen = true;
+    // Роут с ПРОЗРАЧНЫМ барьером: затемнение рисует сам баннер своим
+    // контроллером. Иначе роут гасит фон отдельно от карточки — два
+    // разнесённых по времени фейда («выход дерганый, фон догоняет»).
+    // Тут скрим и карточка живут на одной таймлайне: фон гаснет быстрее,
+    // карточка мягко долетает до конца.
+    showGeneralDialog<void>(
+      context: context,
+      // Закрыть можно только кнопкой X в окне (не тапом по фону).
+      barrierDismissible: false,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      // Имя роута нужно jank-пробе: без него окно ивента и все прочие
+      // `showGeneralDialog` пишутся в лог одним `RawDialogRoute<void>`, и
+      // «тормозит ивент» неотличимо от «тормозит меню языка».
+      routeSettings: const RouteSettings(name: 'dlg:event'),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (ctx, _, __) => NewYearEventBanner(
+        onClose: () {
+          // Гарантированное закрытие: даже если диалог уже в процессе
+          // закрытия — не роняем и не оставляем «фон».
+          if (Navigator.canPop(ctx)) Navigator.of(ctx).pop();
+        },
+      ),
+      transitionBuilder: (ctx, _, __, child) => child,
+    ).whenComplete(() => _eventModalOpen = false);
+  }
+
   void _onPageScroll() {
     if (!_pageController.hasClients ||
         !_pageController.position.hasContentDimensions) {
@@ -216,6 +250,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onPageChanged(int index) {
     _currentIndex.value = index;
+    // Подпись раздела для jank-пробы (lib/utils/jank_probe.dart): вкладки —
+    // не роуты, NavigatorObserver их не видит, а «тормозит на привычках» и
+    // «тормозит на будильниках» — это разные чины и разные правки.
+    JankProbe.setLabel(
+      const ['home:alarms', 'home:habits', 'home:tasks', 'home:rc'][index],
+    );
     // Сброс скролл-офсета (таблетка видна на свежем разделе) НЕ делаем
     // здесь: onPageChanged срабатывает при пересечении КАЖДОЙ границы во
     // время дальнего перелёта (0→3 проходит через 1 и 2) и при быстрых
@@ -236,7 +276,11 @@ class _HomeScreenState extends State<HomeScreen>
         final settled = page.round();
         if (settled != _lastSettledPage) {
           _lastSettledPage = settled;
-          sectionScrollOffset.value = 0;
+          // Не 0: вкладка keepAlive, её список остался прокрученным, и
+          // события скролла от неё не придут. Возвращаем планшетке её
+          // сохранённую высоту — иначе она налезала на контент до
+          // первого скролла.
+          sectionScrollOffset.value = sectionOffsetByPage[settled] ?? 0;
         }
       }
     }
@@ -254,13 +298,14 @@ class _HomeScreenState extends State<HomeScreen>
     // напрямую, пока PageView доезжает до выбранного раздела.
     // Отменяем незавершённый переход перед новым: иначе несколько быстрых
     // тапов складывали очереди animateToPage и таблетка дёргалась.
-    // Таблетка сразу видна на новом разделе (сброс здесь, а не в
-    // onPageChanged — тот дёргал её при каждом пересечении границы).
-    sectionScrollOffset.value = 0;
-    // Плавный, чуть более медленный перелёт (420 мс, мягкий вход-выход):
-    // резкий 320 мс + jumpTo перед анимацией давали «рывок» таблетки при
-    // быстрых тапах туда-сюда. animateToPage сам заменяет текущую анимацию
-    // новой — очередь не копится, а скачка-снапа нет.
+    // Таблетка сразу показывает сохранённую высоту ЦЕЛЕВОГО раздела: он
+    // keepAlive и мог остаться прокрученным. Ставим 0 нельзя — до приезда
+    // событий скролла планшетка налезала на уже прокрученный контент.
+    sectionScrollOffset.value = sectionOffsetByPage[index] ?? 0;
+    // Плавный перелёт разделов (420 мс, мягкий вход-выход):
+    // контент двигается плавно (не телепорт). При частых тапах
+    // каждая новая анимация ЗАМЕНЯЕТ текущую (не складывается
+    // в очередь) — лаг не копится, скачка-снапа нет.
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 420),
@@ -298,11 +343,26 @@ class _HomeScreenState extends State<HomeScreen>
     final screens = <Widget>[
       // RepaintBoundary изолирует перерисовку вкладок: свайп/анимация на
       // одной вкладке не перерисовывает остальные (меньше работы на GPU).
-      const RepaintBoundary(child: AlarmsScreen()),
-      const RepaintBoundary(child: HabitsScreen()),
-      const RepaintBoundary(child: TasksScreen()),
+      RepaintBoundary(
+        child: AlarmsScreen(
+          scrollOffset: sectionScrollOffset,
+          pillIndex: 0,
+        ),
+      ),
+      RepaintBoundary(
+        child: HabitsScreen(pillIndex: 1),
+      ),
+      RepaintBoundary(
+        child: TasksScreen(pillIndex: 2),
+      ),
       if (rcOn)
-        RepaintBoundary(child: RealityChecksScreen(onExit: () => _onTabTap(0))),
+        RepaintBoundary(
+          child: RealityChecksScreen(
+            onExit: () => _onTabTap(0),
+            scrollOffset: sectionScrollOffset,
+            pillIndex: 3,
+          ),
+        ),
     ];
 
     // Скругляем ВСЕ углы главного экрана (не только глобальным ClipRRect
@@ -326,23 +386,31 @@ class _HomeScreenState extends State<HomeScreen>
           leading: PressScale(
             pressedScale: 0.90,
             duration: const Duration(milliseconds: 200),
-            child: IconButton(
-              icon: const Icon(Icons.refresh_outlined),
-              tooltip: Translations.refreshOf(context),
-              onPressed: () => KeramikaApp.of(context).refreshApp(),
+            child: SmoothTooltip(
+              message: Translations.refreshOf(context),
+              preferredAbove: true,
+              child: IconButton(
+                icon: const Icon(Icons.refresh_outlined),
+                onPressed: () => KeramikaApp.of(context).refreshApp(),
+              ),
             ),
           ),
-          title: const AnimatedBlurTitle(),
+          // Тап по Деду Морозу в заголовке открывает окно ивента.
+          title: AnimatedBlurTitle(onSantaTap: _showEventModal),
           centerTitle: false,
           actions: [
             PressScale(
               pressedScale: 0.90,
               duration: const Duration(milliseconds: 200),
-              child: IconButton(
-                icon: const Icon(Icons.bar_chart_outlined),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const RealityCheckStatsScreen(),
+              child: SmoothTooltip(
+                message: Translations.t('statistics', context, 'Статистика'),
+                preferredAbove: true,
+                child: IconButton(
+                  icon: const Icon(Icons.bar_chart_outlined),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const RealityCheckStatsScreen(),
+                    ),
                   ),
                 ),
               ),
@@ -350,21 +418,29 @@ class _HomeScreenState extends State<HomeScreen>
             PressScale(
               pressedScale: 0.90,
               duration: const Duration(milliseconds: 200),
-              child: IconButton(
-                icon: const Icon(Icons.restaurant_outlined),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NutritionScreen()),
+              child: SmoothTooltip(
+                message: Translations.t('nutrition', context, 'Питание'),
+                preferredAbove: true,
+                child: IconButton(
+                  icon: const Icon(Icons.restaurant_outlined),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const NutritionScreen()),
+                  ),
                 ),
               ),
             ),
             PressScale(
               pressedScale: 0.90,
               duration: const Duration(milliseconds: 200),
-              child: IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => Navigator.of(
-                  context,
-                ).push(slideSideRoute(const SettingsScreen())),
+              child: SmoothTooltip(
+                message: Translations.t('settings', context, 'Настройки'),
+                preferredAbove: true,
+                child: IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).push(slideSideRoute(const SettingsScreen())),
+                ),
               ),
             ),
           ],
@@ -391,48 +467,25 @@ class _HomeScreenState extends State<HomeScreen>
             // с «ParentData is not a subtype of FlexParentData».
             Positioned.fill(
               child: AnimatedBuilder(
-              animation: _animCtrl,
-              // Таблетка разделов — НАД PageView, в обычном потоке (не поверх
-              // контента): при переключении разделов она остаётся на месте,
-              // а листается только содержимое под ней — как было раньше.
-              // При прокрутке вниз таблетка вместе с фоном сворачивается
-              // (AnimatedSize), при долистывании до верха — возвращается.
-              child: Column(
-                children: [
-                  ValueListenableBuilder<double>(
-                    valueListenable: sectionScrollOffset,
-                    // Таблетка «уезжает» вместе с прокруткой ВМЕСТЕ со своим
-                    // фоном: высота слота пропорциональна скроллу, контент
-                    // заполняет освободившееся место (как было в 1.6.19 —
-                    // это и есть «пиздато»). Align меняет только высоту слота,
-                    // сама таблетка (RepaintBoundary) не пере-раскладывается.
-                    builder: (context, off, _) {
-                      final t = (1.0 - off / 72.0).clamp(0.0, 1.0);
-                      final tEased = Curves.easeOutCubic.transform(t);
-                      return ClipRect(
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          heightFactor: tEased,
-                          child: Opacity(
-                            opacity: tEased,
-                            child: IgnorePointer(
-                              ignoring: tEased < 0.5,
-                              // child без const: при переключении РП в
-                              // настройках таблетка получает свежий список
-                              // разделов.
-                              child: RepaintBoundary(child: SectionPill()),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  Expanded(
+                animation: _animCtrl,
+                // Таблетка разделов — НАД PageView, в обычном потоке (не поверх
+                // контента): при переключении разделов она остаётся на месте,
+                // а листается только содержимое под ней — как было раньше.
+                // При прокрутке вниз таблетка вместе с фоном сворачивается
+                // (AnimatedSize), при долистывании до верха — возвращается.
+                // Таблетка разделов — СТЕКЛО ПОВЕРХ контента: она лежит в Stack
+                // над PageView, а каждый экран резервирует сверху
+                // [kSectionPillSlotHeight] своего скролла. В покое список
+                // начинается под капсулой, при прокрутке уходит ПОД неё — и
+                // blur размывает реальный контент, а не сплошную подложку.
+                // Opacity вокруг BackdropFilter ставить нельзя: слой
+                // прозрачности лишает blur валидного бэкдропа и заливает
+                // экран серым — сворачивание сделано обрезком (ClipRect+Align).
+                child: ClipRRect(
                   // ClipRRect вокруг PageView скругляет края при
                   // overscroll (BouncingScrollPhysics) — когда тянем
                   // влево на Будильниках или вправо на РП, видимый
                   // контент за краем остаётся скруглённым.
-                  child: ClipRRect(
                   // PageView должен клипаться именно в родительском
                   // контейнере: его собственный overscroll иначе рисует
                   // соседний кадр поверх квадратного края.
@@ -441,66 +494,124 @@ class _HomeScreenState extends State<HomeScreen>
                     bottom: Radius.circular(22),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: RepaintBoundary(
-                    // При выезде чата/другого route слой текущего раздела
-                    // двигается готовой текстурой, без повторной отрисовки
-                    // четырёх заранее созданных экранов.
-                    child: NotificationListener<ScrollEndNotification>(
-                      onNotification: _onPageScrollEnd,
-                      child: PageView(
-                      controller: _pageController,
-                      onPageChanged: _onPageChanged,
-                      // Соседние разделы строятся/раскладываются ЗАРАНЕЕ (до
-                      // появления на экране), а не в момент свайпа. Без этого
-                      // быстрый свайп «первый → последний» каждый раз рендерил
-                      // новую страницу на лету — отсюда подлагивания.
-                      allowImplicitScrolling: true,
-                      // Кэш на 3 вьюпорта (после прогрева): при 4 разделах
-                      // строятся ВСЕ страницы заранее, поэтому дальний переход
-                      // «первый → последний» анимируется по готовым кадрам.
-                      // На первом кадре — 1 вьюпорт (текущая + соседняя),
-                      // остальные достраиваются в фоне, не нагружая вход.
-                      scrollCacheExtent: ScrollCacheExtent.viewport(
-                        _cacheWarmed ? 3.0 : 1.0,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      RepaintBoundary(
+                        // При выезде чата/другого route слой текущего раздела
+                        // двигается готовой текстурой, без повторной отрисовки
+                        // четырёх заранее созданных экранов.
+                        child: NotificationListener<ScrollEndNotification>(
+                          onNotification: _onPageScrollEnd,
+                          child: PageView(
+                            controller: _pageController,
+                            onPageChanged: _onPageChanged,
+                            // Соседние разделы строятся/раскладываются ЗАРАНЕЕ (до
+                            // появления на экране), а не в момент свайпа. Без этого
+                            // быстрый свайп «первый → последний» каждый раз рендерил
+                            // новую страницу на лету — отсюда подлагивания.
+                            allowImplicitScrolling: true,
+                            // Кэш на 3 вьюпорта: при 4 разделах строятся ВСЕ
+                            // страницы заранее, поэтому дальний переход «первый →
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            children: screens,
+                          ),
+                        ),
                       ),
-                      physics: const BouncingScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        // Таблетка «уезжает» вместе с прокруткой: высота среза
+                        // пропорциональна скроллу. Align+ClipRect режут готовый
+                        // слой — сама таблетка не перекладывается.
+                        //
+                        // Линейное окно в kSectionPillSlotHeight, а НЕ easeOutCubic
+                        // по 72 px:easeOut почти не убирал высоту в первых кадрах,
+                        // а зазор между нижним краем капсулы (58) и началом списка
+                        // (68) — всего 10 px. Заголовок секции успевал въехать
+                        // прямо на ещё полную таблетку. При f = 1 - off/64 клиренс
+                        // 58·f ≤ 68 - off держится на всём прокрутке.
+                        child: ValueListenableBuilder<double>(
+                          valueListenable: sectionScrollOffset,
+                          // САМА таблетка передаётся через `child:` и
+                          // пересобирается ОДИН РАЗ: builder вызывается на
+                          // каждый кадр скролла, и без этого под каждый кадр
+                          // создавался новый экземпляр SectionPill → заново
+                          // прогонялось всё её стекло (StainedGlassPainter +
+                          // 4 _ShapePainter + куча Color.lerp). На Adreno 610
+                          // это и были микрофризы вертикального скролла:
+                          // двигать готовый слой дёшево, перекладывать — нет.
+                          // Таблетка передаётся через `child:`, то есть
+                          // пересобирается при пересборке HomeScreen, а НЕ при
+                          // каждом кадре скролла: builder вызывается на каждый
+                          // кадр, и без этого под каждый кадр создавался свежий
+                          // SectionPill → заново прогонялось всё её стекло
+                          // (StainedGlassPainter + 4 _ShapePainter + Color.lerp).
+                          // На Adreno 610 это и были микрофризы вертикального
+                          // скролла: двигать готовый слой дёшево, перекладывать
+                          // — нет. Без `const` намеренно: список разделов
+                          // читается из RealityCheckService().enabled, а
+                          // HomeScreen слушает этот сервис (_onRcChanged), так
+                          // что при выключении РП таблетка пересобирается.
+                          child: RepaintBoundary(child: SectionPill()),
+                          builder: (context, off, pill) {
+                            final tEased = (1.0 - off / kSectionPillSlotHeight)
+                                .clamp(0.0, 1.0);
+                            if (tEased <= 0.01) return const SizedBox.shrink();
+                            return ClipRect(
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                heightFactor: tEased,
+                                child: IgnorePointer(
+                                  ignoring: tEased < 0.5,
+                                  child: pill,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                      children: screens,
-                    ),
+                    ],
                   ),
                 ),
-                ),
-                ),
-                ],
-              ),
-              builder: (context, child) {
-                final offset = _animCtrl.value;
-                final absOffset = offset.abs().clamp(0.0, 320.0);
+                builder: (context, child) {
+                  final offset = _animCtrl.value;
+                  final absOffset = offset.abs().clamp(0.0, 320.0);
 
-                // Закругление углов: растёт с натяжением (0 → 32px).
-                // Радиус не должен исчезать в нулевой точке: при pull край
-                // всё равно должен оставаться круглым, иначе видны острые углы.
-                // Этот радиус относится только к движущемуся блоку разделов,
-                // а не к корню приложения. Не округляем весь экран: именно
-                // это давало мигание при запуске.
-                final cornerRadius =
-                    22.0 + (absOffset / 320.0 * 10.0).clamp(0.0, 10.0);
+                  // Закругление углов: растёт с натяжением (0 → 32px).
+                  // Радиус не должен исчезать в нулевой точке: при pull край
+                  // всё равно должен оставаться круглым, иначе видны острые углы.
+                  // Этот радиус относится только к движущемуся блоку разделов,
+                  // а не к корню приложения. Не округляем весь экран: именно
+                  // это давало мигание при запуске.
+                  final cornerRadius =
+                      22.0 + (absOffset / 320.0 * 10.0).clamp(0.0, 10.0);
 
-                // Тень: появляется и растёт с натяжением.
-                final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(0.0, 0.22);
-                final shadowBlur = (absOffset / 320.0 * 24.0).clamp(0.0, 24.0);
-                final shadowDy = (absOffset / 320.0 * 12.0).clamp(0.0, 12.0);
+                  // Тень: появляется и растёт с натяжением.
+                  final shadowAlpha = (absOffset / 320.0 * 0.22).clamp(
+                    0.0,
+                    0.22,
+                  );
+                  final shadowBlur = (absOffset / 320.0 * 24.0).clamp(
+                    0.0,
+                    24.0,
+                  );
+                  final shadowDy = (absOffset / 320.0 * 12.0).clamp(0.0, 12.0);
 
-                return Transform.translate(
-                  // Ограничиваем оттягивание. Капсула остаётся привязанной к
-                  // своему месту и не «уезжает» при pull слева/справа.
-                  offset: Offset(0, offset.clamp(0.0, 42.0)),
-                  child: Transform.scale(
-                    scale: 1.0 - (absOffset / 900.0).clamp(0.0, 0.045),
-                    alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: 1.0 - (absOffset / 900.0).clamp(0.0, 0.08),
+                  return Transform.translate(
+                    // Ограничиваем оттягивание. Капсула остаётся привязанной к
+                    // своему месту и не «уезжает» при pull слева/справа.
+                    offset: Offset(0, offset.clamp(0.0, 42.0)),
+                    child: Transform.scale(
+                      scale: 1.0 - (absOffset / 900.0).clamp(0.0, 0.045),
+                      alignment: Alignment.topCenter,
+                      // Opacity здесь ставить нельзя: внутри блока лежит
+                      // BackdropFilter таблетки, а слой прозрачности лишает blur
+                      // валидного бэкдропа — при оттягивании экран залило серым.
+                      // Лёгкое затемнение при pull и так даёт растущая тень.
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           boxShadow: [
@@ -533,10 +644,9 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
             ),
           ],
         ),

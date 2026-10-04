@@ -20,14 +20,17 @@ import '../services/json_file.dart';
 import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../services/nutrition_service.dart';
+import '../services/new_year_event_service.dart';
 import '../services/ai_guide_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_circle_toggle.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/confetti_burst.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/smooth_keyboard_body.dart';
+import '../widgets/update_pill.dart';
 import 'lock_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
@@ -97,7 +100,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _hasPin = false;
   bool _autoSave = false;
   bool _aiGuide = false;
@@ -153,6 +156,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadInitialState();
     // Слушаем изменения статуса уведомлений
     notificationService.addListener(_onNotificationChanged);
+    // Право полноэкранных уведомлений выдаётся В СИСТЕМНЫХ настройках, и
+    // пользователь возвращается сюда прямо оттуда: на resumed перечитываем
+    // реальное состояние, чтобы переключатель не врал про будильник.
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Изменение системного права видно только при возврате в приложение.
+      notificationService.refreshFullScreenGrant();
+    }
   }
 
   Future<void> _loadInitialState() async {
@@ -167,10 +182,18 @@ class _SettingsScreenState extends State<SettingsScreen>
       _loadTaskNotes(),
       _checkPermissionWarning(),
       _checkNotificationsEnabled(),
+      _checkFullScreenGrant(),
       _loadAiGuide(),
       _loadAiTracking(),
     ]);
     if (mounted) setState(() {});
+  }
+
+  /// Реальное состояние права полноэкранных уведомлений из ОС: с Android 14
+  /// оно выключено по умолчанию, и без него будильник не откроет экран
+  /// задачи поверх блокировки.
+  Future<void> _checkFullScreenGrant() async {
+    await notificationService.refreshFullScreenGrant();
   }
 
   @override
@@ -182,6 +205,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _keyPulse.dispose();
     _aiKeyController.dispose();
     _themePageCtrl?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     notificationService.removeListener(_onNotificationChanged);
     super.dispose();
   }
@@ -344,8 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             children: [
                               Expanded(
                                 child: AnimatedDefaultTextStyle(
-                                  duration:
-                                      const Duration(milliseconds: 220),
+                                  duration: const Duration(milliseconds: 220),
                                   curve: Curves.easeOutCubic,
                                   style: theme.textTheme.bodyLarge!.copyWith(
                                     color: code == appState.languageCode
@@ -364,14 +387,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 duration: const Duration(milliseconds: 220),
                                 switchInCurve: Curves.easeOutBack,
                                 switchOutCurve: Curves.easeIn,
-                                transitionBuilder:
-                                    (child, anim) => ScaleTransition(
-                                  scale: anim,
-                                  child: FadeTransition(
-                                    opacity: anim,
-                                    child: child,
-                                  ),
-                                ),
+                                transitionBuilder: (child, anim) =>
+                                    ScaleTransition(
+                                      scale: anim,
+                                      child: FadeTransition(
+                                        opacity: anim,
+                                        child: child,
+                                      ),
+                                    ),
                                 child: code == appState.languageCode
                                     ? Icon(
                                         Icons.check_rounded,
@@ -490,8 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               const SizedBox(width: 12),
                               Expanded(
                                 child: AnimatedDefaultTextStyle(
-                                  duration:
-                                      const Duration(milliseconds: 220),
+                                  duration: const Duration(milliseconds: 220),
                                   curve: Curves.easeOutCubic,
                                   style: theme.textTheme.bodyLarge!.copyWith(
                                     color: f == appState.fontFamily
@@ -516,14 +538,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 duration: const Duration(milliseconds: 220),
                                 switchInCurve: Curves.easeOutBack,
                                 switchOutCurve: Curves.easeIn,
-                                transitionBuilder:
-                                    (child, anim) => ScaleTransition(
-                                  scale: anim,
-                                  child: FadeTransition(
-                                    opacity: anim,
-                                    child: child,
-                                  ),
-                                ),
+                                transitionBuilder: (child, anim) =>
+                                    ScaleTransition(
+                                      scale: anim,
+                                      child: FadeTransition(
+                                        opacity: anim,
+                                        child: child,
+                                      ),
+                                    ),
                                 child: f == appState.fontFamily
                                     ? Icon(
                                         Icons.check_rounded,
@@ -1128,6 +1150,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       const _ThemeEntry('grok', 'Grok', Icons.auto_awesome),
       const _ThemeEntry('darkGrok', 'Grok Dark', Icons.dark_mode),
+      // «Метель» — подарок 12-го дня ивента: в карусели появляется только
+      // после его получения и пропадает вместе со сбросом события.
+      if (NewYearEventService().prizeGranted)
+        _ThemeEntry('metel', Translations.t('metel', context), Icons.snowing),
     ];
     final currentIndex = entries.indexWhere((e) => e.key == appState.themeKey);
     _themePageCtrl ??= PageController(
@@ -1189,10 +1215,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     // при снятии — плавно «гаснет» (1→0). ВАЖНО: begin фиксирован —
     // одинаковые begin/end давали мгновенный скачок.
     return TweenAnimationBuilder<double>(
-      tween: Tween(
-        begin: 0.0,
-        end: isSelected ? 1.0 : 0.0,
-      ),
+      tween: Tween(begin: 0.0, end: isSelected ? 1.0 : 0.0),
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOutCubic,
       builder: (context2, alphaBorder, _) {
@@ -1204,10 +1227,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             fit: BoxFit.scaleDown,
             child: Text(
               label,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -1317,8 +1337,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               Row(
                 children: [
-                  Icon(Icons.text_fields_rounded,
-                      color: theme.colorScheme.primary, size: 20),
+                  Icon(
+                    Icons.text_fields_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'Шрифт',
@@ -1514,12 +1537,30 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                // В «О приложении» — именно «1.3-release», как просил.
-                'v$appVersion-release',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              // Номер версии — пасхалка: держим палец → конфетти в цветах
+              // темы + тост. GestureDetector без ripple, чтобы не портить
+              // «информационный» вид строки.
+              // Версия (долгое нажатие — пасхалка) и рядом полупрозрачная
+              // таблетка «Проверить обновления».
+              Row(
+                children: [
+                  GestureDetector(
+                    onLongPress: _onVersionLongPress,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        // В «О приложении» — именно «1.3-release», как просил.
+                        'v$appVersion-release',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  const UpdatePill(),
+                ],
               ),
               const SizedBox(height: 16),
               InkWell(
@@ -1578,6 +1619,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Recommended',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onPrimary,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1603,25 +1663,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.w600,
                             decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Recommended',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onPrimary,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
                           ),
                         ),
                       ),
@@ -1896,6 +1937,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       ListenableBuilder(
         listenable: notificationService,
         builder: (context, _) {
+          final fsOn = notificationService.fullscreen;
+          // Намерение пользователя и РЕАЛЬНОЕ системное право — разные вещи.
+          final fsBlocked = fsOn && !notificationService.fullScreenGranted;
           return Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -1913,105 +1957,134 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  PressScale(child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(Translations.notificationsDescOf(context)),
-                    leading: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 240),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.85,
-                            end: 1,
-                          ).animate(animation),
-                          child: child,
+                  PressScale(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(Translations.notificationsDescOf(context)),
+                      leading: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(
+                              begin: 0.85,
+                              end: 1,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: Icon(
+                          notificationService.enabled
+                              ? Icons.notifications_active
+                              : Icons.notifications_off,
+                          key: ValueKey(
+                            'notif_icon_${notificationService.enabled}',
+                          ),
+                          color: notificationService.enabled
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      child: Icon(
-                        notificationService.enabled
-                            ? Icons.notifications_active
-                            : Icons.notifications_off,
-                        key: ValueKey(
-                          'notif_icon_${notificationService.enabled}',
-                        ),
-                        color: notificationService.enabled
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
 
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    onTap: () async {
-                      final newVal = !notificationService.enabled;
-                      await notificationService.setEnabled(newVal);
-                      if (newVal) {
-                        // Включили уведомления — реально перепланируем
-                        // будильники и проверки реальности, иначе
-                        // переключатель только ставил флаг.
-                        await rescheduleAllNotifications();
-                      }
-                    },
-                    trailing: VolumetricSwitch(
-                      value: notificationService.enabled,
-                      onChanged: (v) async {
-                        await notificationService.setEnabled(v);
-                        if (v) {
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onTap: () async {
+                        final newVal = !notificationService.enabled;
+                        await notificationService.setEnabled(newVal);
+                        if (newVal) {
                           // Включили уведомления — реально перепланируем
                           // будильники и проверки реальности, иначе
                           // переключатель только ставил флаг.
                           await rescheduleAllNotifications();
                         }
                       },
-                      activeColor: theme.colorScheme.primary,
-                    ),
-                  )),
-                  PressScale(child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(Translations.fullscreenNotifDescOf(context)),
-                    leading: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 240),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.85,
-                            end: 1,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
-                      child: Icon(
-                        notificationService.fullscreen
-                            ? Icons.fullscreen
-                            : Icons.fullscreen_exit,
-                        key: ValueKey(
-                          'fullscreen_icon_${notificationService.fullscreen}',
-                        ),
-                        color: notificationService.fullscreen
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant,
+                      trailing: VolumetricSwitch(
+                        value: notificationService.enabled,
+                        onChanged: (v) async {
+                          await notificationService.setEnabled(v);
+                          if (v) {
+                            // Включили уведомления — реально перепланируем
+                            // будильники и проверки реальности, иначе
+                            // переключатель только ставил флаг.
+                            await rescheduleAllNotifications();
+                          }
+                        },
+                        activeColor: theme.colorScheme.primary,
                       ),
                     ),
+                  ),
+                  PressScale(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(Translations.fullscreenNotifDescOf(context)),
+                      // Переключатель выше — это НАМЕРЕНИЕ пользователя.
+                      // Право же выдаёт система (app-op USE_FULL_SCREEN_INTENT),
+                      // и с Android 14 оно по умолчанию ЗАПРЕЩЕНО: без него
+                      // будильник приходит только шапкой уведомления, экран
+                      // задачи поверх блокировки не появляется. Показываем это
+                      // честно и ведём ровно на тот экран, где тумблер живёт.
+                      subtitle: fsBlocked
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                Translations.t(
+                                  'fullScreenGrantMissing',
+                                  context,
+                                ),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.error,
+                                ),
+                              ),
+                            )
+                          : null,
+                      leading: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(
+                              begin: 0.85,
+                              end: 1,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: Icon(
+                          fsOn && !fsBlocked
+                              ? Icons.fullscreen
+                              : Icons.fullscreen_exit,
+                          key: ValueKey('fullscreen_icon_${fsOn}_$fsBlocked'),
+                          color: fsBlocked
+                              ? theme.colorScheme.error
+                              : fsOn
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
 
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onTap: () async {
+                        if (fsBlocked) {
+                          // Право не выдано → тап по строке ведёт на его выдачу.
+                          await openFullScreenNotifSettings();
+                          return;
+                        }
+                        await notificationService.setFullscreen(!fsOn);
+                      },
+                      trailing: VolumetricSwitch(
+                        value: fsOn,
+                        onChanged: (v) => notificationService.setFullscreen(v),
+                        activeColor: theme.colorScheme.primary,
+                      ),
                     ),
-                    onTap: () => notificationService.setFullscreen(
-                      !notificationService.fullscreen,
-                    ),
-                    trailing: VolumetricSwitch(
-                      value: notificationService.fullscreen,
-                      onChanged: (v) => notificationService.setFullscreen(v),
-                      activeColor: theme.colorScheme.primary,
-                    ),
-                  )),
+                  ),
                 ],
               ),
             ),
@@ -2034,98 +2107,107 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: const Icon(Icons.battery_saver, color: Colors.green),
-                title: Text(Translations.batteryOptDescOf(context)),
-                trailing: const Icon(Icons.open_in_new, size: 20),
-                onTap: () async {
-                  final ctx = context;
-                  final batteryText = Translations.batteryOpenedOf(ctx);
-                  final cantOpenText = Translations.t('settingsCantOpen', ctx);
-                  final opened = await openAppSettingsAndroid();
-                  if (opened) {
-                    showBeautifulSnackBar(ctx, message: batteryText);
-                  } else {
-                    showBeautifulSnackBar(
-                      ctx,
-                      message: cantOpenText,
-                      icon: Icons.error_outline,
-                      iconColor: Colors.red,
-                      duration: const Duration(seconds: 4),
-                    );
-                  }
-                },
-              )),
-              const Divider(height: 1),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: const Icon(
-                  Icons.power_settings_new,
-                  color: Colors.orange,
-                ),
-                title: Text(Translations.t('autostart', context)),
-                subtitle: Text(
-                  Translations.t('autostartDesc', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ),
-                trailing: const Icon(Icons.open_in_new, size: 20),
-                onTap: () async {
-                  final ctx = context;
-                  final text = Translations.t('settingsCantOpen', ctx);
-                  final opened = await openAutostartSettings();
-                  if (!opened && mounted) {
-                    showBeautifulSnackBar(
+                  leading: const Icon(Icons.battery_saver, color: Colors.green),
+                  title: Text(Translations.batteryOptDescOf(context)),
+                  trailing: const Icon(Icons.open_in_new, size: 20),
+                  onTap: () async {
+                    final ctx = context;
+                    final batteryText = Translations.batteryOpenedOf(ctx);
+                    final cantOpenText = Translations.t(
+                      'settingsCantOpen',
                       ctx,
-                      message: text,
-                      icon: Icons.error_outline,
-                      iconColor: Colors.red,
-                      duration: const Duration(seconds: 4),
                     );
-                  }
-                },
-              )),
+                    final opened = await openAppSettingsAndroid();
+                    if (opened) {
+                      showBeautifulSnackBar(ctx, message: batteryText);
+                    } else {
+                      showBeautifulSnackBar(
+                        ctx,
+                        message: cantOpenText,
+                        icon: Icons.error_outline,
+                        iconColor: Colors.red,
+                        duration: const Duration(seconds: 4),
+                      );
+                    }
+                  },
+                ),
+              ),
               const Divider(height: 1),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: const Icon(
-                  Icons.notifications_active,
-                  color: Colors.red,
-                ),
-                title: Text(Translations.t('fullScreenNotifTitle', context)),
-                subtitle: Text(
-                  Translations.t('fullScreenNotifBody', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  leading: const Icon(
+                    Icons.power_settings_new,
+                    color: Colors.orange,
+                  ),
+                  title: Text(Translations.t('autostart', context)),
+                  subtitle: Text(
+                    Translations.t('autostartDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.open_in_new, size: 20),
+                  onTap: () async {
+                    final ctx = context;
+                    final text = Translations.t('settingsCantOpen', ctx);
+                    final opened = await openAutostartSettings();
+                    if (!opened && mounted) {
+                      showBeautifulSnackBar(
+                        ctx,
+                        message: text,
+                        icon: Icons.error_outline,
+                        iconColor: Colors.red,
+                        duration: const Duration(seconds: 4),
+                      );
+                    }
+                  },
                 ),
-                trailing: const Icon(Icons.open_in_new, size: 20),
-                onTap: () async {
-                  final ctx = context;
-                  final text = Translations.t('settingsCantOpen', ctx);
-                  final opened = await openFullScreenNotifSettings();
-                  if (!opened && mounted) {
-                    showBeautifulSnackBar(
-                      ctx,
-                      message: text,
-                      icon: Icons.error_outline,
-                      iconColor: Colors.red,
-                      duration: const Duration(seconds: 4),
-                    );
-                  }
-                },
-              )),
+              ),
+              const Divider(height: 1),
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: const Icon(
+                    Icons.notifications_active,
+                    color: Colors.red,
+                  ),
+                  title: Text(Translations.t('fullScreenNotifTitle', context)),
+                  subtitle: Text(
+                    Translations.t('fullScreenNotifBody', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.open_in_new, size: 20),
+                  onTap: () async {
+                    final ctx = context;
+                    final text = Translations.t('settingsCantOpen', ctx);
+                    final opened = await openFullScreenNotifSettings();
+                    if (!opened && mounted) {
+                      showBeautifulSnackBar(
+                        ctx,
+                        message: text,
+                        icon: Icons.error_outline,
+                        iconColor: Colors.red,
+                        duration: const Duration(seconds: 4),
+                      );
+                    }
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -2136,29 +2218,34 @@ class _SettingsScreenState extends State<SettingsScreen>
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: PressScale(child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            leading: const Icon(Icons.warning_amber_outlined),
-            title: Text(Translations.t('resetWarnings', context)),
-            trailing: const Icon(Icons.restart_alt_outlined, size: 20),
-            onTap: () async {
-              await globalPrefs.setBool('welcome_dismissed', false);
-              await globalPrefs.setBool('popup_warning_shown', false);
-              await globalPrefs.setBool('permission_warning_dismissed', false);
-              if (mounted) {
-                showBeautifulSnackBar(
-                  context,
-                  message: Translations.t('warningsResetDone', context),
+          child: PressScale(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              leading: const Icon(Icons.warning_amber_outlined),
+              title: Text(Translations.t('resetWarnings', context)),
+              trailing: const Icon(Icons.restart_alt_outlined, size: 20),
+              onTap: () async {
+                await globalPrefs.setBool('welcome_dismissed', false);
+                await globalPrefs.setBool('popup_warning_shown', false);
+                await globalPrefs.setBool(
+                  'permission_warning_dismissed',
+                  false,
                 );
-              }
-              if (mounted) {
-                KeramikaApp.of(context).refreshApp();
-              }
-            },
-          )),
+                if (mounted) {
+                  showBeautifulSnackBar(
+                    context,
+                    message: Translations.t('warningsResetDone', context),
+                  );
+                }
+                if (mounted) {
+                  KeramikaApp.of(context).refreshApp();
+                }
+              },
+            ),
+          ),
         ),
       ),
       const SizedBox(height: 8),
@@ -2172,106 +2259,112 @@ class _SettingsScreenState extends State<SettingsScreen>
               // «Экспериментальное» — показ/скрытие секции таймеров на экране
               // будильников. Только видимость: таймеры при выключении НЕ
               // удаляются, они остаются в хранилище.
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: TweenAnimationBuilder<Color?>(
-                  // Цвет значка секции таймера меняется ПЛАВНО при
-                  // включении/выключении (300 мс), а не мигает резко.
-                  tween: ColorTween(
-                    end: _experimental
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, color, _) =>
-                      Icon(Icons.science_outlined, color: color),
-                ),
-                title: Text(Translations.t('experimentalSettings', context)),
-                subtitle: Text(
-                  Translations.t('experimentalDesc', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  leading: TweenAnimationBuilder<Color?>(
+                    // Цвет значка секции таймера меняется ПЛАВНО при
+                    // включении/выключении (300 мс), а не мигает резко.
+                    tween: ColorTween(
+                      end: _experimental
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, color, _) =>
+                        Icon(Icons.science_outlined, color: color),
                   ),
-                ),
-                onTap: () async {
-                  final newVal = !_experimental;
-                  await SettingsService.saveExperimental(newVal);
-                  setState(() => _experimental = newVal);
-                },
-                trailing: VolumetricSwitch(
-                  value: _experimental,
-                  onChanged: (v) async {
-                    await SettingsService.saveExperimental(v);
-                    setState(() => _experimental = v);
+                  title: Text(Translations.t('experimentalSettings', context)),
+                  subtitle: Text(
+                    Translations.t('experimentalDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: () async {
+                    final newVal = !_experimental;
+                    await SettingsService.saveExperimental(newVal);
+                    setState(() => _experimental = newVal);
                   },
-                  activeColor: theme.colorScheme.primary,
-                ),
-              )),
-              const Divider(height: 1),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: Icon(
-                  Icons.save_outlined,
-                  color: theme.colorScheme.primary,
-                ),
-                title: Text(Translations.t('autoSave', context)),
-                subtitle: Text(
-                  Translations.t('autoSaveDesc', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  trailing: VolumetricSwitch(
+                    value: _experimental,
+                    onChanged: (v) async {
+                      await SettingsService.saveExperimental(v);
+                      setState(() => _experimental = v);
+                    },
+                    activeColor: theme.colorScheme.primary,
                   ),
                 ),
-                onTap: () async {
-                  final newVal = !_autoSave;
-                  await SettingsService.saveAutoSave(newVal);
-                  setState(() => _autoSave = newVal);
-                  if (newVal) {
-                    startAutoSave();
-                  } else {
-                    stopAutoSave();
-                  }
-                },
-                trailing: VolumetricSwitch(
-                  value: _autoSave,
-                  onChanged: (v) async {
-                    await SettingsService.saveAutoSave(v);
-                    setState(() => _autoSave = v);
-                    if (v) {
+              ),
+              const Divider(height: 1),
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: Icon(
+                    Icons.save_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(Translations.t('autoSave', context)),
+                  subtitle: Text(
+                    Translations.t('autoSaveDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: () async {
+                    final newVal = !_autoSave;
+                    await SettingsService.saveAutoSave(newVal);
+                    setState(() => _autoSave = newVal);
+                    if (newVal) {
                       startAutoSave();
                     } else {
                       stopAutoSave();
                     }
                   },
-                  activeColor: theme.colorScheme.primary,
-                ),
-              )),
-              const Divider(height: 1),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: Icon(
-                  Icons.cleaning_services_outlined,
-                  color: theme.colorScheme.primary,
-                ),
-                title: Text(Translations.t('clearCache', context)),
-                subtitle: Text(
-                  Translations.t('clearCacheDesc', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  trailing: VolumetricSwitch(
+                    value: _autoSave,
+                    onChanged: (v) async {
+                      await SettingsService.saveAutoSave(v);
+                      setState(() => _autoSave = v);
+                      if (v) {
+                        startAutoSave();
+                      } else {
+                        stopAutoSave();
+                      }
+                    },
+                    activeColor: theme.colorScheme.primary,
                   ),
                 ),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: _clearCache,
-              )),
+              ),
+              const Divider(height: 1),
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: Icon(
+                    Icons.cleaning_services_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(Translations.t('clearCache', context)),
+                  subtitle: Text(
+                    Translations.t('clearCacheDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, size: 20),
+                  onTap: _clearCache,
+                ),
+              ),
             ],
           ),
         ),
@@ -2315,42 +2408,44 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
               const SizedBox(height: 4),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: Icon(
-                  Icons.auto_awesome,
-                  color: theme.colorScheme.primary,
-                ),
-                title: Text(
-                  Translations.t('aiGuideToggle', context, 'Enable AI guide'),
-                ),
-                subtitle: Text(
-                  Translations.t(
-                    'aiGuideDesc',
-                    context,
-                    'A small circle appears next to the “+” button and opens a mini chat.',
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  leading: Icon(
+                    Icons.auto_awesome,
+                    color: theme.colorScheme.primary,
                   ),
-                ),
-                onTap: () async {
-                  final newVal = !_aiGuide;
-                  await SettingsService.saveAiGuide(newVal);
-                  setState(() => _aiGuide = newVal);
-                },
-                trailing: VolumetricSwitch(
-                  value: _aiGuide,
-                  onChanged: (v) async {
-                    await SettingsService.saveAiGuide(v);
-                    setState(() => _aiGuide = v);
+                  title: Text(
+                    Translations.t('aiGuideToggle', context, 'Enable AI guide'),
+                  ),
+                  subtitle: Text(
+                    Translations.t(
+                      'aiGuideDesc',
+                      context,
+                      'A small circle appears next to the “+” button and opens a mini chat.',
+                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: () async {
+                    final newVal = !_aiGuide;
+                    await SettingsService.saveAiGuide(newVal);
+                    setState(() => _aiGuide = newVal);
                   },
-                  activeColor: theme.colorScheme.primary,
+                  trailing: VolumetricSwitch(
+                    value: _aiGuide,
+                    onChanged: (v) async {
+                      await SettingsService.saveAiGuide(v);
+                      setState(() => _aiGuide = v);
+                    },
+                    activeColor: theme.colorScheme.primary,
+                  ),
                 ),
-              )),
+              ),
               // Поле ключа появляется/исчезает плавно (SizeTransition + fade).
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 420),
@@ -2371,11 +2466,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             const Divider(height: 1),
                             const SizedBox(height: 10),
                             Text(
-                              Translations.t(
-                                'aiGuideKey',
-                                context,
-                                'Poolside key (optional)',
-                              ),
+                              'Poolside / Agnes AI / Zen — API key',
                               style: theme.textTheme.titleSmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -2392,7 +2483,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       curve: Curves.easeOutCubic,
                                     ),
                                   ),
-                              child: TextField(cursorOpacityAnimates: true,
+                              child: TextField(
+                                cursorOpacityAnimates: true,
                                 magnifierConfiguration:
                                     TextMagnifierConfiguration.disabled,
                                 controller: _aiKeyController,
@@ -2406,11 +2498,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 decoration: InputDecoration(
                                   isDense: true,
                                   counterText: '',
-                                  hintText: Translations.t(
-                                    'aiGuideKeyHint',
-                                    context,
-                                    'Paste your Laguna API key',
-                                  ),
+                                  hintText:
+                                      'Вставь ключ Poolside, Agnes AI или Zen',
                                   suffixIcon: AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 220),
                                     switchInCurve: Curves.easeOutCubic,
@@ -2470,39 +2559,41 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                             const Divider(height: 20),
                             // Ада-трекинг: утренний отчёт + вечерний разбор.
-                            PressScale(child: ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              leading: const Icon(
-                                Icons.wb_sunny_outlined,
-                                color: Color(0xFFE89B3C),
-                              ),
-                              title: Text(
-                                Translations.t(
-                                  'adaTracking',
-                                  context,
-                                  'Ada tracking',
+                            PressScale(
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                leading: const Icon(
+                                  Icons.wb_sunny_outlined,
+                                  color: Color(0xFFE89B3C),
+                                ),
+                                title: Text(
+                                  Translations.t(
+                                    'adaTracking',
+                                    context,
+                                    'Ada tracking',
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  Translations.t(
+                                    'adaTrackingDesc',
+                                    context,
+                                    'Morning report “what is planned today” at 08:00 and evening review at 21:00 as notifications.',
+                                  ),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                onTap: () => _toggleAiTracking(!_aiTracking),
+                                trailing: VolumetricSwitch(
+                                  value: _aiTracking,
+                                  onChanged: _toggleAiTracking,
+                                  activeColor: theme.colorScheme.primary,
                                 ),
                               ),
-                              subtitle: Text(
-                                Translations.t(
-                                  'adaTrackingDesc',
-                                  context,
-                                  'Morning report “what is planned today” at 08:00 and evening review at 21:00 as notifications.',
-                                ),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              onTap: () => _toggleAiTracking(!_aiTracking),
-                              trailing: VolumetricSwitch(
-                                value: _aiTracking,
-                                onChanged: _toggleAiTracking,
-                                activeColor: theme.colorScheme.primary,
-                              ),
-                            )),
+                            ),
                           ],
                         ),
                       )
@@ -2596,44 +2687,46 @@ class _SettingsScreenState extends State<SettingsScreen>
                       horizontal: 16,
                       vertical: 12,
                     ),
-                    child: PressScale(child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      leading: const Icon(
-                        Icons.auto_awesome,
-                        color: Color(0xFFB39DDB),
-                        size: 28,
-                      ),
-                      title: Text(
-                        Translations.t('perfectionism', context),
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: const Color(0xFFB39DDB),
-                          fontWeight: FontWeight.w700,
+                    child: PressScale(
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                      subtitle: Text(
-                        Translations.t('perfectionismHint', context),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                        leading: const Icon(
+                          Icons.auto_awesome,
+                          color: Color(0xFFB39DDB),
+                          size: 28,
                         ),
-                      ),
-                      onTap: () async {
-                        final newVal = !_perfectionism;
-                        await SettingsService.savePerfectionism(newVal);
-                        setState(() => _perfectionism = newVal);
-                      },
-                      trailing: SmoothCircleToggle(
-                        value: _perfectionism,
-                        onChanged: (v) async {
-                          await SettingsService.savePerfectionism(v);
-                          setState(() => _perfectionism = v);
+                        title: Text(
+                          Translations.t('perfectionism', context),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: const Color(0xFFB39DDB),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(
+                          Translations.t('perfectionismHint', context),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        onTap: () async {
+                          final newVal = !_perfectionism;
+                          await SettingsService.savePerfectionism(newVal);
+                          setState(() => _perfectionism = newVal);
                         },
-                        activeColor: const Color(0xFFB39DDB),
-                        size: 32,
+                        trailing: SmoothCircleToggle(
+                          value: _perfectionism,
+                          onChanged: (v) async {
+                            await SettingsService.savePerfectionism(v);
+                            setState(() => _perfectionism = v);
+                          },
+                          activeColor: const Color(0xFFB39DDB),
+                          size: 32,
+                        ),
                       ),
-                    )),
+                    ),
                   ),
                 ),
               ),
@@ -2670,64 +2763,66 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
               const SizedBox(height: 8),
-              PressScale(child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                // Значок плавно меняется при включении/выключении:
-                // контурные часы → залитые + галочка, с fade и «попом».
-                // Значок автоэкспорта плавно меняется при включении/выключении:
-                // чистый кроссфейд (без «попа»-масштаба, который дёргал) между
-                // двумя РАЗНЫМИ значками — ещё и цвет мягко анимируется, чтобы
-                // переход был ощутимо плавным, а не щелчком.
-                leading: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 320),
-                  switchInCurve: Curves.easeInOutCubic,
-                  switchOutCurve: Curves.easeInOutCubic,
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: Icon(
-                    _autoExport
-                        ? Icons.cloud_done_outlined
-                        : Icons.cloud_sync_outlined,
-                    key: ValueKey('autoexport_$_autoExport'),
-                    color: theme.colorScheme.primary.withValues(
-                      alpha: _autoExport ? 1.0 : 0.45,
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  // Значок плавно меняется при включении/выключении:
+                  // контурные часы → залитые + галочка, с fade и «попом».
+                  // Значок автоэкспорта плавно меняется при включении/выключении:
+                  // чистый кроссфейд (без «попа»-масштаба, который дёргал) между
+                  // двумя РАЗНЫМИ значками — ещё и цвет мягко анимируется, чтобы
+                  // переход был ощутимо плавным, а не щелчком.
+                  leading: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 320),
+                    switchInCurve: Curves.easeInOutCubic,
+                    switchOutCurve: Curves.easeInOutCubic,
+                    transitionBuilder: (child, animation) =>
+                        FadeTransition(opacity: animation, child: child),
+                    child: Icon(
+                      _autoExport
+                          ? Icons.cloud_done_outlined
+                          : Icons.cloud_sync_outlined,
+                      key: ValueKey('autoexport_$_autoExport'),
+                      color: theme.colorScheme.primary.withValues(
+                        alpha: _autoExport ? 1.0 : 0.45,
+                      ),
                     ),
                   ),
-                ),
-                title: Text(Translations.t('autoExport', context)),
-                subtitle: Text(
-                  Translations.t('autoExportHourly', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  title: Text(Translations.t('autoExport', context)),
+                  subtitle: Text(
+                    Translations.t('autoExportHourly', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                onTap: () async {
-                  final newVal = !_autoExport;
-                  await SettingsService.saveAutoExport(newVal);
-                  setState(() => _autoExport = newVal);
-                  if (newVal) {
-                    startAutoExport(runImmediately: true);
-                  } else {
-                    stopAutoExport();
-                  }
-                },
-                trailing: VolumetricSwitch(
-                  value: _autoExport,
-                  onChanged: (v) async {
-                    await SettingsService.saveAutoExport(v);
-                    setState(() => _autoExport = v);
-                    if (v) {
+                  onTap: () async {
+                    final newVal = !_autoExport;
+                    await SettingsService.saveAutoExport(newVal);
+                    setState(() => _autoExport = newVal);
+                    if (newVal) {
                       startAutoExport(runImmediately: true);
                     } else {
                       stopAutoExport();
                     }
                   },
-                  activeColor: theme.colorScheme.primary,
+                  trailing: VolumetricSwitch(
+                    value: _autoExport,
+                    onChanged: (v) async {
+                      await SettingsService.saveAutoExport(v);
+                      setState(() => _autoExport = v);
+                      if (v) {
+                        startAutoExport(runImmediately: true);
+                      } else {
+                        stopAutoExport();
+                      }
+                    },
+                    activeColor: theme.colorScheme.primary,
+                  ),
                 ),
-              )),
+              ),
               const Divider(height: 1),
               const SizedBox(height: 12),
               Row(
@@ -2777,28 +2872,40 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       ),
     ];
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          Translations.settingsOf(context),
-          overflow: TextOverflow.ellipsis,
+    // «Чуть крупнее» ТОЛЬКО здесь: глобальная тема при обычном шрифте
+    // намеренно уменьшает body/label-стили (плотные списки разделов),
+    // но в настройках много мелких подписей — читаются тяжело.
+    // Локально усиливаем TextScaler на 10%: базовый масштаб системы
+    // (если пользователь увеличил шрифт в ОС) сохраняется, явные
+    // fontSize карточек тоже масштабируются. Глобальная тема не трогается.
+    final boostedTextScaler = TextScaler.linear(
+      MediaQuery.textScalerOf(context).scale(1.0) * 1.1,
+    );
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: boostedTextScaler),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            Translations.settingsOf(context),
+            overflow: TextOverflow.ellipsis,
+          ),
+          centerTitle: true,
+          backgroundColor: Colors.transparent, // Make AppBar transparent
+          elevation: 0, // Remove shadow
         ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent, // Make AppBar transparent
-        elevation: 0, // Remove shadow
-      ),
-      resizeToAvoidBottomInset: false,
-      body: SmoothKeyboardBody(
-        child: ListView.builder(
-          // Каскадное появление карточек: каждая мягко всплывает (fade + подъём)
-          // через index * 40мс, а не вся страница разом. Ленивый билдер +
-          // лёгкие Transform/Opacity — не грузит слабые устройства.
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: settingsItems.length,
-          itemBuilder: (context, index) => StaggerIn(
-            index: index,
-            step: const Duration(milliseconds: 40),
-            child: settingsItems[index],
+        resizeToAvoidBottomInset: false,
+        body: SmoothKeyboardBody(
+          child: ListView.builder(
+            // Каскадное появление карточек: каждая мягко всплывает (fade + подъём)
+            // через index * 40мс, а не вся страница разом. Ленивый билдер +
+            // лёгкие Transform/Opacity — не грузит слабые устройства.
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: settingsItems.length,
+            itemBuilder: (context, index) => StaggerIn(
+              index: index,
+              step: const Duration(milliseconds: 40),
+              child: settingsItems[index],
+            ),
           ),
         ),
       ),
@@ -3191,7 +3298,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(Translations.t('devMode', context)),
-        content: TextField(cursorOpacityAnimates: true,
+        content: TextField(
+          cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
@@ -3242,15 +3350,21 @@ class _SettingsScreenState extends State<SettingsScreen>
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    return PressScale(child: ListTile(
-      contentPadding: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      leading: Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-      title: Text(label, style: theme.textTheme.bodyMedium),
-      trailing: const Icon(Icons.play_arrow_outlined, size: 20),
-      dense: true,
-      onTap: onTap,
-    ));
+    return PressScale(
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(
+          icon,
+          size: 20,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        title: Text(label, style: theme.textTheme.bodyMedium),
+        trailing: const Icon(Icons.play_arrow_outlined, size: 20),
+        dense: true,
+        onTap: onTap,
+      ),
+    );
   }
 
   Future<void> _runDiag(int id, String title, String body) async {
@@ -3469,6 +3583,19 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ),
       ),
+    );
+  }
+
+  /// Пасхалка по долгому нажатию на номер версии: тяжёлый тактильный
+  /// отклик, залп конфетти в цветах текущей темы и тост.
+  void _onVersionLongPress() {
+    Haptics.heavy();
+    showConfettiBurst(context);
+    showBeautifulSnackBar(
+      context,
+      message: 'Ты нашёл пасхалку. Keramika — свободное приложение.',
+      icon: Icons.celebration_outlined,
+      duration: const Duration(milliseconds: 2600),
     );
   }
 
@@ -3760,10 +3887,7 @@ class _SupportPillState extends State<_SupportPill> {
             end: Alignment.bottomRight,
             colors: widget.gradient,
           ),
-          border: Border.all(
-            color: fg.withValues(alpha: 0.40),
-            width: 1.2,
-          ),
+          border: Border.all(color: fg.withValues(alpha: 0.40), width: 1.2),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(
@@ -3774,10 +3898,7 @@ class _SupportPillState extends State<_SupportPill> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: fg.withValues(alpha: 0.18),
-                border: Border.all(
-                  color: fg.withValues(alpha: 0.40),
-                  width: 1,
-                ),
+                border: Border.all(color: fg.withValues(alpha: 0.40), width: 1),
               ),
               child: Icon(widget.icon, color: fg, size: 20),
             ),
@@ -3994,10 +4115,7 @@ class _FlutterBadge extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [bg, cs.surfaceContainerHighest],
         ),
-        border: Border.all(
-          color: cs.primary.withValues(alpha: 0.25),
-          width: 1,
-        ),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.25), width: 1),
         boxShadow: [
           BoxShadow(
             color: cs.primary.withValues(alpha: 0.18),

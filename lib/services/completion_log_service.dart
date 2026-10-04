@@ -63,9 +63,7 @@ class CompletionLogService extends ChangeNotifier {
 
   Future<void> _save() async {
     if (!_loaded) return;
-    final list = _log.values
-        .map((d) => d.toJson())
-        .toList()
+    final list = _log.values.map((d) => d.toJson()).toList()
       ..sort((a, b) => (a['d'] as String).compareTo(b['d'] as String));
     await JsonFile.write(_key, jsonEncode(list));
   }
@@ -74,10 +72,7 @@ class CompletionLogService extends ChangeNotifier {
   /// открытии статистики — лог постепенно накапливает реальную историю.
   Future<void> recordToday() async {
     if (!_loaded) return;
-    final habits = HabitService()
-        .habits
-        .where((h) => h.doneToday)
-        .length;
+    final habits = HabitService().habits.where((h) => h.doneToday).length;
     final tasks = TaskService().tasks.where((t) => t.done).length;
     final key = dayKey(HabitService.mskToday());
     final prev = _log[key];
@@ -85,7 +80,9 @@ class CompletionLogService extends ChangeNotifier {
     // позже — берём максимум, чтобы график отражал «пик» дня.
     final merged = DayCompletion(
       date: key,
-      habits: prev == null ? habits : (prev.habits > habits ? prev.habits : habits),
+      habits: prev == null
+          ? habits
+          : (prev.habits > habits ? prev.habits : habits),
       tasks: prev == null ? tasks : (prev.tasks > tasks ? prev.tasks : tasks),
     );
     if (prev == null ||

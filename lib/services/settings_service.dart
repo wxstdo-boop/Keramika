@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'prefs.dart';
 import 'json_file.dart';
+import 'new_year_event_service.dart';
 
 class SettingsService {
   static const _keyTheme = 'setting_theme';
@@ -65,8 +66,13 @@ class SettingsService {
         return 'rose';
       case 'peach':
         return 'peach';
+      // «Метель» — подарок 12-го дня ивента. Право на неё уходит вместе с
+      // подарком: после сброса события тема на диске ещё могла остаться, и
+      // без проверки здесь она переживала бы сброс до первой смены темы.
+      case 'metel':
+        return NewYearEventService().prizeGranted ? 'metel' : 'grok';
       default:
-        return 'peach';
+        return 'grok';
     }
   }
 
@@ -78,8 +84,8 @@ class SettingsService {
 
   static Future<String> loadFontFamily() async {
     final map = await _loadSettings();
-    final value = map[_keyFontFamily] as String? ??
-        globalPrefs.getString(_keyFontFamily);
+    final value =
+        map[_keyFontFamily] as String? ?? globalPrefs.getString(_keyFontFamily);
     return value == 'caveat' ? 'caveat' : 'ordinary';
   }
 
@@ -297,6 +303,31 @@ class SettingsService {
     await _saveSettings(map);
   }
 
+  static const _keyAgnesKey = 'setting_agnes_key';
+
+  static Future<String> loadAgnesKey() async {
+    final map = await _loadSettings();
+    return (map[_keyAgnesKey] as String?) ?? '';
+  }
+
+  static Future<void> saveAgnesKey(String value) async {
+    final map = await _loadSettings();
+    map[_keyAgnesKey] = value.trim();
+    await _saveSettings(map);
+  }
+
+  static const _keyZenKey = 'setting_zen_key';
+  static Future<String> loadZenKey() async {
+    final map = await _loadSettings();
+    return (map[_keyZenKey] as String?) ?? '';
+  }
+
+  static Future<void> saveZenKey(String value) async {
+    final map = await _loadSettings();
+    map[_keyZenKey] = value.trim();
+    await _saveSettings(map);
+  }
+
   static const _keyGeminiKey = 'setting_gemini_key';
 
   /// Ключ Google AI Studio (Gemini) — необязательный, но лучший провайдер:
@@ -309,6 +340,35 @@ class SettingsService {
   static Future<void> saveGeminiKey(String value) async {
     final map = await _loadSettings();
     map[_keyGeminiKey] = value.trim();
+    await _saveSettings(map);
+  }
+
+  static const _keyModalUrl = 'setting_modal_url';
+  static const _keyModalKey = 'setting_modal_key';
+
+  /// Деплой Ады на Modal (`ada-0.0.3`): стабильный публичный URL
+  /// OpenAI-совместимого endpoint (web_server) + секретный токен.
+  /// Пока не заполнены — главной Адой остаётся встроенный HF-путь.
+  static Future<String> loadModalUrl() async {
+    final map = await _loadSettings();
+    return (map[_keyModalUrl] as String?) ?? '';
+  }
+
+  static Future<void> saveModalUrl(String value) async {
+    final map = await _loadSettings();
+    map[_keyModalUrl] = value.trim();
+    await _saveSettings(map);
+  }
+
+  /// Секрет Modal-эндпоинта (типа `Bearer ...`).
+  static Future<String> loadModalKey() async {
+    final map = await _loadSettings();
+    return (map[_keyModalKey] as String?) ?? '';
+  }
+
+  static Future<void> saveModalKey(String value) async {
+    final map = await _loadSettings();
+    map[_keyModalKey] = value.trim();
     await _saveSettings(map);
   }
 

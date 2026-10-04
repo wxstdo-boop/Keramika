@@ -7,7 +7,6 @@ import '../services/prefs.dart';
 
 const _package = 'com.wetidom.keramika';
 
-
 // Канал проверки полноэкранных уведомлений (поверх блокировки).
 const _fullscreenChannel = MethodChannel('com.wetidom.keramika/fullscreen');
 
@@ -164,10 +163,24 @@ Future<bool> openAutostartSettings() async {
 
 /// Opens "Full-screen notifications" settings for MIUI / HyperOS.
 /// This is the key setting that allows fullScreenIntent to work.
+///
+/// С Android 14 (API 34) это право (app-op USE_FULL_SCREEN_INTENT) переехало
+/// на ОТДЕЛЬНЫЙ системный экран «Специальный доступ → Уведомления с
+/// полноэкранным показом»: ни в MIUI-редакторе разрешений, ни на обычном
+/// экране уведомлений его тумблера больше нет. Поэтому первым шагом просим
+/// нативный код открыть именно его, а цепочку ниже оставляем как fallback.
 Future<bool> openFullScreenNotifSettings() async {
   if (!_isAndroid) return false;
   systemUiActive = true;
   final n = [Flag.FLAG_ACTIVITY_NEW_TASK];
+
+  // 0. Android 14+: прямой экран выдачи USE_FULL_SCREEN_INTENT.
+  try {
+    final opened = await _fullscreenChannel.invokeMethod<bool>(
+      'openGrantSettings',
+    );
+    if (opened ?? false) return true;
+  } catch (_) {}
 
   // MIUI: Settings → Apps → [App] → Permissions → Full-screen notifications.
   try {

@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 // Глобальный дедуп: одно и то же сообщение в окне кулдауна не показывается,
 // а разные сообщения с одним groupKey обновляют активный снекбар плавно,
 // не создавая шторм overlay-entries (важно для быстрых toggle-кнопок).
+// Сообщения из ДРУГИХ групп не вырезают предыдущий мгновенно, а принимают
+// эстафету: старый мягко уплывает вниз, новый стартует через 180мс.
 OverlayEntry? _activeSnackBar;
 _AnimatedSnackBarState? _activeSnackState;
+// Вставка нового снекбара отложена на время ухода старого.
+Timer? _pendingInsert;
 String? _activeGroupKey;
 DateTime? _lastSnackTime;
 String? _lastSnackMessage;
@@ -50,35 +54,61 @@ void showBeautifulSnackBar(
 
   final theme = Theme.of(context);
   final colorScheme = theme.colorScheme;
-
-  _activeSnackBar?.remove();
-  _activeSnackBar = null;
-  _activeSnackState = null;
-
   final overlay = Overlay.of(context);
-  late OverlayEntry entry;
-  entry = OverlayEntry(
-    builder: (ctx) => _AnimatedSnackBar(
-      message: message,
-      icon: icon,
-      iconColor: iconColor ?? colorScheme.onPrimaryContainer,
-      theme: theme,
-      duration: duration,
-      actionLabel: actionLabel,
-      onAction: onAction,
-      onInit: (state) => _activeSnackState = state,
-      onDispose: () {
-        if (_activeSnackBar == entry) {
-          _activeSnackBar = null;
-          _activeSnackState = null;
-          _activeGroupKey = null;
-        }
-      },
-    ),
-  );
 
-  _activeSnackBar = entry;
-  overlay.insert(entry);
+  void insert() {
+    if (!context.mounted) return;
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => _AnimatedSnackBar(
+        message: message,
+        icon: icon,
+        iconColor: iconColor ?? colorScheme.onPrimaryContainer,
+        theme: theme,
+        duration: duration,
+        actionLabel: actionLabel,
+        onAction: onAction,
+        onInit: (state) => _activeSnackState = state,
+        // Вызывается, когда анимация ухода дошла до нуля. Колбэк знает СВОЙ
+        // entry, поэтому уходящий снекбар не спилит тот, что встал поверх.
+        onFinished: () {
+          if (_activeSnackBar == entry) {
+            _activeSnackBar = null;
+            _activeSnackState = null;
+            _activeGroupKey = null;
+          }
+          entry.remove();
+        },
+        onDispose: () {
+          if (_activeSnackBar == entry) {
+            _activeSnackBar = null;
+            _activeSnackState = null;
+            _activeGroupKey = null;
+          }
+        },
+      ),
+    );
+    _activeSnackBar = entry;
+    overlay.insert(entry);
+  }
+
+  // Смена снекбаров: предыдущий больше не вырезается мгновенно — он плавно
+  // уплывает вниз, а новый влетает через 180мс, то есть получается мягкая
+  // эстафета. Очередь быстрых сообщений отменяет незапущенную вставку, так
+  // что на экране оседает только последнее.
+  final leaving = _activeSnackState;
+  _activeSnackState = null;
+  _activeSnackBar = null;
+  _pendingInsert?.cancel();
+  if (leaving != null && leaving.mounted) {
+    leaving.dismissOut();
+    _pendingInsert = Timer(const Duration(milliseconds: 180), () {
+      _pendingInsert = null;
+      insert();
+    });
+    return;
+  }
+  insert();
 }
 
 class _AnimatedSnackBar extends StatefulWidget {
@@ -89,6 +119,7 @@ class _AnimatedSnackBar extends StatefulWidget {
   final Duration duration;
   final void Function(_AnimatedSnackBarState state)? onInit;
   final VoidCallback? onDispose;
+  final VoidCallback? onFinished;
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -100,6 +131,7 @@ class _AnimatedSnackBar extends StatefulWidget {
     required this.duration,
     this.onInit,
     this.onDispose,
+    this.onFinished,
     this.actionLabel,
     this.onAction,
   });
@@ -121,6 +153,7 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
   VoidCallback? _onAction;
 
   Timer? _dismissTimer;
+  bool _leaving = false;
 
   @override
   void initState() {
@@ -161,6 +194,8 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
   /// Используется при быстрых ON↔OFF-переключениях одной группы,
   /// чтобы пользователь видел одну плашку вместо шторма.
   void updateContent(String newMessage, IconData newIcon, Color? newColor) {
+    // Уже уплывает — не «оживляем» его, новый снекбар встанет следом.
+    if (_leaving) return;
     setState(() {
       _message = newMessage;
       _icon = newIcon;
@@ -171,24 +206,34 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
     _scheduleDismiss();
   }
 
+  /// Плавный уход вниз. Быстрый вариант (180мс) — при эстафете сообщений,
+  /// медленный (750мс) — когда снекбар сам дотикал до конца.
+  void dismissOut({int ms = 180}) {
+    if (_leaving || !mounted) return;
+    _leaving = true;
+    _dismissTimer?.cancel();
+    _controller
+        .animateTo(
+          0.0,
+          duration: Duration(milliseconds: ms),
+          curve: Curves.easeInCubic,
+        )
+        .then((_) => _finish());
+    // Страховка: если тикер не доехал (быстрый тап, потеря vsync), entry
+    // всё равно уберётся из overlay и не останется невидимым мусором.
+    Timer(Duration(milliseconds: ms + 150), _finish);
+  }
+
+  bool _finished = false;
+  void _finish() {
+    if (_finished || !mounted) return;
+    _finished = true;
+    widget.onFinished?.call();
+  }
+
   void _scheduleDismiss() {
     _dismissTimer?.cancel();
-    _dismissTimer = Timer(widget.duration, () {
-      if (mounted) {
-        // Уход — МЕДЛЕННЫЙ и плавный (750мс вместо тех же 520мс, что и вход):
-        // снекбар не «выпадает» резко, а мягко уплывает вниз и растворяется.
-        _controller
-            .animateTo(
-              0,
-              duration: const Duration(milliseconds: 750),
-              curve: Curves.easeInCubic,
-            )
-            .then((_) {
-              _activeSnackBar?.remove();
-              _activeSnackBar = null;
-            });
-      }
-    });
+    _dismissTimer = Timer(widget.duration, () => dismissOut(ms: 750));
   }
 
   @override
@@ -274,6 +319,16 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                             color: widget.theme.colorScheme.onPrimaryContainer,
                             fontWeight: FontWeight.w600,
                             height: 1.3,
+                            // «Чуть крупнее»: глобальная тема намеренно
+                            // уменьшает bodyMedium (плотные разделы), но
+                            // снекбар — короткое служебное сообщение,
+                            // мелким быть не должно. +2 к базовому размеру
+                            // (учитывает и Caveat-тему, и системный скейл,
+                            // который применяется поверх при рендере).
+                            fontSize:
+                                (widget.theme.textTheme.bodyMedium?.fontSize ??
+                                    14) +
+                                2,
                           ),
                         ),
                       ),

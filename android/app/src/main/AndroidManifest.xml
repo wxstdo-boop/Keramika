@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Установка скачанного APK (автообновление). Android 8+ покажет
+         системный экран подтверждения — это и есть «предложение установить». -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
@@ -32,7 +35,9 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true">
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
@@ -58,6 +63,19 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="ada_overlay_window_service" />
+        </service>
+
+        <!-- Непрерывный звонок будильника. Пускается из AlarmReceiver по
+             точному будильнику AlarmManager (это разрешённое исключение для
+             старта foreground-сервиса из фона). Звонит, пока не решена задача
+             пробуждения, — права на full-screen intent не требует. -->
+        <service
+            android:name=".AlarmForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="alarm_ring_service" />
         </service>
 
         <!-- Сервис чтения экрана («Специальные возможности»): Ада в мини-окне
@@ -87,6 +105,47 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- Приёмники flutter_local_notifications (17.2.4). Плагин НЕ объявляет
+             их в своём манифесте — это обязанность приложения (проверено:
+             android/src/main/AndroidManifest.xml плагина содержит только
+             uses-permission). Без них zonedSchedule регистрирует PendingIntent
+             на несуществующий компонент: AlarmManager срабатывает ровно в
+             срок, широковещание уходит в никуда и уведомление не появляется.
+             Так работали именно напоминания привычек и дневные пуши Ады —
+             будильники и проверки идут через наш .AlarmReceiver, поэтому и
+             оставались единственными живыми. exported=true — по той же
+             причине, что и выше: на MIUI система не будит процесс через
+             receiver, наружу не экспортируемый. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="true" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <!-- Действия (кнопки) внутри уведомления. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
+
+        <!-- FileProvider для установки скачанного APK: раздаёт content://
+             URI на файл в кэше приложения (см. res/xml/file_paths.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <meta-data
             android:name="flutterEmbedding"

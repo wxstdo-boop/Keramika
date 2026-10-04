@@ -12,6 +12,14 @@ final ValueNotifier<bool> sectionPillVisible = ValueNotifier<bool>(true);
 /// как обычный элемент списка, без отдельной анимации-скачка.
 final ValueNotifier<double> sectionScrollOffset = ValueNotifier<double>(0);
 
+/// Последний известный офсет скролла КАЖДОГО раздела (по индексу страницы).
+///
+/// Список разделов запоминает позицию (keepAlive), но события скролла у
+/// неактивной страницы не приходят. Без этой карты при возврате на раздел,
+/// оставленный прокрученным, таблетка сбрасывалась в видимое состояние и
+/// налезала на контент до первого скролла.
+final Map<int, double> sectionOffsetByPage = <int, double>{};
+
 /// Плавно прячет/возвращает ряд FAB-кнопок (плюс + Ада) при прокрутке.
 ///
 /// [visible] — слушаемое состояние видимости: скрывается при скролле вниз,
@@ -46,6 +54,13 @@ class AnimatedFabRow extends StatelessWidget {
 /// Универсальный слушатель скролла: прячет FAB, когда контент ушёл вниз
 /// больше чем на [hideThreshold] пикселей, и возвращает при долистывании
 /// до верха (offset <= [showThreshold]).
+///
+/// Офсет таблетки разделов этим слушателем НЕ пишется: его ведёт
+/// персональный ScrollController каждого раздела (см. _syncPillOffset в
+/// экранах). Раньше офсет писался из уведомлений скролла, и при пересоздании
+/// списка (переключение категории, список↔пусто, свап AnimatedSwitcher)
+/// свежий скроллер стоял на 0, а notifier держал старую большую позицию —
+/// таблетка «застревала» скрытой при контенте наверху.
 class FabScrollListener extends StatelessWidget {
   final ValueNotifier<bool> visible;
   final Widget child;
@@ -64,16 +79,11 @@ class FabScrollListener extends StatelessWidget {
   Widget build(BuildContext context) {
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
-        // ТОЛЬКО вертикальный скролл раздела сворачивает таблетку разделов:
-        // горизонтальные карусели (плашки борьбы с перфекционизмом в
-        // привычках, категории задач) раньше слали свой horizontal-офсет в
-        // общий слот — таблетка «пропадала насовсем» при листании плашек.
+        // ТОЛЬКО вертикальный скролл раздела прячет FAB: горизонтальные
+        // карусели (плашки борьбы с перфекционизмом, категории задач)
+        // не должны сворачивать кнопки.
         if (n.metrics.axis != Axis.vertical) return false;
         final pixels = n.metrics.pixels;
-        // Скролл активного раздела — таблетка следует за ним напрямую.
-        if ((sectionScrollOffset.value - pixels).abs() > 0.5) {
-          sectionScrollOffset.value = pixels < 0 ? 0 : pixels;
-        }
         if (pixels > hideThreshold && visible.value) {
           visible.value = false;
         } else if (pixels <= showThreshold && !visible.value) {

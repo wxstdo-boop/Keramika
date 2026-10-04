@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show SmoothTooltip, BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
@@ -98,17 +99,26 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     super.dispose();
   }
 
+  // Затухание — fire-and-forget, поэтому ему нужен номер поколения: без
+  // него рампа из предыдущего прослушивания добирается до уже нового звука
+  // и либо обрывает его своим stop(), либо оставляет играть на 0.1 громкости
+  // (отсюда жалоба «нажимаю играть, а звук глухой / не играется»).
+  int _playSeq = 0;
+
   // Один переиспользуемый плеер на весь экран: создание/уничтожение
   // AudioPlayer на каждый тап давало «щелчки»/шум на слабых устройствах.
   // Остановка — ТОЛЬКО через плавное затухание громкости (иначе stop()
   // режет звук резко, с «щелчком»/шумом).
-  Future<void> _fadeOutStop(AudioPlayer? p) async {
+  Future<void> _fadeOutStop(AudioPlayer? p, int seq) async {
     if (p == null) return;
     try {
       for (var i = 10; i > 0; i--) {
+        // Появилось новое прослушивание — рампу сворачиваем, не трогаем звук.
+        if (seq != _playSeq) return;
         await p.setVolume(i / 10);
         await Future.delayed(const Duration(milliseconds: 18));
       }
+      if (seq != _playSeq) return;
       await p.stop();
       await p.setVolume(1.0);
     } catch (_) {}
@@ -120,9 +130,10 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     if (_playingSound == name) {
       _playingSound = null;
       if (mounted) setState(() {});
-      _fadeOutStop(_player);
+      _fadeOutStop(_player, ++_playSeq);
       return;
     }
+    final seq = ++_playSeq;
     _playingSound = name;
     if (mounted) setState(() {});
     try {
@@ -134,8 +145,11 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
           setState(() => _playingSound = null);
         }
       });
-      // Мягкий сброс перед новым звуком — без щелчка.
-      await _fadeOutStop(player);
+      // Перед новым звуком — жёсткий сброс, а НЕ плавное затухание: рампа
+      // на 180 мс успевала пересечься со следующим тапом.
+      await player.stop();
+      if (seq != _playSeq) return;
+      await player.setVolume(1.0);
       if (name == 'Custom' && _customSoundPath != null) {
         await player.play(DeviceFileSource(_customSoundPath!));
       } else {
@@ -145,7 +159,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
         }
       }
     } catch (_) {
-      if (mounted && _playingSound == name) {
+      if (seq == _playSeq && mounted && _playingSound == name) {
         setState(() => _playingSound = null);
       }
     }
@@ -160,7 +174,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     // старый плеер не продолжал играть поверх уже обновлённого списка.
     if (_playingSound == name) {
       _playingSound = null;
-      _fadeOutStop(_player);
+      _fadeOutStop(_player, ++_playSeq);
     }
     if (name == 'Custom') {
       setState(() {
@@ -243,9 +257,36 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     systemUiActive = true;
     final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     systemUiActive = false;
-    if (result != null && result.files.single.path != null) {
+    final picked = result?.files.single;
+    if (picked?.path == null) return;
+    final srcPath = picked!.path!;
+    // Файл обязан пережить чистку кэша и удаление источника: звонок играет
+    // по сохранённому пути, а file_picker отдаёт либо путь общего
+    // хранилища (на Android 13+ MediaPlayer без READ_MEDIA_AUDIO его не
+    // читает), либо свой кэш, который система стирает. Молча копируем в
+    // приватную папку приложения — и храним уже этот путь.
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final soundsDir = Directory('${directory.path}/sounds');
+      await soundsDir.create(recursive: true);
+      final ext = picked.extension?.isNotEmpty == true ? picked.extension! : 'mp3';
+      final newPath =
+          '${soundsDir.path}/custom_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await File(srcPath).copy(newPath);
+      if (mounted) {
+        setState(() {
+          _customSoundPath = newPath;
+          _soundName = 'Custom';
+        });
+      }
+      return;
+    } catch (_) {
+      // Копия не удалась — оставляем исходный путь: до очистки кэша он
+      // ещё playable, тишина была бы хуже.
+    }
+    if (mounted) {
       setState(() {
-        _customSoundPath = result.files.single.path;
+        _customSoundPath = srcPath;
         _soundName = 'Custom';
       });
     }
@@ -259,7 +300,8 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('renameSound', context, 'Rename sound')),
-        content: TextField(cursorOpacityAnimates: true,
+        content: TextField(
+          cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
@@ -379,6 +421,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                 ? Translations.editAlarmOf(context)
                 : Translations.newAlarmOf(context),
           ),
+          leading: const BackButtonTooltip(),
           centerTitle: true,
           actions: [
             TextButton(
@@ -410,20 +453,18 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                         switchOutCurve: Curves.easeInCubic,
                         transitionBuilder: (child, animation) =>
                             SlideTransition(
-                          position: Tween(
-                            begin: const Offset(0, 0.4),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          ),
-                        ),
+                              position: Tween(
+                                begin: const Offset(0, 0.4),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              ),
+                            ),
                         child: Text(
                           _time.format(context),
-                          key: ValueKey(
-                            'alarmedit_${_time.format(context)}',
-                          ),
+                          key: ValueKey('alarmedit_${_time.format(context)}'),
                           style: theme.textTheme.headlineMedium,
                         ),
                       ),
@@ -584,7 +625,8 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: TextField(cursorOpacityAnimates: true,
+                    child: TextField(
+                      cursorOpacityAnimates: true,
                       magnifierConfiguration:
                           TextMagnifierConfiguration.disabled,
                       controller: _labelCtrl,
@@ -799,46 +841,58 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                           child: child,
                                         ),
                                       ),
-                                  child: IconButton(
-                                    key: ValueKey(_playingSound == _soundName),
-                                    tooltip: Translations.soundOf(context),
-                                    icon: Icon(
-                                      _playingSound == _soundName
-                                          ? Icons.stop_circle
-                                          : Icons.play_circle_outline,
-                                      color: Colors.pink[300],
-                                      size: 30,
+                                  child: SmoothTooltip(
+                                    message: Translations.soundOf(context),
+                                    preferredAbove: true,
+                                    child: IconButton(
+                                      key: ValueKey(
+                                        _playingSound == _soundName,
+                                      ),
+                                      icon: Icon(
+                                        _playingSound == _soundName
+                                            ? Icons.stop_circle
+                                            : Icons.play_circle_outline,
+                                        color: Colors.pink[300],
+                                        size: 30,
+                                      ),
+                                      onPressed: () =>
+                                          _previewSound(_soundName),
                                     ),
-                                    onPressed: () => _previewSound(_soundName),
                                   ),
                                 ),
                                 if (_soundName == 'Custom')
-                                  IconButton(
-                                    tooltip: Translations.t(
+                                  SmoothTooltip(
+                                    message: Translations.t(
                                       'customSound',
                                       context,
                                     ),
-                                    icon: Icon(
-                                      Icons.upload_file,
-                                      color: Colors.pink[300],
-                                      size: 26,
+                                    preferredAbove: true,
+                                    child: IconButton(
+                                      icon: Icon(
+                                        Icons.upload_file,
+                                        color: Colors.pink[300],
+                                        size: 26,
+                                      ),
+                                      onPressed: _pickCustomSound,
                                     ),
-                                    onPressed: _pickCustomSound,
                                   ),
                                 if (_soundName == 'Custom' &&
                                     _customSoundPath != null)
-                                  IconButton(
-                                    tooltip: Translations.t(
+                                  SmoothTooltip(
+                                    message: Translations.t(
                                       'renameSound',
                                       context,
                                       'Rename',
                                     ),
-                                    icon: Icon(
-                                      Icons.drive_file_rename_outline,
-                                      color: Colors.pink[300],
-                                      size: 24,
+                                    preferredAbove: true,
+                                    child: IconButton(
+                                      icon: Icon(
+                                        Icons.drive_file_rename_outline,
+                                        color: Colors.pink[300],
+                                        size: 24,
+                                      ),
+                                      onPressed: _renameCustomSound,
                                     ),
-                                    onPressed: _renameCustomSound,
                                   ),
                               ],
                             ),

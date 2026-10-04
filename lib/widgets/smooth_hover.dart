@@ -85,6 +85,7 @@ class _SmoothHoverState extends State<SmoothHover>
   void _onDown(PointerDownEvent _) {
     if (!_ctrl.isAnimating && _ctrl.value == 0) _ctrl.forward();
   }
+
   void _onUp(PointerUpEvent _) => _ctrl.reverse();
   void _onCancel(PointerCancelEvent _) => _ctrl.reverse();
 

@@ -59,13 +59,32 @@ class _MutilatedSplatterState extends State<MutilatedSplatter>
         widget.child,
         Positioned.fill(
           child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _ctrl,
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _SplatterPainter(cache: _cache, t: _ctrl.value),
-                );
-              },
+            // Свой слой обязателен: пятна «дышат» всё время, а без границы
+            // перерисовки они красятся в тот же слой, что и весь контент под
+            // ними, — то есть за каждый кадр заново растеризуется весь экран.
+            // Порядок отрисовки и картинка не меняются вообще.
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (context, _) {
+                  // КОРОТКАЯ фаза: кадр берётся с шагом 1/96 цикла, то есть
+                  // 8 видимых изменений в секунду вместо 60. `shouldRepaint`
+                  // на неизменённой фазе отдаёт false, и Skia переиспользует
+                  // готовый слой вместо новой растеризации 9 радиальных
+                  // градиентов на весь экран 1080×2400.
+                  //
+                  // Почему это вообще нужно: цикл — 12 секунд, то есть за
+                  // кадр смещение пятна = 4px·2π/720 ≈ 0.035px. При шаге 1/96
+                  // ≈ 0.26px глаз разницы не видит вовсе, а работы на
+                  // fill-rate Adreno 610 становится в 7.5 раза меньше.
+                  return CustomPaint(
+                    painter: _SplatterPainter(
+                      cache: _cache,
+                      t: (_ctrl.value * 96).roundToDouble() / 96,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),

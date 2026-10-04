@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import '../models/reality_check.dart';
 import '../l10n/translations.dart';
@@ -71,6 +72,7 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
               ? Translations.t('editRc', context)
               : Translations.t('newRc', context),
         ),
+        leading: const BackButtonTooltip(),
         centerTitle: true,
         actions: [
           TextButton(
@@ -127,7 +129,8 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: TextField(cursorOpacityAnimates: true,
+                child: TextField(
+                  cursorOpacityAnimates: true,
                   magnifierConfiguration: TextMagnifierConfiguration.disabled,
                   controller: _questionCtrl,
                   contextMenuBuilder: minimalContextMenuBuilder,

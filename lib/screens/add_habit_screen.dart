@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show SmoothTooltip, BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import '../models/habit.dart';
 import '../l10n/translations.dart';
@@ -42,9 +43,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   /// на ДРУГОЙ привычке: одновременно может стоять только одно напоминание.
   bool get _reminderSectionHidden {
     if (_reminderTime != null) return false; // у этой привычки — показываем
-    return HabitService()
-        .habits
-        .any((h) => h.id != widget.existing?.id && h.reminderTime != null);
+    return HabitService().habits.any(
+      (h) => h.id != widget.existing?.id && h.reminderTime != null,
+    );
   }
 
   @override
@@ -84,12 +85,19 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   }
 
   /// Включение тумблера «Вспомнить всё»: сразу красиво просим выбрать
-  /// время; если пользователь закрыл диалог — ставим разумный дефолт 08:00.
-  /// Если мастер-тумблер уведомлений выключен, планировщик молча пропускал
-  /// напоминания — поэтому при включении напоминания включаем уведомления
-  /// (заодно запрашиваем OS-разрешение) и честно предупреждаем, если
-  /// разрешение так и не дали.
+  /// время. «Отмена» (= null из пикера) напоминание НЕ включает: раньше
+  /// null трактовался как дефолт 08:00, и тумблер загорался сам собой.
+  /// Уведомления включаем только после выбора времени — иначе отказ от
+  /// пикера всё равно дёргал мастер-тумблер и просил OS-разрешение.
   Future<void> _enableReminder() async {
+    // Клавиатура не должна «оставаться» после выбора времени: снимаем
+    // фокус с поля имени, иначе по возврату из пикера она вылезает снова.
+    FocusManager.instance.primaryFocus?.unfocus();
+    final picked = await showManualTimePicker(
+      context,
+      initial: _reminderTime ?? const TimeOfDay(hour: 8, minute: 0),
+    );
+    if (picked == null || !mounted) return;
     // Уведомления выключены — включаем их: пользователь явно хочет
     // напоминание, это его намерение, а не случайный тап.
     if (!notificationService.enabled) {
@@ -108,17 +116,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         );
       }
     }
-    // Клавиатура не должна «оставаться» после выбора времени: снимаем
-    // фокус с поля имени, иначе по возврату из пикера она вылезает снова.
-    FocusManager.instance.primaryFocus?.unfocus();
-    final picked = await showManualTimePicker(
-      context,
-      initial: _reminderTime ?? const TimeOfDay(hour: 8, minute: 0),
-    );
-    if (!mounted) return;
-    setState(() {
-      _reminderTime = picked ?? const TimeOfDay(hour: 8, minute: 0);
-    });
+    setState(() => _reminderTime = picked);
   }
 
   void _disableReminder() => setState(() => _reminderTime = null);
@@ -164,7 +162,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
             Text(Translations.t('habitStatusTitle', context)),
           ],
         ),
-        content: TextField(cursorOpacityAnimates: true,
+        content: TextField(
+          cursorOpacityAnimates: true,
           magnifierConfiguration: TextMagnifierConfiguration.disabled,
           controller: ctrl,
           contextMenuBuilder: minimalContextMenuBuilder,
@@ -246,6 +245,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                 ? Translations.t('editHabit', context)
                 : Translations.t('newHabit', context),
           ),
+          leading: const BackButtonTooltip(),
           centerTitle: true,
           actions: [
             TextButton(
@@ -296,24 +296,69 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                     icon: const Icon(Icons.touch_app, size: 16),
                     label: Text(Translations.t('changeIcon', context)),
                   ),
-                  // Для вредного типа привычки скрываем оба варианта «заметок»:
-                  // и лампочку-статус, и большое поле «заметки» ниже.
-                  if (_habitType == 'good') ...[
-                    const SizedBox(width: 16),
-                    IconButton(
-                      onPressed: _showNotesDialog,
-                      icon: Icon(
-                        _statusCtrl.text.isNotEmpty
-                            ? Icons.lightbulb
-                            : Icons.lightbulb_outline,
-                        size: 20,
-                        color: _statusCtrl.text.isNotEmpty
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant,
+                  // Лампочка-статус плавно появляется/исчезает при смене
+                  // «полезная ↔ вредная» (fade + size), как и блок заметок
+                  // ниже — значок не «выпрыгивает» мгновенно, а занимает ту же
+                  // ширину что и при good-типе, благодаря Padding'у.
+                  //
+                  // Слот под переключатель ФИКСИРОВАН по ширине (= good-вариант:
+                  // 16 отступа + IconButton 48). Без него AnimatedSwitcher
+                  // считает ширину Stack'а как max(уходящей, приходящей), а
+                  // SizeTransition по пути роняет обе почти до нуля — и ряд с
+                  // `center` посередине анимации сжимался, из-за чего кнопка
+                  // «сменить иконку» дёргалась вправо/влево на смене типа.
+                  SizedBox(
+                    width: 64,
+                    height: 48,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SizeTransition(
+                          sizeFactor: animation,
+                          alignment: Alignment.centerLeft,
+                          child: child,
+                        ),
                       ),
-                      tooltip: Translations.t('habitNotesBtn', context),
+                      child: _habitType == 'good'
+                          ? Padding(
+                              key: const ValueKey('good_status_btn'),
+                              padding: const EdgeInsets.only(left: 16),
+                              child: SmoothTooltip(
+                                message: Translations.t(
+                                  'habitNotesBtn',
+                                  context,
+                                ),
+                                preferredAbove: true,
+                                child: IconButton(
+                                  onPressed: _showNotesDialog,
+                                  icon: Icon(
+                                    _statusCtrl.text.isNotEmpty
+                                        ? Icons.lightbulb
+                                        : Icons.lightbulb_outline,
+                                    size: 20,
+                                    color: _statusCtrl.text.isNotEmpty
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : SizedBox(
+                              key: const ValueKey('bad_no_status_btn'),
+                              // Ровно тот же габарит, что у good-варианта
+                              // (16 отступа + IconButton 48×48 = 64×48), чтобы
+                              // иконка не «прыгала» при смене типа. САМОЙ
+                              // лампочки здесь нет: у вредной привычки статуса
+                              // не бывает — раньше тут рисовалась та же кнопка с
+                              // тем же значком, и «скрытый» статус было видно.
+                              width: 64,
+                              height: 48,
+                            ),
                     ),
-                  ],
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -340,9 +385,14 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               ? theme.colorScheme.onPrimaryContainer
                               : theme.colorScheme.onSurfaceVariant,
                         ),
-                        onSelected: _editing
-                            ? null
-                            : (_) => setState(() => _habitType = 'good'),
+                        // Тип меняется и у СОЗДАННОЙ привычки: раньше чипы
+                        // были заглушены (`_editing ? null`), и «переезд из
+                        // вредных в полезные» было не сделать в принципе.
+                        // Переезд анимирует MoveLedger в habits_screen, а
+                        // закрепление вредной снимает _normalizeOrder.
+                        onSelected: (_) => setState(() {
+                          _habitType = 'good';
+                        }),
                       ),
                       const SizedBox(width: 8),
                       ChoiceChip(
@@ -355,9 +405,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                               ? theme.colorScheme.onErrorContainer
                               : theme.colorScheme.onSurfaceVariant,
                         ),
-                        onSelected: _editing
-                            ? null
-                            : (_) => setState(() => _habitType = 'bad'),
+                        onSelected: (_) => setState(() {
+                          _habitType = 'bad';
+                        }),
                       ),
                     ],
                   ),
@@ -370,7 +420,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: TextField(cursorOpacityAnimates: true,
+                  child: TextField(
+                    cursorOpacityAnimates: true,
                     magnifierConfiguration: TextMagnifierConfiguration.disabled,
                     controller: _nameCtrl,
                     contextMenuBuilder: minimalContextMenuBuilder,
@@ -420,7 +471,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(4),
-                              child: TextField(cursorOpacityAnimates: true,
+                              child: TextField(
+                                cursorOpacityAnimates: true,
                                 magnifierConfiguration:
                                     TextMagnifierConfiguration.disabled,
                                 controller: _notesCtrl,
@@ -538,298 +590,262 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   /// Видна ТОЛЬКО у привычки, где напоминание уже установлено.
   Widget _buildReminderFullCard(BuildContext context, ThemeData theme) {
     return SmoothHover(
-                  hoverScale: 1.01,
-                  child: Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+      hoverScale: 1.01,
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Бейдж с колокольчиком: пустой / активный.
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: theme.colorScheme.primary.withValues(
+                        alpha: _reminderTime == null ? 0.10 : 0.16,
+                      ),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Column(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      transitionBuilder: (child, animation) => ScaleTransition(
+                        scale: animation,
+                        child: FadeTransition(opacity: animation, child: child),
+                      ),
+                      child: Icon(
+                        _reminderTime == null
+                            ? Icons.notifications_none
+                            : Icons.notifications_active,
+                        key: ValueKey(_reminderTime != null),
+                        color: theme.colorScheme.primary,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          Translations.t('remindAll', context, 'Вспомнить всё'),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _reminderTime == null
+                              ? Translations.t(
+                                  'remindOffHint',
+                                  context,
+                                  'Напомнит о привычке в выбранное время',
+                                )
+                              : Translations.t(
+                                  'remindOnHint',
+                                  context,
+                                  'Каждый день или по выбранным дням',
+                                ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  VolumetricSwitch(
+                    value: _reminderTime != null,
+                    activeColor: theme.colorScheme.primary,
+                    onChanged: (v) =>
+                        v ? _enableReminder() : _disableReminder(),
+                  ),
+                ],
+              ),
+              // Плавное появление плашки времени при включении.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: _reminderTime == null
+                    ? const SizedBox(width: double.infinity)
+                    : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              // Бейдж с колокольчиком: пустой / активный.
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 260),
-                                curve: Curves.easeOutCubic,
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: theme.colorScheme.primary.withValues(
-                                    alpha: _reminderTime == null ? 0.10 : 0.16,
-                                  ),
+                          const SizedBox(height: 14),
+                          Material(
+                            color: theme.colorScheme.primaryContainer
+                                .withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(16),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: _enableReminder,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
                                 ),
-                                child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 220),
-                                  transitionBuilder: (child, animation) =>
-                                      ScaleTransition(
-                                        scale: animation,
-                                        child: FadeTransition(
-                                          opacity: animation,
-                                          child: child,
-                                        ),
-                                      ),
-                                  child: Icon(
-                                    _reminderTime == null
-                                        ? Icons.notifications_none
-                                        : Icons.notifications_active,
-                                    key: ValueKey(_reminderTime != null),
-                                    color: theme.colorScheme.primary,
-                                    size: 22,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Row(
                                   children: [
-                                    Text(
-                                      Translations.t(
-                                        'remindAll',
-                                        context,
-                                        'Вспомнить всё',
-                                      ),
-                                      style: theme.textTheme.titleSmall?.copyWith(
-                                        fontWeight: FontWeight.w700,
+                                    Icon(
+                                      Icons.schedule,
+                                      size: 18,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        Translations.t(
+                                          'remindAt',
+                                          context,
+                                          'Напоминать в',
+                                        ),
+                                        style: theme.textTheme.bodyMedium,
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
                                     Text(
-                                      _reminderTime == null
-                                          ? Translations.t(
-                                              'remindOffHint',
-                                              context,
-                                              'Напомнит о привычке в выбранное время',
-                                            )
-                                          : Translations.t(
-                                              'remindOnHint',
-                                              context,
-                                              'Каждый день или по выбранным дням',
-                                            ),
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
-                                      ),
+                                      '${_reminderTime!.hour.toString().padLeft(2, '0')}:'
+                                      '${_reminderTime!.minute.toString().padLeft(2, '0')}',
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            color: theme.colorScheme.primary,
+                                            fontFeatures: const [
+                                              FontFeature.tabularFigures(),
+                                            ],
+                                          ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      size: 20,
+                                      color: theme.colorScheme.onSurfaceVariant,
                                     ),
                                   ],
                                 ),
                               ),
-                              VolumetricSwitch(
-                                value: _reminderTime != null,
-                                activeColor: theme.colorScheme.primary,
-                                onChanged: (v) =>
-                                    v ? _enableReminder() : _disableReminder(),
-                              ),
-                            ],
-                          ),
-                          // Плавное появление плашки времени при включении.
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutCubic,
-                            alignment: Alignment.topCenter,
-                            child: _reminderTime == null
-                                ? const SizedBox(width: double.infinity)
-                                : Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: 14),
-                                      Material(
-                                        color: theme.colorScheme.primaryContainer
-                                            .withValues(alpha: 0.45),
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: InkWell(
-                                          borderRadius: BorderRadius.circular(16),
-                                          onTap: _enableReminder,
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 10,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  Icons.schedule,
-                                                  size: 18,
-                                                  color:
-                                                      theme.colorScheme.primary,
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Text(
-                                                    Translations.t(
-                                                      'remindAt',
-                                                      context,
-                                                      'Напоминать в',
-                                                    ),
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodyMedium,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${_reminderTime!.hour.toString().padLeft(2, '0')}:'
-                                                  '${_reminderTime!.minute.toString().padLeft(2, '0')}',
-                                                  style: theme
-                                                      .textTheme
-                                                      .titleLarge
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        color: theme
-                                                            .colorScheme
-                                                            .primary,
-                                                        fontFeatures: const [
-                                                          FontFeature.tabularFigures(),
-                                                        ],
-                                                      ),
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Icon(
-                                                  Icons.chevron_right,
-                                                  size: 20,
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                          // Текст напоминания (до 60 символов) — появляется плавно.
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutCubic,
-                            alignment: Alignment.topCenter,
-                            child: _reminderTime == null
-                                ? const SizedBox(width: double.infinity)
-                                : Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: 10),
-                                      Material(
-                                        color: theme
-                                            .colorScheme
-                                            .surfaceContainerHigh
-                                            .withValues(alpha: 0.5),
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 8,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons.edit_note_rounded,
-                                                    size: 18,
-                                                    color:
-                                                        theme.colorScheme.primary,
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Expanded(
-                                                    child: Text(
-                                                      Translations.t(
-                                                        "remindCustomText",
-                                                        context,
-                                                        "Текст напоминания (до 60 симв.)",
-                                                      ),
-                                                      style: theme
-                                                          .textTheme
-                                                          .bodySmall
-                                                          ?.copyWith(
-                                                            color: theme
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 8),
-                                              TextField(cursorOpacityAnimates: true,
-                                                controller: _reminderTextCtrl,
-                                                maxLength: 60,
-                                                enableSuggestions: false,
-                                                autocorrect: false,
-                                                maxLines: 1,
-                                                buildCounter:
-                                                    smoothCharCounterBuilder,
-                                                // Как во ВСЕХ остальных полях
-                                                // приложения: без лупы при
-                                                // выделении и без «троеточия»/
-                                                // «Спросить копилот» в меню
-                                                // выделения — только копировать/
-                                                // вставить/вырезать.
-                                                magnifierConfiguration:
-                                                    TextMagnifierConfiguration.disabled,
-                                                contextMenuBuilder:
-                                                    minimalContextMenuBuilder,
-                                                decoration: InputDecoration(
-                                                  hintText: Translations.t(
-                                                    "remindCustomHint",
-                                                    context,
-                                                    "Например: Пора пить воду",
-                                                  ),
-                                                  hintStyle: theme
-                                                      .textTheme
-                                                      .bodyMedium
-                                                      ?.copyWith(
-                                                        color: theme
-                                                            .colorScheme
-                                                            .onSurfaceVariant
-                                                            .withValues(
-                                                              alpha: 0.5,
-                                                            ),
-                                                      ),
-                                                  border: InputBorder.none,
-                                                  isDense: true,
-                                                  contentPadding: EdgeInsets.zero,
-                                                  counterStyle: theme
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color: theme
-                                                            .colorScheme
-                                                            .onSurfaceVariant
-                                                            .withValues(
-                                                              alpha: 0.5,
-                                                            ),
-                                                      ),
-                                                ),
-                                                style: theme.textTheme.bodyMedium
-                                                    ?.copyWith(
-                                                      fontWeight: FontWeight.w500,
-                                                    ),
-                                                onChanged: (v) => setState(
-                                                  () => _reminderText = v.isEmpty
-                                                      ? null
-                                                      : v,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                );
+              ),
+              // Текст напоминания (до 60 символов) — появляется плавно.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: _reminderTime == null
+                    ? const SizedBox(width: double.infinity)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 10),
+                          Material(
+                            color: theme.colorScheme.surfaceContainerHigh
+                                .withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.edit_note_rounded,
+                                        size: 18,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          Translations.t(
+                                            "remindCustomText",
+                                            context,
+                                            "Текст напоминания (до 60 симв.)",
+                                          ),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    cursorOpacityAnimates: true,
+                                    controller: _reminderTextCtrl,
+                                    maxLength: 60,
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    maxLines: 1,
+                                    buildCounter: smoothCharCounterBuilder,
+                                    // Как во ВСЕХ остальных полях
+                                    // приложения: без лупы при
+                                    // выделении и без «троеточия»/
+                                    // «Спросить копилот» в меню
+                                    // выделения — только копировать/
+                                    // вставить/вырезать.
+                                    magnifierConfiguration:
+                                        TextMagnifierConfiguration.disabled,
+                                    contextMenuBuilder:
+                                        minimalContextMenuBuilder,
+                                    decoration: InputDecoration(
+                                      hintText: Translations.t(
+                                        "remindCustomHint",
+                                        context,
+                                        "Например: Пора пить воду",
+                                      ),
+                                      hintStyle: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant
+                                                .withValues(alpha: 0.5),
+                                          ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      counterStyle: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant
+                                                .withValues(alpha: 0.5),
+                                          ),
+                                    ),
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    onChanged: (v) => setState(
+                                      () =>
+                                          _reminderText = v.isEmpty ? null : v,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -4,171 +4,358 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 
+/**
+ * «Звонок» будильника: громкое looping-воспроизведение, которое НЕ зависит
+ * ни от full-screen-intent права, ни от настроек канала уведомления.
+ *
+ * Почему он нужен: на этом телефоне (HyperOS/Android 15) замеры показали
+ * `USE_FULL_SCREEN_INTENT: ignore` и `FSI CHECK granted=false` — экран
+ * будильника открыть нельзя, а звук канала — ОДИН короткий сигнал: если
+ * пользователь его не заметил, телефон молчит дальше и он просыпает.
+ * Сервис гудит, пока его не остановят (Dart вызывает stopAlarmSound после
+ * решения задачи пробуждения) или пока не истечёт [MAX_RING_MS].
+ *
+ * Пускается ТОЛЬКО из [AlarmReceiver] — то есть из broadcast, полученного по
+ * точному AlarmManager-будильнику. Это одно из немногих исключений,
+ * разрешающих старт foreground-сервиса из фона на Android 12+.
+ */
 class AlarmForegroundService : Service() {
 
-    private var wakeLock: PowerManager.WakeLock? = null
     private var player: MediaPlayer? = null
+    private var ringtone: android.media.Ringtone? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var vibrating = false
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val title = intent?.getStringExtra("title") ?: "Alarm"
-        val body = intent?.getStringExtra("body") ?: ""
-        val payload = intent?.getStringExtra("payload") ?: ""
-        val soundName = intent?.getStringExtra("sound_name") ?: "alarm_default"
-        val vibrate = intent?.getBooleanExtra("vibrate", true)
-        val customPath = intent?.getStringExtra("custom_sound_path")
-
-        Log.d(TAG, "ForegroundService started: sound=$soundName")
-
-        // WakeLock.
-        val pm = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "keramika:alarm_fg")
-        wakeLock?.acquire(300_000)
-
-        // Звук.
-        playSound(soundName, customPath)
-
-        // Вибрация.
-        if (vibrate == true) doVibrate()
-
-        // Запускаем Activity НАПРЯМУЮ из Service — работает на Android 10+ даже из фона.
-        try {
-            val i = Intent(this, MainActivity::class.java)
-            i.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            i.putExtra("payload", payload)
-            startActivity(i)
-            Log.d(TAG, "Activity started from service")
-        } catch (e: Exception) {
-            Log.e(TAG, "startActivity failed: $e")
+        if (intent?.action == ACTION_STOP) {
+            stopEverything()
+            stopSelf(startId)
+            return START_NOT_STICKY
         }
 
-        // Показываем fullScreenIntent уведомление как fallback.
-        showNotification(title, body, payload)
+        // foreground-уведомление ОБЯЗАНО появиться до истечения ~10 с после
+        // startForegroundService — иначе система убьёт процесс.
+        startRingingForeground(intent)
 
-        // Останавливаем сервис через 3 секунды.
-        android.os.Handler(mainLooper).postDelayed({
-            stopSound()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }, 3000)
+        val soundName = intent?.getStringExtra("sound_name") ?: "alarm_default"
+        val customPath = intent?.getStringExtra("custom_sound_path")
+        val vibrate = intent?.getBooleanExtra("vibrate", true) ?: true
 
+        acquireWakeLock()
+        playLoop(soundName, customPath)
+        if (vibrate) startVibrationLoop()
+
+        // Страховка от «забыли выключить»: телефон не должен звонить вечно.
+        handler.postDelayed({ stopEverything() }, MAX_RING_MS)
         return START_NOT_STICKY
+    }
+
+    private fun startRingingForeground(intent: Intent?) {
+        val title = intent?.getStringExtra("title") ?: "Будильник"
+        val body = intent?.getStringExtra("body") ?: ""
+        val payload = intent?.getStringExtra("payload") ?: ""
+
+        // Низкая важность: это НЕ второе «всплывающее» уведомление, а
+        // табличка, держащая сервис живым. Звук — у MediaPlayer ниже.
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(CHANNEL) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL, "Звонок будильника", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Непрерывный сигнал будильника"
+                    setSound(null, null)
+                    enableVibration(false)
+                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                },
+            )
+        }
+
+        val tap = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("payload", payload)
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(tap)
+            .setOngoing(true)
+            .build()
+
+        try {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notification,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                else 0,
+            )
+        } catch (e: Exception) {
+            // На некоторых прошивках specialUse-тип недоступен: звук всё
+            // равно нужен, поэтому пробуем без типа.
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (e2: Exception) {
+                AlarmLog.write(this, "RING FGS FAILED error=${e2.javaClass.simpleName}")
+            }
+        }
     }
 
     // ── Звук ──────────────────────────────────────────────
 
-    private fun playSound(soundName: String, customPath: String?) {
-        val uri = if (!customPath.isNullOrEmpty()) Uri.parse("file://$customPath")
-        else Uri.parse("android.resource://${packageName}/raw/$soundName")
-
-        try {
-            val mp = MediaPlayer().apply {
-                setDataSource(this@AlarmForegroundService, uri)
-                setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build())
-                isLooping = true
-                prepare()
-                start()
+    private fun playLoop(soundName: String, customPath: String?) {
+        // Путь из старых версий мог указать на файл, которого уже нет
+        // (кэш file_picker вычищен, источник удалён). Тогда играем
+        // ВСТРОЕННЫЙ ресурс по soundName, а не системный дзынь телефона:
+        // «свой» файл пропал — но выбранный в приложении звук обязан
+        // остаться тем же.
+        val usableCustom = customPath?.takeIf { path ->
+            if (path.isEmpty()) return@takeIf false
+            val f = try {
+                if (path.startsWith("file://")) java.io.File(Uri.parse(path).path) else java.io.File(path)
+            } catch (_: Exception) {
+                return@takeIf false
             }
-            player = mp
-            Log.d(TAG, "MediaPlayer OK: $uri")
-            return
+            f.exists() && f.canRead()
+        }
+        if (customPath != null && !customPath.isEmpty() && usableCustom == null) {
+            AlarmLog.write(this, "RING CUSTOM MISSING path=$customPath → sound=$soundName")
+        }
+        val uri = try {
+            if (usableCustom != null) {
+                Uri.parse(if (usableCustom.startsWith("file://")) usableCustom else "file://$usableCustom")
+            } else {
+                Uri.parse("android.resource://$packageName/raw/$soundName")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "MediaPlayer failed: $e")
+            AlarmLog.write(this, "RING URI EMPTY path=$customPath sound=$soundName error=${e.javaClass.simpleName}")
+            null
+        }
+        if (uri != null) {
+            try {
+                player = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build(),
+                    )
+                    setDataSource(this@AlarmForegroundService, uri)
+                    isLooping = true
+                    prepare()
+                    start()
+                }
+                AlarmLog.write(this, "RING PLAYER OK uri=$uri")
+                return
+            } catch (e: Exception) {
+                AlarmLog.write(
+                    this,
+                    "RING PLAYER FAILED uri=$uri error=${e.javaClass.simpleName}",
+                )
+            }
         }
 
+        // Файл недоступен (пользователь удалил свой рингтон) — системный
+        // звук будильника, лишь бы телефон звонил.
         try {
-            val r = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+            val def = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val r = RingtoneManager.getRingtone(this, def)
+            r?.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
             r?.play()
-            activeRingtone = r
+            ringtone = r
+            // Системный рингтон не зацикливается — перезапускаем, как только
+            // он доиграл, иначе звонок кончится через несколько секунд.
+            handler.postDelayed(object : Runnable {
+                override fun run() {
+                    val rt = ringtone ?: return
+                    try {
+                        if (!rt.isPlaying) rt.play()
+                    } catch (_: Exception) {}
+                    handler.postDelayed(this, RING_RETRY_MS)
+                }
+            }, RING_RETRY_MS)
         } catch (e: Exception) {
-            Log.e(TAG, "Ringtone fallback failed: $e")
+            AlarmLog.write(this, "RING FALLBACK FAILED error=${e.javaClass.simpleName}")
         }
-    }
-
-    private fun stopSound() {
-        try { player?.stop(); player?.release(); player = null } catch (_: Exception) {}
-        try { activeRingtone?.stop(); activeRingtone = null } catch (_: Exception) {}
     }
 
     // ── Вибрация ──────────────────────────────────────────
 
     @Suppress("DEPRECATION")
-    private fun doVibrate() {
-        try {
-            val p = longArrayOf(0, 800, 400, 800, 400, 800)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vm = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vm.defaultVibrator.vibrate(VibrationEffect.createWaveform(p, 0))
-            } else {
-                (getSystemService(VIBRATOR_SERVICE) as Vibrator)
-                    .vibrate(VibrationEffect.createWaveform(p, 0))
+    private fun startVibrationLoop() {
+        vibrating = true
+        handler.postDelayed(object : Runnable {
+            override fun run() {
+                if (!vibrating) return
+                try {
+                    val pattern = longArrayOf(0, 700, 300, 700, 300, 700)
+                    val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager)
+                            .defaultVibrator
+                    } else {
+                        getSystemService(VIBRATOR_SERVICE) as Vibrator
+                    }
+                    // См. AlarmReceiver.doVibrate: без USAGE_ALARM HyperOS
+                    // режет вибрацию как «UNKNOWN = OFF».
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        vib.vibrate(
+                            VibrationEffect.createWaveform(pattern, -1),
+                            android.os.VibrationAttributes.Builder()
+                                .setUsage(android.os.VibrationAttributes.USAGE_ALARM)
+                                .build(),
+                        )
+                    } else {
+                        vib.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                    }
+                } catch (_: Exception) {}
+                handler.postDelayed(this, VIBRATE_CYCLE_MS)
             }
+        }, VIBRATE_CYCLE_MS)
+    }
+
+    // ── Удержание CPU ──────────────────────────────────────
+
+    private fun acquireWakeLock() {
+        try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "keramika:alarm_ring")
+                .apply { acquire(MAX_RING_MS + 30_000) }
         } catch (_: Exception) {}
     }
 
-    // ── Уведомление ───────────────────────────────────────
-
-    private fun showNotification(title: String, body: String, payload: String) {
-        val channelId = "keramika_alarm_fg"
-
-        val channel = NotificationChannel(channelId, "Alarms", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Alarm notifications"
-            enableLights(true)
-        }
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
-            .createNotificationChannel(channel)
-
-        val i = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("payload", payload)
-        }
-        val pi = PendingIntent.getActivity(this, 0, i,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(pi, true)
-            .setContentIntent(pi)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .build()
-
-        startForeground(66666, notification)
+    private fun stopEverything() {
+        handler.removeCallbacksAndMessages(null)
+        vibrating = false
+        try {
+            player?.stop()
+            player?.release()
+        } catch (_: Exception) {}
+        player = null
+        try {
+            ringtone?.stop()
+        } catch (_: Exception) {}
+        ringtone = null
+        try {
+            (getSystemService(VIBRATOR_SERVICE) as? Vibrator)?.cancel()
+        } catch (_: Exception) {}
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {}
+        wakeLock = null
+        try {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {}
+        stopSelf()
     }
 
-    // ── Lifecycle ─────────────────────────────────────────
-
     override fun onDestroy() {
-        stopSound()
-        try { wakeLock?.release() } catch (_: Exception) {}
+        stopEverything()
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
-
     companion object {
-        private const val TAG = "AlarmForegroundService"
-        var activeRingtone: android.media.Ringtone? = null
+        private const val CHANNEL = "keramika_alarm_ring"
+        private const val NOTIFICATION_ID = 66667
+
+        /** Долже звонить, чем «проспать», но и не вечно. */
+        private const val MAX_RING_MS = 5 * 60_000L
+        private const val RING_RETRY_MS = 1_500L
+        private const val VIBRATE_CYCLE_MS = 3_500L
+
+        const val ACTION_STOP = "com.wetidom.keramika.action.STOP_RING"
+
+        /**
+         * Запустить звонок. Вызывается из [AlarmReceiver] (broadcast по
+         * точному будильнику) и из «Теста» будильника.
+         */
+        /**
+         * Запустить звонок.
+         *
+         * Возвращает `false`, если система отказала в старте — на Android 12+
+         * это обычное дело для фоновых сервисов (исключения жёстко
+         * перечислены платформой). Принимающая сторона обязана подстраховать
+         * звук уведомлением, иначе будильник окажется немым.
+         */
+        fun start(
+            ctx: Context,
+            soundName: String,
+            customPath: String?,
+            vibrate: Boolean,
+            title: String,
+            body: String,
+            payload: String,
+        ): Boolean {
+            val i = Intent(ctx, AlarmForegroundService::class.java).apply {
+                putExtra("sound_name", soundName)
+                putExtra("vibrate", vibrate)
+                putExtra("title", title)
+                putExtra("body", body)
+                putExtra("payload", payload)
+                if (!customPath.isNullOrEmpty()) putExtra("custom_sound_path", customPath)
+            }
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(i)
+                } else {
+                    ctx.startService(i)
+                }
+                true
+            } catch (e: Exception) {
+                AlarmLog.write(ctx, "RING START REJECTED error=${e.javaClass.simpleName}: ${e.message}")
+                false
+            }
+        }
+
+        /**
+         * Остановить звонок (после решения задачи пробуждения / отмены).
+         *
+         * Именно [Context.stopService], а НЕ старт с `ACTION_STOP`:
+         * `startForegroundService()` обязан привести к вызову
+         * `startForeground()` в течение ~10 с, а обработчик остановки его не
+         * делает — система поднимала
+         * `ForegroundServiceDidNotStartInTimeException` и убивала процесс
+         * прямо на закрытии экрана задачи (замер logcat Redmi Note 12: стоп
+         * шёл из `MainActivity` по `stopAlarmSound`).
+         * `stopService()` ничего не требует: сервис получает [onDestroy],
+         * где [stopEverything] гасит звук, вибрацию и wake-lock.
+         */
+        fun stop(ctx: Context) {
+            try {
+                ctx.stopService(Intent(ctx, AlarmForegroundService::class.java))
+            } catch (_: Exception) {}
+        }
     }
 }

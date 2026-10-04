@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import '../services/reality_check_service.dart';
 import '../services/habit_service.dart';
 import '../services/task_service.dart';
@@ -106,11 +107,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
         children: [
           _buildOverallSummary(context, theme, overallPct),
           const SizedBox(height: 16),
-          _MonthChart(
-            days: monthDays,
-            glitch: _glitchCtrl,
-            theme: theme,
-          ),
+          _MonthChart(days: monthDays, glitch: _glitchCtrl, theme: theme),
           const SizedBox(height: 16),
           // Daily Motivation Card
           Card(
@@ -197,10 +194,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
       appBar: AppBar(
         title: Text(Translations.t('statistics', context)),
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        leading: const BackButtonTooltip(),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -344,38 +338,45 @@ class _GlitchText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: ctrl,
-      builder: (context, _) {
-        final t = ctrl.value;
-        // Плавная волна «глитча»: лёгкая пульсация цветовых каналов.
-        final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
-        final base = style ?? const TextStyle();
-        // СТАТИКА: текст стоит на месте (никакого сдвига/размытия),
-        // «глитч» — только расщепление цветных теней, пульсирующее
-        // по амплитуде. Цвета холодный/тёплый — как RGB-расщепление.
-        return Text(
-          text,
-          style: base.copyWith(
-            shadows: [
-              Shadow(
-                color: const Color(0xFFFF3B5C).withValues(
-                  alpha: 0.08 + wave * 0.14,
+    // Глитч перерисовывается каждый кадр 60 fps. Без собственного
+    // RepaintBoundary грязный абзац тянет за собой перерисовку ВСЕГО слоя
+    // страницы — графика, карточки, текст. Слои координаты не меняют,
+    // картинка остаётся пиксель-в-пиксель той же, а на Adreno 610 это
+    // разница между «листается» и «тормозит».
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: ctrl,
+        builder: (context, _) {
+          final t = ctrl.value;
+          // Плавная волна «глитча»: лёгкая пульсация цветовых каналов.
+          final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
+          final base = style ?? const TextStyle();
+          // СТАТИКА: текст стоит на месте (никакого сдвига/размытия),
+          // «глитч» — только расщепление цветных теней, пульсирующее
+          // по амплитуде. Цвета холодный/тёплый — как RGB-расщепление.
+          return Text(
+            text,
+            style: base.copyWith(
+              shadows: [
+                Shadow(
+                  color: const Color(
+                    0xFFFF3B5C,
+                  ).withValues(alpha: 0.08 + wave * 0.14),
+                  blurRadius: 1.5,
+                  offset: const Offset(1.1, 0),
                 ),
-                blurRadius: 1.5,
-                offset: const Offset(1.1, 0),
-              ),
-              Shadow(
-                color: const Color(0xFF33D1FF).withValues(
-                  alpha: 0.07 + wave * 0.12,
+                Shadow(
+                  color: const Color(
+                    0xFF33D1FF,
+                  ).withValues(alpha: 0.07 + wave * 0.12),
+                  blurRadius: 1.5,
+                  offset: const Offset(-1.1, 0),
                 ),
-                blurRadius: 1.5,
-                offset: const Offset(-1.1, 0),
-              ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -539,9 +540,19 @@ class _MonthChart extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                _legend(context, habitColor, Icons.check_circle_outline, Translations.t('monthChartHabits', context)),
+                _legend(
+                  context,
+                  habitColor,
+                  Icons.check_circle_outline,
+                  Translations.t('monthChartHabits', context),
+                ),
                 const SizedBox(width: 12),
-                _legend(context, taskColor, Icons.checklist_outlined, Translations.t('monthChartTasks', context)),
+                _legend(
+                  context,
+                  taskColor,
+                  Icons.checklist_outlined,
+                  Translations.t('monthChartTasks', context),
+                ),
                 const Spacer(),
                 // Число дней тоже под защитой от правой грани.
                 Flexible(
@@ -610,13 +621,17 @@ class _MonthChart extends StatelessWidget {
                       _face(
                         height: habitH,
                         color: habitColor,
-                        radius: const BorderRadius.vertical(top: Radius.circular(6)),
+                        radius: const BorderRadius.vertical(
+                          top: Radius.circular(6),
+                        ),
                       ),
                     if (taskH > 0)
                       _face(
                         height: taskH,
                         color: taskColor,
-                        radius: const BorderRadius.vertical(bottom: Radius.circular(6)),
+                        radius: const BorderRadius.vertical(
+                          bottom: Radius.circular(6),
+                        ),
                       ),
                   ],
                 ),
@@ -675,13 +690,23 @@ class _MonthChart extends StatelessWidget {
     );
   }
 
-  Widget _legend(BuildContext context, Color color, IconData icon, String text) {
+  Widget _legend(
+    BuildContext context,
+    Color color,
+    IconData icon,
+    String text,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 11, color: color),
         const SizedBox(width: 4),
-        Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          text,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
@@ -736,10 +761,7 @@ class _ChartDecorPainter extends CustomPainter {
     final path = Path()..moveTo(pts.first.dx, pts.first.dy);
     for (var i = 1; i < pts.length; i++) {
       final prev = pts[i - 1];
-      final mid = Offset(
-        (prev.dx + pts[i].dx) / 2,
-        (prev.dy + pts[i].dy) / 2,
-      );
+      final mid = Offset((prev.dx + pts[i].dx) / 2, (prev.dy + pts[i].dy) / 2);
       path.quadraticBezierTo(prev.dx, prev.dy, mid.dx, mid.dy);
     }
     path.lineTo(pts.last.dx, pts.last.dy);

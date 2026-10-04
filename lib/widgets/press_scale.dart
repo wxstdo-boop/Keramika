@@ -17,7 +17,7 @@ class PressScale extends StatefulWidget {
     super.key,
     required this.child,
     this.pressedScale = 0.985,
-    this.duration = const Duration(milliseconds: 240),
+    this.duration = const Duration(milliseconds: 280),
     this.curve = Curves.easeOutCubic,
   });
 
