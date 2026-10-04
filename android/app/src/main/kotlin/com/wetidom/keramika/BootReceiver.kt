@@ -32,13 +32,18 @@ class BootReceiver : BroadcastReceiver() {
             ACTION_MY_PACKAGE_REPLACED -> {
                 if (context == null) return
                 Log.d(TAG, "Boot/update received — rescheduling alarms natively")
-                rescheduleFromManifest(context)
+                // После ОБНОВЛЕНИЯ приложения пропущенное утро догонять не
+                // нужно: телефон не выключался, и человек вполне мог
+                // будильник уже прослушать. После РЕБУТА — нужно: это ровно
+                // тот случай «выключил телефон ночью, утром будильник молчал».
+                val isUpdate = intent.action == ACTION_MY_PACKAGE_REPLACED
+                rescheduleFromManifest(context, recoverMissed = !isUpdate)
                 launchApp(context)
             }
         }
     }
 
-    private fun rescheduleFromManifest(ctx: Context) {
+    private fun rescheduleFromManifest(ctx: Context, recoverMissed: Boolean) {
         try {
             val prefs = ctx.applicationContext
                 .getSharedPreferences(AlarmSchedulerPlugin.PREFS_NAME, Context.MODE_PRIVATE)
@@ -70,11 +75,26 @@ class BootReceiver : BroadcastReceiver() {
                         set(Calendar.SECOND, 0)
                         set(Calendar.MILLISECOND, 0)
                     }
+
+                    // Пропущенный слот ищем ДО сдвига `next` в будущее.
+                    val missedAt =
+                        if (recoverMissed && days.isNotEmpty() && payload != "rc") {
+                            missedOccurrence(hour, minute, days, now)
+                        } else {
+                            null
+                        }
+
                     if (days.isEmpty()) {
                         // Одноразовый будильник: если его время уже прошло —
                         // он либо уже сработал, либо «просрочен» (например,
                         // телефон был выключен). Не воскрешаем.
-                        if (!next.after(now)) continue
+                        if (!next.after(now)) {
+                            AlarmLog.write(
+                                ctx,
+                                "BOOT SKIP id=$code one-shot expired ${hour}:${"%02d".format(minute)}",
+                            )
+                            continue
+                        }
                     } else {
                         // Повторяющийся: ближайший будущий день из расписания.
                         if (!next.after(now) || !days.contains(dow(next))) {
@@ -90,57 +110,140 @@ class BootReceiver : BroadcastReceiver() {
                         }
                     }
 
-                    val intent = Intent(ctx, AlarmReceiver::class.java)
-                    intent.putExtra("alarm_id", code)
-                    intent.putExtra("title", title)
-                    intent.putExtra("body", body)
-                    intent.putExtra("channel_id", "keramika_alarm")
-                    intent.putExtra("channel_name", "Alarms")
-                    intent.putExtra("sound_name", soundName)
-                    intent.putExtra("vibrate", vibrate)
-                    intent.putExtra("payload", payload)
-                    intent.putExtra("fullscreen", true)
-                    intent.putExtra("hour", hour)
-                    intent.putExtra("minute", minute)
-                    intent.putExtra("repeat_days", repeatDays)
-                    if (customPath != null) intent.putExtra("custom_sound_path", customPath)
+                    if (arm(am, ctx, code, buildIntent(ctx, code, title, body, soundName, vibrate, payload, hour, minute, repeatDays, customPath, null), next.timeInMillis, "BOOT")) {
+                        scheduled++
+                    }
 
-                    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                    else
-                        PendingIntent.FLAG_UPDATE_CURRENT
-                    val pi = PendingIntent.getBroadcast(ctx, code, intent, flags)
-
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                            !am.canScheduleExactAlarms()
-                        ) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                am.setAndAllowWhileIdle(
-                                    AlarmManager.RTC_WAKEUP,
-                                    next.timeInMillis,
-                                    pi,
-                                )
-                            } else {
-                                am.set(AlarmManager.RTC_WAKEUP, next.timeInMillis, pi)
-                            }
-                        } else {
-                            am.setAlarmClock(
-                                AlarmManager.AlarmClockInfo(next.timeInMillis, pi),
-                                pi,
+                    missedAt?.let { was ->
+                        // Догон: звеним через минуту после включений, чтобы
+                        // система успела поднять статус-бар, и подписываем
+                        // уведомление как пропущенное.
+                        val ring = now.timeInMillis + MISSED_DELAY_MS
+                        val i = buildIntent(
+                            ctx, code, title, body, soundName, vibrate, payload,
+                            hour, minute, repeatDays, customPath,
+                            AlarmReceiver.ACTION_MISSED,
+                        )
+                        if (arm(am, ctx, code, i, ring, "BOOT-MISSED")) {
+                            AlarmLog.write(
+                                ctx,
+                                "BOOT MISS-RECOVER id=$code was=${AlarmLog.time(was)} ring=${AlarmLog.time(ring)}",
                             )
                         }
-                        scheduled++
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Reschedule failed code=$code", e)
                     }
                 } catch (_: Exception) {}
             }
             Log.d(TAG, "Boot rescheduled $scheduled alarms")
-            logToFile(ctx, "BOOT RESCHEDULED $scheduled alarms")
+            val nextArmed = am.nextAlarmTime()
+            AlarmLog.write(
+                ctx,
+                "BOOT RESCHEDULED $scheduled alarms nextAlarm=" +
+                    if (nextArmed > 0) AlarmLog.time(nextArmed) else "none",
+            )
         } catch (e: Exception) {
             Log.e(TAG, "rescheduleFromManifest failed", e)
         }
+    }
+
+    /**
+     * Единая постановка: setAlarmClock, когда точные будильники разрешены,
+     * иначе idle-safe вариант. Каждый исход уходит в чёрный ящик — без строки
+     * SCHEDULE нельзя доказать, что будильник вообще был взведён.
+     */
+    private fun arm(
+        am: AlarmManager,
+        ctx: Context,
+        code: Int,
+        intent: Intent,
+        atMillis: Long,
+        tag: String,
+    ): Boolean {
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        else
+            PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = PendingIntent.getBroadcast(ctx, code, intent, flags)
+        val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+        return try {
+            if (exact) {
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(atMillis, pi), pi)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+            } else {
+                am.set(AlarmManager.RTC_WAKEUP, atMillis, pi)
+            }
+            AlarmLog.write(
+                ctx,
+                "$tag SCHEDULE id=$code fire=${AlarmLog.time(atMillis)} " +
+                    "api=${if (exact) "alarmClock" else "whileIdle"}",
+            )
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Reschedule failed code=$code", e)
+            AlarmLog.write(
+                ctx,
+                "$tag SCHEDULE FAILED id=$code error=${e.javaClass.simpleName}: ${e.message}",
+            )
+            false
+        }
+    }
+
+    @Suppress("SpellCheckingInspection")
+    private fun buildIntent(
+        ctx: Context,
+        code: Int,
+        title: String,
+        body: String,
+        soundName: String,
+        vibrate: Boolean,
+        payload: String,
+        hour: Int,
+        minute: Int,
+        repeatDays: String,
+        customPath: String?,
+        action: String?,
+    ): Intent = Intent(ctx, AlarmReceiver::class.java).apply {
+        if (action != null) this.action = action
+        putExtra("alarm_id", code)
+        putExtra("title", title)
+        putExtra("body", body)
+        putExtra("channel_id", "keramika_alarm")
+        putExtra("channel_name", "Alarms")
+        putExtra("sound_name", soundName)
+        putExtra("vibrate", vibrate)
+        putExtra("payload", payload)
+        putExtra("fullscreen", true)
+        putExtra("hour", hour)
+        putExtra("minute", minute)
+        putExtra("repeat_days", repeatDays)
+        if (customPath != null) putExtra("custom_sound_path", customPath)
+    }
+
+    /**
+     * Последний ПРОШЕДШИЙ слот повторяющегося будильника, если он случился не
+     * позже [MISSED_GRACE_MS] назад. Иначе null — будильник либо ещё не
+     * наступал, либо просрочен слишком давно, чтобы будить человека сейчас.
+     */
+    private fun missedOccurrence(
+        hour: Int,
+        minute: Int,
+        days: List<Int>,
+        now: Calendar,
+    ): Long? {
+        val cand = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        for (back in 0..7) {
+            if (!cand.after(now) && days.contains(dow(cand))) {
+                val late = now.timeInMillis - cand.timeInMillis
+                return if (late in 0 until MISSED_GRACE_MS) cand.timeInMillis else null
+            }
+            cand.add(Calendar.DAY_OF_YEAR, -1)
+        }
+        return null
     }
 
     private fun dow(cal: Calendar): Int = when (cal.get(Calendar.DAY_OF_WEEK)) {
@@ -152,20 +255,6 @@ class BootReceiver : BroadcastReceiver() {
         Calendar.SATURDAY -> 6
         Calendar.SUNDAY -> 7
         else -> 0
-    }
-
-    private fun logToFile(ctx: Context, msg: String) {
-        try {
-            val dir = ctx.getExternalFilesDir(null)
-            if (dir != null) {
-                val f = java.io.File(dir, "alarm_fire_log.txt")
-                val ts = java.text.SimpleDateFormat(
-                    "yyyy-MM-dd HH:mm:ss",
-                    java.util.Locale.US,
-                ).format(java.util.Date())
-                f.appendText("$ts $msg\n")
-            }
-        } catch (_: Exception) {}
     }
 
     private fun launchApp(context: Context) {
@@ -197,5 +286,15 @@ class BootReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "BootReceiver"
+
+        /**
+         * Как давно мог пройти пропущенный будильник, чтобы догон имел смысл.
+         * Раньше 06:30 утра телефон включили в 11:00 — звонить уже поздно и
+         * только раздражать.
+         */
+        private const val MISSED_GRACE_MS = 3 * 60 * 60_000L
+
+        /** Пауза после загрузки, чтобы система успела поднять интерфейс. */
+        private const val MISSED_DELAY_MS = 45_000L
     }
 }

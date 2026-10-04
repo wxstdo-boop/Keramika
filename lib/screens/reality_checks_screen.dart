@@ -8,21 +8,34 @@ import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/smooth_hover.dart';
+import '../widgets/animated_strike_text.dart';
 import '../widgets/press_scale.dart';
+import '../widgets/section_pill.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/manual_time_dialog.dart';
+import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
 import '../widgets/ai_guide.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_reality_check_screen.dart';
+import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 
 class RealityChecksScreen extends StatefulWidget {
   final VoidCallback? onExit;
-  const RealityChecksScreen({super.key, this.onExit});
+  final ValueNotifier<double>? scrollOffset;
+
+  /// Индекс этого раздела в PageView — ключ в sectionOffsetByPage.
+  final int pillIndex;
+  const RealityChecksScreen({
+    super.key,
+    this.onExit,
+    this.scrollOffset,
+    this.pillIndex = 0,
+  });
 
   @override
   State<RealityChecksScreen> createState() => _RealityChecksScreenState();
@@ -37,6 +50,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
   final _taskSvc = TaskService();
   // FAB-ряд прячется при прокрутке вниз и плавно возвращается у верха.
   final ValueNotifier<bool> _fabVisible = ValueNotifier<bool>(true);
+  final ScrollController _pillCtrl = ScrollController();
   // Ключ для AnimatedList точных времён — чтобы анимация
   // добавления/удаления плашки работала плавно при каждом
   // изменении модели.
@@ -46,9 +60,30 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
   @override
   void initState() {
     super.initState();
+    _pillCtrl.addListener(_syncPillOffset);
     _service.load().then((_) => _scheduleReminders());
     _habitSvc.load();
     _taskSvc.load();
+    // При пересоздании вкладки (вкл/выкл в настройках) сброс офсета, иначе
+    // map держит старый прокрут и таблетка висит невидимой пока первый скролл
+    // не обновит значение.
+    sectionOffsetByPage[widget.pillIndex] = 0.0;
+  }
+
+  void _syncPillOffset() {
+    final target = widget.scrollOffset;
+    if (target == null) return;
+    // Позиция скроллера на миг отваливается (перезаход на главный экран,
+    // пересборка страницы PageView). Раньше в этом случае писался 0 — и
+    // таблетка разделов выскакивала поверх УЖЕ прокрученного списка, причём
+    // навсегда: исправить потом было некому, офсет больше никто не пишет.
+    // Не зная реальной позиции — держим последнюю: настоящая приедет своим
+    // событием скролла.
+    if (_pillCtrl.positions.length != 1) return;
+    final v = _pillCtrl.offset;
+    final vv = v < 0 ? 0.0 : v;
+    sectionOffsetByPage[widget.pillIndex] = vv;
+    if ((target.value - vv).abs() > 0.5) target.value = vv;
   }
 
   /// Потянуть вниз — обновить: перечитываем данные с диска и заново
@@ -236,71 +271,79 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
           body: FabScrollListener(
             visible: sectionPillVisible,
             child: FabScrollListener(
-            visible: _fabVisible,
-            // Плавный кросс-фейд: список ↔ пустое состояние (удаление
-            // последней проверки больше не дёргает экран). Кнопка «назад»
-            // убрана вовсе — раздел листается таблеткой разделов.
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 320),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(
-                    begin: 0.985,
-                    end: 1.0,
-                  ).animate(animation),
-                  child: child,
+              visible: _fabVisible,
+              // Плавный кросс-фейд: список ↔ пустое состояние (удаление
+              // последней проверки больше не дёргает экран). Кнопка «назад»
+              // убрана вовсе — раздел листается таблеткой разделов.
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 320),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(
+                      begin: 0.985,
+                      end: 1.0,
+                    ).animate(animation),
+                    child: child,
+                  ),
                 ),
-              ),
-              child: RefreshIndicator(
-                onRefresh: _onRefresh,
-                child: CustomScrollView(
-                  key: ValueKey(hasChecks ? 'rc_list' : 'rc_empty'),
-                  // Потянуть вниз для обновления работает всегда — даже
-                  // когда контента мало (раньше жест «не ловился»).
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    if (!hasChecks) ...[
-                      // Пустой экран целиком находится в общем scroll-контенте:
-                      // совет больше не делит ограниченное место с футером и не
-                      // залезает под него на маленьких экранах.
-                      SliverToBoxAdapter(
-                        child: _buildSettingsCard(context, theme),
+                child: RefreshIndicator(
+                  // Кружок выезжает из-под таблетки разделов, а не за неё.
+                  edgeOffset: kSectionRefreshEdgeOffset,
+                  onRefresh: _onRefresh,
+                  child: CustomScrollView(
+                    key: ValueKey(hasChecks ? 'rc_list' : 'rc_empty'),
+                    controller: _pillCtrl,
+                    // Потянуть вниз для обновления работает всегда — даже
+                    // когда контента мало (раньше жест «не ловился»).
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      // Отступ под стекло таблетки разделов: контент в покое
+                      // начинается под капсулой и при прокрутке уходит под неё.
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: kSectionPillSlotHeight),
                       ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 12, bottom: 8),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: _buildEmptyChildren(context, theme),
+                      if (!hasChecks) ...[
+                        // Пустой экран целиком находится в общем scroll-контенте:
+                        // совет больше не делит ограниченное место с футером и не
+                        // залезает под него на маленьких экранах.
+                        SliverToBoxAdapter(
+                          child: _buildSettingsCard(context, theme),
+                        ),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 12, bottom: 8),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: _buildEmptyChildren(context, theme),
+                            ),
                           ),
                         ),
-                      ),
-                      SliverToBoxAdapter(child: _footer(context, theme)),
-                    ] else ...[
-                      SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildSettingsCard(context, theme),
-                            ..._buildListChildren(context, theme, checks),
-                          ],
+                        SliverToBoxAdapter(child: _footer(context, theme)),
+                      ] else ...[
+                        SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSettingsCard(context, theme),
+                              ..._buildListChildren(context, theme, checks),
+                            ],
+                          ),
                         ),
-                      ),
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: _footer(context, theme),
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: _footer(context, theme),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
             ),
           ),
           floatingActionButton: AnimatedFabRow(
@@ -313,15 +356,15 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                 const SizedBox(width: 10),
                 PressScale(
                   child: BerserkFabStack(
-                  // Долгое зажатие «плюса» открывает режим BERSERK.
-                  child: GestureDetector(
-                    onLongPress: () => showBerserkSheet(context),
-                    child: FloatingActionButton(
-                      onPressed: _addCheck,
-                      child: const Icon(Icons.add),
+                    // Долгое зажатие «плюса» открывает режим BERSERK.
+                    child: GestureDetector(
+                      onLongPress: () => showBerserkSheet(context),
+                      child: FloatingActionButton(
+                        onPressed: _addCheck,
+                        child: const Icon(Icons.add),
+                      ),
                     ),
                   ),
-                ),
                 ),
               ],
             ),
@@ -407,14 +450,17 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                                 height: 36,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
+                                  // Цвет кружка — primary темы, а не
+                                  // жёсткий Colors.pink: на персиковой/зелёной
+                                  // теме розовый «сделано» выглядел чужим.
                                   color: check.isDoneToday
-                                      ? Colors.pink[300]
+                                      ? theme.colorScheme.primary
                                       : theme.colorScheme.primary.withValues(
                                           alpha: 0.12,
                                         ),
                                   border: Border.all(
                                     color: check.isDoneToday
-                                        ? Colors.pink[300]!
+                                        ? theme.colorScheme.primary
                                         : theme.colorScheme.primary,
                                     width: 2,
                                   ),
@@ -423,8 +469,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                                 // с лёгким «попом» (fade + scale), как в
                                 // привычках и задачах.
                                 child: AnimatedSwitcher(
-                                  duration:
-                                      const Duration(milliseconds: 280),
+                                  duration: const Duration(milliseconds: 280),
                                   switchInCurve: Curves.easeOutBack,
                                   switchOutCurve: Curves.easeInCubic,
                                   transitionBuilder: (child, animation) =>
@@ -453,9 +498,32 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                check.question,
-                                style: theme.textTheme.titleMedium,
+                              // Плавное зачёркивание, как в задачах и привычках.
+                              // Здесь его НЕ БЫЛО вовсе: отметка только
+                              // подсвечивала кружок, и фраза оставалась такой
+                              // же яркой — отсюда «зачёркивания не видно».
+                              child: AnimatedStrikeText(
+                                text: sanitizeTextForWrap(check.question),
+                                style:
+                                    theme.textTheme.titleMedium?.copyWith(
+                                      fontSize: 19.5,
+                                      height: 1.35,
+                                      color: theme.colorScheme.onSurface,
+                                    ) ??
+                                    const TextStyle(fontSize: 19.5),
+                                textScaler: MediaQuery.textScalerOf(context),
+                                struck: check.isDoneToday,
+                                struckColor: theme.colorScheme.onSurfaceVariant,
+                                // Линия берётся НЕ `outline`: он светлее
+                                // текста примерно на 15 уровней серого, и на
+                                // телефоне зачёркивание не читалось совсем.
+                                strikeColor: theme.colorScheme.onSurface
+                                    .withValues(
+                                      alpha: theme.brightness == Brightness.dark
+                                          ? 0.72
+                                          : 0.6,
+                                    ),
+                                maxLines: null,
                               ),
                             ),
                           ],
@@ -547,40 +615,45 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.refresh, size: 20),
-                    tooltip: Translations.t('rcReset', context),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          title: Text(Translations.t('rcReset', context)),
-                          content: Text(Translations.t('rcResetBody', context)),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: Text(Translations.cancelOf(context)),
+                  SmoothTooltip(
+                    message: Translations.t('rcReset', context),
+                    preferredAbove: true,
+                    child: IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: Text(
-                                Translations.t('rcReset', context),
-                                style: TextStyle(
-                                  color: theme.colorScheme.error,
+                            title: Text(Translations.t('rcReset', context)),
+                            content: Text(
+                              Translations.t('rcResetBody', context),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text(Translations.cancelOf(context)),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: Text(
+                                  Translations.t('rcReset', context),
+                                  style: TextStyle(
+                                    color: theme.colorScheme.error,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        _service.resetAllStats();
-                        _scheduleReminders();
-                      }
-                    },
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          _service.resetAllStats();
+                          _scheduleReminders();
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),

@@ -20,7 +20,7 @@ class ModelLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final showBadge = isAdaModel || label == 'ada-0.0.3';
+    final showBadge = isAdaModel || label.startsWith('ada-0.0.3');
     if (!showBadge) {
       return Text(label, style: textStyle);
     }
@@ -29,6 +29,10 @@ class ModelLabel extends StatelessWidget {
     final gold = const LinearGradient(
       colors: [Color(0xFFF5D374), Color(0xFFE0A52B)],
     );
+    // Сине-бирюзовый градиент POOL — Poolside (основной источник Ады).
+    final poolGradient = const LinearGradient(
+      colors: [Color(0xFF00B8A9), Color(0xFF2E6FDB)],
+    );
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -36,6 +40,7 @@ class ModelLabel extends StatelessWidget {
           child: Text(label, style: textStyle, overflow: TextOverflow.ellipsis),
         ),
         const SizedBox(width: 5),
+        // PREMIUM — золотая плашка, из неё вынесен отдельный значок HF.
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
           decoration: BoxDecoration(
@@ -58,6 +63,24 @@ class ModelLabel extends StatelessWidget {
               color: cs.brightness == Brightness.dark
                   ? const Color(0xFF3A2A00)
                   : const Color(0xFF432F00),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        // Отдельная плашка POOL — Poolside.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            gradient: poolGradient,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            'POOL',
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.6,
+              color: Colors.white,
             ),
           ),
         ),

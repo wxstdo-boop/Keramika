@@ -4,9 +4,9 @@ import '../services/haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../widgets/press_scale.dart';
+import '../widgets/section_pill.dart';
 import '../models/alarm.dart';
 import '../models/app_timer.dart';
-import '../models/wake_task.dart';
 import '../services/alarm_service.dart';
 import '../services/timer_service.dart';
 import 'wake_task_screen.dart';
@@ -15,7 +15,10 @@ import '../main.dart';
 import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/volumetric_switch.dart';
+import '../utils/ambient_loop.dart';
+import '../utils/android_settings.dart' show openFullScreenNotifSettings;
 import '../utils/page_transitions.dart';
+import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../utils/snackbar.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/drag_proxy.dart';
@@ -24,9 +27,14 @@ import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_alarm_screen.dart';
 import 'add_timer_screen.dart';
+import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 
 class AlarmsScreen extends StatefulWidget {
-  const AlarmsScreen({super.key});
+  final ValueNotifier<double>? scrollOffset;
+
+  /// Индекс этого раздела в PageView — ключ в sectionOffsetByPage.
+  final int pillIndex;
+  const AlarmsScreen({super.key, this.scrollOffset, this.pillIndex = 0});
 
   @override
   State<AlarmsScreen> createState() => _AlarmsScreenState();
@@ -40,20 +48,30 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   final _timerSvc = TimerService();
   // FAB-ряд прячется при прокрутке вниз и плавно возвращается у верха.
   final ValueNotifier<bool> _fabVisible = ValueNotifier<bool>(true);
+  final ScrollController _pillCtrl = ScrollController();
+  // Идёт ли сейчас перетаскивание карточки (см. onReorderStart/End).
+  bool _draggingAlarm = false;
   @override
   void initState() {
     super.initState();
+    _pillCtrl.addListener(_syncPillOffset);
     _service.load();
     _timerSvc.load();
     SettingsService.loadExperimental();
     _timerSvc.onTimerDone = _onTimerDone;
     WidgetsBinding.instance.addObserver(this);
+    _maybeWarnFullScreenRevoked();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       SettingsService.loadExperimental();
+      // Возврат из системного экрана выдачи права: либо оно вернулось и
+      // плашка больше не нужна, либо отзыв всё ещё висит.
+      notificationService.refreshFullScreenGrant().then((_) {
+        _maybeWarnFullScreenRevoked();
+      });
     }
   }
 
@@ -61,8 +79,57 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   void dispose() {
     _timerSvc.onTimerDone = null;
     _fabVisible.dispose();
+    _pillCtrl.removeListener(_syncPillOffset);
+    _pillCtrl.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Пишет РЕАЛЬНУЮ позицию основного скроллера в персональный notifier
+  /// раздела (см. _syncPillOffset в HabitsScreen).
+  void _syncPillOffset() {
+    final target = widget.scrollOffset;
+    if (target == null) return;
+    // Позиция скроллера на миг отваливается (перезаход на главный экран,
+    // пересборка страницы PageView). Раньше в этом случае писался 0 — и
+    // таблетка разделов выскакивала поверх УЖЕ прокрученного списка, причём
+    // навсегда: исправить потом было некому, офсет больше никто не пишет.
+    // Не зная реальной позиции — держим последнюю: настоящая приедет своим
+    // событием скролла.
+    if (_pillCtrl.positions.length != 1) return;
+    final v = _pillCtrl.offset;
+    final vv = v < 0 ? 0.0 : v;
+    sectionOffsetByPage[widget.pillIndex] = vv;
+    if ((target.value - vv).abs() > 0.5) target.value = vv;
+  }
+
+  /// Система сняла право полноэкранного показа (это её обычное поведение
+  /// после обновления APK или перезагрузки: app-op возвращается в `ignore`).
+  /// Без него будильник не выходит поверх блокировки, и молчание об этом
+  /// стоило пользователю утра. Напоминаем ровно там, где он смотрит на свои
+  /// будильники, и ведём к выдаче в один тап.
+  void _maybeWarnFullScreenRevoked() {
+    if (!notificationService.fullScreenRevoked) return;
+    if (!notificationService.fullscreen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !notificationService.fullScreenRevoked) return;
+      showBeautifulSnackBar(
+        context,
+        message: Translations.t('fullScreenGrantMissing', context),
+        icon: Icons.notification_important_outlined,
+        iconColor: Colors.redAccent,
+        // Не 8 секунд: право система снимает сама и тихо, а плашка, которая
+        // уходит раньше, чем её успели прочитать, — это то же молчание, из-за
+        // которого право и оставалось снятым до следующего проспанного утра.
+        // Висит, пока её не закроют или пока не выдадут право.
+        duration: const Duration(minutes: 10),
+        actionLabel: Translations.t('openSettings', context),
+        onAction: () async {
+          await openFullScreenNotifSettings();
+          notificationService.clearFullScreenRevoked();
+        },
+      );
+    });
   }
 
   void _onTimerDone(String id) {
@@ -180,18 +247,21 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   }
 
   /// Запускает ТЕСТОВЫЙ будильник: сразу открывается экран пробуждения
-  /// (математическая задача) со звуком по умолчанию, без планирования
-  /// реального будильника. При закрытии звук плавно затухает, нативный
-  /// будильниковый звук останавливается и alarm-уведомления чистятся
-  /// (см. WakeTaskScreen._finish).
-  void _testAlarm() {
+  /// с ЗАДАЧЕЙ И ЗВУКОМ ТОГО будильника, на карточке которого нажата
+  /// кнопка, без планирования реального срабатывания. Раньше тут был
+  /// жёстко «математическая задача» + 'Default', и тест показывал не то,
+  /// что пользователь настроил. При закрытии звук плавно затухает,
+  /// нативный будильниковый звук останавливается и alarm-уведомления
+  /// чистятся (см. WakeTaskScreen._finish).
+  void _testAlarm(Alarm alarm) {
     Haptics.light();
     Navigator.of(context).push(
       fadeRoute(
         WakeTaskScreen(
-          taskType: WakeUpTask.math,
+          taskType: alarm.taskType,
           isTest: true,
-          soundName: 'Default',
+          soundName: alarm.soundName,
+          customSoundPath: alarm.customSoundPath,
         ),
       ),
     );
@@ -203,6 +273,8 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     final theme = Theme.of(context);
 
     return RefreshIndicator(
+      // Кружок выезжает из-под таблетки разделов, а не появляется за ней.
+      edgeOffset: kSectionRefreshEdgeOffset,
       onRefresh: () async {
         // Перезгружаем данные
         await _service.load();
@@ -226,50 +298,50 @@ class _AlarmsScreenState extends State<AlarmsScreen>
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(
-              visible: _fabVisible,
-              child: Column(
-                children: [
-                  // Секция таймеров — по флагу «Экспериментальное» в настройках.
-                  // Выключение тумблера только прячет секцию: сами таймеры
-                  // остаются в хранилище и снова появляются при включении.
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeInOutCubic,
-                    child: SettingsService.experimentalEnabled.value
-                        ? _buildTimersSection(context, theme, timers)
-                        : const SizedBox.shrink(),
-                  ),
-                  Expanded(
-                    // Плавный кросс-фейд между списком и пустым состоянием:
-                    // после удаления последнего будильника карточка-совет
-                    // появляется, а не прыгает мгновенно.
-                    child: AnimatedSwitcher(
+                visible: _fabVisible,
+                child: Column(
+                  children: [
+                    // Секция таймеров — по флагу «Экспериментальное» в настройках.
+                    // Выключение тумблера только прячет секцию: сами таймеры
+                    // остаются в хранилище и снова появляются при включении.
+                    AnimatedSize(
                       duration: const Duration(milliseconds: 320),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.98,
-                            end: 1.0,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
-                      child: hasAlarms
-                          ? KeyedSubtree(
-                              key: const ValueKey('alarms_list'),
-                              child: _buildAlarmList(context, theme, alarms),
-                            )
-                          : KeyedSubtree(
-                              key: const ValueKey('alarms_empty'),
-                              child: _buildAlarmEmpty(context, theme),
-                            ),
+                      curve: Curves.easeInOutCubic,
+                      child: SettingsService.experimentalEnabled.value
+                          ? _buildTimersSection(context, theme, timers)
+                          : const SizedBox.shrink(),
                     ),
-                  ),
-                ],
-              ),
+                    Expanded(
+                      // Плавный кросс-фейд между списком и пустым состоянием:
+                      // после удаления последнего будильника карточка-совет
+                      // появляется, а не прыгает мгновенно.
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 320),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(
+                              begin: 0.98,
+                              end: 1.0,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: hasAlarms
+                            ? KeyedSubtree(
+                                key: const ValueKey('alarms_list'),
+                                child: _buildAlarmList(context, theme, alarms),
+                              )
+                            : KeyedSubtree(
+                                key: const ValueKey('alarms_empty'),
+                                child: _buildAlarmEmpty(context, theme),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             floatingActionButton: AnimatedFabRow(
@@ -282,16 +354,16 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                   const SizedBox(width: 10),
                   PressScale(
                     child: BerserkFabStack(
-                    // Долгое зажатие «плюса» открывает режим BERSERK.
-                    child: GestureDetector(
-                      onLongPress: () => showBerserkSheet(context),
-                      child: FloatingActionButton(
-                        onPressed: _addAlarm,
-                        child: const Icon(Icons.add),
+                      // Долгое зажатие «плюса» открывает режим BERSERK.
+                      child: GestureDetector(
+                        onLongPress: () => showBerserkSheet(context),
+                        child: FloatingActionButton(
+                          onPressed: _addAlarm,
+                          child: const Icon(Icons.add),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 ],
               ),
             ),
@@ -321,20 +393,48 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     // Горизонтальный отступ списка = бывший margin карточки: теперь
     // item занимает ровно ширину карточки, и drag-proxy (обводка + scale)
     // не выходит за боковые края при перетаскивании.
+    // Отступ сверху: стекло таблетки лежит НАД этим разделом. Когда
+    // экспериментальная секция таймеров включена, она стоит над списком
+    // непрокручиваемым блоком (в Column), поэтому место под капсулу
+    // резервирует она сама (см. _buildTimersSection), а списку отступ не
+    // нужен — его вьюпорт и так начинается ниже таблетки.
+    final topPadding = SettingsService.experimentalEnabled.value
+        ? 8.0
+        : 8.0 + kSectionPillSlotHeight;
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      scrollController: _pillCtrl,
+      // Явный AlwaysScrollable, как в привычках (habits_screen.dart:641).
+      // Глобальная физика приложения — голый BouncingScrollPhysics
+      // (main.dart:894), а он при контенте короче вьюпорта вообще не
+      // принимает вертикальный драг (minScrollExtent == maxScrollExtent),
+      // поэтому раздел будильников с 1-2 карточками не листался и не
+      // свайпался вверх/вниз, в отличие от остальных разделов.
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(12, topPadding, 12, 8),
       itemCount: alarms.length,
       // Предзагрузка вне вьюпорта и изоляция отрисовки каждой карточки от
       // соседних — при прокрутке и драге список не «дёргается» на слабых
       // устройствах (Redmi Note 12).
       scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
       buildDefaultDragHandles: false,
+      // Пока карточка в полёте, порядок в ДАННЫХ ещё старый: ReorderableListView
+      // сообщает о нём только на отпускании (onReorderItem). Значит в это время
+      // «первый будильник» на экране и «первый в списке» — разные карточки, и
+      // звонковый значок, привязанный к индексу, висел бы не на той карточке:
+      // визуально он уезжал с драгом, а тест запускал прошлый будильник.
+      // На время драга значок гаснет (тот же кроссфейд, что и при смене
+      // порядка) и возвращается уже на настоящем первом будильнике.
+      onReorderStart: (_) => setState(() => _draggingAlarm = true),
+      onReorderEnd: (_) => setState(() => _draggingAlarm = false),
       onReorderItem: (oldIndex, newIndex) =>
           _service.reorder(oldIndex, newIndex),
       proxyDecorator: (child, index, animation) =>
           buildDragProxy(child, theme, animation),
       itemBuilder: (context, i) {
         final alarm = alarms[i];
+        // Значок «Тест» живёт на первом будильнике — и только когда ничего
+        // не перетаскивается (см. onReorderStart выше).
+        final showBell = i == 0 && !_draggingAlarm;
         return SwipeToDelete(
           // Ключ на ВНЕШНЕМ виджете: ReorderableListView берёт key от него.
           key: ValueKey('item_alarm_${alarm.id}'),
@@ -454,26 +554,25 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                             Row(
                               children: [
                                 Expanded(
-                                  child: Text(
-                                    alarm.timeLabel,
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(
-                                      color: alarm.enabled
-                                          ? null
-                                          : theme.colorScheme.onSurfaceVariant,
-                                    ),
+                                  child: _AlarmTimeHighlight(
+                                    label: alarm.timeLabel,
+                                    enabled: alarm.enabled,
+                                    theme: theme,
                                   ),
                                 ),
                                 // Тестовый будильник — значок ТОЛЬКО на первом
-                                // будильнике. При драге порядок меняется ЖИВО
-                                // (onReorderItem), поэтому вместо резкого
-                                // «телепорта» между карточками — плавный
-                                // кроссфейд: старый значок тает, новый
-                                // проявляется (карточки в этот момент уже
-                                // скользят на свои места). Невидимая кнопка
-                                // не ловит тапы (IgnorePointer).
+                                // будильнике, и только вне перетаскивания.
+                                // Замер в виджет-тесте: onReorderItem приходит
+                                // на ОТПУСКАНИИ, а не «живо», поэтому во время
+                                // драга данные ещё старые — значок на карточке,
+                                // которая уехала с первого слота, врал бы и
+                                // запускал прошлый будильник. На время драга он
+                                // гаснет, после — плавно проявляется на новом
+                                // первом (кроссфейд 220 мс, а не «телепорт»
+                                // между карточками). Невидимая кнопка тапы не
+                                // ловит (IgnorePointer).
                                 IgnorePointer(
-                                  ignoring: i != 0,
+                                  ignoring: !showBell,
                                   child: SizedBox(
                                     width: 32,
                                     height: 32,
@@ -482,29 +581,33 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                                         milliseconds: 220,
                                       ),
                                       curve: Curves.easeOutCubic,
-                                      opacity: i == 0 ? 1.0 : 0.0,
-                                      child: IconButton(
-                                        onPressed: _testAlarm,
-                                        tooltip: Translations.t(
+                                      opacity: showBell ? 1.0 : 0.0,
+                                      child: SmoothTooltip(
+                                        message: Translations.t(
                                           'testAlarm',
                                           context,
                                           'Тест будильника',
                                         ),
-                                        icon: const Icon(
-                                          Icons.notifications_active_outlined,
-                                          size: 18,
-                                        ),
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                        visualDensity: VisualDensity.compact,
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(
-                                          minWidth: 32,
-                                          minHeight: 32,
-                                        ),
-                                        style: IconButton.styleFrom(
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
+                                        preferredAbove: true,
+                                        child: IconButton(
+                                          onPressed: () => _testAlarm(alarm),
+                                          icon: const Icon(
+                                            Icons.notifications_active_outlined,
+                                            size: 18,
+                                          ),
+                                          color: theme
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 32,
+                                            minHeight: 32,
+                                          ),
+                                          style: IconButton.styleFrom(
+                                            tapTargetSize: MaterialTapTargetSize
+                                                .shrinkWrap,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -517,11 +620,15 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                               Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
-                                  alarm.label,
+                                  sanitizeTextForWrap(alarm.label),
                                   maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
+                                  // Метка того же масштаба, что заголовки
+                                  // задач и привычек: 20.5 в узкой колонке
+                                  // роняло по слову на строку.
                                   style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontSize: 20.5,
+                                    fontSize: 19.5,
+                                    height: 1.35,
                                     color: theme.colorScheme.onSurface,
                                   ),
                                 ),
@@ -562,7 +669,15 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              // Секция таймеров непрокручиваемая и стоит в самом верху —
+              // резервирует под стеклом таблетки столько же, сколько список
+              // резервировал бы, будь она выключена.
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8 + kSectionPillSlotHeight,
+                16,
+                0,
+              ),
               child: Row(
                 children: [
                   Text(
@@ -851,9 +966,6 @@ class _AlarmsScreenState extends State<AlarmsScreen>
       ),
     );
   }
-
-
-
 }
 
 /// Лёгкая пульсация работающего таймера: цифры мягко «дышат»
@@ -870,8 +982,12 @@ class _TimerPulse extends StatefulWidget {
 
 class _TimerPulseState extends State<_TimerPulse>
     with SingleTickerProviderStateMixin {
+  // Пульс 1.00 → 1.04 за 700 мс: [AmbientVsync] оставляет ему ~20 fps. При
+  // таком малом масштабе разница глазом не видна, зато активный таймер не
+  // перерисовывает список будильников 60 раз в секунду (замер с телефона:
+  // home:alarms rAvg 32.8 мс).
   late final AnimationController _ctrl = AnimationController(
-    vsync: this,
+    vsync: AmbientVsync(this),
     duration: const Duration(milliseconds: 700),
   );
   late final Animation<double> _scale = TweenSequence<double>([
@@ -918,4 +1034,129 @@ class _TimerPulseState extends State<_TimerPulse>
   Widget build(BuildContext context) {
     return ScaleTransition(scale: _scale, child: widget.child);
   }
+}
+
+/// Плавное «подсвечивание и обратное затухание» времени будильника при его
+/// включении/выключении.
+///
+/// Подсвека — ТОЛЬКО цвет и свечение: время разгоняется в primary с мягким
+/// ореолом и так же плавно гаснет. Никакого масштаба — Transform.scale на
+/// тексте даёт мыло и дёрганый «прыжок» строчки, из-за чего анимация и
+/// выглядела «тупой».
+class _AlarmTimeHighlight extends StatefulWidget {
+  final String label;
+  final bool enabled;
+  final ThemeData theme;
+
+  const _AlarmTimeHighlight({
+    required this.label,
+    required this.enabled,
+    required this.theme,
+  });
+
+  @override
+  State<_AlarmTimeHighlight> createState() => _AlarmTimeHighlightState();
+}
+
+class _AlarmTimeHighlightState extends State<_AlarmTimeHighlight>
+    with SingleTickerProviderStateMixin {
+  static const _kPulse = Duration(milliseconds: 1250);
+
+  /// Доля времени подъёма: 26% — вспышка, 74% — остывание.
+  static const _kRise = 0.26;
+
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: _kPulse,
+  );
+
+  /// Цвет, ОТ которого идёт текущий переход. Берётся НЕ «прошлая цель», а
+  /// фактически показанный в момент тапа цвет: при повторном переключении
+  /// посреди вспышки инициализация целью сбрасывала base назад, и текст
+  /// дергался по цвету.
+  Color? _fromColor;
+
+  /// Фактически отрисованный базовый цвет последнего кадра.
+  Color? _lastBase;
+
+  /// Последнее виденное значение enabled — сравнение с ним и есть триггер.
+  late bool _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.enabled;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AlarmTimeHighlight oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.enabled != _shown) {
+      _fromColor = _lastBase;
+      _shown = widget.enabled;
+      _ctrl.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // AnimatedBuilder, а не чтение _ctrl.value прямо в build: без слушателя
+    // контроллер крутился молча, и вспышка дорисовывалась только на следующем
+    // случайном перестроении списка. Из-за этого подсветка простреливала на
+    // соседнюю карточку: та доигрывала остаток своей прошлой вспышки.
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) => _timeText(_ctrl.value),
+    );
+  }
+
+  Widget _timeText(double v) {
+    final cs = widget.theme.colorScheme;
+    // Подъём — easeOutSine, спад — тоже синусоидальный, но по другой ветке:
+    // у обеих производная на пике и в конце равна нулю, поэтому вспышка
+    // «вдыхает и выдыхает». Cubic-вариант давал ощутимый толчок на пике и
+    // обрыв в конце — это и читалось как «неплавно».
+    final pulse = v < _kRise
+        ? Curves.easeOutSine.transform(v / _kRise)
+        : 1.0 - Curves.easeInOutSine.transform((v - _kRise) / (1 - _kRise));
+    // Выключение подсвечивается вполовину слабее включения: «погасло», а не
+    // «вспыхнуло и пропало».
+    final amp = _shown ? 1.0 : 0.5;
+    // Основной цвет времени доезжает до нового состояния за первые полпути и
+    // уже не дёргается на хвосте вспышки.
+    final settle = Curves.easeInOutCubic.transform((v / 0.5).clamp(0.0, 1.0));
+    final target = _shownToColor(_shown, cs);
+    final base = Color.lerp(_fromColor ?? target, target, settle)!;
+    _lastBase = base;
+    final glow = pulse * pulse * amp;
+    // Орал разрастается, пока гаснет: пятно света на стекле ведёт себя так же.
+    final bloom = Curves.easeOutCubic.transform(v);
+    return Text(
+      widget.label,
+      style: widget.theme.textTheme.headlineSmall?.copyWith(
+        color: Color.lerp(base, cs.primary, 0.85 * pulse * amp),
+        shadows: pulse < 0.01
+            ? null
+            : [
+                Shadow(
+                  color: cs.primary.withValues(alpha: 0.55 * glow),
+                  blurRadius: 8 + 10 * bloom,
+                ),
+                Shadow(
+                  color: cs.primary.withValues(alpha: 0.26 * glow),
+                  blurRadius: 20 + 30 * bloom,
+                ),
+              ],
+      ),
+    );
+  }
+
+  static Color _shownToColor(bool enabled, ColorScheme cs) =>
+      enabled ? cs.onSurface : cs.onSurfaceVariant;
 }

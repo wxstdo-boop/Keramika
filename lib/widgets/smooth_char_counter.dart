@@ -22,30 +22,62 @@ class SmoothCharCounter extends StatelessWidget {
         ? '$currentLength'
         : '$currentLength/$maxLength';
     final nearLimit = maxLength != null && currentLength >= maxLength! * 0.9;
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 240),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.35),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
+    final style = TextStyle(
+      fontSize: 12,
+      height: 1,
+      fontWeight: nearLimit ? FontWeight.w700 : FontWeight.w500,
+      color: nearLimit
+          ? scheme.primary
+          : scheme.onSurfaceVariant.withValues(alpha: 0.75),
+    );
+    // Стабильная ширина ПОД САМЫЙ ДЛИННЫЙ вариант («999/999»): правая грань
+    // счётчика не дёргается на каждом новом разряде. Меряем реальной
+    // раскладкой текста, а не «7.6 px на цифру»: жёсткий пиксельный фактор
+    // не знал ни про системный масштаб шрифта (MIUI «крупный» текст), ни
+    // про полужирный у лимита — счётчик не влезал в свою колонку и
+    // переносил «/150» на вторую строку, наезжая на неё.
+    final scaler = MediaQuery.textScalerOf(context);
+    final maxDigits = (maxLength ?? currentLength).toString().length;
+    final widest = maxLength == null
+        ? '9' * (currentLength.toString().length).clamp(1, maxDigits)
+        : '${'9' * maxDigits}/$maxLength';
+    final measure =
+        TextPainter(textDirection: TextDirection.ltr, textScaler: scaler)
+          ..text = TextSpan(
+            text: widest,
+            style: style.copyWith(fontWeight: FontWeight.w700),
+          );
+    measure.layout();
+    final counterWidth = (measure.width + 8).clamp(38.0, 220.0);
+    return SizedBox(
+      width: counterWidth,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 240),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.35),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
         ),
-      ),
-      child: Text(
-        text,
-        key: ValueKey('sc_$text'),
-        style: TextStyle(
-          fontSize: 12,
-          height: 1,
-          fontWeight: nearLimit ? FontWeight.w700 : FontWeight.w500,
-          color: nearLimit
-              ? scheme.primary
-              : scheme.onSurfaceVariant.withValues(alpha: 0.75),
+        child: Text(
+          text,
+          key: ValueKey('sc_$text'),
+          // Одна строка всегда: если системный шрифт окажется крупнее
+          // посчитанного, цифры должны выйти за габарит слота, но НЕ
+          // разваливаться на вторую строку.
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.visible,
+          // Правое выравнивание внутри фиксированной ширины: правый край
+          // счётчика не движется, когда 0 → 10 → 100.
+          textAlign: TextAlign.right,
+          style: style,
         ),
       ),
     );

@@ -50,6 +50,10 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
                 val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
                 result.success(pm.isIgnoringBatteryOptimizations(context.packageName))
             }
+            // Ближайший взведённый будильник по мнению самой системы. Нужен,
+            // чтобы Dart-перепланировка могла ДОКАЗАТЬ постановку: молчащий
+            // будильник — это либо «мы не поставили», либо «система убрала».
+            "nextAlarmTime" -> result.success(alarmManager.nextAlarmTime())
             else -> result.notImplemented()
         }
     }
@@ -129,10 +133,20 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
                     )
                 }
                 Log.w(TAG, "Scheduled inexact alarm id=$id at $fireTimestamp")
+                AlarmLog.write(
+                    appContext,
+                    "SCHEDULE id=$id api=whileIdle fire=${AlarmLog.time(fireTimestamp)} " +
+                        "exactPerm=false title=${title.take(28)}",
+                )
             } else {
                 val alarmClockInfo = AlarmManager.AlarmClockInfo(fireTimestamp, pendingIntent)
                 alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
                 Log.d(TAG, "Scheduled exact alarm id=$id at $fireTimestamp")
+                AlarmLog.write(
+                    appContext,
+                    "SCHEDULE id=$id api=alarmClock fire=${AlarmLog.time(fireTimestamp)} " +
+                        "exactPerm=true title=${title.take(28)}",
+                )
             }
             saveManifestEntry(
                 id, title, body, hour, minute, repeatDays,
@@ -141,6 +155,10 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
             result.success(true)
         } catch (e: SecurityException) {
             Log.e(TAG, "Exact alarm denied, falling back to idle-safe alarm for id=$id", e)
+            AlarmLog.write(
+                appContext,
+                "SCHEDULE DENIED id=$id error=${e.javaClass.simpleName} — пробую whileIdle",
+            )
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setAndAllowWhileIdle(
@@ -158,10 +176,18 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
                 result.success(true)
             } catch (e2: Exception) {
                 Log.e(TAG, "Fallback alarm failed for id=$id", e2)
+                AlarmLog.write(
+                    appContext,
+                    "SCHEDULE FAILED id=$id error=${e2.javaClass.simpleName}",
+                )
                 result.success(false)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule alarm id=$id", e)
+            AlarmLog.write(
+                appContext,
+                "SCHEDULE FAILED id=$id error=${e.javaClass.simpleName}",
+            )
             result.error("SCHEDULE_FAILED", e.message, null)
         }
     }
@@ -179,6 +205,7 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
             Log.d(TAG, "Cancelled alarm id=$id")
+            AlarmLog.write(appContext, "CANCEL id=$id")
         }
         removeManifestEntry(id)
         result.success(true)

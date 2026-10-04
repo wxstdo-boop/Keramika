@@ -8,6 +8,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import '../models/alarm.dart';
 import '../models/wake_task.dart';
 import '../utils/android_settings.dart' as android_settings;
+import 'alarm_black_box.dart';
 import 'alarm_scheduler.dart';
 import 'prefs.dart';
 
@@ -20,6 +21,14 @@ class NotificationService extends ChangeNotifier {
       FlutterLocalNotificationsPlugin();
   bool _enabled = true;
   bool _fullscreen = true;
+
+  /// РЕАЛЬНОЕ состояние права полноэкранных уведомлений в ОС.
+  /// `_fullscreen` — это намерение пользователя (переключатель), а Android
+  /// 14+ держит app-op USE_FULL_SCREEN_INTENT выключенным по умолчанию,
+  /// поэтому «включено» в приложении не значит «разрешено системой»:
+  /// без права будильник показывает только шапку уведомления и не открывает
+  /// экран задачи пробуждения поверх блокировки.
+  bool _fullScreenGranted = true;
   bool _initialized = false;
   bool? _notificationsEnabledCached; // Кэш статуса уведомлений
 
@@ -38,11 +47,83 @@ class NotificationService extends ChangeNotifier {
   static const _enabledKey = 'notifications_enabled';
   static const _fullscreenKey = 'notifications_fullscreen';
 
+  /// Последнее состояние права, которое мы РЕАЛЬНО наблюдали в ОС (не
+  /// намерение пользователя). Нужен единственный факт: «было выдано → стало
+  /// отказано». Именно такой переход и означает, что система сняла право
+  /// сама; по логам видно, после какого срабатывания это случилось.
+  static const _lastFullScreenGrantKey = 'fullscreen_grant_last_seen';
+
   // Light, frosted-white notification background (instead of the default black).
   static const Color _lightBg = Color(0xFFFDF2F6);
 
   bool get enabled => _enabled;
   bool get fullscreen => _fullscreen;
+
+  /// Право полноэкранных уведомлений выдано в ОС (для не-Android всегда true).
+  bool get fullScreenGranted => _fullScreenGranted;
+
+  /// Полноэкранный показ НУЖЕН и ВОЗМОЖЕН: намерение пользователя (`_fullscreen`)
+  /// плюс реальное системное право. Both-условие важно: постить
+  /// full-screen-intent, когда app-op в `ignore`, означает получать отказ
+  /// системы на каждом срабатывании — лишний повод для автомата, который и
+  /// снимает право.
+  bool get _fullScreenWanted => _fullscreen && _fullScreenGranted;
+
+  /// Полноэкранное право ПРОПАЛО само (было выдано → система перевела в
+  /// `ignore`: обычно после обновления APK или перезагрузки). Флаг-сигнал для
+  /// ремонта в один тап: экран будильников показывает плашку с «Выдать»,
+  /// потому что красная подпись где-то в настройках до проспанного утра
+  /// человек не увидит.
+  bool get fullScreenRevoked => _fullScreenRevoked;
+  bool _fullScreenRevoked = false;
+
+  void clearFullScreenRevoked() {
+    if (!_fullScreenRevoked) return;
+    _fullScreenRevoked = false;
+    notifyListeners();
+  }
+
+  /// Возвращает актуальное состояние права и уведомляет слушателей, если оно
+  /// изменилось. Вызывается при открытии настроек, когда приложение
+  /// возвращается из системного экрана выдачи права, и при старте.
+  ///
+  /// При старте это не лишняя перепроверка: право `USE_FULL_SCREEN_INTENT`
+  /// система умеет снимать сама (app-op возвращается в `ignore`), а
+  /// переключатель в приложении — только намерение, он про отзыв молчит.
+  /// Каждый переход «выдано → отказано» пишется в лог с датой: по нему видно,
+  /// после какого срабатывания будильника право слетело.
+  Future<bool> refreshFullScreenGrant() async {
+    if (!_isAndroid) {
+      _fullScreenGranted = true;
+      return true;
+    }
+    final ok = await android_settings.canUseFullScreenIntent();
+    final lastSeen = globalPrefs.getBool(_lastFullScreenGrantKey);
+    if (lastSeen == true && !ok) {
+      debugPrint(
+        '[fullscreen] право отозвано системой: было выдано, теперь '
+        'ignore — будильник откроется шапкой уведомления, пока право не '
+        'выдать заново',
+      );
+      await AlarmBlackBox.log('FSI REVOKED by system');
+      if (!_fullScreenRevoked) {
+        _fullScreenRevoked = true;
+        notifyListeners();
+      }
+    } else if (ok && _fullScreenRevoked) {
+      _fullScreenRevoked = false;
+      notifyListeners();
+    }
+    if (lastSeen != ok) {
+      await globalPrefs.setBool(_lastFullScreenGrantKey, ok);
+    }
+    if (ok != _fullScreenGranted) {
+      _fullScreenGranted = ok;
+      notifyListeners();
+    }
+    return ok;
+  }
+
   bool get isInitialized => _initialized;
 
   // defaultTargetPlatform не бросает на web, в отличие от dart:io Platform.
@@ -95,6 +176,13 @@ class NotificationService extends ChangeNotifier {
         // takes the user straight to the alarms & reminders flow.
         await globalPrefs.remove(_askedAtKey);
       }
+      // И право полноэкранного показа сверяем при каждом старте: система
+      // умеет снимать его сама, а без него будильник не выйдет поверх
+      // блокировки — пользователю об этом нужно знать до первой ночи, а не
+      // после проспанного подъёма.
+      try {
+        await refreshFullScreenGrant();
+      } catch (_) {}
     }
     _initialized = true;
   }
@@ -143,6 +231,10 @@ class NotificationService extends ChangeNotifier {
 
   Future<void> requestPermissions() async {
     if (!_isAndroid) return;
+    // ПОДСКАЗ: Android 14+ — без USE_FULL_SCREEN_INTENT будильник показывает
+    // только в шторке, а не поверх lock screen. Запрашиваем (нативный код
+    // сам пропустит, если уже выдано).
+    await AlarmScheduler.requestFullScreenIntent();
     final opened = await android_settings.openExactAlarmSettings();
     if (opened) {
       await globalPrefs.setString(
@@ -286,6 +378,24 @@ class NotificationService extends ChangeNotifier {
         description: 'App notifications',
         importance: Importance.high,
       ),
+      // Каналы, которые плагин создаёт сам при показе. Если их нет до
+      // первого zonedSchedule, Android отдаёт уведомление дефолтному
+      // каналу с defaultImportance — тихая строка в шторке вместо
+      // heads-up. Создаём явно, по id из NotificationDetails ниже.
+      AndroidNotificationChannel(
+        'habit_reminders',
+        'Напоминания привычек',
+        description: 'Напоминание «Вспомнить всё» о привычках',
+        importance: Importance.high,
+        enableVibration: true,
+      ),
+      AndroidNotificationChannel(
+        'ada_reminders',
+        'Напоминания Ады',
+        description: 'Утренний отчёт и вечерний разбор',
+        importance: Importance.high,
+        enableVibration: true,
+      ),
     ];
     final android = _plugin
         .resolvePlatformSpecificImplementation<
@@ -345,13 +455,14 @@ class NotificationService extends ChangeNotifier {
     _fullscreen = value;
     globalPrefs.setBool(_fullscreenKey, value);
     notifyListeners();
-    // Если включили fullscreen — открываем настройки отображения
-    // поверх других приложений (SYSTEM_ALERT_WINDOW), которое нужно
-    // для fullScreenIntent на Android 14+ — НО только если разрешение
-    // ещё не выдано (иначе при каждом включении вылезает окно настроек).
+    // Если включили fullscreen — проверяем РЕАЛЬНОЕ системное право и, если
+    // его нет, открываем экран его выдачи. Разрешение спрашивается один раз
+    // и вне приложения (app-op USE_FULL_SCREEN_INTENT), поэтому просто
+    // «включить тумблер» недостаточно: без него будильник приходит только
+    // уведомлением. Не лезем в настройки, если право уже выдано.
     if (value && _isAndroid) {
       try {
-        final canUse = await android_settings.canUseFullScreenIntent();
+        final canUse = await refreshFullScreenGrant();
         if (!canUse) {
           await android_settings.openFullScreenNotifSettings();
         }
@@ -515,9 +626,19 @@ class NotificationService extends ChangeNotifier {
 
   Future<bool> scheduleAlarm(Alarm alarm) async {
     if (!_enabled || !_initialized || !_supported) {
+      // Раньше этот возврат был МОЛЧАЛИВЫМ: будильник оставался сохранённым,
+      // включённым в списке — и никогда не звенел. Теперь причина видна в
+      // журнале на телефоне.
+      await AlarmBlackBox.log(
+        'DART SKIP id=${alarm.id.hashCode} reason=disabled '
+        'enabled=$_enabled init=$_initialized supported=$_supported',
+      );
       return false;
     }
     if (!await ensureNotificationPermission()) {
+      await AlarmBlackBox.log(
+        'DART SKIP id=${alarm.id.hashCode} reason=no-notif-permission',
+      );
       return false;
     }
     final now = DateTime.now();
@@ -574,16 +695,51 @@ class NotificationService extends ChangeNotifier {
         minute: alarm.time.minute,
         repeatDays: alarm.repeatDays.join(','),
         payload: 'alarm:${alarm.id}',
-        fullscreen: true,
+        // ВАЖНО: намерение пользователя (`_fullscreen`), а НЕ
+        // `_fullScreenWanted` (намерение + право ОС).
+        //
+        // Раньше сюда уходило «И право выдано»: стоило системе снять
+        // USE_FULL_SCREEN_INTENT (а она это делает сама — после обновления,
+        // перезагрузки, на MIUI и просто так), как будильник переставал
+        // выходить на экран вообще. Теперь нативный приёмник умеет открыть
+        // экран и без права (PendingIntent с явно разрешённым фоновым
+        // стартом), а право используется лишь там, где оно действительно
+        // нужно — в fullScreenIntent уведомления.
+        fullscreen: _fullscreen,
         customSoundPath: customPath,
       );
-      if (ok) return true;
+      if (ok) {
+        await AlarmBlackBox.log(
+          'DART ARM id=${alarm.id.hashCode} api=native fire=$scheduled',
+        );
+        return true;
+      }
+      await AlarmBlackBox.log(
+        'DART ARM id=${alarm.id.hashCode} api=native FAILED fire=$scheduled → fallback',
+      );
+    } else {
+      await AlarmBlackBox.log(
+        'DART ARM id=${alarm.id.hashCode} native unavailable → fallback',
+      );
     }
 
     final tzScheduled = tz.TZDateTime.from(scheduled, tz.local);
+    // Канал под КОНКРЕТНЫЙ звук. Общий канал «Alarms» со звуком использовать
+    // нельзя: в Android звук канала фиксируется при создании и больше не
+    // меняется — первый же будильник навсегда навязал бы свой звук всем
+    // остальным (ровно это и слышалось как «звенит другим звуком»).
+    // Свой файл будильника в запасном пути играем по URI, остальные —
+    // встроенным ресурсом. Имя канала зависит от звука, поэтому у каждого
+    // звука свой канал и свой (верный) сигнал.
+    final isCustomFallback =
+        alarm.soundName == 'Custom' && alarm.customSoundPath != null;
+    final fbSound = _rawSoundName(alarm);
+    final fbChannel = isCustomFallback
+        ? 'keramika_alarm_fb_custom_${alarm.customSoundPath!.hashCode}'
+        : 'keramika_alarm_fb_$fbSound';
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'keramika_alarm',
+        fbChannel,
         'Alarms',
         channelDescription: 'Alarm notifications',
         importance: Importance.max,
@@ -591,13 +747,15 @@ class NotificationService extends ChangeNotifier {
         // Если native AlarmManager недоступен (например, exact alarm
         // permission ещё не выдан), fallback должен всё равно быть слышимым.
         playSound: true,
-        sound: RawResourceAndroidNotificationSound(_rawSoundName(alarm)),
+        sound: isCustomFallback
+            ? UriAndroidNotificationSound('file://${alarm.customSoundPath!}')
+            : RawResourceAndroidNotificationSound(fbSound),
         audioAttributesUsage: AudioAttributesUsage.alarm,
         enableVibration: alarm.vibrate,
         category: AndroidNotificationCategory.alarm,
         colorized: true,
         color: _lightBg,
-        fullScreenIntent: true,
+        fullScreenIntent: _fullScreenWanted,
         largeIcon: const DrawableResourceAndroidBitmap('ic_notification_large'),
       ),
     );
@@ -615,7 +773,10 @@ class NotificationService extends ChangeNotifier {
             : DateTimeComponents.dayOfWeekAndTime,
       );
       return true;
-    } catch (_) {
+    } catch (e) {
+      await AlarmBlackBox.log(
+        'DART ARM id=${alarm.id.hashCode} api=fallback FAILED fire=$scheduled err=$e',
+      );
       return false;
     }
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import '../models/app_timer.dart';
 import '../services/timer_service.dart';
@@ -275,6 +276,7 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
               ? Translations.t('editTimer', context)
               : Translations.t('newTimer', context),
         ),
+        leading: const BackButtonTooltip(),
         centerTitle: true,
         actions: [
           TextButton(
@@ -331,7 +333,8 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextField(cursorOpacityAnimates: true,
+                    TextField(
+                      cursorOpacityAnimates: true,
                       magnifierConfiguration:
                           TextMagnifierConfiguration.disabled,
                       controller: _labelCtrl,

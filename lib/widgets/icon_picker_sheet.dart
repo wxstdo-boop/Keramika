@@ -76,8 +76,9 @@ class IconPickerSheet extends StatelessWidget {
   }
 }
 
-/// Плитка иконки: при зажатии получает фон и лёгкое сжатие, как остальные
-/// кнопки приложения (плавно, через AnimatedContainer + AnimatedScale).
+/// Плитка иконки: при зажатии — только плавное сжатие самой кнопки
+/// (AnimatedScale), фон не мигает. Выделение показывается только у
+/// выбранной иконки (заливка + рамка).
 class _IconTile extends StatefulWidget {
   final IconData icon;
   final bool selected;
@@ -113,8 +114,6 @@ class _IconTileState extends State<_IconTile> {
           decoration: BoxDecoration(
             color: widget.selected
                 ? theme.colorScheme.primary.withValues(alpha: 0.2)
-                : _pressed
-                ? theme.colorScheme.primary.withValues(alpha: 0.14)
                 : theme.colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(10),
             border: widget.selected
@@ -125,8 +124,6 @@ class _IconTileState extends State<_IconTile> {
             widget.icon,
             size: 18,
             color: widget.selected
-                ? theme.colorScheme.primary
-                : _pressed
                 ? theme.colorScheme.primary
                 : theme.colorScheme.onSurface,
           ),

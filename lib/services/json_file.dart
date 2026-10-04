@@ -6,6 +6,19 @@ import 'prefs.dart';
 class JsonFile {
   static Directory? _dir;
 
+  /// Что последний раз ушло на диск по каждому ключу — подсказка, ЗАЧЕМ
+  /// вообще смотреть в файл.
+  ///
+  /// Автоподсохранение в main() пишет ВСЕ файлы данных раз в 10 секунд, а
+  /// `writeAsString(flush: true)` — это fsync: на flash-памяти бюджетного
+  /// Redmi это несколько миллисекунд блокировки IO-потока на каждый файл,
+  /// пять раз каждые десять секунд весь день. Если на диске уже лежит ровно
+  /// этот текст, запись не нужна. Само совпадение проверяется чтением файла
+  /// (дешёвым, он в страничном кэше), а не только по памяти: isolate
+  /// плавающего окошка Ады пишет часть тех же ключей из своего процесса, и
+  /// полагаться только на локальную карту было бы потерей данных.
+  static final Map<String, String> _lastWritten = {};
+
   static Future<Directory> get _directory async {
     _dir ??= await getApplicationDocumentsDirectory();
     return _dir!;
@@ -23,13 +36,15 @@ class JsonFile {
     }
     try {
       final dir = await _directory;
+      final file = File('${dir.path}/$key.json');
+      if (_lastWritten[key] == value && await _sameOnDisk(file, value)) return;
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
-      final file = File('${dir.path}/$key.json');
       // Direct overwrite — `File.rename` fails on Windows when target
       // exists, а у пользователя Керамики уже могут лежать старые json’ы.
       await file.writeAsString(value, flush: true);
+      _lastWritten[key] = value;
     } catch (_) {
       // Последняя попытка: write в .tmp и заменить поверх, чтобы
       // не потерять данные, если прямой writeAsString вдруг споткнулся.
@@ -42,7 +57,18 @@ class JsonFile {
           await file.delete();
         }
         await temp.rename(file.path);
+        _lastWritten[key] = value;
       } catch (_) {}
+    }
+  }
+
+  /// Лежит ли на диске уже ровно этот текст. Любая ошибка (нет файла, нет
+  /// каталога, файл занят) означает «пиши как обычно».
+  static Future<bool> _sameOnDisk(File file, String value) async {
+    try {
+      return await file.readAsString() == value;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -67,6 +93,9 @@ class JsonFile {
   }
 
   static Future<void> remove(String key) async {
+    // Файла на диске больше нет — кэш «что уже записано» обязан быть
+    // сброшен, иначе последующая запись того же текста молча пропустится.
+    _lastWritten.remove(key);
     if (kIsWeb) {
       try {
         await globalPrefs.remove(key);

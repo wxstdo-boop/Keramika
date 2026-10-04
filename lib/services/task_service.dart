@@ -2,7 +2,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import 'json_file.dart';
+import 'new_year_event_service.dart';
 import 'prefs.dart';
+
+/// Потолок категорий записей.
+const int kMaxCategories = 15;
+
+/// То же после подарка 12-го дня («Полярный набор»).
+const int kMaxPrizeCategories = 30;
 
 class TaskService extends ChangeNotifier {
   static final TaskService _instance = TaskService._();
@@ -17,6 +24,10 @@ class TaskService extends ChangeNotifier {
 
   List<Task> get tasks => List.unmodifiable(_tasks);
   List<String> get categories => List.unmodifiable(_categories);
+
+  /// Потолок категорий: 15, а с подарком 12-го дня — 30.
+  int get maxCategories =>
+      NewYearEventService().prizeGranted ? kMaxPrizeCategories : kMaxCategories;
 
   Future<void> load() async {
     try {
@@ -48,7 +59,7 @@ class TaskService extends ChangeNotifier {
     final trimmed = name.trim();
     if (trimmed.isEmpty || trimmed.length > 15 || _categories.contains(trimmed))
       return false;
-    if (_categories.length >= 15) return false;
+    if (_categories.length >= maxCategories) return false;
     _categories.add(trimmed);
     notifyListeners();
     await _saveCategories();

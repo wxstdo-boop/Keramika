@@ -4,12 +4,14 @@ Future<bool> showAdaOverlay({
   double? devicePixelRatio,
   double? screenWidth,
   double? screenHeight,
+  double? topKeepout,
 }) async => false;
 
 Future<bool> ensureAdaOverlay({
   double? devicePixelRatio,
   double? screenWidth,
   double? screenHeight,
+  double? topKeepout,
 }) async => false;
 
 Future<void> closeAdaOverlay() async {}

@@ -9,17 +9,21 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:path_provider/path_provider.dart';
 import 'screens/splash_screen.dart';
-import 'utils/android_settings.dart'
-    show setSecureWindow;
+import 'utils/android_settings.dart' show setSecureWindow;
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/wake_task_screen.dart';
 import 'widgets/mutilated_overlay.dart';
+import 'widgets/metel_overlay.dart';
 import 'l10n/locale_provider.dart';
 import 'l10n/translations.dart';
 import 'services/pin_service.dart';
 import 'services/settings_service.dart';
 import 'services/notification_service.dart';
+import 'services/alarm_black_box.dart';
+import 'services/alarm_scheduler.dart';
+import 'services/haptics.dart';
+import 'models/alarm.dart';
 import 'services/alarm_service.dart';
 import 'services/reality_check_service.dart';
 import 'services/habit_service.dart';
@@ -37,13 +41,48 @@ import 'widgets/ada_avatars.dart';
 import 'widgets/ai_guide.dart';
 import 'utils/page_transitions.dart';
 import 'utils/snackbar.dart';
+import 'utils/jank_probe.dart';
+import 'services/update_service.dart';
 
 final NotificationService notificationService = NotificationService();
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Наблюдатель для jank-пробы: по нему в логе кадров видно, НА КАКОМ экране
+/// снят каждый медленный кадр. Экземпляр — верхнего уровня намеренно:
+/// `NavigatorObserver` переживает пересборки `MaterialApp`, а новый объект на
+/// каждом build сбрасывал бы стек роутов.
+final JankRouteObserver _jankObserver = JankRouteObserver();
 Timer? _autoSaveTimer;
 // Флаг — WakeTaskScreen уже показан, не пушить второй при тапе
 // по уведомлению (onNewIntent → onNewAlarmPayload).
 bool _wakeScreenShowing = false;
+
+/// Payload будильника, с которым приложение ЗАПУЩЕНО (холодный старт).
+///
+/// Читается из нативного intent ДО runApp. Это принципиально: раньше экран
+/// задачи открывался поверх дерева, которое ещё строилось, — а параллельно
+/// доигрывал SplashScreen и в конце вызывал `_goHome()` с
+/// `pushAndRemoveUntil((route) => false)`, то есть стирал ВСЕ роуты вместе
+/// с только что открытым экраном будильника. Будильник «срабатывал», но
+/// человек видел обычный главный экран. Теперь payload известен до первого
+/// кадра, и экран задачи становится домашним — сплэш и PIN не запускаются.
+String? _alarmBootPayload;
+
+/// Читает payload будильника из нативного intent. Возвращает null, если
+/// приложение открыто не будильником.
+Future<String?> _readAlarmBootPayload() async {
+  try {
+    final p = await const MethodChannel(
+      'com.wetidom.keramika/alarm_payload',
+    ).invokeMethod<String>('getAlarmPayload');
+    if (p != null && p.startsWith('alarm:')) return p;
+  } catch (_) {
+    // Канал не зарегистрирован (например, другой ABI-движок) — просто
+    // идём обычным путём, обработчик после runApp подхватит payload.
+  }
+  return null;
+}
+
 /// Маппинг prefs-ключей на короткие имена, чтобы при экспорте обратно
 /// в payload ключи совпадали с именами, которыми пользуется импорт
 /// в settings_screen.
@@ -411,19 +450,6 @@ Future<void> _rescheduleRealityChecks() async {
   } catch (_) {}
 }
 
-Future<void> _rescheduleAll() async {
-  final alarmSvc = AlarmService();
-  await alarmSvc.load();
-  for (final a in alarmSvc.alarms) {
-    if (a.enabled) {
-      try {
-        await notificationService.scheduleAlarm(a);
-      } catch (_) {}
-    }
-  }
-  await _rescheduleRealityChecks();
-}
-
 /// Перепланировка на старте: будильники/проверки + ежедневные отчёты Ады
 /// (утро 08:00, вечер 21:00) со свежим содержанием.
 Future<void> _rescheduleAllOnStart() async {
@@ -440,7 +466,7 @@ Future<void> _rescheduleAllOnStart() async {
       await notificationService.setEnabled(true, requestPermission: false);
     } catch (_) {}
   }
-  await _rescheduleAll();
+  await rescheduleAllNotifications();
   debugPrint(
     '[ada-tracking] wantNotifs=$wantNotifs enabled=${notificationService.enabled}',
   );
@@ -510,13 +536,31 @@ Future<void> _scheduleAdaTrackingNotifs() async {
 Future<void> rescheduleAllNotifications() async {
   final alarmSvc = AlarmService();
   await alarmSvc.load();
+  var armed = 0;
+  var failed = 0;
   for (final a in alarmSvc.alarms) {
     if (a.enabled) {
       try {
-        await notificationService.scheduleAlarm(a);
-      } catch (_) {}
+        if (await notificationService.scheduleAlarm(a)) {
+          armed++;
+        } else {
+          failed++;
+        }
+      } catch (_) {
+        failed++;
+      }
     }
   }
+  // Итоговая проверка: что по мнению САМОЙ системы сейчас взведено. Если
+  // строк SCHEDULE/DART ARM в журнале полно, а здесь next=none — будильники
+  // стёрла система (агрессивная очистка MIUI/HyperOS), а не приложение.
+  try {
+    final next = await AlarmScheduler.nextAlarmTime();
+    await AlarmBlackBox.log(
+      'DART RESUME alarms=${alarmSvc.alarms.length} armed=$armed failed=$failed '
+      'next=${next > 0 ? DateTime.fromMillisecondsSinceEpoch(next) : "none"}',
+    );
+  } catch (_) {}
   // Напоминания привычек «Вспомнить всё» — перепланируем, чтобы система
   // не потеряла их после перезагрузки/нескольких дней в фоне.
   try {
@@ -611,20 +655,33 @@ void overlayMain() {
 /// МГНОВЕННО, без «мигания» и подгрузки картинки в рантайме.
 ui.Image? preDecodedLogo;
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
-  // глобальное скругление углов (ClipRRect в корне) доходило и до верхних
-  // углов экрана. Без этого сверху остаётся чёрная квадратная полоса
-  // статус-бара, и при оттягивании крайних разделов (Будильники/РП)
-  // верхние края выглядят незакруглёнными.
-  // Вызов ДО runApp может быть сброшен первым кадром Flutter, поэтому
-  // повторяем его в postFrameCallback сразу после первого кадра.
-  if (!kIsWeb) {
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  }
-  // Декодируем логотип ДО первого кадра: на слабых телефонах Image.asset
-  // не успевает прогрузиться к началу сплэша и картинка мигает.
+/// Всё, что обязано быть прочитано до `runApp`.
+class _StartupState {
+  const _StartupState({
+    required this.hasPin,
+    required this.theme,
+    required this.lang,
+    required this.peachDark,
+    required this.fontFamily,
+    required this.launchedByNotification,
+    required this.notificationPayload,
+  });
+
+  final bool hasPin;
+  final String theme;
+  final String lang;
+  final bool peachDark;
+  final String fontFamily;
+
+  /// Запуск тапом по уведомлению будильника — сам обработчик навешивается
+  /// ПОСЛЕ runApp (там уже есть дерево виджетов), сюда кладём только факт.
+  final bool launchedByNotification;
+  final String? notificationPayload;
+}
+
+/// Декодируем логотип ДО первого кадра: на слабых телефонах Image.asset
+/// не успевает прогрузиться к началу сплэша и картинка мигает.
+Future<void> _predecodeSplashLogo() async {
   try {
     final data = await rootBundle.load('assets/keramika.png');
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
@@ -634,6 +691,13 @@ void main() async {
   } catch (_) {
     // Если декод не удался — сплэш просто покажет Image.asset как раньше.
   }
+}
+
+/// Чтение стартового состояния. Независимые шаги запускаются параллельно:
+/// раньше они шли строго друг за другом, и время до первого кадра было их
+/// суммой (миграция JSON + инициализация плагина уведомлений + пин + шесть
+/// настроек), что на слабом железе ощутимо задерживало сплэш.
+Future<_StartupState> _loadStartupState() async {
   // Инициализируем SharedPreferences ОДИН раз ДО всего.
   await initPrefs();
   // Режим плавающего окошка Ады переживает перезапуск приложения.
@@ -657,30 +721,99 @@ void main() async {
       }
     }());
   }
-  await migrateFromPrefs();
-  await notificationService.init();
-  notificationService.onNotificationTap = _handleNotificationTap;
-  final launchDetails = await notificationService.getLaunchDetails();
-  final hasPin = await PinService.hasPin();
-  final theme = await SettingsService.loadThemeMode();
-  final lang = await SettingsService.loadLanguageCode();
-  final peachDark = await SettingsService.loadPeachDark();
-  final fontFamily = await SettingsService.loadFontFamily();
+
+  // Данные старых версий переезжают в JSON-файлы до того, как их начнут
+  // читать сервисы (те стартуют после runApp).
+  final migration = migrateFromPrefs();
+  final notifications = notificationService.init().then((_) {
+    notificationService.onNotificationTap = _handleNotificationTap;
+    return notificationService.getLaunchDetails();
+  });
+  final hasPin = PinService.hasPin();
+  final theme = SettingsService.loadThemeMode();
+  final lang = SettingsService.loadLanguageCode();
+  final peachDark = SettingsService.loadPeachDark();
+  final fontFamily = SettingsService.loadFontFamily();
   // Прогреваем живые флаги режимов до первого Home-кадра:
   // кнопка BERSERK и карточки не ждут открытия настроек.
-  await SettingsService.loadPerfectionism();
-  await SettingsService.loadBerserk();
+  final modes = Future.wait<void>([
+    SettingsService.loadPerfectionism(),
+    SettingsService.loadBerserk(),
+  ]);
+
+  await Future.wait<void>([
+    migration,
+    notifications,
+    hasPin,
+    theme,
+    lang,
+    peachDark,
+    fontFamily,
+    modes,
+  ]);
+  final details = await notifications;
+  return _StartupState(
+    hasPin: await hasPin,
+    theme: await theme,
+    lang: await lang,
+    peachDark: await peachDark,
+    fontFamily: await fontFamily,
+    launchedByNotification: details?.didNotificationLaunchApp == true,
+    notificationPayload: details?.notificationResponse?.payload,
+  );
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
+  // глобальное скругление углов (ClipRRect в корне) доходило и до верхних
+  // углов экрана. Без этого сверху остаётся чёрная квадратная полоса
+  // статус-бара, и при оттягивании крайних разделов (Будильники/РП)
+  // верхние края выглядят незакруглёнными.
+  // Вызов ДО runApp может быть сброшен первым кадром Flutter, поэтому
+  // повторяем его в postFrameCallback сразу после первого кадра.
+  if (!kIsWeb) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+  // Запуск — два независимых берега вместо одной цепочки.
+  //
+  // Раньше шаги шли строго последовательно: декод PNG → initPrefs →
+  // миграция JSON → инициализация уведомлений → детали тапа → пин →
+  // чтения настроек. Время до первого кадра = СУММА всех шагов, а на
+  // слабом железе (Redmi с бюджетной flash) каждое обращение к диску и
+  // каждый вызов плагина стоит миллисекунды, и они складывались в
+  // заметные «чёрные/белые» доли секунды до сплэша.
+  //
+  // Декод логотипа не зависит ни от чего; prefs → миграция/настройки/
+  // уведомления зависят от prefs, и этот порядок сохранён внутри
+  // [_loadStartupState].
+  late final _StartupState startup;
+  await Future.wait(<Future<void>>[
+    _predecodeSplashLogo(),
+    _loadStartupState().then((value) => startup = value),
+  ]);
+  // Payload будильника читаем до первого кадра: от него зависит, что
+  // станет домашним экраном (см. [_AlarmBootHost]).
+  _alarmBootPayload = await _readAlarmBootPayload();
+
   runApp(
     KeramikaApp(
-      initialLocked: hasPin,
-      initialTheme: theme,
-      initialLanguageCode: lang,
-      initialPeachDark: peachDark,
-      initialFontFamily: fontFamily,
+      initialLocked: startup.hasPin,
+      initialTheme: startup.theme,
+      initialLanguageCode: startup.lang,
+      initialPeachDark: startup.peachDark,
+      initialFontFamily: startup.fontFamily,
+      alarmBootPayload: _alarmBootPayload,
     ),
   );
-  // Повторный edge-to-edge ПОСЛЕ первого кадра — на MIUI/HyperOS вызов
-  // до runApp не применяется (Flutter сбрасывает системный UI при старте).
+  // Замер кадров включаем ПОСЛЕ runApp: до первого кадра нет ни одного
+  // замера, а `addTimingsCallback` живёт на binding'е. Пишет только кадры
+  // дольше бюджета, поэтому в обычной сборке молчит.
+  JankProbe.start();
+  // Тихая проверка обновлений раз в сутки (БЕЗ диалогов): если на GitHub есть
+  // релиз новее, таблетка в Настройках сразу предложит обновиться.
+  unawaited(UpdateService.instance.silentDailyCheck());
+  // Повторный edge-to-edge ПОСЛЕ первого кадра — на MIUI/HyperOS вызов  // до runApp не применяется (Flutter сбрасывает системный UI при старте).
   // Без него сверху остаётся чёрная квадратная полоса статус-бара, и
   // верхние углы экрана не закруглены при оттягивании крайних разделов.
   if (!kIsWeb) {
@@ -746,8 +879,8 @@ void main() async {
   // WakeTaskScreen дважды (из getLaunchDetails и getAlarmPayload).
   bool _alarmHandled = false;
 
-  if (launchDetails?.didNotificationLaunchApp == true) {
-    _pendingAlarmPayload = launchDetails?.notificationResponse?.payload;
+  if (startup.launchedByNotification) {
+    _pendingAlarmPayload = startup.notificationPayload;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleNotificationTap(_pendingAlarmPayload);
       _pendingAlarmPayload = null;
@@ -813,13 +946,16 @@ class _AppScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-
 class KeramikaApp extends StatefulWidget {
   final bool initialLocked;
   final String initialTheme;
   final String initialLanguageCode;
   final bool initialPeachDark;
   final String initialFontFamily;
+
+  /// Не-null, если приложение открыто срабатыванием будильника (холодный
+  /// старт по full-screen intent или по тапу на уведомление).
+  final String? alarmBootPayload;
 
   const KeramikaApp({
     super.key,
@@ -828,6 +964,7 @@ class KeramikaApp extends StatefulWidget {
     this.initialLanguageCode = 'system',
     this.initialPeachDark = false,
     this.initialFontFamily = 'ordinary',
+    this.alarmBootPayload,
   });
 
   @override
@@ -845,11 +982,6 @@ class KeramikaAppState extends State<KeramikaApp>
   late bool _peachDark;
   late String _fontFamily;
   Key _appKey = UniqueKey();
-  int _refreshCounter = 0;
-  // Плавный переход при смене темы и языка: мягкое затухание и возврат
-  // (оптимально проверено — как было). При смене ЯЗЫКА цвет подложки не
-  // меняется (тема та же), поэтому никаких белых/чёрных вспышек — просто
-  // деликатное затемнение и проявление контента.
   bool _locked = false;
   ColorScheme? _lightDynamic;
   ColorScheme? _darkDynamic;
@@ -881,6 +1013,10 @@ class KeramikaAppState extends State<KeramikaApp>
         return ThemeMode.light; // Rose — всегда светлая, воздушная тема
       case 'mutilated':
         // MUTILATED — всегда светлая, кроваво-красная, еле заметные пятна.
+        return ThemeMode.light;
+      case 'metel':
+        // «Метель» — подарок 12-го дня: холодный белый снег, поэтому только
+        // светлая.
         return ThemeMode.light;
       default:
         return ThemeMode.system;
@@ -943,7 +1079,25 @@ class KeramikaAppState extends State<KeramikaApp>
     SettingsService.saveLanguageCode(code);
   }
 
+  /// Будильник отзвонил и задача решена — уводим на обычный старт.
+  ///
+  /// PIN показываем принудительно: запуск по будильнику обходит экран
+  /// блокировки приложения (иначе звонящий будильник оказался бы заперт),
+  /// поэтому после решения задачи возвращаем привычную защиту.
+  void _afterAlarmSolved() {
+    _wakeScreenShowing = false;
+    _alarmBootPayload = null;
+    if (PinService.hasPinSync()) {
+      _goLock();
+    } else {
+      _goHome();
+    }
+  }
+
   void _goHome() {
+    // Экран будильника живёт поверх — перестраивать навигацию под ним
+    // нельзя: pushAndRemoveUntil стёр бы его вместе со всем стеком.
+    if (_wakeScreenShowing) return;
     aiLockScreenVisible.value = false;
     final nav = navigatorKey.currentState;
     if (nav != null) {
@@ -985,7 +1139,6 @@ class KeramikaAppState extends State<KeramikaApp>
   Future<void> refreshApp() async {
     setState(() {
       _appKey = UniqueKey();
-      _refreshCounter++;
     });
     rescheduleAllNotifications();
     final hasPin = await PinService.hasPin();
@@ -1002,7 +1155,9 @@ class KeramikaAppState extends State<KeramikaApp>
 
   void unlock() {
     aiLockScreenVisible.value = false;
-    setState(() => _locked = false);
+    setState(() {
+      _locked = false;
+    });
     _goSplash();
   }
 
@@ -1011,9 +1166,7 @@ class KeramikaAppState extends State<KeramikaApp>
     _themeKey = widget.initialTheme;
     _languageCode = widget.initialLanguageCode;
     _peachDark = widget.initialPeachDark;
-    _fontFamily = widget.initialFontFamily == 'caveat'
-        ? 'caveat'
-        : 'ordinary';
+    _fontFamily = widget.initialFontFamily == 'caveat' ? 'caveat' : 'ordinary';
     _locked = widget.initialLocked;
     aiLockScreenVisible.value = _locked;
     WidgetsBinding.instance.addObserver(this);
@@ -1152,6 +1305,10 @@ class KeramikaAppState extends State<KeramikaApp>
     final built = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      // Вибро-отклик на тап по каждой кнопке/плитке/вкладке: Flutter по
+      // умолчанию не вибрирует на кнопках, а на HyperOS системная отдача
+      // подавлена. Плеск = только целевое нажатие, скролл не срабатывает.
+      splashFactory: const TapHapticsSplash(InkSparkle.splashFactory),
       // ШРИФТ ЗАДАН В САМОЙ ТЕМЕ: ThemeData(fontFamily:) задаёт его как
       // базовый для ВСЕЙ иерархии — DefaultTextStyle, Text из theme.textTheme,
       // Material-виджеты (AppBar, капсулы, кнопки) и т.д. Это гарантирует,
@@ -1165,8 +1322,7 @@ class KeramikaAppState extends State<KeramikaApp>
       // малую x-высоту Caveat (глобальный TextScaler больше не используем —
       // он не доходил до части виджетов). Здесь размеры применяются
       // безусловно.
-      textTheme: Typography.material2021(platform: TargetPlatform.android)
-          .black
+      textTheme: Typography.material2021(platform: TargetPlatform.android).black
           .apply(
             bodyColor: scheme.onSurface,
             displayColor: scheme.onSurface,
@@ -1180,33 +1336,42 @@ class KeramikaAppState extends State<KeramikaApp>
           )
           .copyWith(
             // Для Caveat размеры чуть больше: у него маленькая x-высота,
-            // иначе текст выглядит мельче Roboto.
+            // иначе текст выглядит мельче Roboto. Обычный (не Caveat)
+            // шрифт чуть уменьшен: в разделах (будильники/привычки/РП/
+            // задачи) текст плотнее, слова не «уезжают» на новую строку
+            // и не оставляют пустых мест при переносе.
             titleMedium: TextStyle(
-              fontSize: appFontFamily == null ? 17 : 21,
+              fontSize: appFontFamily == null ? 16 : 21,
               fontWeight: FontWeight.w600,
             ),
             titleSmall: TextStyle(
-              fontSize: appFontFamily == null ? 15 : 19,
+              fontSize: appFontFamily == null ? 14 : 19,
               fontWeight: FontWeight.w600,
             ),
+            // Время будильника (headlineSmall по умолчанию 24 — крупнее,
+            // чем остальные разделы; на обычном шрифте чуть меньше).
+            headlineSmall: TextStyle(
+              fontSize: appFontFamily == null ? 22 : 26,
+              fontWeight: FontWeight.w700,
+            ),
             bodyLarge: TextStyle(
-              fontSize: appFontFamily == null ? 14 : 18,
+              fontSize: appFontFamily == null ? 13 : 18,
               fontWeight: FontWeight.w500,
             ),
             bodyMedium: TextStyle(
-              fontSize: appFontFamily == null ? 12 : 16,
+              fontSize: appFontFamily == null ? 11 : 16,
               fontWeight: FontWeight.w500,
             ),
             bodySmall: TextStyle(
-              fontSize: appFontFamily == null ? 11 : 15,
+              fontSize: appFontFamily == null ? 10 : 15,
               fontWeight: FontWeight.w500,
             ),
             labelSmall: TextStyle(
-              fontSize: appFontFamily == null ? 10 : 14,
+              fontSize: appFontFamily == null ? 9 : 14,
               fontWeight: FontWeight.w500,
             ),
             labelMedium: TextStyle(
-              fontSize: appFontFamily == null ? 12 : 16,
+              fontSize: appFontFamily == null ? 11 : 16,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1411,9 +1576,62 @@ class KeramikaAppState extends State<KeramikaApp>
                     surfaceContainerHighest: const Color(0xFFFFE4E7),
                   );
                 }
-                return ColorScheme.fromSeed(
-                  seedColor: Colors.purple.shade100,
-                  brightness: Brightness.light,
+                // «Метель» — подарок 12-го дня ивента. Северное сияние по
+                // белому снегу: холодный почти белый фон (ни желтинки, ни
+                // розового отлива), акценты — мята/лазурь/фиолет из той же
+                // палитры, что и скин скважины на ПИН-экране, чтобы подарок
+                // выглядел ОДНИМ набором. `tertiary` и всю лесенку
+                // `surfaceContainer*` задаём явно: ColorScheme.light()
+                // додумывает их как `secondary` и `surface`, и карточки
+                // получились бы одного цвета с фоном.
+                if (_themeKey == 'metel') {
+                  return const ColorScheme.light(
+                    primary: Color(0xFF0E7C6B),
+                    onPrimary: Color(0xFFFFFFFF),
+                    primaryContainer: Color(0xFFC9EFE6),
+                    onPrimaryContainer: Color(0xFF00201A),
+                    secondary: Color(0xFF3A6FA8),
+                    onSecondary: Color(0xFFFFFFFF),
+                    secondaryContainer: Color(0xFFD6E9FA),
+                    onSecondaryContainer: Color(0xFF001E33),
+                    tertiary: Color(0xFF6B5BC4),
+                    onTertiary: Color(0xFFFFFFFF),
+                    tertiaryContainer: Color(0xFFE6E0FB),
+                    onTertiaryContainer: Color(0xFF150D47),
+                    surface: Color(0xFFFAFDFE),
+                    onSurface: Color(0xFF122029),
+                    onSurfaceVariant: Color(0xFF42565F),
+                    outline: Color(0xFF8FA8B2),
+                    outlineVariant: Color(0xFFD5E5EA),
+                    surfaceContainerLowest: Color(0xFFFFFFFF),
+                    surfaceContainerLow: Color(0xFFF3F9FB),
+                    surfaceContainer: Color(0xFFEDF5F7),
+                    surfaceContainerHigh: Color(0xFFE6F0F3),
+                    surfaceContainerHighest: Color(0xFFDFEBEF),
+                  );
+                }
+                // Обычная СВЕТЛАЯ — светло-сиреневая: фиолетовый акцент и
+                // лавандовый фон. Собрана явными ролями, а не fromSeed, по
+                // той же причине, что и остальные темы: от стального seedа
+                // Material выдавал серо-голубую палитру, и «починить» её
+                // можно было только заданными цветами.
+                return const ColorScheme.light(
+                  primary: Color(0xFF6750A4),
+                  onPrimary: Color(0xFFFFFFFF),
+                  primaryContainer: Color(0xFFEADDFF),
+                  onPrimaryContainer: Color(0xFF21005D),
+                  secondary: Color(0xFF625B71),
+                  onSecondary: Color(0xFFFFFFFF),
+                  secondaryContainer: Color(0xFFE8DEF8),
+                  onSecondaryContainer: Color(0xFF1D192B),
+                  surface: Color(0xFFFEF7FF),
+                  onSurface: Color(0xFF1D1B20),
+                  onSurfaceVariant: Color(
+                    0xFF49454F,
+                  ), // вторичный текст/иконки — контрастные
+                  outline: Color(0xFF79747E),
+                  outlineVariant: Color(0xFFCAC4D0),
+                  surfaceContainerHighest: Color(0xFFE7E0EC),
                 );
               })();
 
@@ -1498,7 +1716,9 @@ class KeramikaAppState extends State<KeramikaApp>
                   );
                 }
                 return ColorScheme.fromSeed(
-                  seedColor: Colors.purple.shade300,
+                  seedColor: const Color(
+                    0xFF5E6E7E,
+                  ), // нейтральный стальной (не фиолетовый)
                   brightness: Brightness.dark,
                 );
               })();
@@ -1507,6 +1727,7 @@ class KeramikaAppState extends State<KeramikaApp>
           title: 'Keramika',
           debugShowCheckedModeBanner: false,
           navigatorKey: navigatorKey,
+          navigatorObservers: [_jankObserver],
           // Такой же эффект «натяжения» при перетягивании краёв, как у
           // горизонтального PageView на главном экране, но для вертикальных
           // списков во всех разделах (Android-глоу заменяется на баунс).
@@ -1529,12 +1750,18 @@ class KeramikaAppState extends State<KeramikaApp>
           // участвует в этом переходе — он меняется сразу, как язык.
           themeAnimationDuration: const Duration(milliseconds: 300),
           themeAnimationCurve: Curves.easeInOutCubic,
-          home: _locked
+          // Холодный старт по будильнику: домашним становится ЭКРАН ЗАДАЧИ,
+          // а не сплэш и не PIN. Иначе сплэш доигрывал свою анимацию и
+          // `_goHome()` стирал все роуты вместе с экраном будильника —
+          // звонок шёл, а человек видел обычный главный экран.
+          home: widget.alarmBootPayload != null
+              ? _AlarmBootHost(
+                  payload: widget.alarmBootPayload!,
+                  onFinished: _afterAlarmSolved,
+                )
+              : _locked
               ? LockScreen(onUnlock: () => unlock())
-              : SplashScreen(
-                  key: ValueKey('splash_$_refreshCounter'),
-                  onDone: _goHome,
-                ),
+              : SplashScreen(onDone: _goHome),
           builder: (context, child) {
             // Глобальный множитель шрифта убран: TextScaler.linear(1.35)
             // НЕ применялся к виджетам, оборачивающим текст в собственный
@@ -1570,8 +1797,7 @@ class KeramikaAppState extends State<KeramikaApp>
                   // экрана не выглядят закруглёнными при оттягивании
                   // крайних разделов. С фоном приложения полоса сливается.
                   statusBarColor: theme.scaffoldBackgroundColor,
-                  statusBarIconBrightness:
-                      theme.brightness == Brightness.dark
+                  statusBarIconBrightness: theme.brightness == Brightness.dark
                       ? Brightness.light
                       : Brightness.dark,
                 ),
@@ -1587,68 +1813,156 @@ class KeramikaAppState extends State<KeramikaApp>
               style: TextStyle(fontFamily: appFontFamily),
               child: LocaleProvider(
                 locale: resolved,
-              // БЕЗ меняющегося key: при смене темы/языка не пересоздаём
-              // Navigator и плавающее окошко (иначе открытый чат закрывался,
-              // а пузырь терял состояние).
-              // Тема перетекает штатной анимацией MaterialApp (AnimatedTheme),
-              // язык — просто мгновенной плавной сменой текста. Никаких
-              // своих затемнений, размытий и вспышек.
-              child: KeyedSubtree(
-                key: const ValueKey('app_root'),
-                // Глобальное скругление углов приложения: при оттягивании
-                // у крайних разделов (Будильники слева / РП справа) края
-                // экрана остаются мягко закруглёнными, а не квадратными.
-                // Радиус 22px — аккуратный «современный» скруглённый экран.
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Контент (Navigator) — всегда ОДИН слой, без анимации:
-                    // раньше AnimatedSwitcher оборачивал и контент, и пятна,
-                    // поэтому при смене темы ВЕСЬ экран «вспыхивал» (fade
-                    // контента + дубль двух subtree).
-                    child!,
-                    // Пятна крови темы MUTILATED — ОТДЕЛЬНЫЙ слой поверх
-                    // Navigator (включая drag-прокси при перетаскивании).
-                    // Анимируется ТОЛЬКО слой пятен: плавно проявляются при
-                    // включении темы и гаснут при выключении (450 мс).
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 450),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, anim) =>
-                          FadeTransition(opacity: anim, child: child),
-                      child: _themeKey == 'mutilated'
-                          ? const MutilatedSplatter(
-                              key: ValueKey('splatter'),
-                              child: SizedBox.expand(),
-                            )
-                          : const SizedBox.shrink(key: ValueKey('no_splatter')),
+                // БЕЗ меняющегося key: при смене темы/языка не пересоздаём
+                // Navigator и плавающее окошко (иначе открытый чат закрывался,
+                // а пузырь терял состояние).
+                // Тема перетекает штатной анимацией MaterialApp (AnimatedTheme),
+                // язык — просто мгновенной плавной сменой текста. Никаких
+                // своих затемнений, размытий и вспышек.
+                child: KeyedSubtree(
+                  key: const ValueKey('app_root'),
+                  // Глобальное скругление углов приложения: при оттягивании
+                  // у крайних разделов (Будильники слева / РП справа) края
+                  // экрана остаются мягко закруглёнными, а не квадратными.
+                  // Радиус 22px — аккуратный «современный» скруглённый экран.
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Контент (Navigator) — всегда ОДИН слой, без анимации:
+                        // раньше AnimatedSwitcher оборачивал и контент, и пятна,
+                        // поэтому при смене темы ВЕСЬ экран «вспыхивал» (fade
+                        // контента + дубль двух subtree).
+                        child!,
+                        // Пятна крови темы MUTILATED — ОТДЕЛЬНЫЙ слой поверх
+                        // Navigator (включая drag-прокси при перетаскивании).
+                        // Анимируется ТОЛЬКО слой пятен: плавно проявляются при
+                        // включении темы и гаснут при выключении (450 мс).
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 450),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, anim) =>
+                              FadeTransition(opacity: anim, child: child),
+                          child: _themeKey == 'mutilated'
+                              ? const MutilatedSplatter(
+                                  key: ValueKey('splatter'),
+                                  child: SizedBox.expand(),
+                                )
+                              : _themeKey == 'metel'
+                              ? const MetelAurora(
+                                  key: ValueKey('metel_aurora'),
+                                  child: SizedBox.expand(),
+                                )
+                              : const SizedBox.shrink(
+                                  key: ValueKey('no_splatter'),
+                                ),
+                        ),
+                        // Плавающее мини-окошко Ады — поверх всех экранов.
+                        // На Android сворачивание чата показывает СИСТЕМНЫЙ
+                        // оверлей (вне приложения), поэтому внутренний пузырь
+                        // монтируется только на web (плагин оверлея не
+                        // поддерживает web — там пузырь внутриприложенный).
+                        if (kIsWeb)
+                          AiFloatingBubble(
+                            onOpen: () {
+                              aiFloating.value = false;
+                              globalPrefs.setBool('ai_floating', false);
+                              final ctx = navigatorKey.currentContext;
+                              if (ctx != null) showAiGuideChat(ctx);
+                            },
+                          ),
+                      ],
                     ),
-                    // Плавающее мини-окошко Ады — поверх всех экранов.
-                    // На Android сворачивание чата показывает СИСТЕМНЫЙ
-                    // оверлей (вне приложения), поэтому внутренний пузырь
-                    // монтируется только на web (плагин оверлея не
-                    // поддерживает web — там пузырь внутриприложенный).
-                    if (kIsWeb)
-                      AiFloatingBubble(
-                        onOpen: () {
-                          aiFloating.value = false;
-                          globalPrefs.setBool('ai_floating', false);
-                          final ctx = navigatorKey.currentContext;
-                          if (ctx != null) showAiGuideChat(ctx);
-                        },
-                      ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
-  },
-);
+  }
 }
+
+/// Домашний экран при запуске по будильнику (холодный старт).
+///
+/// Зачем отдельный виджет вместо «пушить WakeTaskScreen поверх»: сплэш,
+/// который раньше был домашним, в конце вызывал `_goHome()` с
+/// `pushAndRemoveUntil((route) => false)` и стирал экран будильника вместе
+/// со всем стеком. Здесь экран задачи — И есть домашний: его некому снести,
+/// а после решения задачи управление уходит в [_afterAlarmSolved].
+///
+/// Звук не играем: его крутит нативный AlarmForegroundService, который
+/// уже запущен приёмником будильника (и работает даже с выключенным
+/// экраном). Раньше параллельно играл ещё и Flutter-плеер, и втроём они
+/// звучали как «какой-то другой звук».
+class _AlarmBootHost extends StatefulWidget {
+  final String payload;
+  final VoidCallback onFinished;
+
+  const _AlarmBootHost({required this.payload, required this.onFinished});
+
+  @override
+  State<_AlarmBootHost> createState() => _AlarmBootHostState();
+}
+
+class _AlarmBootHostState extends State<_AlarmBootHost> {
+  // Future создаётся ОДИН раз: в build он пересоздавался бы на каждой
+  // перестройке, и FutureBuilder заново читал бы будильники с диска.
+  late final Future<Alarm?> _alarmFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _wakeScreenShowing = true;
+    final id = widget.payload.substring('alarm:'.length);
+    _alarmFuture = AlarmService().load().then((_) => AlarmService().getById(id));
+  }
+
+  @override
+  void dispose() {
+    _wakeScreenShowing = false;
+    super.dispose();
+  }
+
+  Future<void> _finish() async {
+    // На всякий случай глушим нативный звонок: если экран закрыли системной
+    // кнопкой «Назад», сервис иначе гудел бы до своего таймаута.
+    try {
+      const MethodChannel(
+        'com.wetidom.keramika/alarm_payload',
+      ).invokeMethod('stopAlarmSound');
+    } catch (_) {}
+    if (!mounted) return;
+    widget.onFinished();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Alarm?>(
+      future: _alarmFuture,
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          // Данные ещё читаются: показываем нейтральный фон, без сплэша и
+          // без мигания (первый кадр будильника должен быть спокойным).
+          return const Scaffold(body: SizedBox.expand());
+        }
+        final alarm = snap.data;
+        if (alarm == null) {
+          // Будильник уже удалён — просто уходим в обычный старт.
+          WidgetsBinding.instance.addPostFrameCallback((_) => _finish());
+          return const Scaffold(body: SizedBox.expand());
+        }
+        return WakeTaskScreen(
+          taskType: alarm.taskType,
+          isTest: false,
+          soundName: alarm.soundName,
+          customSoundPath: alarm.customSoundPath,
+          onDismissed: _finish,
+        );
+      },
+    );
+  }
 }

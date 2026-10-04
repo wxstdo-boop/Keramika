@@ -63,6 +63,20 @@ class AlarmScheduler {
     }
   }
 
+  /// Когда по мнению системы должен сработать ближайший взведённый
+  /// будильник (`AlarmManager.getNextAlarmClock`). 0 — не взведено ничего.
+  /// Единственный способ из приложения проверить, что постановка реально
+  /// дошла до AlarmManager.
+  static Future<int> nextAlarmTime() async {
+    if (!_isAndroid) return 0;
+    try {
+      final result = await _channel.invokeMethod<int>('nextAlarmTime');
+      return result ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
   static Future<bool> isAvailable() async {
     if (!_isAndroid) return false;
     try {
@@ -72,6 +86,30 @@ class AlarmScheduler {
       return result ?? false;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Запрашивает системное разрешение на полноэкранные уведомления
+  /// (USE_FULL_SCREEN_INTENT, Android 14+). Без него fullScreenIntent
+  /// тихо деградирует в обычное уведомление в шторке — будильник
+  /// приходит, но экран блокировки не будит и не показывает WakeTask.
+  ///
+  /// Системного ДИАЛОГА для этого права нет (в отличие от обычных
+  /// runtime-разрешений): нативный код открывает экран специального
+  /// доступа, где пользователь включает тумблер. Если право уже выдано —
+  /// ничего не открывает и возвращает false.
+  /// На Android < 14 право выдаётся автоматически — диалог не нужен.
+  /// На не-Android: возвращает true.
+  static Future<bool> requestFullScreenIntent() async {
+    if (!_isAndroid) return true;
+    try {
+      final result = await MethodChannel(
+        'com.wetidom.keramika/fullscreen',
+      ).invokeMethod<bool>('requestUseFullScreenIntent');
+      return result ?? true;
+    } catch (_) {
+      // Канал не зарегистрирован (старый билд) — не блокируем планирование.
+      return true;
     }
   }
 

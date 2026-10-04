@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 
+/// Сколько длится закрытие [slideUpRoute] (обратная анимация).
+///
+/// Нужен вызывающей стороне: `await Navigator.push(...)` возвращается в
+/// НАЧАЛЕ этого отрезка, а не в конце. Кто после закрытия окна меняет
+/// порядок списка (переезд карточки), обязан дождаться конца, иначе
+/// анимация перестановки накладывается на выезд страницы.
+const Duration slideUpReverseDuration = Duration(milliseconds: 240);
+
 /// Плавный переход снизу вверх (для горизонтальных списков).
 ///
 /// Заметный, но лёгкий: страница поднимается снизу с лёгким «подскоком»
@@ -7,8 +15,11 @@ import 'package:flutter/material.dart';
 /// тяжёлых эффектов (blur/saveLayer) — кадры на Redmi Note 12 не роняются.
 Route<T> slideUpRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
+    // Имя роута = тип страницы: по нему jank-проба подписывает кадры
+    // (см. lib/utils/jank_probe.dart).
+    settings: RouteSettings(name: page.runtimeType.toString()),
     transitionDuration: const Duration(milliseconds: 380),
-    reverseTransitionDuration: const Duration(milliseconds: 240),
+    reverseTransitionDuration: slideUpReverseDuration,
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -36,6 +47,7 @@ Route<T> slideUpRoute<T>(Widget page) {
 /// Плавный переход снизу вверх для диалогов.
 Route<T> fadeRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
+    settings: RouteSettings(name: page.runtimeType.toString()),
     transitionDuration: const Duration(milliseconds: 300),
     reverseTransitionDuration: const Duration(milliseconds: 200),
     pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -64,6 +76,7 @@ Route<T> fadeRoute<T>(Widget page) {
 /// остаётся чётким, позади только лёгкое затемнение.
 Route<T> slideSideRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
+    settings: RouteSettings(name: page.runtimeType.toString()),
     transitionDuration: const Duration(milliseconds: 300),
     reverseTransitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (context, animation, secondaryAnimation) => page,

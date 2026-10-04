@@ -25,58 +25,63 @@ void main() {
     tmpDir = await Directory.systemTemp.createTemp('keramika_reorder_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (call) async {
-        if (call.method == 'getApplicationDocumentsDirectory') {
-          return tmpDir.path;
-        }
-        return null;
-      },
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async {
+            if (call.method == 'getApplicationDocumentsDirectory') {
+              return tmpDir.path;
+            }
+            return null;
+          },
+        );
     // Сидирование выполняется в setUp — вне FakeAsync-зоны testWidgets,
     // иначе реальный файловый I/O сервисов зависнет навсегда.
     final svc = HabitService();
     await svc.load();
-    await svc.add(Habit(
-      id: 'h1',
-      name: 'Пить воду',
-      iconCodePoint: 57690,
-      activeDays: const [1, 2, 3, 4, 5, 6, 7],
-    ));
-    await svc.add(Habit(
-      id: 'h2',
-      name: 'Зарядка',
-      iconCodePoint: 57690,
-      activeDays: const [1, 2, 3, 4, 5, 6, 7],
-    ));
-    await svc.add(Habit(
-      id: 'h3',
-      name: 'Не грызть ногти',
-      iconCodePoint: 57690,
-      activeDays: const [1, 2, 3, 4, 5, 6, 7],
-      type: 'bad',
-    ));
+    await svc.add(
+      Habit(
+        id: 'h1',
+        name: 'Пить воду',
+        iconCodePoint: 57690,
+        activeDays: const [1, 2, 3, 4, 5, 6, 7],
+      ),
+    );
+    await svc.add(
+      Habit(
+        id: 'h2',
+        name: 'Зарядка',
+        iconCodePoint: 57690,
+        activeDays: const [1, 2, 3, 4, 5, 6, 7],
+      ),
+    );
+    await svc.add(
+      Habit(
+        id: 'h3',
+        name: 'Не грызть ногти',
+        iconCodePoint: 57690,
+        activeDays: const [1, 2, 3, 4, 5, 6, 7],
+        type: 'bad',
+      ),
+    );
   });
 
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      null,
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
     try {
       await tmpDir.delete(recursive: true);
     } catch (_) {}
   });
 
-  testWidgets('Habits list with items renders without exception',
-      (WidgetTester tester) async {
+  testWidgets('Habits list with items renders without exception', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       const LocaleProvider(
         locale: Locale('ru'),
-        child: MaterialApp(
-          home: Scaffold(body: HabitsScreen()),
-        ),
+        child: MaterialApp(home: Scaffold(body: HabitsScreen())),
       ),
     );
     await tester.pump();

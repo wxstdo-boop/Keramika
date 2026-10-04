@@ -217,8 +217,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
               // после быстрого свайпа.
               _cancelPendingApply();
               final page = _ctrl.page;
-              if (page != null &&
-                  (page - page.round()).abs() < 0.12) {
+              if (page != null && (page - page.round()).abs() < 0.12) {
                 _applyLivePage();
               }
             }
@@ -237,27 +236,27 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>> {
             final item = widget.items[i];
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => _selectPage(i),                child: AnimatedBuilder(
-                  animation: _ctrl,
-                  builder: (context, _) {
-                    // Масштаб/прозрачность по мере приближения к центру.
-                    final pos = _ctrl.hasClients ? (_ctrl.page ?? 0) : 0.0;
-                    // ВАЖНО: намеченному тапом пункту придаём вид ЦЕНТРАЛЬНОГО
-                    // СРАЗУ (пока карусель ещё едет к нему) — никакой
-                    // «задержки» выделения; остальные таблетки плавно
-                    // уезжают/приезжают мимо него.
-                    final effPos =
-                        i == _pendingSelect ? i.toDouble() : pos;
-                    final delta = (i - effPos).abs().clamp(0.0, 1.0);
-                    final scale = 1.0 - 0.12 * delta;
-                    final opacity = 1.0 - 0.35 * delta;
-                    // ЖИВАЯ подсветка: пункт, к которому карусель привязана
-                    // прямо сейчас (центр), подсвечивается СРАЗУ во время
-                    // скролла — «фон» переключается без задержки, не дожидаясь
-                    // фиксации выбора.
-                    final liveSelected =
-                        (i - pos).abs() < 0.5 || i == _pendingSelect;
-                    return Opacity(
+              onTap: () => _selectPage(i),
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (context, _) {
+                  // Масштаб/прозрачность по мере приближения к центру.
+                  final pos = _ctrl.hasClients ? (_ctrl.page ?? 0) : 0.0;
+                  // ВАЖНО: намеченному тапом пункту придаём вид ЦЕНТРАЛЬНОГО
+                  // СРАЗУ (пока карусель ещё едет к нему) — никакой
+                  // «задержки» выделения; остальные таблетки плавно
+                  // уезжают/приезжают мимо него.
+                  final effPos = i == _pendingSelect ? i.toDouble() : pos;
+                  final delta = (i - effPos).abs().clamp(0.0, 1.0);
+                  final scale = 1.0 - 0.12 * delta;
+                  final opacity = 1.0 - 0.35 * delta;
+                  // ЖИВАЯ подсветка: пункт, к которому карусель привязана
+                  // прямо сейчас (центр), подсвечивается СРАЗУ во время
+                  // скролла — «фон» переключается без задержки, не дожидаясь
+                  // фиксации выбора.
+                  final liveSelected =
+                      (i - pos).abs() < 0.5 || i == _pendingSelect;
+                  return Opacity(
                     opacity: opacity,
                     child: Transform.scale(
                       scale: scale,

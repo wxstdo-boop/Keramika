@@ -5,7 +5,11 @@ import 'package:keramika/services/habit_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Habit makeHabit({int streak = 0, DateTime? lastDone, bool doneToday = false}) {
+  Habit makeHabit({
+    int streak = 0,
+    DateTime? lastDone,
+    bool doneToday = false,
+  }) {
     return Habit(
       id: 'h1',
       name: 'test',
@@ -42,6 +46,101 @@ void main() {
   DateTime day(int back) =>
       HabitService.mskToday().subtract(Duration(days: back));
 
+  test(
+    'привычка с расписанием: пропуск «не положенного» дня НЕ рвёт стрик',
+    () async {
+      final svc = HabitService();
+      // activeDays = только сегодняшний weekday. Отметка была 2 дня назад:
+      // вчерашний день — вне расписания, его пропустить не страшно.
+      // Старая логика (gap >= 2 → сброс) молча убивала серию —
+      // «отметил 4 дня подряд, стрик слетел».
+      final yesterday = day(1);
+      final schedule = <int>[HabitService.mskToday().weekday];
+      await seed(svc, makeHabit(streak: 4, lastDone: day(2)));
+      // Перезаписываем activeDays напрямую через update (seed не задаёт их).
+      await svc.update(
+        Habit(
+          id: 'h1',
+          name: 'test',
+          streak: 4,
+          lastDoneDate: day(2),
+          doneToday: false,
+          type: 'good',
+          activeDays: schedule,
+        ),
+      );
+      expect(
+        yesterday.weekday,
+        isNot(schedule.first),
+        reason: 'предусловие теста: вчера — не положенный день',
+      );
+
+      await svc.toggle('h1');
+      expect(
+        one(svc).streak,
+        5,
+        reason: 'пропущен только «не положенный» день — цепочка жива',
+      );
+      expect(one(svc).doneToday, true);
+    },
+  );
+
+  test(
+    'привычка с расписанием: пропуск ПОЛОЖЕННОГО дня рвёт цепочку',
+    () async {
+      final svc = HabitService();
+      final today = HabitService.mskToday();
+      final yesterdayWeekday = today.subtract(const Duration(days: 1)).weekday;
+      await svc.update(
+        Habit(
+          id: 'h1',
+          name: 'test',
+          streak: 4,
+          lastDoneDate: day(2),
+          doneToday: false,
+          type: 'good',
+          // Расписание включает вчерашний день — он был пропущен.
+          activeDays: <int>[today.weekday, yesterdayWeekday],
+        ),
+      );
+
+      await svc.toggle('h1');
+      expect(
+        one(svc).streak,
+        1,
+        reason: 'пропущен положенный день — начинаем новую серию',
+      );
+      expect(one(svc).doneToday, true);
+    },
+  );
+
+  test(
+    'привычка с расписанием: отметка через 7 дней по тому же weekday растит',
+    () async {
+      final svc = HabitService();
+      final today = HabitService.mskToday();
+      await svc.update(
+        Habit(
+          id: 'h1',
+          name: 'test',
+          streak: 3,
+          lastDoneDate: day(7),
+          doneToday: false,
+          type: 'good',
+          // Еженедельная привычка: положенный день — только сегодняшний weekday.
+          activeDays: <int>[today.weekday],
+        ),
+      );
+
+      await svc.toggle('h1');
+      expect(
+        one(svc).streak,
+        4,
+        reason: 'за неделю не пропущено ни одного положенного дня',
+      );
+    },
+  );
+
   test('check → uncheck → check: streak preserved', () async {
     final svc = HabitService();
     // Симулируем: вчера было отмечено (streak 3 через день назад… на самом
@@ -62,23 +161,26 @@ void main() {
     expect(one(svc).doneToday, true);
   });
 
-  test('check → uncheck → check → uncheck → check (второй раз снять)', () async {
-    final svc = HabitService();
-    await seed(svc, makeHabit(streak: 3, lastDone: day(1)));
+  test(
+    'check → uncheck → check → uncheck → check (второй раз снять)',
+    () async {
+      final svc = HabitService();
+      await seed(svc, makeHabit(streak: 3, lastDone: day(1)));
 
-    await svc.toggle('h1'); // check
-    await svc.toggle('h1'); // uncheck #1
-    await svc.toggle('h1'); // check
-    await svc.toggle('h1'); // uncheck #2
-    expect(one(svc).streak, 3);
-    expect(one(svc).doneToday, false);
-    expect(one(svc).lastDoneDate, day(1));
+      await svc.toggle('h1'); // check
+      await svc.toggle('h1'); // uncheck #1
+      await svc.toggle('h1'); // check
+      await svc.toggle('h1'); // uncheck #2
+      expect(one(svc).streak, 3);
+      expect(one(svc).doneToday, false);
+      expect(one(svc).lastDoneDate, day(1));
 
-    await svc.toggle('h1'); // check снова
-    expect(one(svc).streak, 4);
-    expect(one(svc).doneToday, true);
-    expect(one(svc).lastDoneDate, HabitService.mskToday());
-  });
+      await svc.toggle('h1'); // check снова
+      expect(one(svc).streak, 4);
+      expect(one(svc).doneToday, true);
+      expect(one(svc).lastDoneDate, HabitService.mskToday());
+    },
+  );
 
   test('fresh habit: check → uncheck ×2 → check: streak = 1', () async {
     final svc = HabitService();

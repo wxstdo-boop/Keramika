@@ -12,6 +12,7 @@ import 'package:keramika/services/ai_guide_service.dart';
 import 'package:keramika/services/habit_service.dart';
 import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/nutrition_service.dart';
+import 'package:keramika/services/new_year_event_service.dart';
 import 'package:keramika/services/reality_check_service.dart';
 import 'package:keramika/services/prefs.dart';
 import 'package:keramika/services/task_service.dart';
@@ -275,20 +276,20 @@ void main() {
     });
   });
 
-  group('Nutrition — 7-дневная история', () {
+  group('Nutrition — 20-дневная история', () {
     Future<void> resetNutrition() async {
       await JsonFile.write('nutrition_meals', jsonEncode(<Object>[]));
       await NutritionService().load();
     }
 
-    test('при загрузке приёмы старше 7 дней вычищаются с диска', () async {
+    test('при загрузке приёмы старше 20 дней вычищаются с диска', () async {
       await resetNutrition();
       final now = DateTime.now();
       final oldMeal = Meal(
         id: 'old',
         name: 'Old meal',
         calories: 500,
-        date: now.subtract(const Duration(days: 8)),
+        date: now.subtract(const Duration(days: 21)),
       );
       final recentMeal = Meal(
         id: 'recent',
@@ -307,13 +308,29 @@ void main() {
       expect(svc.meals.map((m) => m.id), contains('recent'));
       expect(svc.meals.map((m) => m.id), isNot(contains('old')));
 
-      // Старый приём удалён и из файла — история реально 7 дней.
+      // Старый приём удалён и из файла — история реально 20 дней.
       final raw = await JsonFile.read('nutrition_meals');
       final saved = jsonDecode(raw!) as List;
       expect(saved.map((e) => (e as Map)['id']), isNot(contains('old')));
     });
 
-    test('totalCalories считает только видимые 7 дней', () async {
+    test('неделю назад приём всё ещё виден — окно стало 20 дней', () async {
+      await resetNutrition();
+      final now = DateTime.now();
+      final week = Meal(
+        id: 'week',
+        name: 'Неделя назад',
+        calories: 400,
+        date: now.subtract(const Duration(days: 9)),
+      );
+      await JsonFile.write('nutrition_meals', jsonEncode([week.toJson()]));
+      await NutritionService().load();
+
+      expect(NutritionService().meals.map((m) => m.id), contains('week'));
+      expect(NutritionService().totalCalories, 400);
+    });
+
+    test('totalCalories считает только видимые 20 дней', () async {
       await resetNutrition();
       final now = DateTime.now();
       await NutritionService().add(
@@ -324,7 +341,7 @@ void main() {
         id: 'old',
         name: 'Old',
         calories: 900,
-        date: now.subtract(const Duration(days: 9)),
+        date: now.subtract(const Duration(days: 25)),
       );
       await JsonFile.write(
         'nutrition_meals',
@@ -340,6 +357,204 @@ void main() {
         200,
         reason: 'калории старого приёма не должны попадать в счётчик',
       );
+    });
+
+    test('приём с названием и без калорий и воды записывается', () async {
+      // Так Ада записывает «я съел на обед суп»: блюдо известно,
+      // калорийность нет. Раньше такой записи не было, и проверка
+      // «нужны калории или вода» ломала именно её.
+      await resetNutrition();
+      await NutritionService().add(
+        Meal(id: 'soup', name: 'суп', calories: 0, date: DateTime.now()),
+      );
+
+      expect(NutritionService().meals.map((m) => m.id), contains('soup'));
+      expect(NutritionService().todayMacros.carbs, 0);
+    });
+
+    test('пустая запись без названия, калорий и воды отклоняется', () async {
+      await resetNutrition();
+      await expectLater(
+        NutritionService().add(
+          Meal(id: 'empty', name: '', calories: 0, date: DateTime.now()),
+        ),
+        throwsA(isA<Exception>()),
+      );
+    });
+
+    test(
+      'вода: старая запись без поля воды читается и не считается приёмом',
+      () async {
+        await JsonFile.write(
+          'nutrition_meals',
+          jsonEncode([
+            {
+              'id': 'legacy',
+              'name': 'Хлеб',
+              'calories': 100,
+              'date': DateTime.now().toIso8601String(),
+            },
+            {
+              'id': 'water',
+              'name': '',
+              'calories': 0,
+              'water': 250,
+              'date': DateTime.now().toIso8601String(),
+            },
+          ]),
+        );
+        await NutritionService().load();
+
+        final legacy = NutritionService().meals.firstWhere(
+          (m) => m.id == 'legacy',
+        );
+        expect(legacy.water, 0);
+        final water = NutritionService().meals.firstWhere(
+          (m) => m.id == 'water',
+        );
+        expect(water.isWaterOnly, isTrue);
+        expect(NutritionService().todayWater, 250);
+        expect(NutritionService().todayCalories, 100);
+      },
+    );
+
+    test('норма зажимается в границы и переживает перезагрузку', () async {
+      SharedPreferences.setMockInitialValues({});
+      globalPrefs = await SharedPreferences.getInstance();
+      await NutritionService().setNorm(999999);
+      expect(NutritionService().norm, kMaxCalorieNorm);
+
+      await NutritionService().setNorm(10);
+      expect(NutritionService().norm, kMinCalorieNorm);
+
+      await NutritionService().setNorm(2400);
+      await NutritionService().load();
+      expect(NutritionService().norm, 2400);
+    });
+
+    test('БЖУ: белковое блюдо даёт много белка и мало углеводов', () {
+      final meat = MealKind.meat.macrosFor(500);
+      expect(meat.protein, greaterThan(meat.carbs));
+      expect(meat.fat, greaterThan(0));
+      // Доли калорийности в сумме дают саму калорийность (±округление).
+      final kcal = meat.protein * 4 + meat.fat * 9 + meat.carbs * 4;
+      expect(kcal, closeTo(500, 12));
+    });
+
+    test('график тренда — всегда полная ширина окна истории', () async {
+      await resetNutrition();
+      await NutritionService().add(
+        Meal(id: 'a', name: 'Каша', calories: 300, date: DateTime.now()),
+      );
+      final days = NutritionService().days;
+      expect(days.length, kNutritionHistoryDays);
+      expect(days.last.calories, 300);
+      expect(days.first.meals, 0);
+    });
+  });
+
+  group('Ивент — собранные шапки не имеют права пропадать', () {
+    const eventFile = 'ny_event_2027';
+
+    /// И сервис, и каталог [JsonFile] — синглтоны на весь прогон, поэтому
+    /// каждый тест начинается с чистого файла и обнулённого кэша.
+    Future<NewYearEventService> freshEvent() async {
+      await JsonFile.remove(eventFile);
+      final svc = NewYearEventService();
+      await svc.reset();
+      return svc;
+    }
+
+    test('забранная шапка лежит на диске, а не только в памяти', () async {
+      final svc = await freshEvent();
+
+      expect(await svc.markToday(), isTrue);
+
+      final raw = await JsonFile.read(eventFile);
+      expect(
+        raw,
+        isNotNull,
+        reason: 'после «Забрать» файл обязан существовать',
+      );
+      final stored = Map<String, bool>.from(jsonDecode(raw!) as Map);
+      expect(stored.values.where((v) => v), hasLength(1));
+      expect(svc.hats, 1);
+    });
+
+    test('перезапуск (новое чтение файла) не теряет шапки', () async {
+      final svc = await freshEvent();
+      await svc.markToday();
+
+      // Повторное «забери сегодня» — отказ, а не вторая шапка.
+      expect(await svc.markToday(), isFalse);
+      // Счётчик берётся из файла, а не из памяти виджета.
+      expect(await svc.hatCount(), 1);
+      expect(svc.currentDay, 2);
+    });
+
+    test('номер дня = сколько шапок собрано + 1, но не больше 12', () async {
+      final svc = await freshEvent();
+      final now = DateTime.now();
+      final dates = {
+        for (var i = 0; i < NewYearEventService.totalDays + 3; i++)
+          '${now.year - 1}-12-${(i + 1).toString().padLeft(2, '0')}': true,
+      };
+      await JsonFile.write(eventFile, jsonEncode(dates));
+
+      expect(await svc.hatCount(), NewYearEventService.totalDays + 3);
+      expect(svc.currentDay, NewYearEventService.totalDays);
+    });
+
+    test(
+      'подарок по умолчанию не выдан, после выдачи расширяет лимиты',
+      () async {
+        final svc = await freshEvent();
+        expect(svc.prizeGranted, isFalse);
+        expect(NutritionService().historyDays, kNutritionHistoryDays);
+        expect(TaskService().maxCategories, kMaxCategories);
+
+        await svc.grantPrize();
+
+        expect(svc.prizeGranted, isTrue);
+        expect(NutritionService().historyDays, kNutritionPrizeHistoryDays);
+        expect(TaskService().maxCategories, kMaxPrizeCategories);
+      },
+    );
+
+    test(
+      'доводка до 12-го дня пишет календарные даты ивента, а не «сегодня»',
+      () async {
+        final svc = await freshEvent();
+
+        await svc.fillTo(NewYearEventService.totalDays);
+
+        expect(await svc.hatCount(), NewYearEventService.totalDays);
+        expect(svc.currentDay, NewYearEventService.totalDays);
+        final stored = Map<String, bool>.from(
+          jsonDecode((await JsonFile.read(eventFile))!) as Map,
+        );
+        // Иначе доводка выглядела бы как одна шапка, забранная двадцать раз.
+        expect(
+          stored.keys,
+          containsAll(<String>['2026-12-21', '2027-01-01']),
+          reason: '12 шапок = 12 разных дней ивента',
+        );
+        // 12-й день собран → подарок выдаётся и это видно после перечитывания.
+        expect(await svc.grantPrize(), isTrue);
+        expect(svc.prizeGranted, isTrue);
+      },
+    );
+
+    test('сброс убирает и шапки, и подарок', () async {
+      final svc = await freshEvent();
+      await svc.markToday();
+      await svc.grantPrize();
+
+      await svc.reset();
+
+      expect(await svc.hatCount(), 0);
+      expect(svc.prizeGranted, isFalse);
+      expect(NutritionService().historyDays, kNutritionHistoryDays);
     });
   });
 

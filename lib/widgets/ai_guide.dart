@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'press_scale.dart';
+import 'glass_sheen.dart';
+import 'section_pill.dart';
+import 'stagger_in.dart';
 import '../l10n/translations.dart';
 import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
@@ -128,15 +131,16 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
     final cs = Theme.of(context).colorScheme;
     // Плавное «вдавливание» при зажатии — как у всех значков приложения.
     return PressScale(
-      child: FloatingActionButton.small(
-        // Stable heroTag: rebuilding settings/chat must never move or recreate
-        // the floating Ada button as a new hero on a weak Android device.
-        heroTag: 'ai_guide_fab',
-        tooltip: Translations.t('aiGuide', context, 'AI guide'),
-        onPressed: () => showAiGuideChat(context),
-        backgroundColor: cs.primaryContainer,
-        foregroundColor: cs.onPrimaryContainer,
-        child: const LiveAdaAvatar(size: 20),
+      child: SmoothTooltip(
+        message: Translations.t('aiGuide', context, 'AI guide'),
+        preferredAbove: true,
+        child: FloatingActionButton.small(
+          heroTag: 'ai_guide_fab',
+          onPressed: () => showAiGuideChat(context),
+          backgroundColor: cs.primaryContainer,
+          foregroundColor: cs.onPrimaryContainer,
+          child: const LiveAdaAvatar(size: 20),
+        ),
       ),
     );
   }
@@ -263,13 +267,15 @@ class _AiChatSheetState extends State<_AiChatSheet> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Container(
-          height: sheetHeight,
-          decoration: BoxDecoration(
-            color: theme.scaffoldBackgroundColor.withValues(alpha: 0.72),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          // Тело чата не получает покадровые IME-инсеты: меняется только
-          // внешний лёгкий Padding, а лента и её TextFields не пересобираются.
+              height: sheetHeight,
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor.withValues(alpha: 0.72),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+              ),
+              // Тело чата не получает покадровые IME-инсеты: меняется только
+              // внешний лёгкий Padding, а лента и её TextFields не пересобираются.
               child: MediaQuery.removeViewInsets(
                 context: context,
                 removeBottom: true,
@@ -405,7 +411,7 @@ class _AiChatBodyState extends State<_AiChatBody>
         .catchError((_) {});
     AiGuideService.currentModelLabel()
         .then((m) {
-          if (mounted) setState(() => _modelLabel = m);
+          if (mounted && m.isNotEmpty) setState(() => _modelLabel = m);
         })
         .catchError((_) {});
     // Веб-поиск: запоминаем, был ли он включён — переживает перезапуск.
@@ -510,7 +516,8 @@ class _AiChatBodyState extends State<_AiChatBody>
   void _refreshModelLabel() {
     AiGuideService.currentModelLabel()
         .then((m) {
-          if (mounted && m != _modelLabel) setState(() => _modelLabel = m);
+          if (mounted && m.isNotEmpty && m != _modelLabel)
+            setState(() => _modelLabel = m);
         })
         .catchError((_) {});
   }
@@ -785,12 +792,13 @@ class _AiChatBodyState extends State<_AiChatBody>
                   ? LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [cs.primary, Color.lerp(cs.primary, cs.tertiary, 0.4)!],
+                      colors: [
+                        cs.primary,
+                        Color.lerp(cs.primary, cs.tertiary, 0.4)!,
+                      ],
                     )
                   : null,
-              color: _webSearch
-                  ? null
-                  : cs.surface.withValues(alpha: 0.55),
+              color: _webSearch ? null : cs.surface.withValues(alpha: 0.55),
               border: Border.all(
                 color: _webSearch
                     ? cs.primary
@@ -934,14 +942,10 @@ class _AiChatBodyState extends State<_AiChatBody>
                 transitionBuilder: (child, animation) =>
                     FadeTransition(opacity: animation, child: child),
                 child: Icon(
-                  _screenAware
-                      ? Icons.visibility
-                      : Icons.visibility_outlined,
+                  _screenAware ? Icons.visibility : Icons.visibility_outlined,
                   key: ValueKey('screen_toggle_icon_$_screenAware'),
                   size: 19,
-                          color: _screenAware
-                        ? cs.primary
-                        : cs.onSurfaceVariant,
+                  color: _screenAware ? cs.primary : cs.onSurfaceVariant,
                 ),
               ),
               // «Живая» точка: зелёная, когда контекст экрана активен.
@@ -980,11 +984,13 @@ class _AiChatBodyState extends State<_AiChatBody>
       // Лимит чата: 1000 сообщений, дальше — стереть и начать новый диалог.
       if (_messages.length >= 1000) _messages.clear();
       if (!keepUserBubble) {
-        _messages.add(AiMessage(
-          isUser: true,
-          text: message,
-          ts: DateTime.now().millisecondsSinceEpoch,
-        ));
+        _messages.add(
+          AiMessage(
+            isUser: true,
+            text: message,
+            ts: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
       }
       // Горячий стрик: первое сообщение нового дня растит счётчик, и Ада
       // подкидывает в чат горячую фразу (не чаще раза в день).
@@ -1023,11 +1029,13 @@ class _AiChatBodyState extends State<_AiChatBody>
                 'Хм, я не смогла собрать ответ. Попробуй ещё раз!',
               )
             : answer;
-        _messages.add(AiMessage(
-          isUser: false,
-          text: finalText,
-          ts: DateTime.now().millisecondsSinceEpoch,
-        ));
+        _messages.add(
+          AiMessage(
+            isUser: false,
+            text: finalText,
+            ts: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
         if (_messages.length > 1000) {
           _messages.removeRange(0, _messages.length - 1000);
         }
@@ -1085,11 +1093,13 @@ class _AiChatBodyState extends State<_AiChatBody>
     final result = await AiGuideService.undoLastAction();
     if (!mounted) return;
     setState(() {
-      _messages.add(AiMessage(
-        isUser: false,
-        text: result,
-        ts: DateTime.now().millisecondsSinceEpoch,
-      ));
+      _messages.add(
+        AiMessage(
+          isUser: false,
+          text: result,
+          ts: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
     });
     _saveHistory();
     _scrollToBottom();
@@ -1133,6 +1143,10 @@ class _AiChatBodyState extends State<_AiChatBody>
           devicePixelRatio: dpr,
           screenWidth: size.width,
           screenHeight: size.height,
+          // Верхний запретный пояс (статус-бар + шапка + таблетка
+          // разделов): окно Ады лежит НАД приложением, и без него при
+          // перетаскивании вверх окошко залезало на категории.
+          topKeepout: adaTopKeepout(MediaQuery.paddingOf(ctx).top),
         );
         if (!shown) {
           // Разрешение не дали — показываем подсказку и остаёмся в чате.
@@ -1194,11 +1208,13 @@ class _AiChatBodyState extends State<_AiChatBody>
       if (!mounted || rewards.isEmpty) return;
       setState(() {
         for (final r in rewards) {
-          _messages.add(AiMessage(
-            isUser: false,
-            text: r,
-            ts: DateTime.now().millisecondsSinceEpoch,
-          ));
+          _messages.add(
+            AiMessage(
+              isUser: false,
+              text: r,
+              ts: DateTime.now().millisecondsSinceEpoch,
+            ),
+          );
         }
       });
       _saveHistory();
@@ -1220,191 +1236,187 @@ class _AiChatBodyState extends State<_AiChatBody>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-            // Ручка.
-            Container(
-              margin: const EdgeInsets.only(top: 10),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            // Шапка — Ада. Тап по имени/аватарке меняет её значок.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 8, 6),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _cycleAvatar,
-                    // Живой слушатель adaAvatarVariant: смена значка из ЛЮБОГО
-                    // места (тап по сердечку у сообщений, шапка, мини-чат)
-                    // мгновенно и плавно обновляет аватарку в шапке.
-                    child: ValueListenableBuilder<int>(
-                      valueListenable: adaAvatarVariant,
-                      builder: (context, idx, _) => AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 450),
-                        switchInCurve: Curves.easeOutBack,
-                        switchOutCurve: Curves.easeIn,
-                        transitionBuilder: (child, animation) =>
-                            ScaleTransition(
-                              scale: animation,
-                              child: FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              ),
-                            ),
-                        child: AdaAvatar(
-                          variantIndex: idx,
-                          key: ValueKey('ada_avatar_$idx'),
-                        ),
-                      ),
+        // Ручка.
+        Container(
+          margin: const EdgeInsets.only(top: 10),
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: cs.outlineVariant,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        // Шапка — Ада. Тап по имени/аватарке меняет её значок.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 8, 6),
+          child: Row(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _cycleAvatar,
+                // Живой слушатель adaAvatarVariant: смена значка из ЛЮБОГО
+                // места (тап по сердечку у сообщений, шапка, мини-чат)
+                // мгновенно и плавно обновляет аватарку в шапке.
+                child: ValueListenableBuilder<int>(
+                  valueListenable: adaAvatarVariant,
+                  builder: (context, idx, _) => AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 450),
+                    switchInCurve: Curves.easeOutBack,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) => ScaleTransition(
+                      scale: animation,
+                      child: FadeTransition(opacity: animation, child: child),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _cycleAvatar,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Строка 1: «Ада, ничего не надо».
-                          Text(
-                            '${Translations.t('adaName', context, 'Ада')}, '
-                            '${Translations.t('adaTagline', context, 'ничего не надо')}',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          // Строка 2: кто ответил и какая модель —
-                          // Kilo · openrouter/free / LLM7 · codestral.
-                          // Переключается плавно при смене провайдера.
-                          // Стрик переехал в подсказку пустого чата (мельче
-                          // и красивее) — в шапке осталась только модель.
-                          Flexible(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 400),
-                              switchInCurve: Curves.easeOut,
-                              switchOutCurve: Curves.easeIn,
-                              transitionBuilder: (child, animation) =>
-                                  FadeTransition(
-                                    opacity: animation,
-                                    child: SizeTransition(
-                                      sizeFactor: animation,
-                                      alignment: AlignmentDirectional.topStart,
-                                      child: child,
-                                    ),
-                                  ),
-                              child: ModelLabel(
-                                key: ValueKey(_modelLabel),
-                                label: _modelLabel,
-                                textStyle: theme.textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: AdaAvatar(
+                      variantIndex: idx,
+                      key: ValueKey('ada_avatar_$idx'),
                     ),
-                  ),
-                  // Кнопка очистки чата. Без серой подсветки при наведении.
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _clearChat,
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Icon(
-                        Icons.delete_sweep_outlined,
-                        size: 22,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  // Свернуть чат в плавающее окошко (режим «в окне»).
-                  ValueListenableBuilder<bool>(
-                    valueListenable: aiFloating,
-                    builder: (context, floating, _) => GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _toggleFloating,
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          floating
-                              ? Icons.picture_in_picture_alt
-                              : Icons.picture_in_picture_alt_outlined,
-                          size: 22,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.pop(context),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Icon(
-                        Icons.close,
-                        size: 22,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            // Закреплённые сообщения Ады — живут над чатом, не стираются
-            // очисткой. Открепляются тапом на крестик.
-            AnimatedSize(
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 320),
-                switchInCurve: Curves.easeOutBack,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, anim) => FadeTransition(
-                  opacity: anim,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, -0.35),
-                      end: Offset.zero,
-                    ).animate(anim),
-                    child: child,
                   ),
                 ),
-                child: _pinned.isEmpty
-                    ? const SizedBox(
-                        key: ValueKey('pins_none'),
-                        width: double.infinity,
-                      )
-                    : _PinnedBar(
-                        key: const ValueKey('pins_bar'),
-                        pinned: _pinned,
-                        onUnpin: _unpin,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _cycleAvatar,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Строка 1: «Ада, ничего не надо».
+                      Text(
+                        '${Translations.t('adaName', context, 'Ада')}, '
+                        '${Translations.t('adaTagline', context, 'ничего не надо')}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
+                      // Строка 2: кто ответил и какая модель —
+                      // Kilo · openrouter/free / LLM7 · codestral.
+                      // Переключается плавно при смене провайдера.
+                      // Стрик переехал в подсказку пустого чата (мельче
+                      // и красивее) — в шапке осталась только модель.
+                      Flexible(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(
+                                opacity: animation,
+                                child: SizeTransition(
+                                  sizeFactor: animation,
+                                  alignment: AlignmentDirectional.topStart,
+                                  child: child,
+                                ),
+                              ),
+                          child: ModelLabel(
+                            key: const ValueKey('model_label_stable'),
+                            label: _modelLabel,
+                            textStyle: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Кнопка очистки чата. Без серой подсветки при наведении.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _clearChat,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.delete_sweep_outlined,
+                    size: 22,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              // Свернуть чат в плавающее окошко (режим «в окне»).
+              ValueListenableBuilder<bool>(
+                valueListenable: aiFloating,
+                builder: (context, floating, _) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleFloating,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      floating
+                          ? Icons.picture_in_picture_alt
+                          : Icons.picture_in_picture_alt_outlined,
+                      size: 22,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.pop(context),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.close,
+                    size: 22,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Закреплённые сообщения Ады — живут над чатом, не стираются
+        // очисткой. Открепляются тапом на крестик.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 320),
+            switchInCurve: Curves.easeOutBack,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, -0.35),
+                  end: Offset.zero,
+                ).animate(anim),
+                child: child,
               ),
             ),
-            // Сообщения (гаснут при очистке).
-            //
-            // Лента изолирована от изменений MediaQuery (RepaintBoundary +
-            // MediaQuery.removeViewInsets): при поднятии/опускании клавиатуры
-            // viewInsets меняются покадрово, и БЕЗ изоляции тяжёлая лента
-            // (сотни сообщений) пересобиралась на каждом кадре — отсюда
-            // «дёрганое тормозное» поднятие клавиатуры в чате. Теперь
-            // двигается только лёгкая оболочка (Padding + Container), а лента
-            // остаётся готовой текстурой.
-            Expanded(
-              child: MediaQuery.removeViewInsets(
-                context: context,
-                removeBottom: true,
-                child: RepaintBoundary(
-                  child: AnimatedBuilder(
+            child: _pinned.isEmpty
+                ? const SizedBox(
+                    key: ValueKey('pins_none'),
+                    width: double.infinity,
+                  )
+                : _PinnedBar(
+                    key: const ValueKey('pins_bar'),
+                    pinned: _pinned,
+                    onUnpin: _unpin,
+                  ),
+          ),
+        ),
+        // Сообщения (гаснут при очистке).
+        //
+        // Лента изолирована от изменений MediaQuery (RepaintBoundary +
+        // MediaQuery.removeViewInsets): при поднятии/опускании клавиатуры
+        // viewInsets меняются покадрово, и БЕЗ изоляции тяжёлая лента
+        // (сотни сообщений) пересобиралась на каждом кадре — отсюда
+        // «дёрганое тормозное» поднятие клавиатуры в чате. Теперь
+        // двигается только лёгкая оболочка (Padding + Container), а лента
+        // остаётся готовой текстурой.
+        Expanded(
+          child: MediaQuery.removeViewInsets(
+            context: context,
+            removeBottom: true,
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
                 animation: _clearCtrl,
                 builder: (context, child) =>
                     Opacity(opacity: 1.0 - _clearCtrl.value, child: child),
@@ -1474,7 +1486,8 @@ class _AiChatBodyState extends State<_AiChatBody>
                         // Моё сообщение «прочитано», когда сразу за ним в
                         // истории идёт ответ Ады (она обработала сообщение).
                         // Время прочтения — метка ответа Ады.
-                        final read = m.isUser &&
+                        final read =
+                            m.isUser &&
                             mi + 1 < _messages.length &&
                             !_messages[mi + 1].isUser;
                         final readAt = read ? _messages[mi + 1].ts : null;
@@ -1513,259 +1526,257 @@ class _AiChatBodyState extends State<_AiChatBody>
                     ),
                   ],
                 ),
+              ),
+            ),
+          ),
+        ),
+        // Плашка «ИИ на курорте» (с кодом ошибки для диагностики).
+        _AnimatedErrorPlaque(
+          visible: _error,
+          errorMsg: _errorMsg,
+          onRetry: _retryLast,
+        ),
+        // Быстрые действия: чип заполняет поле ввода шаблоном — дальше
+        // локальный парсер выполнит команду мгновенно, без сети.
+        _QuickChips(
+          // Значки веб-поиска и контекста экрана — первые элементы
+          // списка, листаются вместе с таблетками (не приклеены
+          // столбом слева).
+          leading: [
+            _buildWebSearchToggle(context, theme),
+            _buildScreenToggle(context, theme),
+          ],
+          onTap: (template) {
+            _inputCtrl.text = template;
+            _inputCtrl.selection = TextSelection.collapsed(
+              offset: _inputCtrl.text.length,
+            );
+            _inputFocus.requestFocus();
+          },
+        ),
+        // Подсказка про лимит Ады.
+        if (_quotaLeft > 0 && _quotaLeft <= 5)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome,
+                  size: 12,
+                  color: Color(0xFFB06AB3),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: ClipRect(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        final t = Curves.easeOutCubic.transform(
+                          animation.value,
+                        );
+                        return FadeTransition(
+                          opacity: animation,
+                          child: Transform.translate(
+                            offset: Offset(0, 10 * (1 - t)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Text(
+                        Translations.t(
+                          'adaQuota',
+                          context,
+                          'Ada: N free left today',
+                        ).replaceFirst('N', '$_quotaLeft'),
+                        key: ValueKey('quota_$_quotaLeft'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            // Плашка «ИИ на курорте» (с кодом ошибки для диагностики).
-            _AnimatedErrorPlaque(
-              visible: _error,
-              errorMsg: _errorMsg,
-              onRetry: _retryLast,
-            ),
-            // Быстрые действия: чип заполняет поле ввода шаблоном — дальше
-            // локальный парсер выполнит команду мгновенно, без сети.
-            _QuickChips(
-              // Значки веб-поиска и контекста экрана — первые элементы
-              // списка, листаются вместе с таблетками (не приклеены
-              // столбом слева).
-              leading: [
-                _buildWebSearchToggle(context, theme),
-                _buildScreenToggle(context, theme),
               ],
-              onTap: (template) {
-                _inputCtrl.text = template;
-                _inputCtrl.selection = TextSelection.collapsed(
-                  offset: _inputCtrl.text.length,
-                );
-                _inputFocus.requestFocus();
-              },
             ),
-            // Подсказка про лимит Ады.
-            if (_quotaLeft > 0 && _quotaLeft <= 5)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.auto_awesome,
-                      size: 12,
-                      color: Color(0xFFB06AB3),
+          ),
+        // «Отменить последнее действие» — появляется/исчезает плавно
+        // после того, как Ада что-то создала или удалила.
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              alignment: AlignmentDirectional.topCenter,
+              child: child,
+            ),
+          ),
+          child: (AiGuideService.lastAction == null || _busy)
+              ? const SizedBox.shrink(key: ValueKey('undo_none'))
+              : Padding(
+                  key: const ValueKey('undo_chip'),
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ActionChip(
+                      avatar: const Icon(Icons.undo, size: 16),
+                      label: Text(
+                        '${Translations.t('aiUndo', context, 'Undo')}: '
+                        '${AiGuideService.lastAction!.label}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onPressed: _busy ? null : _undoLast,
+                      visualDensity: VisualDensity.compact,
+                      side: BorderSide(
+                        color: cs.primary.withValues(alpha: 0.35),
+                      ),
                     ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: ClipRect(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) {
-                            final t = Curves.easeOutCubic.transform(
-                              animation.value,
-                            );
-                            return FadeTransition(
-                              opacity: animation,
-                              child: Transform.translate(
-                                offset: Offset(0, 10 * (1 - t)),
-                                child: child,
+                  ),
+                ),
+        ),
+        // Поле ввода.
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  // Обводка поля плавно «разгорается» при фокусе и гаснет
+                  // при снятии (короткая 220мс анимация, чтобы не тормозить
+                  // клавиатуру, но и не «щёлкать» цветом).
+                  child: AnimatedBuilder(
+                    animation: _focusAnim,
+                    builder: (context, child) {
+                      final t = Curves.easeOutCubic.transform(_focusAnim.value);
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Color.lerp(
+                              cs.outlineVariant.withValues(alpha: 0.4),
+                              cs.primary.withValues(alpha: 0.7),
+                              t,
+                            )!,
+                            width: 1.5 + t * 0.4,
+                          ),
+                        ),
+                        child: child,
+                      );
+                    },
+                    child: Stack(
+                      children: [
+                        // Предпросмотр markdown убран: прозрачный
+                        // TextField + RichText давали «разъехавшиеся
+                        // буквы» (шрифт Avenir Next недоступен на Android
+                        // и фолбэк рендерил слои со сдвигом). Теперь
+                        // текст обычный, видимый, без артефактов.
+                        // Настоящее поле СВЕРХУ: текст прозрачный (его
+                        // рисует предпросмотр), но каретка, выделение и
+                        // клавиатура работают как обычно.
+                        FadeTransition(
+                          // Короткий fade-пульс при каждом изменении
+                          // текста — буквы «появляются/исчезают» плавно.
+                          opacity: Tween<double>(begin: 0.72, end: 1.0).animate(
+                            CurvedAnimation(
+                              parent: _letterPulse,
+                              curve: Curves.easeOut,
+                            ),
+                          ),
+                          child: TextField(
+                            magnifierConfiguration:
+                                TextMagnifierConfiguration.disabled,
+                            controller: _inputCtrl,
+                            focusNode: _inputFocus,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(),
+                            minLines: 1,
+                            maxLines: 4,
+                            maxLength: 13000,
+                            // Отключаем автоподсказки/автокоррекцию
+                            // клавиатуры: Gboard/MIUI добавляет свой
+                            // автопробел после выбранного слова — отсюда
+                            // «пробел в конце».
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            // Меню при зажатии: только Копировать/Вставить/
+                            // Вырезать/Курсив — без «Поделиться»,
+                            // «Спросить Copilot» и лишних пунктов.
+                            contextMenuBuilder: minimalContextMenuBuilder,
+                            // Не запускать дополнительный автоскролл
+                            // EditableText при каждом кадре IME: лист уже
+                            // сам двигается.
+                            scrollPadding: EdgeInsets.zero,
+                            style: TextStyle(
+                              fontSize: 18,
+                              height: 1.4,
+                              color: cs.onSurface,
+                            ),
+                            cursorColor: cs.primary,
+                            // Каретка мигает ПЛАВНО (fade-переход, а не
+                            // резкое вкл/выкл) — «палка» не дёргается.
+                            cursorOpacityAnimates: true,
+                            decoration: InputDecoration(
+                              counterText: '',
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 12,
                               ),
-                            );
-                          },
-                          child: Text(
-                            Translations.t(
-                              'adaQuota',
-                              context,
-                              'Ada: N free left today',
-                            ).replaceFirst('N', '$_quotaLeft'),
-                            key: ValueKey('quota_$_quotaLeft'),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            // «Отменить последнее действие» — появляется/исчезает плавно
-            // после того, как Ада что-то создала или удалила.
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SizeTransition(
-                  sizeFactor: animation,
-                  alignment: AlignmentDirectional.topCenter,
-                  child: child,
-                ),
-              ),
-              child: (AiGuideService.lastAction == null || _busy)
-                  ? const SizedBox.shrink(key: ValueKey('undo_none'))
-                  : Padding(
-                      key: const ValueKey('undo_chip'),
-                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: ActionChip(
-                          avatar: const Icon(Icons.undo, size: 16),
-                          label: Text(
-                            '${Translations.t('aiUndo', context, 'Undo')}: '
-                            '${AiGuideService.lastAction!.label}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          onPressed: _busy ? null : _undoLast,
-                          visualDensity: VisualDensity.compact,
-                          side: BorderSide(
-                            color: cs.primary.withValues(alpha: 0.35),
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-            // Поле ввода.
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      // Обводка поля плавно «разгорается» при фокусе и гаснет
-                      // при снятии (короткая 220мс анимация, чтобы не тормозить
-                      // клавиатуру, но и не «щёлкать» цветом).
-                      child: AnimatedBuilder(
-                        animation: _focusAnim,
-                        builder: (context, child) {
-                          final t = Curves.easeOutCubic.transform(
-                            _focusAnim.value,
-                          );
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: Color.lerp(
-                                  cs.outlineVariant.withValues(alpha: 0.4),
-                                  cs.primary.withValues(alpha: 0.7),
-                                  t,
-                                )!,
-                                width: 1.5 + t * 0.4,
-                              ),
-                            ),
-                            child: child,
-                          );
-                        },
-                        child: Stack(
-                          children: [
-                            // Предпросмотр markdown убран: прозрачный
-                            // TextField + RichText давали «разъехавшиеся
-                            // буквы» (шрифт Avenir Next недоступен на Android
-                            // и фолбэк рендерил слои со сдвигом). Теперь
-                            // текст обычный, видимый, без артефактов.
-                            // Настоящее поле СВЕРХУ: текст прозрачный (его
-                            // рисует предпросмотр), но каретка, выделение и
-                            // клавиатура работают как обычно.
-                            FadeTransition(
-                              // Короткий fade-пульс при каждом изменении
-                              // текста — буквы «появляются/исчезают» плавно.
-                              opacity: Tween<double>(begin: 0.72, end: 1.0)
-                                  .animate(
-                                    CurvedAnimation(
-                                      parent: _letterPulse,
-                                      curve: Curves.easeOut,
-                                    ),
-                                  ),
-                              child: TextField(
-                                magnifierConfiguration:
-                                    TextMagnifierConfiguration.disabled,
-                                controller: _inputCtrl,
-                                focusNode: _inputFocus,
-                                textInputAction: TextInputAction.send,
-                                onSubmitted: (_) => _send(),
-                                minLines: 1,
-                                maxLines: 4,
-                                maxLength: 13000,
-                                // Отключаем автоподсказки/автокоррекцию
-                                // клавиатуры: Gboard/MIUI добавляет свой
-                                // автопробел после выбранного слова — отсюда
-                                // «пробел в конце».
-                                enableSuggestions: false,
-                                autocorrect: false,
-                                // Меню при зажатии: только Копировать/Вставить/
-                                // Вырезать/Курсив — без «Поделиться»,
-                                // «Спросить Copilot» и лишних пунктов.
-                                contextMenuBuilder: minimalContextMenuBuilder,
-                                // Не запускать дополнительный автоскролл
-                                // EditableText при каждом кадре IME: лист уже
-                                // сам двигается.
-                                scrollPadding: EdgeInsets.zero,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  height: 1.4,
-                                  color: cs.onSurface,
+                        // Плавная подсказка «Спроси меня»: гаснет, когда
+                        // начинаешь вводить, и мягко возвращается, когда
+                        // поле пустое — вместо резкого щелчка.
+                        IgnorePointer(
+                          child: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _inputCtrl,
+                            builder: (context, v, _) => AnimatedOpacity(
+                              opacity: v.text.isEmpty ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeOutCubic,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 12,
                                 ),
-                                cursorColor: cs.primary,
-                                // Каретка мигает ПЛАВНО (fade-переход, а не
-                                // резкое вкл/выкл) — «палка» не дёргается.
-                                cursorOpacityAnimates: true,
-                                decoration: InputDecoration(
-                                  counterText: '',
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: 12,
+                                child: Text(
+                                  Translations.t(
+                                    'aiGuideHint',
+                                    context,
+                                    'Ask me…',
                                   ),
-                                ),
-                              ),
-                            ),
-                            // Плавная подсказка «Спроси меня»: гаснет, когда
-                            // начинаешь вводить, и мягко возвращается, когда
-                            // поле пустое — вместо резкого щелчка.
-                            IgnorePointer(
-                              child: ValueListenableBuilder<TextEditingValue>(
-                                valueListenable: _inputCtrl,
-                                builder: (context, v, _) => AnimatedOpacity(
-                                  opacity: v.text.isEmpty ? 1.0 : 0.0,
-                                  duration: const Duration(milliseconds: 240),
-                                  curve: Curves.easeOutCubic,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 12,
-                                    ),
-                                    child: Text(
-                                      Translations.t(
-                                        'aiGuideHint',
-                                        context,
-                                        'Ask me…',
-                                      ),
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        height: 1.4,
-                                        color: cs.onSurfaceVariant
-                                            .withValues(alpha: 0.8),
-                                      ),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    height: 1.4,
+                                    color: cs.onSurfaceVariant.withValues(
+                                      alpha: 0.8,
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    _SendButton(busy: _busy, onTap: () => _send()),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                _SendButton(busy: _busy, onTap: () => _send()),
+              ],
             ),
-          ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1782,23 +1793,32 @@ class _EmptyChatPlaceholder extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              Translations.t('adaEmptyChat', context),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 22,
-                height: 1.35,
-                fontWeight: FontWeight.w800,
-                color: cs.onSurfaceVariant,
-              ),
+        // Пустой чат раньше висел абсолютно мёртвым текстом. Теперь плашка
+        // проявляется каскадом и медленно «дышит» — экран выглядит живым,
+        // пока пользователь ничего не написал.
+        child: StaggerIn(
+          index: 0,
+          child: GentleFloat(
+            amplitude: 4,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  Translations.t('adaEmptyChat', context),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 22,
+                    height: 1.35,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                // Компактный стрик: появляется плавно, когда есть что показать.
+                const SizedBox(height: 14),
+                const _HotStreakPill(),
+              ],
             ),
-            // Компактный стрик: появляется плавно, когда есть что показать.
-            const SizedBox(height: 14),
-            const _HotStreakPill(),
-          ],
+          ),
         ),
       ),
     );
@@ -2107,12 +2127,20 @@ class _ActionIcon extends StatelessWidget {
     return SmoothTooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 600),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(5),
-          child: Icon(icon, size: size, color: color),
+      child: PressScale(
+        // Иконки действий раньше реагировали только на сам тап — ни отдачи
+        // при зажатии, ни хаптика. Теперь кнопка «сядет» под пальцем.
+        pressedScale: 0.86,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            Haptics.select();
+            onTap?.call();
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: Icon(icon, size: size, color: color),
+          ),
         ),
       ),
     );
@@ -2215,7 +2243,7 @@ class _ReadReceipt extends StatelessWidget {
     // от слова): у старых сообщений без метки — просто «Прочитано».
     final label = readAt != null
         ? '${Translations.t('readReceiptAt', context, 'Прочитано в')} '
-            '${_fmtTime(readAt!)}'
+              '${_fmtTime(readAt!)}'
         : Translations.t('readReceipt', context, 'Прочитано');
     final receipt = Row(
       mainAxisSize: MainAxisSize.min,
@@ -2243,9 +2271,10 @@ class _ReadReceipt extends StatelessWidget {
       transitionBuilder: (child, anim) => FadeTransition(
         opacity: anim,
         child: ScaleTransition(
-          scale: Tween<double>(begin: 0.7, end: 1.0).animate(
-            CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
-          ),
+          scale: Tween<double>(
+            begin: 0.7,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
           child: child,
         ),
       ),
@@ -2474,22 +2503,36 @@ class _QuickChips extends StatelessWidget {
         itemBuilder: (context, i) {
           if (i < leadCount) return leading[i];
           final (label, template) = chips[i - leadCount];
-          return GestureDetector(
-            onTap: () => onTap(template),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: cs.primaryContainer.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onPrimaryContainer,
+          // Каскад появления + «вдавливание» при нажатии: раньше чипы были
+          // абсолютно статичными — ни входа, ни отклика на тап.
+          return StaggerIn(
+            index: i,
+            child: PressScale(
+              pressedScale: 0.93,
+              child: GestureDetector(
+                onTap: () {
+                  Haptics.select();
+                  onTap(template);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: cs.primary.withValues(alpha: 0.22),
+                    ),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onPrimaryContainer,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -2541,63 +2584,68 @@ class _SendButtonState extends State<_SendButton>
     // Плавное «вдавливание» при зажатии кнопки отправки.
     return PressScale(
       child: GestureDetector(
-      onTap: widget.busy
-          ? null
-          : () {
-              Haptics.light();
-              widget.onTap();
-            },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              cs.primary,
-              Color.lerp(cs.primary, cs.secondary, 0.6) ?? cs.secondary,
+        onTap: widget.busy
+            ? null
+            : () {
+                Haptics.light();
+                widget.onTap();
+              },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                cs.primary,
+                Color.lerp(cs.primary, cs.secondary, 0.6) ?? cs.secondary,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: cs.primary.withValues(alpha: 0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+                spreadRadius: 1,
+              ),
             ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: cs.primary.withValues(alpha: 0.35),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-              spreadRadius: 1,
+          // Плавный переход иконок: стрелка ↔ сплеш-спиннер.
+          // Без RotationTransition (на слабом GPU поворот при каждой смене
+          // «дёргал» переход) — мягкий scale + fade, без overshoot.
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: Tween<double>(begin: 0.82, end: 1).animate(animation),
+              child: FadeTransition(opacity: animation, child: child),
             ),
-          ],
-        ),
-        // Плавный переход иконок: стрелка ↔ сплеш-спиннер.
-        // Без RotationTransition (на слабом GPU поворот при каждой смене
-        // «дёргал» переход) — мягкий scale + fade, без overshoot.
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) => ScaleTransition(
-            scale: Tween<double>(begin: 0.82, end: 1).animate(animation),
-            child: FadeTransition(opacity: animation, child: child),
-          ),
-          child: widget.busy
-              ? AnimatedBuilder(
-                  key: const ValueKey('busy_splash'),
-                  animation: _spin,
-                  builder: (context, _) => Transform.rotate(
-                    angle: _spin.value * 2 * 3.14159,
-                    child: Icon(Icons.autorenew, color: cs.onPrimary, size: 26),
+            child: widget.busy
+                ? AnimatedBuilder(
+                    key: const ValueKey('busy_splash'),
+                    animation: _spin,
+                    builder: (context, _) => Transform.rotate(
+                      angle: _spin.value * 2 * 3.14159,
+                      child: Icon(
+                        Icons.autorenew,
+                        color: cs.onPrimary,
+                        size: 26,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    Icons.arrow_upward_rounded,
+                    key: const ValueKey('send_arrow'),
+                    color: cs.onPrimary,
+                    size: 24,
                   ),
-                )
-              : Icon(
-                  Icons.arrow_upward_rounded,
-                  key: const ValueKey('send_arrow'),
-                  color: cs.onPrimary,
-                  size: 24,
-                ),                ),
+          ),
+        ),
       ),
-    ),
     );
   }
 }
@@ -2759,11 +2807,17 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
     }
   }
 
+  /// Верхний пояс для окошка: статус-бар + шапка + таблетка разделов. Окошко
+  /// лежит в корневом Stack НАД экранами раздела, и без пояса при
+  /// перетаскивании вверх оно забиралось на категории «Полезные/Вредные».
+  double get _topKeepout => adaTopKeepout(MediaQuery.paddingOf(context).top);
+
   void _clampPos(Size screen) {
     final w = _windowWidth(screen.width);
+    final maxY = math.max(_topKeepout, screen.height - _expandedHeight - 8.0);
     _pos = Offset(
       _pos.dx.clamp(8.0, screen.width - w - 8.0),
-      _pos.dy.clamp(8.0, screen.height - _expandedHeight - 8.0),
+      _pos.dy.clamp(_topKeepout, maxY),
     );
   }
 
@@ -2838,11 +2892,13 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
     final gen = adaChatGeneration;
     _inputCtrl.clear();
     setState(() {
-      _messages.add(AiMessage(
-        isUser: true,
-        text: message,
-        ts: DateTime.now().millisecondsSinceEpoch,
-      ));
+      _messages.add(
+        AiMessage(
+          isUser: true,
+          text: message,
+          ts: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
       _busy = true;
       _typingFade = false;
     });
@@ -2869,11 +2925,13 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
       await Future.delayed(const Duration(milliseconds: 180));
       if (!mounted || gen != adaChatGeneration) return;
       setState(() {
-        _messages.add(AiMessage(
-          isUser: false,
-          text: answer,
-          ts: DateTime.now().millisecondsSinceEpoch,
-        ));
+        _messages.add(
+          AiMessage(
+            isUser: false,
+            text: answer,
+            ts: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
         _busy = false;
         _typingFade = false;
       });
@@ -2908,9 +2966,10 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
   void _drag(Offset delta, Size screen) {
     final next = _pos + delta;
     final w = _windowWidth(screen.width);
+    final maxY = math.max(_topKeepout, screen.height - _expandedHeight - 8.0);
     _pos = Offset(
       next.dx.clamp(8.0, screen.width - w - 8.0),
-      next.dy.clamp(8.0, screen.height - _expandedHeight - 8.0),
+      next.dy.clamp(_topKeepout, maxY),
     );
     _posNotifier.value = _pos;
   }

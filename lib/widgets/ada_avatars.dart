@@ -27,36 +27,36 @@ final List<AdaVariant> adaVariants = _buildAdaVariants();
 
 List<AdaVariant> _buildAdaVariants() {
   const specials = <AdaVariant>[
-    AdaVariant([
-      Color(0xFFFF9EC6),
-      Color(0xFFB06AB3),
-      Color(0xFF7C4DFF),
-    ], Icons.favorite, hue: 335),
-    AdaVariant([
-      Color(0xFFFFB199),
-      Color(0xFFFF6B9D),
-      Color(0xFFE63946),
-    ], Icons.local_florist, hue: 350),
-    AdaVariant([
-      Color(0xFF9BE8FF),
-      Color(0xFF7C4DFF),
-      Color(0xFF2E3192),
-    ], Icons.auto_awesome, hue: 268),
-    AdaVariant([
-      Color(0xFF8BF0C8),
-      Color(0xFF2BB3A0),
-      Color(0xFF0F6E6E),
-    ], Icons.wb_sunny, hue: 168),
-    AdaVariant([
-      Color(0xFFFFD166),
-      Color(0xFFFF8C42),
-      Color(0xFFD62828),
-    ], Icons.star, hue: 36),
-    AdaVariant([
-      Color(0xFFC9B8FF),
-      Color(0xFF8E7CFF),
-      Color(0xFF4A3F9E),
-    ], Icons.psychology, hue: 255),
+    AdaVariant(
+      [Color(0xFFFF9EC6), Color(0xFFB06AB3), Color(0xFF7C4DFF)],
+      Icons.favorite,
+      hue: 335,
+    ),
+    AdaVariant(
+      [Color(0xFFFFB199), Color(0xFFFF6B9D), Color(0xFFE63946)],
+      Icons.local_florist,
+      hue: 350,
+    ),
+    AdaVariant(
+      [Color(0xFF9BE8FF), Color(0xFF7C4DFF), Color(0xFF2E3192)],
+      Icons.auto_awesome,
+      hue: 268,
+    ),
+    AdaVariant(
+      [Color(0xFF8BF0C8), Color(0xFF2BB3A0), Color(0xFF0F6E6E)],
+      Icons.wb_sunny,
+      hue: 168,
+    ),
+    AdaVariant(
+      [Color(0xFFFFD166), Color(0xFFFF8C42), Color(0xFFD62828)],
+      Icons.star,
+      hue: 36,
+    ),
+    AdaVariant(
+      [Color(0xFFC9B8FF), Color(0xFF8E7CFF), Color(0xFF4A3F9E)],
+      Icons.psychology,
+      hue: 255,
+    ),
   ];
   // Набор значков: повторяется через каждые 24 варианта, но hue каждый раз
   // другой (шаг 47° по цветовому кругу) — комбинации не повторяются.
@@ -167,10 +167,9 @@ void setAdaAvatarVariant(int index) {
 Future<void> writeAdaSyncState({int? avatar, String? model}) async {
   try {
     final raw = await JsonFile.read('ada_sync_state');
-    final map =
-        (raw != null && raw.isNotEmpty)
-            ? (jsonDecode(raw) as Map<String, dynamic>)
-            : <String, dynamic>{};
+    final map = (raw != null && raw.isNotEmpty)
+        ? (jsonDecode(raw) as Map<String, dynamic>)
+        : <String, dynamic>{};
     if (avatar != null) map['avatar'] = avatar;
     if (model != null && model.isNotEmpty) map['model'] = model;
     map['ts'] = DateTime.now().millisecondsSinceEpoch;
@@ -218,9 +217,10 @@ class AdaAvatar extends StatelessWidget {
         transitionBuilder: (child, anim) => FadeTransition(
           opacity: anim,
           child: ScaleTransition(
-            scale: Tween<double>(begin: 0.72, end: 1.0).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
-            ),
+            scale: Tween<double>(
+              begin: 0.72,
+              end: 1.0,
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
             child: child,
           ),
         ),

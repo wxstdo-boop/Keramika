@@ -93,7 +93,7 @@ class RollingNumber extends StatelessWidget {
     this.decoration,
     this.width,
     this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-    this.duration = const Duration(milliseconds: 160),
+    this.duration = const Duration(milliseconds: 220),
     this.slideFraction = 0.45,
   });
 

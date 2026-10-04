@@ -1,7 +1,7 @@
 import 'dart:math';
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import '../services/nutrition_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/smooth_hover.dart';
@@ -9,8 +9,16 @@ import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_keyboard_body.dart';
 import '../utils/context_menu.dart';
 import '../utils/snackbar.dart';
+import '../widgets/number_pad.dart';
+import '../widgets/norm_sheet.dart';
+import '../widgets/progress_ring.dart';
+import '../widgets/nutrition_trends.dart';
+import '../widgets/rolling_counter.dart';
 
 // import '../utils/smooth_refresh.dart'; (removed, no longer used)
+
+/// Какое из числовых полей редактирует встроенная клавиатура.
+enum _PadField { calories, water }
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({super.key});
@@ -23,8 +31,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
   final _service = NutritionService();
   final _calCtrl = TextEditingController();
   final _mealCtrl = TextEditingController();
+  final _waterCtrl = TextEditingController();
   final Map<String, DateTime> _addedAt = {};
   bool _loaded = false; // Первая загрузка завершена — кнопка не «мигает»
+
+  /// Поле, открытое под встроенной клавиатурой, и сама открыта ли панель.
+  /// `_pad` переживает закрытие: за 260 мс сложения панели её содержимое
+  /// обязано оставаться валидным, иначе на половине анимации контроллер
+  /// поменялся бы на чужой.
+  _PadField _pad = _PadField.calories;
+  bool _padOpen = false;
 
   @override
   void initState() {
@@ -42,47 +58,73 @@ class _NutritionScreenState extends State<NutritionScreen> {
   void dispose() {
     _calCtrl.dispose();
     _mealCtrl.dispose();
+    _waterCtrl.dispose();
     super.dispose();
   }
 
+  /// Открыть/закрыть встроенную клавиатуру над нужным полем.
+  void _showPad(_PadField field) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_padOpen && _pad == field) {
+      setState(() => _padOpen = false);
+      return;
+    }
+    Haptics.select();
+    setState(() {
+      _pad = field;
+      _padOpen = true;
+    });
+  }
+
+  void _hidePad() {
+    if (!_padOpen) return;
+    setState(() => _padOpen = false);
+  }
+
+  TextEditingController _padController() =>
+      _pad == _PadField.water ? _waterCtrl : _calCtrl;
+
+  int get _padMaxDigits => _pad == _PadField.water ? 4 : 5;
+
   Future<void> _addMeal() async {
     final cals = int.tryParse(_calCtrl.text) ?? 0;
+    final water = int.tryParse(_waterCtrl.text) ?? 0;
     final name = _mealCtrl.text.trim();
-    if (name.isEmpty || cals <= 0) {
-      if (mounted)
-        showBeautifulSnackBar(
-          context,
-          message: Translations.t('fillAllFields', context),
-          icon: Icons.error_outlined,
-          iconColor: Colors.red,
-        );
+    // Название нужно для калорийной записи (по нему считается категория и БЖУ).
+    // Отдельная запись без калорий и есть «выпил воды».
+    if (cals > 0 && name.isEmpty) {
+      _complain(Translations.t('fillAllFields', context), Icons.error_outlined);
+      return;
+    }
+    if (name.isEmpty && water <= 0) {
+      _complain(
+        Translations.t('needNameOrWater', context, 'Укажите блюдо или воду'),
+        Icons.error_outlined,
+      );
       return;
     }
     if (cals > 10000) {
-      if (mounted)
-        showBeautifulSnackBar(
-          context,
-          message: Translations.t('maxCalPerMeal', context),
-          icon: Icons.warning_amber_outlined,
-          iconColor: Colors.orange,
-        );
+      _complain(Translations.t('maxCalPerMeal', context), Icons.warning_amber);
       return;
     }
-    final totalCals = _service.totalCalories;
-    if (totalCals + cals > 10000) {
-      if (mounted)
-        showBeautifulSnackBar(
-          context,
-          message: Translations.t('maxCal', context),
-          icon: Icons.warning_amber_outlined,
-          iconColor: Colors.orange,
-        );
+    if (water > kMaxWaterPerMeal) {
+      _complain(
+        Translations.t('maxWaterPerMeal', context),
+        Icons.warning_amber,
+      );
+      return;
+    }
+    // Потолок считается ПО СЕГОДНЯШНЕМУ дню: суточная норма суточная, а не
+    // накопленная за всё окно истории.
+    if (_service.todayCalories + cals > kMaxCalorieNorm) {
+      _complain(Translations.t('maxCal', context), Icons.warning_amber);
       return;
     }
     final meal = Meal(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
       calories: cals,
+      water: water,
       date: DateTime.now(),
     );
     _addedAt[meal.id] = DateTime.now();
@@ -94,6 +136,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     });
     // Клавиатура не должна оставаться открытой после добавления —
     // убираем фокус с полей ввода сразу после успешного сохранения.
+    _hidePad();
     FocusManager.instance.primaryFocus?.unfocus();
     try {
       await _service.add(meal);
@@ -115,6 +158,40 @@ class _NutritionScreenState extends State<NutritionScreen> {
     }
     _calCtrl.clear();
     _mealCtrl.clear();
+    _waterCtrl.clear();
+  }
+
+  void _complain(String message, IconData icon) {
+    if (!mounted) return;
+    showBeautifulSnackBar(
+      context,
+      message: message,
+      icon: icon,
+      iconColor: icon == Icons.error_outlined ? Colors.red : Colors.orange,
+    );
+  }
+
+  /// Лист настройки личной суточной нормы. Открывается тапом по кольцу.
+  Future<void> _openNormSheet() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _hidePad();
+    final saved = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => NormSheet(service: _service),
+    );
+    if (saved == null || !mounted) return;
+    showBeautifulSnackBar(
+      context,
+      message: Translations.t('normSaved', context, 'Норма сохранена'),
+      icon: Icons.check_circle_outline,
+      iconColor: Colors.green,
+    );
   }
 
   @override
@@ -123,7 +200,6 @@ class _NutritionScreenState extends State<NutritionScreen> {
     return ListenableBuilder(
       listenable: _service,
       builder: (context, _) {
-        final totalCals = _service.totalCalories;
         final meals = _service.meals;
 
         // Единый ListView вместо Column с вложенным ListView: вложенный
@@ -134,67 +210,30 @@ class _NutritionScreenState extends State<NutritionScreen> {
         final bodyContent = ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _animatedStat(
-                      Translations.t('calories', context),
-                      totalCals,
-                      10000,
-                      theme,
-                    ),
-                    _animatedStat(
-                      Translations.t('meals', context),
-                      _service.meals.length,
-                      20,
-                      theme,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _goalCard(context, theme),
             const SizedBox(height: 16),
             _buildTipsRow(context, theme),
             const SizedBox(height: 16),
-            TextField(cursorOpacityAnimates: true,
-              magnifierConfiguration: TextMagnifierConfiguration.disabled,
-              controller: _mealCtrl,
-              contextMenuBuilder: minimalContextMenuBuilder,
-              maxLength: 100,
-              enableSuggestions: false,
-              autocorrect: false,
-              buildCounter: smoothCharCounterBuilder,
-              decoration: InputDecoration(
-                labelText: Translations.t('addMeal', context),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+            _nameField(theme),
+            const SizedBox(height: 8),
+            _numberField(
+              theme,
+              controller: _calCtrl,
+              field: _PadField.calories,
+              label: Translations.t('calories', context),
+              unit: Translations.t('kcalShort', context, 'ккал'),
+              maxDigits: 5,
             ),
             const SizedBox(height: 8),
-            TextField(cursorOpacityAnimates: true,
-              magnifierConfiguration: TextMagnifierConfiguration.disabled,
-              controller: _calCtrl,
-              contextMenuBuilder: minimalContextMenuBuilder,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(5),
-              ],
-              decoration: InputDecoration(
-                labelText: Translations.t('calories', context),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+            _numberField(
+              theme,
+              controller: _waterCtrl,
+              field: _PadField.water,
+              label: Translations.t('waterField', context, 'Вода'),
+              unit: Translations.t('mlShort', context, 'мл'),
+              maxDigits: 4,
             ),
+            _padPanel(theme),
             const SizedBox(height: 16),
             // Пока первая загрузка не завершена — не даём кнопке «мигать»
             // (сначала активная на нуле, потом гаснет на реальных данных).
@@ -206,11 +245,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
               transitionBuilder: (child, animation) =>
                   FadeTransition(opacity: animation, child: child),
               child: _loaded
+                  // Кнопка всегда активна: при потолке калорий за день нельзя
+                  // было записать и воду, а это отдельная запись без калорий.
+                  // Проверка дня живёт в [_addMeal] и объясняет отказ вслух.
                   ? FilledButton(
                       key: const ValueKey('add_meal_loaded'),
-                      onPressed: _service.totalCalories >= 10000
-                          ? null
-                          : _addMeal,
+                      onPressed: _addMeal,
                       child: Text(Translations.t('add', context)),
                     )
                   : const SizedBox(
@@ -220,30 +260,40 @@ class _NutritionScreenState extends State<NutritionScreen> {
                     ),
             ),
             const SizedBox(height: 16),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) =>
-                  FadeTransition(opacity: animation, child: child),
-              child: !_loaded
-                  ? const SizedBox(key: ValueKey('meals_loading'))
-                  : meals.isEmpty
-                  ? Center(
-                      key: const ValueKey('meals_empty'),
-                      child: Text(Translations.t('noMeals', context)),
-                    )
-                  : KeyedSubtree(
-                      key: const ValueKey('meals_history'),
-                      child: _buildHistory(context, theme, meals),
-                    ),
+            // AnimatedSize держит ВЫСОТУ блока истории: без неё уход
+            // заголовка «Сегодня» (а вместе с ним и всего дня) и смена
+            // списка на пустое состояние были одним кадром — текст «приёмов
+            // пищи пока нет» съезжал вверх рывком.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 340),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              clipBehavior: Clip.hardEdge,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
+                child: !_loaded
+                    ? const SizedBox(key: ValueKey('meals_loading'))
+                    : meals.isEmpty
+                    ? const _EmptyMeals(key: ValueKey('meals_empty'))
+                    : KeyedSubtree(
+                        key: const ValueKey('meals_history'),
+                        child: _buildHistory(context, theme, meals),
+                      ),
+              ),
             ),
+            const SizedBox(height: 20),
+            _trendsCard(theme),
           ],
         );
 
         return Scaffold(
           appBar: AppBar(
             title: Text(Translations.t('nutrition', context)),
+            leading: const BackButtonTooltip(),
             centerTitle: true,
           ),
           resizeToAvoidBottomInset: false,
@@ -260,6 +310,397 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
+  /// Карточка цели: кольцо «сегодня / моя норма» + приёмы, вода и полосы
+  /// БЖУ. Тап по ней открывает настройку нормы.
+  Widget _goalCard(BuildContext context, ThemeData theme) {
+    final cs = theme.colorScheme;
+    final today = _service.todayCalories;
+    final norm = _service.norm;
+    final macros = _service.todayMacros;
+    final over = today > norm;
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _openNormSheet,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ProgressRing(
+                    value: today.toDouble(),
+                    target: norm.toDouble(),
+                    color: cs.primary,
+                    trackColor: cs.surfaceContainerHighest,
+                    overColor: cs.tertiary,
+                    size: 112,
+                    thickness: 10,
+                    centerBuilder: (context, shown) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Число внутри кольца строится от промежуточного
+                        // значения анимации кольца, поэтому оно крутится
+                        // синхронно с дугой.
+                        RollingCounter(
+                          value: shown,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: over ? cs.tertiary : cs.primary,
+                            height: 1,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        Text(
+                          '${Translations.t('ofPrefix', context, 'из')} $norm',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          Translations.t(
+                            'calorieNorm',
+                            context,
+                            'Суточная норма',
+                          ),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          Translations.tapToChangeOf(context),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _statLine(
+                          theme,
+                          Translations.t(
+                            'mealsToday',
+                            context,
+                            'Приёмы сегодня',
+                          ),
+                          _service.todayMealsCount,
+                          '',
+                        ),
+                        _statLine(
+                          theme,
+                          Translations.t('water', context, 'Вода'),
+                          _service.todayWater,
+                          Translations.t('mlShort', context, 'мл'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _macroRow(theme, macros, today),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Строка «подпись — число — единица». Невидимый «самый широкий» текст
+  /// держит ширину, поэтому счётчик не толкает соседей при смене значения.
+  Widget _statLine(ThemeData theme, String label, int value, String unit) {
+    final style = (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onSurface,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Opacity(opacity: 0, child: Text('99999', style: style)),
+              RollingCounter(value: value.toDouble(), style: style),
+            ],
+          ),
+          if (unit.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            Text(
+              unit,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Три полосы макросов: доля каждого нутриента в сегодняшних калориях.
+  Widget _macroRow(ThemeData theme, MealMacros macros, int kcal) {
+    final cs = theme.colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: _macroBar(
+            theme,
+            Translations.t('macroP', context, 'Белки'),
+            macros.protein,
+            4,
+            kcal,
+            cs.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _macroBar(
+            theme,
+            Translations.t('macroF', context, 'Жиры'),
+            macros.fat,
+            9,
+            kcal,
+            cs.tertiary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _macroBar(
+            theme,
+            Translations.t('macroC', context, 'Углеводы'),
+            macros.carbs,
+            4,
+            kcal,
+            cs.secondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _macroBar(
+    ThemeData theme,
+    String label,
+    int grams,
+    double kcalPerGram,
+    int totalKcal,
+    Color color,
+  ) {
+    final cs = theme.colorScheme;
+    final fraction = totalKcal <= 0
+        ? 0.0
+        : (grams * kcalPerGram / totalKcal).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$grams',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            Text(
+              ' г',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: fraction),
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          builder: (context, v, _) => LayoutBuilder(
+            builder: (context, box) => Stack(
+              children: [
+                Container(
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                FractionallySizedBox(
+                  widthFactor: v,
+                  child: Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Поле названия блюда — обычное, с системной клавиатурой.
+  Widget _nameField(ThemeData theme) {
+    return TextField(
+      cursorOpacityAnimates: true,
+      magnifierConfiguration: TextMagnifierConfiguration.disabled,
+      controller: _mealCtrl,
+      contextMenuBuilder: minimalContextMenuBuilder,
+      maxLength: 100,
+      enableSuggestions: false,
+      autocorrect: false,
+      buildCounter: smoothCharCounterBuilder,
+      // Системная клавиатура текста и встроенная панель цифр на одном экране
+      // выглядят как две клавиатуры: при фокусе на названии панель сворачиваем.
+      onTap: _hidePad,
+      decoration: InputDecoration(
+        labelText: Translations.t('addMeal', context),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
+  /// Числовое поле: readOnly, по тапу открывает встроенную клавиатуру.
+  Widget _numberField(
+    ThemeData theme, {
+    required TextEditingController controller,
+    required _PadField field,
+    required String label,
+    required String unit,
+    required int maxDigits,
+  }) {
+    final cs = theme.colorScheme;
+    final active = _padOpen && _pad == field;
+    return TextField(
+      cursorOpacityAnimates: true,
+      magnifierConfiguration: TextMagnifierConfiguration.disabled,
+      controller: controller,
+      readOnly: true,
+      showCursor: false,
+      contextMenuBuilder: minimalContextMenuBuilder,
+      maxLength: maxDigits,
+      onTap: () => _showPad(field),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: unit,
+        suffixIcon: Icon(
+          Icons.dialpad_rounded,
+          size: 22,
+          color: active
+              ? cs.primary
+              : cs.onSurfaceVariant.withValues(alpha: 0.6),
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: active ? cs.primary : cs.outline.withValues(alpha: 0.6),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: cs.primary, width: 1.6),
+        ),
+      ),
+    );
+  }
+
+  /// Встроенная цифровая панель. Раскрывается `Align(heightFactor:)` — это
+  /// анимация высоты, которая честно участвует в layout, поэтому поля и
+  /// кнопка под ней расходятся плавно, а не перескакивают.
+  Widget _padPanel(ThemeData theme) {
+    final cs = theme.colorScheme;
+    return ClipRect(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: _padOpen ? 1 : 0),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          builder: (context, v, child) => Align(
+            alignment: Alignment.topCenter,
+            heightFactor: v,
+            child: Opacity(opacity: v.clamp(0.0, 1.0), child: child),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: cs.outline.withValues(alpha: 0.3)),
+              ),
+              child: NumberPad(
+                // `_pad` живёт и во время сложения панели, поэтому
+                // контроллер всегда валиден.
+                controller: _padController(),
+                maxDigits: _padMaxDigits,
+                onAppendLimit: () => _complain(
+                  Translations.t('maxDigitsHit', context, 'Дальше нельзя'),
+                  Icons.warning_amber_rounded,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Карточка трендов. Значение сегодняшнего столбика приходит уже
+  /// «докрученным», чтобы не плодить тикеров на каждый день графика.
+  Widget _trendsCard(ThemeData theme) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: _service.todayCalories.toDouble()),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder: (context, shown, _) => NutritionTrends(
+        days: _service.days,
+        norm: _service.norm,
+        todayCalories: shown,
+      ),
+    );
+  }
+
   Widget _buildHistory(
     BuildContext context,
     ThemeData theme,
@@ -271,18 +712,15 @@ class _NutritionScreenState extends State<NutritionScreen> {
       final day = DateTime(today.year, today.month, today.day);
       final mDay = DateTime(m.date.year, m.date.month, m.date.day);
       final diff = day.difference(mDay).inDays;
-      if (diff >= 0 && diff < 7) {
-        final key = mDay;
-        groups.putIfAbsent(key, () => []).add(m);
+      // Окно задаёт сервис: с подарком 12-го дня оно шире базового.
+      if (diff >= 0 && diff < _service.historyDays) {
+        groups.putIfAbsent(mDay, () => []).add(m);
       }
     }
     final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
     if (sortedKeys.isEmpty || meals.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48),
-        child: Center(child: Text(Translations.t('noMeals', context))),
-      );
+      return const _EmptyMeals();
     }
 
     final accentColors = <Color>[
@@ -298,7 +736,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
       Colors.amber,
     ];
 
-    Color _dayAccent(DateTime day) {
+    Color dayAccent(DateTime day) {
       final dayOfYear = (day.difference(DateTime(day.year, 1, 1)).inDays % 366);
       int seed = dayOfYear * 9301 + 49297;
       seed = (seed ^ (seed << 13)) & 0x7fffffff;
@@ -306,60 +744,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
       return accentColors[seed % accentColors.length];
     }
 
-    IconData _mealIcon(String name) {
-      final lower = name.toLowerCase();
-      if (lower.contains('салат') ||
-          lower.contains('овощ') ||
-          lower.contains('salad') ||
-          lower.contains('veg'))
-        return Icons.eco_outlined;
-      if (lower.contains('мяс') ||
-          lower.contains('meat') ||
-          lower.contains('куриц') ||
-          lower.contains('говядин'))
-        return Icons.set_meal_outlined;
-      if (lower.contains('рыб') ||
-          lower.contains('рыba') ||
-          lower.contains('fish'))
-        return Icons.water_outlined;
-      if (lower.contains('суп') ||
-          lower.contains('борщ') ||
-          lower.contains('soup'))
-        return Icons.soup_kitchen_outlined;
-      if (lower.contains('хлеб') ||
-          lower.contains('bread') ||
-          lower.contains('тост'))
-        return Icons.bakery_dining_outlined;
-      if (lower.contains('фрукт') ||
-          lower.contains('ягод') ||
-          lower.contains('фрукт') ||
-          lower.contains('fruit'))
-        return Icons.apple_outlined;
-      if (lower.contains('каш') ||
-          lower.contains('овсян') ||
-          lower.contains('porridge'))
-        return Icons.breakfast_dining_outlined;
-      if (lower.contains('пицц') ||
-          lower.contains('бургер') ||
-          lower.contains('fast'))
-        return Icons.lunch_dining_outlined;
-      if (lower.contains('печен') ||
-          lower.contains('торт') ||
-          lower.contains('cake') ||
-          lower.contains('десерт'))
-        return Icons.cake_outlined;
-      if (lower.contains('яйц') || lower.contains('egg'))
-        return Icons.egg_outlined;
-      if (lower.contains('молоч') ||
-          lower.contains('творог') ||
-          lower.contains('milk') ||
-          lower.contains('yogurt'))
-        return Icons.local_drink_outlined;
-      return Icons.fastfood_outlined;
-    }
-
     // История рендерится как обычная Column — экран скроллит единый
-    // внешний ListView (приёмов не больше 20, ленивость не нужна).
+    // внешний ListView (ленивость не нужна).
     final dayWidgets = <Widget>[];
     for (final day in sortedKeys) {
       final dayMeals = groups[day]!
@@ -376,6 +762,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
       dayWidgets.add(
         Padding(
+          key: ValueKey('day_$diff'),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
             label,
@@ -387,265 +774,306 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ),
       );
       dayWidgets.addAll(
-        dayMeals.map((meal) {
-          final dayAccent = _dayAccent(meal.date);
-          final dayIcon = _mealIcon(meal.name);
-          final time =
-              '${meal.date.hour.toString().padLeft(2, '0')}:${meal.date.minute.toString().padLeft(2, '0')}';
-          // Зазор между приёмами пищи (было вплотную — карточки
-          // сливались).
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Dismissible(
-              key: ValueKey(meal.id),
-              movementDuration: const Duration(milliseconds: 320),
-              resizeDuration: const Duration(milliseconds: 340),
-              direction: DismissDirection.horizontal,
-              // Свайп ВПРАВО → удалить: красный фон с корзиной.
-              background: Container(
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade400,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      Translations.deleteOf(context),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Свайп ВЛЕВО → закрепить/открепить: акцентный фон с булавкой.
-              secondaryBackground: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 190),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(scale: animation, child: child),
-                      ),
-                      child: Text(
-                        meal.pinned
-                            ? Translations.t('unpinMeal', context)
-                            : Translations.t('pinMeal', context),
-                        key: ValueKey('pin_status_${meal.pinned}'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 190),
-                      transitionBuilder: (child, animation) => ScaleTransition(
-                        scale: animation,
-                        child: FadeTransition(opacity: animation, child: child),
-                      ),
-                      child: Icon(
-                        meal.pinned ? Icons.push_pin_outlined : Icons.push_pin,
-                        key: ValueKey('pin_icon_${meal.pinned}'),
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Перед удалением приёма пищи — мягкий диалог
-              // «Удалить приём пищи? Отменить / Удалить».
-              confirmDismiss: (dir) async {
-                // Свайп — это жест, клавиатура после него возвращаться не должна.
-                FocusManager.instance.primaryFocus?.unfocus();
-                if (dir == DismissDirection.endToStart) {
-                  Haptics.medium();
-                  _service.togglePin(meal.id);
-                  return false;
-                }
-                // Защита от случайного удаления жестом: требуем явного подтверждения.
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    title: Row(
-                      children: [
-                        const Icon(Icons.warning_amber_rounded, size: 22),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            Translations.t(
-                              'deleteMealConfirmTitle',
-                              context,
-                              'Удалить приём пищи?',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    content: Text(
-                      Translations.t(
-                        'deleteMealConfirmBody',
-                        context,
-                        'Этот приём пищи будет удалён. Действие нельзя отменить.',
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: Text(Translations.cancelOf(context)),
-                      ),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Theme.of(ctx).colorScheme.error,
-                        ),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: Text(
-                          Translations.t('delete', context, 'Удалить'),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-                return ok == true;
-              },
-              onDismissed: (dir) {
-                if (dir == DismissDirection.startToEnd) {
-                  // Сначала даём Dismissible доиграть анимацию сжатия,
-                  // и только потом удаляем из модели — иначе список
-                  // «прыгает» при резком исчезновении строки.
-                  Future.delayed(const Duration(milliseconds: 220), () {
-                    if (mounted) _service.remove(meal.id);
-                  });
-                }
-              },
-              child: RepaintBoundary(
-                child: TweenAnimationBuilder<double>(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  tween: _addedAt.containsKey(meal.id)
-                      ? Tween(begin: 0.0, end: 1.0)
-                      : Tween(begin: 1.0, end: 1.0),
-                  builder: (context, value, child) => Transform.scale(
-                    scale: value,
-                    alignment: Alignment.centerLeft,
-                    child: child,
-                  ),
-                  child: SmoothHover(
-                    child: Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: dayAccent.withValues(alpha: 0.3),
-                          width: 1,
-                        ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: dayAccent.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(dayIcon, size: 22, color: dayAccent),
-                        ),
-                        title: Row(
-                          children: [
-                            Expanded(child: Text(meal.name)),
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 210),
-                              curve: Curves.easeOutCubic,
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 190),
-                                switchInCurve: Curves.easeOutBack,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder: (child, animation) =>
-                                    ScaleTransition(
-                                      scale: animation,
-                                      child: FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
-                                    ),
-                                child: meal.pinned
-                                    ? Icon(
-                                        Icons.push_pin,
-                                        key: const ValueKey('meal_pinned'),
-                                        size: 16,
-                                        color: dayAccent,
-                                      )
-                                    : const SizedBox(
-                                        key: ValueKey('meal_unpinned'),
-                                        width: 0,
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        subtitle: Text('${meal.calories} kcal • $time'),
-                        trailing: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: dayAccent.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${meal.calories}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: dayAccent,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
+        dayMeals.map((meal) => _mealCard(context, theme, meal, dayAccent)),
       );
       dayWidgets.add(const SizedBox(height: 16));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: dayWidgets,
+    );
+  }
+
+  /// Одна карточка приёма пищи со свайпами «удалить» и «закрепить».
+  Widget _mealCard(
+    BuildContext context,
+    ThemeData theme,
+    Meal meal,
+    Color Function(DateTime) dayAccent,
+  ) {
+    final accent = dayAccent(meal.date);
+    final time =
+        '${meal.date.hour.toString().padLeft(2, '0')}:${meal.date.minute.toString().padLeft(2, '0')}';
+    final macros = meal.macros;
+    final water = meal.water;
+    final subtitle = meal.isWaterOnly
+        ? '$water ${Translations.t('mlShort', context, 'мл')} • $time'
+        : '${Translations.t('macroPSingle', context, 'Б')} ${macros.protein}'
+              ' · ${Translations.t('macroFSingle', context, 'Ж')} ${macros.fat}'
+              ' · ${Translations.t('macroCSingle', context, 'У')} ${macros.carbs}'
+              '${water > 0 ? ' · $water мл' : ''}'
+              ' • ${meal.calories} ${Translations.t('kcalShort', context, 'ккал')}'
+              ' • $time';
+    // Зазор между приёмами пищи живёт ВНУТРИ Dismissible: `resizeDuration`
+    // анимирует только собственное дитя, и раньше на месте удалённой строки
+    // оставались эти 10 px, которые снимались одним кадром после конца
+    // сжатия — «следующий чуть дёргается вверх».
+    // Ключ на ВСЕЙ ячейке, а не только на Dismissible: иначе при вставке
+    // новой карточки соседи сдвигаются по позиции, их состояние анимации
+    // переезжает на чужой приём пищи, и «раскрытие» ловили уже добавленные
+    // карточки.
+    return Dismissible(
+      key: ValueKey('slot_${meal.id}'),
+      movementDuration: const Duration(milliseconds: 320),
+      resizeDuration: const Duration(milliseconds: 340),
+      direction: DismissDirection.horizontal,
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.red.shade400,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.delete_outline, color: Colors.white, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              Translations.deleteOf(context),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 190),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(scale: animation, child: child),
+              ),
+              child: Text(
+                meal.pinned
+                    ? Translations.t('unpinMeal', context)
+                    : Translations.t('pinMeal', context),
+                key: ValueKey('pin_status_${meal.pinned}'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 190),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: animation,
+                child: FadeTransition(opacity: animation, child: child),
+              ),
+              child: Icon(
+                meal.pinned ? Icons.push_pin_outlined : Icons.push_pin,
+                key: ValueKey('pin_icon_${meal.pinned}'),
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+          ],
+        ),
+      ),
+      // Перед удалением приёма пищи — мягкий диалог
+      // «Удалить приём пищи? Отменить / Удалить».
+      confirmDismiss: (dir) async {
+        // Свайп — это жест, клавиатура после него возвращаться не должна.
+        FocusManager.instance.primaryFocus?.unfocus();
+        _hidePad();
+        if (dir == DismissDirection.endToStart) {
+          Haptics.medium();
+          _service.togglePin(meal.id);
+          return false;
+        }
+        // Защита от случайного удаления жестом: требуем явного подтверждения.
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    Translations.t(
+                      'deleteMealConfirmTitle',
+                      context,
+                      'Удалить приём пищи?',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              Translations.t(
+                'deleteMealConfirmBody',
+                context,
+                'Этот приём пищи будет удалён. Действие нельзя отменить.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(Translations.cancelOf(context)),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(Translations.t('delete', context, 'Удалить')),
+              ),
+            ],
+          ),
+        );
+        return ok == true;
+      },
+      onDismissed: (dir) {
+        if (dir == DismissDirection.startToEnd) {
+          // Удаляем из модели ПОСЛЕ того, как отыграло сжатие
+          // (`resizeDuration` = 340 мс), а не раньше: строка исчезала на
+          // середине собственного сжатия, и соседи догоняли позицию одним
+          // кадром — «прыжок» при удалении.
+          Future.delayed(const Duration(milliseconds: 360), () {
+            if (mounted) _service.remove(meal.id);
+          });
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: RepaintBoundary(
+          child: TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 340),
+            curve: Curves.easeOutCubic,
+            tween: _addedAt.containsKey(meal.id)
+                ? Tween(begin: 0.0, end: 1.0)
+                : Tween(begin: 1.0, end: 1.0),
+            // Раскрытие + проявление, а не масштаб. Transform.scale
+            // оставлял карточке полный габарит: соседям некуда было
+            // расступиться, и новая карточка «выпрыгивала» из чужого места.
+            // Align с heightFactor честный: высота растёт от нуля, список
+            // под ней едет плавно.
+            builder: (context, value, child) => ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: value,
+                child: FadeTransition(
+                  opacity: AlwaysStoppedAnimation<double>(value),
+                  child: child,
+                ),
+              ),
+            ),
+            child: SmoothHover(
+              child: Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: accent.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      meal.isWaterOnly
+                          ? Icons.water_drop_outlined
+                          : meal.kind.icon,
+                      size: 22,
+                      color: accent,
+                    ),
+                  ),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          meal.name.isEmpty
+                              ? Translations.t('water', context, 'Вода')
+                              : meal.name,
+                        ),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 210),
+                        curve: Curves.easeOutCubic,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 190),
+                          switchInCurve: Curves.easeOutBack,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(
+                                scale: animation,
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                              ),
+                          child: meal.pinned
+                              ? Icon(
+                                  Icons.push_pin,
+                                  key: const ValueKey('meal_pinned'),
+                                  size: 16,
+                                  color: accent,
+                                )
+                              : const SizedBox(
+                                  key: ValueKey('meal_unpinned'),
+                                  width: 0,
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  subtitle: Text(subtitle),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      meal.isWaterOnly
+                          ? '$water ${Translations.t('mlShort', context, 'мл')}'
+                          : '${meal.calories}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: accent,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1045,37 +1473,18 @@ class _NutritionScreenState extends State<NutritionScreen> {
       ),
     );
   }
+}
 
-  /// Счётчик с плавным «докручиванием» числа при изменении (TweenAnimationBuilder
-  /// сам стартует от текущего значения к новому).
-  Widget _animatedStat(String label, int value, int max, ThemeData theme) {
-    // Компактные числа: и ЗНАЧЕНИЕ, и знаменатель. 10000 → «10k»,
-    // 1234 → «1.2k». При анимации число «растёт» плавно и форматируется
-    // каждый кадр, так что переход через 1000 тоже плавный.
-    final maxLabel = _compactCals(max.toDouble());
-    return Column(
-      children: [
-        TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: value.toDouble()),
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeOutCubic,
-          builder: (context, v, _) => Text(
-            '${_compactCals(v)} / $maxLabel',
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-        ),
-        Text(label, style: theme.textTheme.bodySmall),
-      ],
+/// Пустое состояние истории. Фиксированная высота нужна, чтобы переход
+/// «список → пусто» был сложением высоты, а не телепортом текста.
+class _EmptyMeals extends StatelessWidget {
+  const _EmptyMeals({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 104,
+      child: Center(child: Text(Translations.t('noMeals', context))),
     );
-  }
-
-  /// 1234 → «1.2k», 10000 → «10k», 999 → «999». Плавно растёт с анимацией.
-  static String _compactCals(double v) {
-    if (v >= 10000) return '${(v / 1000).round()}k';
-    if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}k';
-    return v.round().toString();
   }
 }

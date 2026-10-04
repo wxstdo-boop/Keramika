@@ -1,0 +1,3 @@
+# include: package:pedantic/analysis_options.yaml убран: пакет pedantic снят с
+# публикации, а это вендорная копия — её линт-правила этому проекту не нужны,
+# иначе flutter analyze падает на нерешаемом include_file_not_found.

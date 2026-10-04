@@ -26,7 +26,13 @@ import '../widgets/premium_empty_state.dart';
 import 'add_task_screen.dart';
 
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({super.key});
+  /// Индекс этого раздела в PageView — ключ в sectionOffsetByPage.
+  final int pillIndex;
+  const TasksScreen({super.key, this.pillIndex = 0});
+
+  @override
+  State<TasksScreen> createState() => _TasksScreenState();
+}
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
@@ -45,15 +51,35 @@ class _TasksScreenState extends State<TasksScreen>
   // AnimatedSwitcher держит два скролл-вью одновременно, и один
   // контроллер на двух позициях ломал прокрутку.
   final ValueNotifier<bool> _fabVisible = ValueNotifier<bool>(true);
+  // Контроллер ОСНОВНОГО списка задач — источник правды для офсета таблетки
+  // разделов (см. _syncPillOffset в AlarmsScreen). При смене категории
+  // AnimatedSwitcher пересоздаёт список на 0 — контроллер пере-привязывается
+  // и пишет 0, таблетка не «застревает» скрытой.
+  final ScrollController _pillCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _pillCtrl.addListener(_syncPillOffset);
     _service.load();
+  }
+
+  /// Пишет РЕАЛЬНУЮ позицию основного скроллера в персональный notifier
+  /// раздела (см. _syncPillOffset в AlarmsScreen).
+  void _syncPillOffset() {
+    final target = widget.scrollOffset;
+    if (target == null) return;
+    if (_pillCtrl.positions.length != 1) return;
+    final v = _pillCtrl.offset;
+    final vv = v < 0 ? 0.0 : v;
+    sectionOffsetByPage[widget.pillIndex] = vv;
+    if ((target.value - vv).abs() > 0.5) target.value = vv;
   }
 
   @override
   void dispose() {
+    _pillCtrl.removeListener(_syncPillOffset);
+    _pillCtrl.dispose();
     _fabVisible.dispose();
     super.dispose();
   }
@@ -269,6 +295,12 @@ class _TasksScreenState extends State<TasksScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // После перестроения синхронизируем офсет с реальной позицией скроллера:
+    // свежий список стоит на 0 — таблетка должна «вернуться», а не держать
+    // старую позицию.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncPillOffset();
+    });
     final theme = Theme.of(context);
 
     return RefreshIndicator(
@@ -500,6 +532,7 @@ class _TasksScreenState extends State<TasksScreen>
     // десятками задач.
     return ReorderableListView.builder(
       key: const ValueKey('list'),
+      scrollController: _pillCtrl,
       // Таблетка разделов + выбор категорий — первый (непереставляемый)
       // элемент списка: листаются вместе с задачами, как обычный контент.
       header: _buildCategoryHeader(context, theme),

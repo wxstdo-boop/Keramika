@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/prefs.dart';
 
 class AnimatedBlurTitle extends StatefulWidget {
-  const AnimatedBlurTitle({super.key});
+  final VoidCallback? onSantaTap;
+  const AnimatedBlurTitle({super.key, this.onSantaTap});
 
   @override
   State<AnimatedBlurTitle> createState() => _AnimatedBlurTitleState();
@@ -47,12 +48,16 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
     // рисованная картинка. Сидит точно на букве «r»: заголовок собран из
     // трёх частей (Ke + r + amika) в Row, шапочка кладётся в Stack вместе
     // с «r» и перекрывает её верх.
+    // Буква «r» — единственный НЕ-Positioned ребёнок Stack, поэтому она
+    // никуда не сдвигается. Тап по Деду повешен на саму шапку (Positioned),
+    // и только когда заголовок виден.
     final style = const TextStyle(
       fontSize: 27,
       fontWeight: FontWeight.w700,
       fontStyle: FontStyle.italic,
       letterSpacing: -0.8,
     );
+    final santaTap = _hidden ? null : widget.onSantaTap;
     return GestureDetector(
       onTap: _toggle,
       behavior: HitTestBehavior.opaque,
@@ -70,24 +75,28 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
                 clipBehavior: Clip.none,
                 children: [
                   Text('r', style: style),
+                  // Эмодзи Санты, обрезанный до шапки. Тап по нему открывает
+                  // ивент (только при видимом заголовке). GestureDetector здесь
+                  // не меняет лэйаут: он всё равно Positioned-ребёнок.
                   Positioned(
                     top: -3,
                     left: -1,
-                    // Эмодзи Санты, обрезанный до шапки: FittedBox cover +
-                    // topCenter показывает только верхнюю часть глифа
-                    // (красный конус с белой оторочкой), лицо скрыто.
-                    child: SizedBox(
-                      width: 27,
-                      height: 11,
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        alignment: Alignment.topCenter,
-                        clipBehavior: Clip.hardEdge,
-                        // Шапочка — настоящий цветной эмодзи 🎅 (как просил
-                        // вернуть), обрезанный до самой шапки.
-                        child: const Text(
-                          '🎅',
-                          style: TextStyle(fontSize: 27, height: 1),
+                    child: GestureDetector(
+                      onTap: santaTap,
+                      behavior: HitTestBehavior.opaque,
+                      // Зона чуть больше глифа, чтобы тапать проще, но
+                      // Positioned-смещение — ровно как в оригинале.
+                      child: SizedBox(
+                        width: 27,
+                        height: 11,
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
+                          clipBehavior: Clip.hardEdge,
+                          child: const Text(
+                            '🎅',
+                            style: TextStyle(fontSize: 27, height: 1),
+                          ),
                         ),
                       ),
                     ),
