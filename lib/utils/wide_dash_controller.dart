@@ -24,11 +24,11 @@ class WideDashController extends TextEditingController implements GlyphStyling {
   WideDashController({String? text})
     : super(text: text == null ? null : WideDashFormatter.normalize(text));
 
-  /// Шрифт, которым рисуется тире. На Android это Roboto — в нём em dash
-  /// 780/1000, то есть действительно длинная черта. Если шрифта нет
-  /// (iOS, десктоп), подставится системный, а в нём широкое тире есть
-  /// всегда.
-  static const String dashFontFamily = 'Roboto';
+  /// Шрифт, которым рисуется тире. Это бандленный Roboto (family
+  /// `RobotoDash`, см. pubspec) — в нём em dash 780/1000, то есть действительно
+  /// длинная черта. НЕ 'Roboto': небандленный family на устройстве не
+  /// резолвится, глиф падал обратно в Caveat и оставался узким.
+  static const String dashFontFamily = 'RobotoDash';
 
   /// Символы, которые считаются тире и рисуются широким шрифтом.
   static bool isDash(String glyph) => WideDashFormatter.isDash(glyph);
