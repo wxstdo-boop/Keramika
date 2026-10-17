@@ -25,21 +25,24 @@ import '../services/nutrition_service.dart';
 import '../services/new_year_event_service.dart';
 import '../services/ai_guide_service.dart';
 import '../l10n/translations.dart';
+import '../l10n/locale_provider.dart';
 import '../utils/context_menu.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_circle_toggle.dart';
-import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/confetti_burst.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/smooth_keyboard_body.dart';
 import '../widgets/update_pill.dart';
 import 'lock_screen.dart';
+import 'developer_corner_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
 import 'changelog_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
+
+part 'settings_components.dart';
 
 /// Чип, который реагирует на зажатие N секунд (по таймеру), а не
 /// через системный LongPressGesture (тот срабатывает через ~0.5с).
@@ -117,9 +120,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _perfectionism = false;
   bool _berserk = false;
   bool _taskNotes = false;
-  // Плавное «продавливание» карточки BERSERK при зажатии — только визуал,
-  // ничего не открывает (режим доступен долгим зажатием «плюса»).
-  bool _berserkCardPressed = false;
   bool _permissionWarningDismissed = false;
   bool _grantPressed = false; // Состояние зажатия кнопки «Выдать»
   bool? _notificationsEnabled; // Кэш статуса уведомлений
@@ -1013,6 +1013,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         'reality_check_data',
         'nutrition_meals',
         'ai_chat_history',
+        'ai_pinned_messages',
+        'completion_log',
+        'ny_event_2027',
       };
       final listServiceKeys = <String>{
         'habits',
@@ -1022,6 +1025,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         'nutrition_meals',
       };
       final settingsKeys = <String>{
+        'app_settings',
         'setting_theme',
         'setting_locale',
         'setting_font_family',
@@ -1029,16 +1033,33 @@ class _SettingsScreenState extends State<SettingsScreen>
         'setting_experimental',
         'setting_auto_save',
         'setting_dev_mode',
+        'developer_prompt',
         'setting_auto_export',
         'setting_ai_guide',
         'setting_ai_key',
         'setting_ada_proactive',
+        'setting_ai_tracking',
+        'setting_agnes_key',
+        'setting_zen_key',
+        'setting_gemini_key',
+        'setting_modal_url',
+        'setting_modal_key',
+        'perfectionism_mode',
+        'berserk_mode',
+        'task_quick_notes_mode',
       };
       for (final entry in decoded.entries) {
         if (entry.value == null) continue;
         final key = entry.key;
         final v = entry.value;
-        if (serviceKeys.contains(key) && v is String) {
+        if (key == 'app_settings' && v is Map) {
+          final settingsRaw = await JsonFile.read('app_settings');
+          final settings = settingsRaw != null
+              ? Map<String, dynamic>.from(jsonDecode(settingsRaw))
+              : <String, dynamic>{};
+          settings.addAll(Map<String, dynamic>.from(v));
+          await JsonFile.write('app_settings', jsonEncode(settings));
+        } else if (serviceKeys.contains(key) && v is String) {
           if (listServiceKeys.contains(key)) {
             await _mergeJsonListById(key, v);
           } else if (key == 'task_categories') {
@@ -1049,6 +1070,15 @@ class _SettingsScreenState extends State<SettingsScreen>
             await JsonFile.write(key, v);
           }
         } else if (settingsKeys.contains(key)) {
+          if (key == 'developer_prompt') {
+            if (v is! String) {
+              throw const FormatException(
+                'The developer prompt in this backup is invalid',
+              );
+            }
+            await SettingsService.saveDeveloperPrompt(v);
+            continue;
+          }
           final settingsRaw = await JsonFile.read('app_settings');
           final settings = settingsRaw != null
               ? Map<String, dynamic>.from(jsonDecode(settingsRaw))
@@ -1056,7 +1086,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           settings[key] = v;
           await JsonFile.write('app_settings', jsonEncode(settings));
         } else if (key == 'app_pin' && v is String) {
-          await PinService.setPin(v);
+          await PinService.importBackupValue(v);
         } else {
           if (v is String) {
             globalPrefs.setString(key, v);
@@ -2502,8 +2532,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   magnifierConfiguration:
                                       TextMagnifierConfiguration.disabled,
                                   controller: _aiKeyController,
-                                  contextMenuBuilder:
-                                      minimalContextMenuBuilder,
+                                  contextMenuBuilder: minimalContextMenuBuilder,
                                   obscureText: !_aiKeyVisible,
                                   textInputAction: TextInputAction.done,
                                   maxLength: 500,
@@ -2688,73 +2717,15 @@ class _SettingsScreenState extends State<SettingsScreen>
         axis: Axis.vertical,
         child: FadeTransition(
           opacity: _perfFade,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Card(
-                  color: _devMode
-                      ? theme.colorScheme.surfaceContainerLow
-                      : Colors.transparent,
-                  elevation: _devMode ? 4 : 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: PressScale(
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        leading: const Icon(
-                          Icons.auto_awesome,
-                          color: Color(0xFFB39DDB),
-                          size: 28,
-                        ),
-                        title: Text(
-                          Translations.t('perfectionism', context),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: const Color(0xFFB39DDB),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: Text(
-                          Translations.t('perfectionismHint', context),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        onTap: () async {
-                          final newVal = !_perfectionism;
-                          await SettingsService.savePerfectionism(newVal);
-                          setState(() => _perfectionism = newVal);
-                        },
-                        trailing: SmoothCircleToggle(
-                          value: _perfectionism,
-                          onChanged: (v) async {
-                            await SettingsService.savePerfectionism(v);
-                            setState(() => _perfectionism = v);
-                          },
-                          activeColor: const Color(0xFFB39DDB),
-                          size: 32,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildTaskNotesCard(context, theme),
-              const SizedBox(height: 8),
-              _buildBerserkCard(context, theme),
-            ],
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            leading: Icon(
+              Icons.developer_mode_rounded,
+              color: theme.colorScheme.primary,
+            ),
+            title: Text(_developerCornerTitle(context)),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: _showDevToolsScreen,
           ),
         ),
       ),
@@ -2940,439 +2911,235 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// открывается ТОЛЬКО долгим зажатием «плюса» на главном экране).
   /// Фон — тёмно-красный градиент с едва заметными кровавыми пятнами,
   /// переключатель красный, иконка — топор.
-  Widget _buildBerserkCard(BuildContext context, ThemeData theme) {
-    final cs = theme.colorScheme;
-    final blood = Color.lerp(cs.primary, const Color(0xFFB51F32), 0.72)!;
-    final themedDark = Color.lerp(
-      cs.surfaceContainerLow,
-      const Color(0xFF26070C),
-      0.72,
-    )!;
-    return Listener(
-      // Только визуальный отклик: при зажатии карточка очень плавно
-      // «продавливается» (масштаб 0.97), при отпускании — так же плавно
-      // возвращается. Ничего не открывает.
-      onPointerDown: (_) => setState(() => _berserkCardPressed = true),
-      onPointerUp: (_) => setState(() => _berserkCardPressed = false),
-      onPointerCancel: (_) => setState(() => _berserkCardPressed = false),
-      child: AnimatedScale(
-        // Очень мягкое нажатие: 0.97 с долгой плавной кривой (280 мс)
-        // в обе стороны — без рывков и резких «отщёлкиваний».
-        scale: _berserkCardPressed ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-        child: Card(
-          elevation: 0,
-          // ПРОЗРАЧНЫЙ фон Card: иначе непрозрачный surfaceContainerLow
-          // (из карт-темы) заливал карточку ПОВЕРХ полупрозрачного
-          // градиента — Берсерк выглядел сплошным, а не полупрозрачным.
-          color: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          clipBehavior: Clip.antiAlias,
-          // БЕЗ fit: StackFit.expand — в ListView вертикаль unbounded,
-          // expand-стек падал layout'ом и всё, что ниже «Борьбы с
-          // перфекционизмом» (Берсерк, Данные/Экспорт), исчезало.
-          child: Stack(
-            children: [
-              // Полупрозрачный кровавый градиент (alpha 0.42): сквозь него
-              // просвечивает фон настроек. BackdropFilter убран — на слабом
-              // GPU blur заливал карточку белым и «съедал» половину контента.
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  // Тот же радиус, что у Card: иначе прямоугольная рамка
-                  // DecoratedBox вылезала за скруглённые углы карточки
-                  // (на тёмной теме «резаные» края обводки).
-                  borderRadius: BorderRadius.circular(20),
-                  // Полупрозрачный градиент (alpha 0.42) + белый блик сверху —
-                  // вид «матового стекла» без blur.
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      themedDark.withValues(alpha: 0.42),
-                      Color.lerp(
-                        blood,
-                        const Color(0xFF4A0A12),
-                        0.55,
-                      )!.withValues(alpha: 0.42),
-                      Color.lerp(
-                        blood,
-                        const Color(0xFF8E1422),
-                        0.25,
-                      )!.withValues(alpha: 0.42),
-                      blood.withValues(alpha: 0.42),
-                    ],
-                    stops: const [0.0, 0.45, 0.75, 1.0],
-                  ),
-                  border: Border.all(
-                    color: const Color(0xFFFF6A7A).withValues(alpha: 0.85),
-                    width: 1.6,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFB51F32).withValues(alpha: 0.5),
-                      blurRadius: 26,
-                      offset: const Offset(0, 10),
-                    ),
-                    BoxShadow(
-                      color: const Color(0xFFFF5265).withValues(alpha: 0.18),
-                      blurRadius: 40,
-                      offset: const Offset(0, 0),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    // Кровавые пятна — статичный, дешёвый слой (без анимации).
-                    Positioned.fill(
-                      child: CustomPaint(painter: const _BloodStainsPainter()),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        leading: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF8E1422), Color(0xFF3A0810)],
-                            ),
-                            border: Border.all(
-                              color: const Color(
-                                0xFFFF8290,
-                              ).withValues(alpha: 0.9),
-                              width: 1.6,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(
-                                  0xFFFF5265,
-                                ).withValues(alpha: 0.55),
-                                blurRadius: 16,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            // Топор — символ BERSERK.
-                            child: Text('🪓', style: TextStyle(fontSize: 26)),
-                          ),
-                        ),
-                        title: Text(
-                          Translations.t('berserkCardTitle', context),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.55,
-                            height: 1.2,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black54,
-                                blurRadius: 6,
-                                offset: Offset(0, 1),
-                              ),
-                              Shadow(
-                                color: Color(0xFFFF5265),
-                                blurRadius: 12,
-                                offset: Offset(0, 0),
-                              ),
-                            ],
-                          ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            Translations.t('berserkCardSubtitle', context),
-                            style: const TextStyle(
-                              color: Color(0xFFFDEDEE),
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                        trailing: VolumetricSwitch(
-                          value: _berserk,
-                          onChanged: (value) async {
-                            await SettingsService.saveBerserk(value);
-                            if (mounted) setState(() => _berserk = value);
-                          },
-                          activeColor: const Color(0xFFFF5265),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Стеклянный блик сверху — ощущение полупрозрачности.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.20),
-                          Colors.white.withValues(alpha: 0.0),
-                        ],
-                        stops: const [0.0, 0.38],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// «Вспомнил, что использую…» — тёплая карточка-воспоминание в разделе
-  /// разработчика. Включает быстрое меню: долгое зажатие задачи (5 сек)
-  /// открывает красивое окно заметки до 150 символов, заметка сохраняется.
-  Widget _buildTaskNotesCard(BuildContext context, ThemeData theme) {
-    final cs = theme.colorScheme;
-    final lavender = Color.lerp(cs.primary, const Color(0xFF9C6ADE), 0.5)!;
-    final peach = Color.lerp(cs.primary, const Color(0xFFFFB08A), 0.42)!;
-    final base = Color.lerp(
-      cs.surfaceContainerLow,
-      const Color(0xFF2A2140),
-      0.55,
-    )!;
-    return Card(
-      elevation: 0,
-      color: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  base.withValues(alpha: 0.55),
-                  Color.lerp(base, lavender, 0.38)!.withValues(alpha: 0.55),
-                  Color.lerp(base, peach, 0.30)!.withValues(alpha: 0.55),
-                ],
-                stops: const [0.0, 0.55, 1.0],
-              ),
-              border: Border.all(
-                color: Color.lerp(
-                  lavender,
-                  Colors.white,
-                  0.45,
-                )!.withValues(alpha: 0.6),
-                width: 1.3,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: lavender.withValues(alpha: 0.28),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: peach.withValues(alpha: 0.16),
-                  blurRadius: 40,
-                  offset: const Offset(0, 0),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color.lerp(peach, Colors.white, 0.12)!,
-                        Color.lerp(lavender, const Color(0xFF4A3A7A), 0.35)!,
-                      ],
-                    ),
-                    border: Border.all(
-                      color: Color.lerp(
-                        peach,
-                        Colors.white,
-                        0.6,
-                      )!.withValues(alpha: 0.85),
-                      width: 1.6,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: lavender.withValues(alpha: 0.5),
-                        blurRadius: 16,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.lightbulb_outline_rounded,
-                      color: Color(0xFFFFF3E0),
-                      size: 26,
-                    ),
-                  ),
-                ),
-                title: Text(
-                  Translations.t('taskNotesTitle', context),
-                  style: const TextStyle(
-                    color: Color(0xFFFFF8EE),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                    height: 1.25,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black38,
-                        blurRadius: 6,
-                        offset: Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    Translations.t('taskNotesSubtitle', context),
-                    style: const TextStyle(
-                      color: Color(0xFFEDE4F5),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-                trailing: SmoothCircleToggle(
-                  value: _taskNotes,
-                  onChanged: (value) async {
-                    await SettingsService.saveTaskNotes(value);
-                    if (mounted) setState(() => _taskNotes = value);
-                  },
-                  activeColor: lavender,
-                  size: 32,
-                ),
-              ),
-            ),
-          ),
-          // Тёплый блик сверху — ощущение полупрозрачного стекла.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.18),
-                      Colors.white.withValues(alpha: 0.0),
-                    ],
-                    stops: const [0.0, 0.35],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showDevModeDialog() {
     if (_devMode) {
-      _perfController.reverse().then((_) {
-        if (mounted) {
-          setState(() => _devMode = false);
-          SettingsService.saveDevMode(false);
-        }
-      });
+      _showDevToolsScreen();
       return;
     }
-    final ctrl = TextEditingController();
-    showDialog(
+    var openToolsAfterClose = false;
+    showGeneralDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(Translations.t('devMode', context)),
-        content: SmoothTyping(
-          controller: ctrl,
-          // Пароль под «звёздочками» рисует само поле.
-          enabled: false,
-          builder: (style) => TextField(
-            style: style,
-            cursorOpacityAnimates: true,
-            magnifierConfiguration: TextMagnifierConfiguration.disabled,
-            controller: ctrl,
-            contextMenuBuilder: minimalContextMenuBuilder,
-            keyboardType: TextInputType.number,
-            obscureText: true,
-            maxLength: 50,
-            inputFormatters: [WideDashFormatter()],
-            enableSuggestions: false,
-            autocorrect: false,
-            buildCounter: smoothCharCounterBuilder,
-            decoration: InputDecoration(
-              hintText: '7720',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+      barrierDismissible: true,
+      barrierLabel: Translations.t('devMode', context),
+      barrierColor: Colors.black.withValues(alpha: 0.62),
+      transitionDuration: const Duration(milliseconds: 460),
+      pageBuilder: (ctx, _, _) => MediaQuery.removeViewInsets(
+        context: ctx,
+        removeBottom: true,
+        child: SafeArea(
+          child: Center(
+            child: DeveloperModePasswordDialog(
+              title: Translations.t('devMode', ctx),
+              prompt: Translations.t(
+                'devModePrompt',
+                ctx,
+                'Enter the access code to continue',
               ),
+              invalidCode: Translations.t(
+                'devModeInvalidCode',
+                ctx,
+                'That code did not match. Try again.',
+              ),
+              cancelLabel: Translations.cancelOf(ctx),
+              unlockLabel: Translations.t('devModeUnlock', ctx, 'Unlock'),
+              onCancel: () => Navigator.of(ctx).pop(),
+              onUnlock: () async {
+                await SettingsService.saveDevMode(true);
+                if (!mounted || !ctx.mounted) return;
+                setState(() => _devMode = true);
+                _perfController.forward();
+                openToolsAfterClose = true;
+                Navigator.of(ctx).pop();
+              },
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(Translations.cancelOf(context)),
+      ),
+      transitionBuilder: (ctx, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutBack,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.08),
+              end: Offset.zero,
+            ).animate(curved),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.88, end: 1).animate(curved),
+              child: child,
+            ),
           ),
-          FilledButton(
-            onPressed: () {
-              if (ctrl.text == '7720') {
-                Navigator.pop(ctx);
-                // Плавное появление раздела разработчика: ждём окончания
-                // анимации закрытия диалога, иначе карточки выезжают под
-                // ещё видимым фоном диалога и кажется, что «дёрнулось».
-                Future.delayed(const Duration(milliseconds: 140), () {
-                  if (!mounted) return;
-                  setState(() => _devMode = true);
-                  SettingsService.saveDevMode(true);
-                  _perfController.forward();
-                });
-              } else {
-                Navigator.pop(ctx);
+        );
+      },
+    ).then((_) {
+      if (openToolsAfterClose && mounted) _showDevToolsScreen();
+    });
+  }
+
+  Future<void> _showDevToolsScreen() async {
+    late final String developerPrompt;
+    try {
+      developerPrompt = await SettingsService.loadDeveloperPrompt();
+    } catch (error) {
+      if (mounted) showBeautifulSnackBar(context, message: error.toString());
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 520),
+        reverseTransitionDuration: const Duration(milliseconds: 360),
+        pageBuilder: (routeContext, animation, secondaryAnimation) {
+          return StatefulBuilder(
+            builder: (routeContext, setScreenState) {
+              final cs = Theme.of(routeContext).colorScheme;
+              Future<void> savePerfectionism(bool value) async {
+                await SettingsService.savePerfectionism(value);
+                if (!mounted || !routeContext.mounted) return;
+                setState(() => _perfectionism = value);
+                setScreenState(() {});
               }
+
+              Future<void> saveTaskNotes(bool value) async {
+                await SettingsService.saveTaskNotes(value);
+                if (!mounted || !routeContext.mounted) return;
+                setState(() => _taskNotes = value);
+                setScreenState(() {});
+              }
+
+              Future<void> saveBerserk(bool value) async {
+                await SettingsService.saveBerserk(value);
+                if (!mounted || !routeContext.mounted) return;
+                setState(() => _berserk = value);
+                setScreenState(() {});
+              }
+
+              return DeveloperCornerScreen(
+                title: _developerCornerTitle(routeContext),
+                controlsLabel: _developerControlsLabel(routeContext),
+                subtitle: Translations.t(
+                  'devToolsSubtitle',
+                  routeContext,
+                  'Hidden controls for tuning the Keramika experience.',
+                ),
+                disableLabel: Translations.t(
+                  'devModeDisable',
+                  routeContext,
+                  'Turn off developer mode',
+                ),
+                developerPrompt: developerPrompt,
+                onSaveDeveloperPrompt: SettingsService.saveDeveloperPrompt,
+                accent: cs.primary,
+                onDisable: () async {
+                  await SettingsService.saveDevMode(false);
+                  if (!mounted || !routeContext.mounted) return;
+                  setState(() => _devMode = false);
+                  _perfController.reverse();
+                  Navigator.of(routeContext).pop();
+                },
+                children: [
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Color(0xFFB39DDB),
+                    ),
+                    title: Text(Translations.t('perfectionism', routeContext)),
+                    subtitle: Text(
+                      Translations.t('perfectionismHint', routeContext),
+                    ),
+                    trailing: SmoothCircleToggle(
+                      value: _perfectionism,
+                      onChanged: savePerfectionism,
+                      activeColor: const Color(0xFFB39DDB),
+                      size: 32,
+                    ),
+                    onTap: () => savePerfectionism(!_perfectionism),
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(
+                      Icons.lightbulb_outline_rounded,
+                      color: Color(0xFFD3A7FF),
+                    ),
+                    title: Text(Translations.t('taskNotesTitle', routeContext)),
+                    subtitle: Text(
+                      Translations.t('taskNotesSubtitle', routeContext),
+                    ),
+                    trailing: SmoothCircleToggle(
+                      value: _taskNotes,
+                      onChanged: saveTaskNotes,
+                      activeColor: const Color(0xFFB39DDB),
+                      size: 32,
+                    ),
+                    onTap: () => saveTaskNotes(!_taskNotes),
+                  ),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(
+                      Icons.local_fire_department_rounded,
+                      color: Color(0xFFFF5265),
+                    ),
+                    title: Text(
+                      Translations.t('berserkCardTitle', routeContext),
+                    ),
+                    subtitle: Text(
+                      Translations.t('berserkCardSubtitle', routeContext),
+                    ),
+                    trailing: VolumetricSwitch(
+                      value: _berserk,
+                      onChanged: saveBerserk,
+                      activeColor: const Color(0xFFFF5265),
+                    ),
+                  ),
+                ],
+              );
             },
-            child: Text(Translations.okOf(context)),
-          ),
-        ],
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final entrance = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.16, 0),
+                end: Offset.zero,
+              ).animate(entrance),
+              child: ScaleTransition(
+                alignment: Alignment.centerRight,
+                scale: Tween<double>(begin: 0.94, end: 1).animate(entrance),
+                child: child,
+              ),
+            ),
+          );
+        },
       ),
     );
+  }
+
+  String _developerCornerTitle(BuildContext context) {
+    return switch (LocaleProvider.of(context).languageCode) {
+      'ru' => 'Уголок разработчика',
+      'fr' => 'Coin développeur',
+      _ => 'Developer corner',
+    };
+  }
+
+  String _developerControlsLabel(BuildContext context) {
+    return switch (LocaleProvider.of(context).languageCode) {
+      'ru' => 'ЭКСПЕРИМЕНТАЛЬНЫЕ НАСТРОЙКИ',
+      'fr' => 'OPTIONS EXPÉRIMENTALES',
+      _ => 'EXPERIMENTAL CONTROLS',
+    };
   }
 
   Widget _diagTile(
@@ -3682,551 +3449,3 @@ class _SettingsScreenState extends State<SettingsScreen>
 /// Lives at the very top of Settings -- immediately catches the user's eye.
 /// Toggling this card adds or removes the 'РП' tab in Home together
 /// with schedule and notifications.
-class _RealityCheckToggleCard extends StatelessWidget {
-  const _RealityCheckToggleCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final rc = RealityCheckService();
-    return ListenableBuilder(
-      listenable: rc,
-      builder: (context, _) {
-        final on = rc.enabled;
-        final title = Translations.t(
-          'rcSettingsTitle',
-          context,
-          Translations.realityChecksOf(context),
-        );
-        final body = Translations.t(
-          'rcSettingsBody',
-          context,
-          // Аббревиатура из перевода (RC/РП/CR), чтобы даже фолбэк не
-          // показывал кириллицу в нерусских языках.
-          'Adds or removes the section entirely: the '
-              '${Translations.rcOf(context)} tab in Home, schedule and notifications.',
-        );
-        // Плавный переход цвета карточки и текста вместо мгновенного прыжка.
-        final bgColor = on
-            ? theme.colorScheme.primaryContainer
-            : theme.colorScheme.surfaceContainerHigh;
-        final fgColor = on
-            ? theme.colorScheme.onPrimaryContainer
-            : theme.colorScheme.onSurface;
-        final fgMuted = on
-            ? theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.75)
-            : theme.colorScheme.onSurfaceVariant;
-        final badgeBg = on
-            ? theme.colorScheme.primary.withValues(alpha: 0.15)
-            : theme.colorScheme.surface;
-        final badgeFg = on
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onSurfaceVariant;
-        // AnimatedContainer: фон карточки плавно перетекает между
-        // состояниями (раньше был простой Container — цвет переключался
-        // мгновенно, хотя текст/бейдж анимировались — выглядело дёргано).
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              // blurRadius 4: большие размытые тени на карточках стоят
-              // дорого при каждом кадре скролла на средних GPU.
-              BoxShadow(
-                color: theme.shadowColor.withValues(alpha: on ? 0.07 : 0.03),
-                blurRadius: 4,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: () => _toggle(context, rc, !on),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Бейдж иконки — плавная смена цвета.
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeOutCubic,
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: badgeBg,
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        transitionBuilder: (c, a) => ScaleTransition(
-                          scale: Tween<double>(begin: 0.7, end: 1.0).animate(a),
-                          child: FadeTransition(opacity: a, child: c),
-                        ),
-                        child: Icon(
-                          Icons.psychology_outlined,
-                          key: ValueKey(on),
-                          size: 26,
-                          color: badgeFg,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutCubic,
-                            style: theme.textTheme.titleMedium!.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: fgColor,
-                            ),
-                            child: Text(title),
-                          ),
-                          const SizedBox(height: 4),
-                          AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutCubic,
-                            style: theme.textTheme.bodySmall!.copyWith(
-                              color: fgMuted,
-                            ),
-                            child: Text(body),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    VolumetricSwitch(
-                      value: on,
-                      onChanged: (v) => _toggle(context, rc, v),
-                      activeColor: theme.colorScheme.primary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _toggle(BuildContext context, RealityCheckService rc, bool newValue) {
-    rc.setEnabled(newValue);
-    // When turning off: cancel any scheduled Rb notifications so they don't
-    // surprise the user while the section is hidden. Turn-on is left for
-    // the Rb screen initState to schedule next time it is shown.
-    if (!newValue) {
-      notificationService.cancelAllRealityChecks();
-    }
-    if (!context.mounted) return;
-    // groupKey объединяет быстрые ON↔OFF-переключения в одну плашку — не даёт шторм.
-    showBeautifulSnackBar(
-      context,
-      message: newValue
-          ? Translations.t(
-              'rcSettingsOn',
-              context,
-              'Раздел «Проверки реальности» включён',
-            )
-          : Translations.t(
-              'rcSettingsOff',
-              context,
-              'Раздел «Проверки реальности» скрыт',
-            ),
-      icon: newValue
-          ? Icons.check_circle_outline
-          : Icons.visibility_off_outlined,
-      iconColor: newValue ? Colors.green : Colors.orange,
-      groupKey: 'rcSettingsToggle',
-    );
-  }
-}
-
-/// Кнопка-«трек» в стиле переключателей: чистый корпус с градиентной
-/// заливкой, мягким цветным свечением и белой иконкой-капсулой. БЕЗ нижней
-/// полосы-грани — объём только через тень и блик. Зажатие у всех таких
-/// кнопок одинаковое: мягкое вдавливание по высоте + схлопывание тени.
-/// Кнопка-«таблетка» способа оплаты в окне поддержки: градиентная широкая
-/// строка с иконкой в кружке, названием и стрелкой. Используется внутри
-/// bottom sheet (CloudTips / Boosty и др.).
-class _SupportPill extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final List<Color> gradient;
-  final Color glow;
-  final VoidCallback onTap;
-
-  const _SupportPill({
-    required this.label,
-    required this.icon,
-    required this.gradient,
-    required this.glow,
-    required this.onTap,
-  });
-
-  @override
-  State<_SupportPill> createState() => _SupportPillState();
-}
-
-class _SupportPillState extends State<_SupportPill> {
-  bool _pressed = false;
-
-  void _setPressed(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Контраст под текущую тему: на светлых темах градиент светлый →
-    // тёмный текст, на тёмных → белый.
-    final fg = Theme.of(context).brightness == Brightness.dark
-        ? Colors.white
-        : const Color(0xDE000000);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        _setPressed(true);
-        Haptics.medium();
-      },
-      onTapUp: (_) {
-        _setPressed(false);
-        widget.onTap();
-      },
-      onTapCancel: () => _setPressed(false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
-        height: _pressed ? 58 : 64,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: widget.glow.withValues(alpha: _pressed ? 0.2 : 0.35),
-              blurRadius: _pressed ? 6 : 14,
-              offset: Offset(0, _pressed ? 1 : 4),
-            ),
-          ],
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: widget.gradient,
-          ),
-          border: Border.all(color: fg.withValues(alpha: 0.40), width: 1.2),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: fg.withValues(alpha: 0.18),
-                border: Border.all(color: fg.withValues(alpha: 0.40), width: 1),
-              ),
-              child: Icon(widget.icon, color: fg, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                widget.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: fg.withValues(alpha: 0.7),
-              size: 26,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CtaButton extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final List<Color> gradient;
-  final Color glow;
-  final VoidCallback? onTap;
-
-  const _CtaButton({
-    required this.label,
-    required this.icon,
-    required this.gradient,
-    required this.glow,
-    this.onTap,
-  });
-
-  @override
-  State<_CtaButton> createState() => _CtaButtonState();
-}
-
-class _CtaButtonState extends State<_CtaButton> {
-  bool _pressed = false;
-
-  void _setPressed(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        _setPressed(true);
-        // Отдача при нажатии — как у остальных кнопок приложения.
-        Haptics.medium();
-      },
-      onTapUp: (_) {
-        _setPressed(false);
-        widget.onTap?.call();
-      },
-      onTapCancel: () => _setPressed(false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
-        width: double.infinity,
-        height: _pressed ? 50 : 54,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: widget.glow.withValues(alpha: _pressed ? 0.22 : 0.38),
-              blurRadius: _pressed ? 6 : 14,
-              offset: Offset(0, _pressed ? 1 : 4),
-            ),
-          ],
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: widget.gradient,
-          ),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.40),
-            width: 1.2,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.24),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.45),
-                  width: 1,
-                ),
-              ),
-              child: Icon(widget.icon, color: Colors.white, size: 16),
-            ),
-            const SizedBox(width: 11),
-            Flexible(
-              child: Text(
-                widget.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
-                  letterSpacing: 0.6,
-                  shadows: [
-                    Shadow(
-                      color: Color(0x33000000),
-                      blurRadius: 2,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Одна запись карусели тем: ключ темы, название и иконка.
-class _ThemeEntry {
-  final String key;
-  final String label;
-  final IconData icon;
-  final bool specialMutilated;
-
-  const _ThemeEntry(
-    this.key,
-    this.label,
-    this.icon, {
-    this.specialMutilated = false,
-  });
-}
-
-/// Едва заметные кровавые пятна для карточки BERSERK.
-/// Статичный слой: рисуется один раз на размер карточки, без анимации.
-class _BloodStainsPainter extends CustomPainter {
-  const _BloodStainsPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final blobs = <({Offset center, double radius})>[
-      (
-        center: Offset(size.width * 0.08, size.height * 0.16),
-        radius: size.width * 0.30,
-      ),
-      (
-        center: Offset(size.width * 0.94, size.height * 0.52),
-        radius: size.width * 0.34,
-      ),
-      (
-        center: Offset(size.width * 0.16, size.height * 0.88),
-        radius: size.width * 0.26,
-      ),
-      (
-        center: Offset(size.width * 0.80, size.height * 0.08),
-        radius: size.width * 0.20,
-      ),
-      (
-        center: Offset(size.width * 0.55, size.height * 0.60),
-        radius: size.width * 0.24,
-      ),
-    ];
-    for (final blob in blobs) {
-      final rect = Rect.fromCircle(center: blob.center, radius: blob.radius);
-      final paint = Paint()
-        ..shader = const RadialGradient(
-          colors: [Color(0x59B51F32), Color(0x22B51F32), Color(0x00B51F32)],
-        ).createShader(rect);
-      canvas.drawCircle(blob.center, blob.radius, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _BloodStainsPainter oldDelegate) => false;
-}
-
-/// Логотип Flutter: три фирменные «ступеньки» (светло-голубая, синяя,
-/// тёмно-синяя) в мягком круглом бейдже с лёгкой «стеклянной» подложкой.
-/// Стоит внизу карточки тем, внутри неё — как аккуратный фирменный акцент.
-class _FlutterBadge extends StatelessWidget {
-  const _FlutterBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final bg = Color.lerp(cs.surfaceContainerHighest, cs.primary, 0.06)!;
-    return Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [bg, cs.surfaceContainerHighest],
-        ),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.25), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: cs.primary.withValues(alpha: 0.18),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(5),
-      child: CustomPaint(
-        size: const Size.square(16),
-        painter: _FlutterLogoPainter(
-          // Ступеньки в цвет текущей темы: светлый/средний/тёмный оттенки
-          // primary вместо фирменных синих — значок подстраивается под
-          // каждую тему.
-          light: Color.lerp(cs.primary, Colors.white, 0.72)!,
-          mid: Color.lerp(cs.primary, Colors.black, 0.05)!,
-          dark: Color.lerp(cs.primary, Colors.black, 0.30)!,
-        ),
-      ),
-    );
-  }
-}
-
-class _FlutterLogoPainter extends CustomPainter {
-  final Color light;
-  final Color mid;
-  final Color dark;
-
-  const _FlutterLogoPainter({
-    required this.light,
-    required this.mid,
-    required this.dark,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final lightPaint = Paint()..color = light;
-    final midPaint = Paint()..color = mid;
-    final darkPaint = Paint()..color = dark;
-
-    final step = w / 3.0;
-    // Верхняя ступенька: полная ширина, правый край скошен.
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, 0)
-        ..lineTo(w, 0)
-        ..lineTo(w - step, h / 3)
-        ..lineTo(0, h / 3)
-        ..close(),
-      lightPaint,
-    );
-    // Средняя ступенька: правая граница уходит дальше влево.
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, h / 3)
-        ..lineTo(w - step, h / 3)
-        ..lineTo(w - 2 * step, 2 * h / 3)
-        ..lineTo(0, 2 * h / 3)
-        ..close(),
-      midPaint,
-    );
-    // Нижняя ступенька: самая узкая.
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, 2 * h / 3)
-        ..lineTo(w - 2 * step, 2 * h / 3)
-        ..lineTo(w - 3 * step, h)
-        ..lineTo(0, h)
-        ..close(),
-      darkPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _FlutterLogoPainter oldDelegate) =>
-      oldDelegate.light != light ||
-      oldDelegate.mid != mid ||
-      oldDelegate.dark != dark;
-}

@@ -10,6 +10,7 @@ import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/models/habit.dart';
 import 'package:keramika/screens/habits_screen.dart';
 import 'package:keramika/services/habit_service.dart';
+import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/prefs.dart';
 
 /// Воспроизведение наблюдения владельца: «карточки улетают, если начать
@@ -78,6 +79,8 @@ void main() {
 
   setUp(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 7));
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
     tmpDir = await Directory.systemTemp.createTemp('keramika_header_drag');

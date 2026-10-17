@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
-import 'smooth_tooltip.dart';
+import '../widgets/smooth_tooltip.dart';
 
 /// Занимаемая таблеткой высота (отступы 4 + капсула 54 + отступ 6).
 /// Таблетка лежит в Stack НАД PageView, поэтому каждый экран-раздел
@@ -100,9 +101,11 @@ class SectionPill extends StatefulWidget {
 class _SectionPillState extends State<SectionPill> {
   int? _pressedIndex;
 
-  /// Ширина внутренней части капсулы: 304 минус набивка 4 слева и справа.
-  /// По ней считается, сколько пикселей приходится на один раздел.
-  static const double _innerWidth = 304 - 4 * 2;
+  /// Внутренняя ширина капсулы: 304 минус набивка 4 слева и справа. Ровно
+  /// столько же занимает жест-дорожка: она лежит в `Stack(StackFit.expand)`.
+  /// По этой ширине палец переводится в долю карусели — камень едет ровно
+  /// под пальцем.
+  static const double _trackWidth = 304 - 4 * 2;
 
   /// Идёт ли тяга пальцем по таблетке.
   bool _dragging = false;
@@ -136,10 +139,21 @@ class _SectionPillState extends State<SectionPill> {
 
   void _dragUpdate(DragUpdateDetails details, int count) {
     if (!_dragging) return;
-    final slot = _innerWidth / count;
-    if (slot <= 0) return;
-    // Влево (delta < 0) — к следующему разделу.
-    _dragPage = (_dragPage - details.delta.dx / slot).clamp(
+    if (count < 2) return;
+    // ПОЗИЦИОННЫЙ скраббер, как выбор приоритета: доля прохода пальца по
+    // капсуле умножается на число промежутков (count-1) и сразу становится
+    // позицией камня. Камень едет РОВНО ПОД ПАЛЬЦЕМ.
+    //
+    // Почему не «дельта пикселей»: раньше палец делился на ширину слота
+    // таблетки (~74 px), а карусель ехала на `доля × ширину СТРАНИЦЫ`
+    // (~1080 px) — 74 px пальцем уносили контент на целый экран, и движение
+    // читалось рывком «не в ту сторону». Здесь жест и содержимое живут в
+    // одних долях.
+    //
+    // Побочный и приятный эффект: на раздел нужно ~296/(count-1) ≈ 99 px
+    // пальца вместо ~74 px — жест спокойнее, «медленнее».
+    final frac = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
+    _dragPage = (frac * (count - 1)).clamp(
       0.0,
       (count - 1).toDouble(),
     );
@@ -261,9 +275,18 @@ class _SectionPillState extends State<SectionPill> {
                             // едет за пальцем, а отпускание доводит его до
                             // ближайшего раздела пружиной Home. Тап по иконке
                             // при этом остаётся тапом: арбитр жестов отдаёт
-                            // победу перетаскиванию только после сдвига.
+                            // победу перетаскиванию при сдвиге, а при
+                            // отпускании без движения — тапу.
+                            //
+                            // DragStartBehavior.down — драг стартует СРАЗУ от
+                            // касания, без порога в 18 px. С ним «зажал и
+                            // повёл» отзывается сразу, как приоритет. Со
+                            // штатным .start жест не начинался, пока палец не
+                            // уезжал за slop, и на практике читалось как «не
+                            // работает вовсе».
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
+                              dragStartBehavior: DragStartBehavior.down,
                               onHorizontalDragStart: (_) => _dragStart(count),
                               onHorizontalDragUpdate: (d) =>
                                   _dragUpdate(d, count),
@@ -289,19 +312,25 @@ class _SectionPillState extends State<SectionPill> {
                                   final restingScale = isSelected ? 1.05 : 1.0;
                                   final pressedScale = isSelected ? 0.96 : 0.90;
                                   return Expanded(
-                                    // Подсказка — НАД таблеткой (preferredAbove):
-                                    // иначе пузырь ложится на саму таблетку и
-                                    // прячется за пальцем.
+                                    // Подсказка возвращена. Её long-press раньше
+                                    // крал протяжку: арбитр жестов ждал 350 мс,
+                                    // и тяга начиналась только после зависания
+                                    // («через жопу»). Теперь жест стартует сразу
+                                    // от касания (DragStartBehavior.down), а
+                                    // ожидание тултипа длиннее (500 мс) — на
+                                    // быстром «зажал и повёл» успевает выиграть
+                                    // протagonистка. Пока палец УДЕРЖИВАЕТСЬ без
+                                    // движения, тултип по-прежнему покажется.
                                     child: SmoothTooltip(
                                       message: label,
                                       waitDuration: const Duration(
-                                        milliseconds: 350,
+                                        milliseconds: 500,
                                       ),
                                       preferredAbove: true,
                                       child: Semantics(
-                                        button: true,
-                                        selected: isSelected,
-                                        label: label,
+                                      button: true,
+                                      selected: isSelected,
+                                      label: label,
                                         child: Material(
                                           type: MaterialType.transparency,
                                           child: InkWell(
@@ -365,8 +394,8 @@ class _SectionPillState extends State<SectionPill> {
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  );
+                                      ),
+                                    );
                                 }),
                               ),
                             ),

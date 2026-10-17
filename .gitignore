@@ -21,6 +21,7 @@ captures/
 
 # Подписи релиза — НИКОГДА не коммитить (пароли подписи + приватный ключ).
 android/key.properties
+android/app/key.properties
 android/app/*.jks
 *.jks
 

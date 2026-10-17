@@ -76,7 +76,11 @@ class Installer {
   /// Запускает системную установку APK. [expectedSha256] (hex) — если задан,
   /// нативная сторона сверит хеш файла и откажет при несовпадении.
   static Future<bool> installApk(String path, {String? expectedSha256}) async {
-    if (!_supported) return false;
+    if (!_supported ||
+        expectedSha256 == null ||
+        !RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(expectedSha256)) {
+      return false;
+    }
     try {
       return await _channel.invokeMethod<bool>('installApk', {
             'path': path,

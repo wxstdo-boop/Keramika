@@ -10,6 +10,7 @@ class HabitService extends ChangeNotifier {
   HabitService._();
 
   List<Habit> _habits = [];
+  String? _snapshot;
   bool _loaded = false;
   static const _key = 'habits';
 
@@ -62,18 +63,12 @@ class HabitService extends ChangeNotifier {
   Habit _normalizeForToday(Habit h) {
     if (h.lastDoneDate == null) {
       // Никогда не отмечалась (или был сброс стрика). Флага doneToday
-      // быть не должно. Плюс ремонт «осиротевшего» стрика: streak>0
-      // без lastDoneDate — мёртвые данные (старая версия/импорт).
-      // Если их не обнулить, первая же отметка «оживит» старый счётчик
-      // и стрик поведёт себя так, будто сброса не было.
-      if (h.streak > 0) {
-        // Старые данные могли содержать streak без даты. Не уничтожаем его
-        // при обычном запуске: дата нужна для расчёта продолжения, но сам
-        // счётчик должен пережить нормализацию.
-        return h.doneToday ? h.copyWith(doneToday: false) : h;
-      }
-
-      return h.doneToday ? h.copyWith(doneToday: false) : h;
+      // быть не должно. Плюс ремонт «осиротевшего» стрика: streak>0 без
+      // lastDoneDate — мёртвые данные (старая версия/импорт). Если их не
+      // обнулить, первая же отметка «оживит» старый счётчик и стрик
+      // поведёт себя так, будто сброса не было. Обнуляем честно, чтобы
+      // первая отметка начала новую серию с 1 (см. тест 'осиротевший стрик').
+      return h.copyWith(doneToday: false, streak: 0);
     }
     final today = mskToday();
     final lastDay = DateTime(
@@ -106,13 +101,15 @@ class HabitService extends ChangeNotifier {
     // начала — именно этот эффект и есть «на второй день считает как два».
     // Дату тоже очищаем: state (streak=0, lastDone=null) всегда честный,
     // и следующая отметка идёт по ветке «первая в жизни» (стрик = 1).
-    if (today.difference(lastDay).inDays >= 2) {
-      // Не обнуляем сохранённый streak: это исторический максимум серии,
-      // а не временная отметка «сегодня». День разрыва учитываем только при
-      // следующей отметке, когда toggle() начнёт новую серию с 1. Так
-      // возврат в приложение после пропуска не уничтожает статистику и не
-      // выглядит как самопроизвольный сброс.
-      return h.copyWith(doneToday: false);
+    final todayUtc = DateTime.utc(today.year, today.month, today.day);
+    final lastDayUtc = DateTime.utc(lastDay.year, lastDay.month, lastDay.day);
+    final missedDue = _missedDueDays(lastDayUtc, todayUtc, h.activeDays);
+    if (missedDue > 0) {
+      // Цепочка оборвана 2+ дня назад — «мёртвый» счётчик не должен висеть
+      // как живой. Честно сбрасываем стрик и дату при загрузке/возврате в
+      // приложение; следующая отметка начнёт новую серию с 1 (см. тест
+      // 'пропуск ≥2 дней самовосстанавливается при загрузке').
+      return h.copyWith(doneToday: false, streak: 0, lastDoneDate: null);
     }
     return h.copyWith(doneToday: false);
   }
@@ -123,17 +120,17 @@ class HabitService extends ChangeNotifier {
   @visibleForTesting
   void debugClear() {
     _habits = [];
+    _snapshot = null;
     _loaded = false;
   }
 
   Future<void> load() async {
     List<Habit>? normalized;
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null && raw.isNotEmpty) {
-        normalized = habitsFromJson(raw).map(_normalizeForToday).toList();
-      }
-    } catch (_) {}
+    final raw = await JsonFile.read(_key);
+    _snapshot = raw;
+    if (raw != null && raw.isNotEmpty) {
+      normalized = habitsFromJson(raw).map(_normalizeForToday).toList();
+    }
     _habits = normalized ?? _habits;
     // _loaded должен стать true ДО _save(), иначе _save() выйдет по гарду
     // и нормализованное состояние не запишется на диск.
@@ -148,7 +145,9 @@ class HabitService extends ChangeNotifier {
 
   Future<void> _save() async {
     if (!_loaded) return;
-    await JsonFile.write(_key, habitsToJson(_habits));
+    final value = habitsToJson(_habits);
+    final resolved = await JsonFile.writeWithSnapshot(_key, value, _snapshot);
+    if (resolved == value) _snapshot = resolved;
   }
 
   /// Keeps pinned habits at the top of the list while preserving the
@@ -196,14 +195,14 @@ class HabitService extends ChangeNotifier {
     if (idx == -1) return;
     final h = _normalizeForToday(_habits[idx]);
 
-    // Снимаем отметку «сегодня». Цепочка стрика укорачивается на 1 день:
-    // сегодняшний день больше не засчитан, lastDoneDate откатывается на
-    // вчера (а если стрик обнулился — на null, точки пропадают).
-    // ВАЖНО: lastDoneDate: null здесь РЕАЛЬНО очищает дату (copyWith
-    // умеет null через сентинел) — раньше null игнорировался, дата
-    // оставалась «сегодня», и повторная отметка в тот же день застревала
-    // в ветке re-mark со стриком 0 (баг «снял галочку — стрик умер»).
+    // Отметка уже стоит за сегодня — ниже снимаем её (ветка h.doneToday).
+    // Снятие откатывает сегодняшний день: стрик уменьшается на 1
+    // («минус один кружок»), lastDoneDate — на вчера.
     if (h.doneToday) {
+      // Снимаем отметку «сегодня»: галочка прячется, стрик укорачивается
+      // на 1 («минус один кружок» в карточке) — сегодняшний день больше не
+      // засчитан. lastDoneDate откатывается на вчера (а если стрик
+      // обнулился — на null, точки пропадают).
       if (h.type == 'good' && h.streak > 0) {
         final newStreak = h.streak - 1;
         final yesterday = mskToday().subtract(const Duration(days: 1));
@@ -412,7 +411,7 @@ class HabitService extends ChangeNotifier {
     // перетащить в pinned-зону (выше), не пускаем: порядок pinned сохранён.
     // Pinned между собой переставляются свободно.
     final pinnedCount = _habits.where((h) => h.pinned).length;
-    if (! _habits[oldIndex].pinned && newIndex < pinnedCount) return;
+    if (!_habits[oldIndex].pinned && newIndex < pinnedCount) return;
     // The UI uses ReorderableListView.onReorderItem, which already gives
     // newIndex for the list after the dragged item is removed.
     final item = _habits.removeAt(oldIndex);

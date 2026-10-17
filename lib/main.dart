@@ -53,6 +53,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 /// каждом build сбрасывал бы стек роутов.
 final JankRouteObserver _jankObserver = JankRouteObserver();
 Timer? _autoSaveTimer;
+bool _autoSaveFailureActive = false;
 // Флаг — WakeTaskScreen уже показан, не пушить второй при тапе
 // по уведомлению (onNewIntent → onNewAlarmPayload).
 bool _wakeScreenShowing = false;
@@ -102,9 +103,43 @@ Future<void> _autoSaveTick() async {
       RealityCheckService().forceSave(),
       TimerService().forceSave(),
     ]);
-  } catch (_) {}
+    _autoSaveFailureActive = false;
+  } catch (error, stackTrace) {
+    if (!_autoSaveFailureActive) {
+      _autoSaveFailureActive = true;
+      _reportPersistenceFailure(error, stackTrace);
+    }
+  }
   // Увеличиваем интервал с 3 до 10 секунд, чтобы снизить нагрузку на диск.
   _autoSaveTimer = Timer(const Duration(seconds: 10), _autoSaveTick);
+}
+
+void _reportPersistenceFailure(Object error, StackTrace stackTrace) {
+  debugPrint('Local data operation failed: $error\n$stackTrace');
+
+  void show(BuildContext context) {
+    showBeautifulSnackBar(
+      context,
+      message: Translations.t(
+        'dataStorageError',
+        context,
+        'Local data could not be read or saved. Existing files were not changed.',
+      ),
+      icon: Icons.warning_amber_rounded,
+      iconColor: Colors.redAccent,
+      duration: const Duration(seconds: 6),
+    );
+  }
+
+  final context = navigatorKey.currentContext;
+  if (context != null && context.mounted) {
+    show(context);
+  } else {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final retryContext = navigatorKey.currentContext;
+      if (retryContext != null && retryContext.mounted) show(retryContext);
+    });
+  }
 }
 
 void stopAutoSave() {
@@ -114,6 +149,7 @@ void stopAutoSave() {
 
 Timer? _autoExportTimer;
 bool _isAutoExporting = false;
+bool _autoExportEnabled = false;
 // Время последнего автоэкспорта — чтобы не «забывать» час, пока приложение
 // было закрыто, и не делать лишние бэкапы при каждом запуске.
 const _lastAutoExportKey = 'last_auto_export_at';
@@ -131,6 +167,7 @@ const _lifecycleChannel = MethodChannel('com.wetidom.keramika/lifecycle');
 /// чтобы не спамить снекбаром; ручное включение в настройках показывает
 /// подтверждение.
 void startAutoExport({bool runImmediately = true, bool silent = false}) {
+  _autoExportEnabled = true;
   _autoExportTimer?.cancel();
   _autoExportTimer = null;
   if (runImmediately) {
@@ -146,17 +183,20 @@ Future<void> _autoExportTick({bool silent = false}) async {
   try {
     debugPrint('[auto-export] tick start');
     final saved = await _performAutoExport(showSnack: !silent);
-    globalPrefs.setInt(
+    await globalPrefs.setInt(
       _lastAutoExportKey,
       DateTime.now().millisecondsSinceEpoch,
     );
     debugPrint('[auto-export] OK -> $saved');
   } catch (e, st) {
     debugPrint('[auto-export] FAILED: $e\n$st');
+  } finally {
+    _isAutoExporting = false;
+    _autoExportTimer?.cancel();
+    _autoExportTimer = _autoExportEnabled
+        ? Timer(const Duration(hours: 1), _autoExportTick)
+        : null;
   }
-  _isAutoExporting = false;
-  _autoExportTimer?.cancel();
-  _autoExportTimer = Timer(const Duration(hours: 1), _autoExportTick);
 }
 
 /// «Догоняющий» прогон: если автоэкспорт включён и с последнего бэкапа
@@ -166,7 +206,10 @@ Future<void> _autoExportTick({bool silent = false}) async {
 Future<void> maybeCatchUpAutoExport() async {
   final enabled = await SettingsService.loadAutoExport();
   debugPrint('[auto-export] catch-up: enabled=$enabled');
-  if (!enabled) return;
+  if (!enabled) {
+    stopAutoExport();
+    return;
+  }
   final last = globalPrefs.getInt(_lastAutoExportKey) ?? 0;
   final overdue =
       last == 0 ||
@@ -184,7 +227,7 @@ Future<void> maybeCatchUpAutoExport() async {
 }
 
 void stopAutoExport() {
-  _isAutoExporting = false;
+  _autoExportEnabled = false;
   _autoExportTimer?.cancel();
   _autoExportTimer = null;
 }
@@ -213,6 +256,9 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   out['reality_check_data'] = await readWithFallback('reality_check_data');
   out['nutrition_meals'] = await readWithFallback('nutrition_meals');
   out['ai_chat_history'] = await readWithFallback('ai_chat_history');
+  out['ai_pinned_messages'] = await readWithFallback('ai_pinned_messages');
+  out['completion_log'] = await readWithFallback('completion_log');
+  out['ny_event_2027'] = await readWithFallback('ny_event_2027');
 
   // Old RC format: данные лежали в 'reality_checks' (имя списка) и в
   // отдельных prefs-ключах. Если нового файла нет — собираем пакет из старых.
@@ -237,6 +283,7 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   // под КЛЮЧАМИ, которые читает импорт в settings_screen.dart.
   // Это критично для кругового обмена: иначе пользователь, у которого
   // в билде нет 'app_settings.json', потеряет настройки при экспорте/импорте.
+  final settings = <String, dynamic>{};
   if (settingsRaw == null) {
     // Строковые и булевы настройки читаем РАЗДЕЛЬНЫМИ геттерами:
     // getBool() на строковом значении (например setting_theme='rose')
@@ -245,6 +292,12 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
       'setting_theme',
       'setting_locale',
       'setting_font_family',
+      'setting_ai_key',
+      'setting_agnes_key',
+      'setting_zen_key',
+      'setting_gemini_key',
+      'setting_modal_url',
+      'setting_modal_key',
     };
     const boolSettingKeys = {
       'setting_peach_dark',
@@ -252,23 +305,29 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
       'setting_auto_save',
       'setting_dev_mode',
       'setting_auto_export',
+      'setting_ai_guide',
+      'setting_ai_tracking',
+      'perfectionism_mode',
+      'berserk_mode',
+      'task_quick_notes_mode',
     };
     for (final key in stringSettingKeys) {
       final v = globalPrefs.getString(key);
-      if (v != null && v.isNotEmpty) out[key] = v;
+      if (v != null && v.isNotEmpty) settings[key] = v;
     }
     for (final key in boolSettingKeys) {
       final v = globalPrefs.getBool(key);
-      if (v != null) out[key] = v;
+      if (v != null) settings[key] = v;
     }
   }
 
   // Пробрасываем любые поля, которые уже были в файле app_settings.json.
   if (settingsRaw != null) {
-    final settings = jsonDecode(settingsRaw) as Map<String, dynamic>;
-    for (final entry in settings.entries) {
-      if (entry.value != null) out[entry.key] = entry.value;
-    }
+    settings.addAll(Map<String, dynamic>.from(jsonDecode(settingsRaw)));
+  }
+  out['app_settings'] = settings;
+  for (final entry in settings.entries) {
+    if (entry.value != null) out[entry.key] = entry.value;
   }
 
   for (final k in [
@@ -276,11 +335,23 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     'notifications_fullscreen',
     'welcome_shown',
     'popup_warning_shown',
-    'app_pin',
+    'setting_screen_aware',
+    'ai_web_search',
+    'ai_liked_messages',
+    'ai_liked_patterns',
+    'ai_rewards_done',
+    'ai_tasks_done_total',
+    'ada_streak',
+    'ada_streak_last',
+    'ada_avatar_variant',
+    'nutrition_calorie_norm',
+    'ny_prize_2027',
   ]) {
     final v = globalPrefs.get(k);
     if (v != null) out[k] = v;
   }
+  final pinVerifier = await PinService.exportVerifier();
+  if (pinVerifier != null) out['app_pin'] = pinVerifier;
   return out;
 }
 
@@ -700,6 +771,7 @@ Future<void> _predecodeSplashLogo() async {
 Future<_StartupState> _loadStartupState() async {
   // Инициализируем SharedPreferences ОДИН раз ДО всего.
   await initPrefs();
+  await JsonFile.initialize();
   // Режим плавающего окошка Ады переживает перезапуск приложения.
   // Окошко — внутренний пузырь (одинаково на web и Android): он рисуется
   aiFloating.value = globalPrefs.getBool('ai_floating') ?? false;
@@ -788,10 +860,41 @@ void main() async {
   // уведомления зависят от prefs, и этот порядок сохранён внутри
   // [_loadStartupState].
   late final _StartupState startup;
-  await Future.wait(<Future<void>>[
-    _predecodeSplashLogo(),
-    _loadStartupState().then((value) => startup = value),
-  ]);
+  try {
+    await Future.wait(<Future<void>>[
+      _predecodeSplashLogo(),
+      _loadStartupState().then((value) => startup = value),
+    ]);
+  } catch (error, stackTrace) {
+    debugPrint('Application startup failed: $error\n$stackTrace');
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline, size: 48),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Keramika could not finish initializing.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text('$error', textAlign: TextAlign.center),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
   // Payload будильника читаем до первого кадра: от него зависит, что
   // станет домашним экраном (см. [_AlarmBootHost]).
   _alarmBootPayload = await _readAlarmBootPayload();
@@ -857,22 +960,26 @@ void main() async {
 
   // Автосохранение — загружаем данные ПЕРВЫМ ДЕЛОМ, потом стартуем таймер
   // только если пользователь включал autosave.
-  await HabitService().load();
-  await TaskService().load();
-  await AlarmService().load();
-  await RealityCheckService().load();
-  await TimerService().load();
+  try {
+    await HabitService().load();
+    await TaskService().load();
+    await AlarmService().load();
+    await RealityCheckService().load();
+    await TimerService().load();
 
-  // Дефолтные демо-записи убраны: пользователь добавляет привычки,
-  // задачи и будильники сам. Чистим остатки старых демо-данных,
-  // которые могли сохраниться на диск из прошлых билдов.
-  await _removeLegacyDemoData();
-  final autoSaveOn = await SettingsService.loadAutoSave();
-  if (autoSaveOn) startAutoSave();
-  final autoExportOn = await SettingsService.loadAutoExport();
-  if (autoExportOn) {
-    // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
-    await maybeCatchUpAutoExport();
+    // Дефолтные демо-записи убраны: пользователь добавляет привычки,
+    // задачи и будильники сам. Чистим остатки старых демо-данных,
+    // которые могли сохраниться на диск из прошлых билдов.
+    await _removeLegacyDemoData();
+    final autoSaveOn = await SettingsService.loadAutoSave();
+    if (autoSaveOn) startAutoSave();
+    final autoExportOn = await SettingsService.loadAutoExport();
+    if (autoExportOn) {
+      // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
+      await maybeCatchUpAutoExport();
+    }
+  } catch (error, stackTrace) {
+    _reportPersistenceFailure(error, stackTrace);
   }
 
   // Флаг — уже обработали запуск от будильника, чтобы не открыть

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
+import 'package:characters/characters.dart';
 import 'prefs.dart';
 import 'json_file.dart';
 import 'new_year_event_service.dart';
@@ -13,6 +14,7 @@ class SettingsService {
   static const _keyExperimental = 'setting_experimental';
   static const _keyAutoSave = 'setting_auto_save';
   static const _keyDevMode = 'setting_dev_mode';
+  static const _keyDeveloperPrompt = 'developer_prompt';
   static const _keyAutoExport = 'setting_auto_export';
   static const _keyAiGuide = 'setting_ai_guide';
   static const _keyAiKey = 'setting_ai_key';
@@ -31,13 +33,9 @@ class SettingsService {
       : defaultValue;
 
   static Future<Map<String, dynamic>> _loadSettings() async {
-    try {
-      final raw = await JsonFile.read(_settingsFile);
-      if (raw != null && raw.isNotEmpty) {
-        return Map<String, dynamic>.from(jsonDecode(raw) as Map);
-      }
-    } catch (_) {}
-    return {};
+    final raw = await JsonFile.read(_settingsFile);
+    if (raw == null || raw.isEmpty) return {};
+    return Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
 
   static Future<void> _saveSettings(Map<String, dynamic> map) async {
@@ -185,6 +183,29 @@ class SettingsService {
   static Future<void> saveDevMode(bool value) async {
     final map = await _loadSettings();
     map[_keyDevMode] = value;
+    await _saveSettings(map);
+  }
+
+  static Future<String> loadDeveloperPrompt() async {
+    final map = await _loadSettings();
+    final value = map[_keyDeveloperPrompt];
+    if (value == null) return '';
+    if (value is! String || value.characters.length > 10000) {
+      throw const FormatException('Stored developer prompt is invalid');
+    }
+    return value;
+  }
+
+  static Future<void> saveDeveloperPrompt(String value) async {
+    if (value.characters.length > 10000) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Must be at most 10,000 characters',
+      );
+    }
+    final map = await _loadSettings();
+    map[_keyDeveloperPrompt] = value;
     await _saveSettings(map);
   }
 

@@ -46,6 +46,7 @@ class NewYearEventService extends ChangeNotifier {
   /// дня и состояние подарка были доступны синхронно (в виджете дня нет
   /// никакой асинхронщины).
   int _hats = 0;
+  String? _snapshot;
   int get hats => _hats;
 
   /// Номер показываемого дня = сколько шапок уже есть + 1, то есть какая
@@ -79,30 +80,28 @@ class NewYearEventService extends ChangeNotifier {
 
   Future<Map<String, bool>> _load() async {
     final raw = await JsonFile.read(_fileKey);
+    _snapshot = raw;
     if (raw == null || raw.isEmpty) {
       _hats = 0;
       return {};
     }
-    try {
-      final map = Map<String, bool>.from(jsonDecode(raw) as Map);
-      _hats = map.values.where((v) => v).length;
-      return map;
-    } catch (_) {
-      _hats = 0;
-      return {};
-    }
+    final map = Map<String, bool>.from(jsonDecode(raw) as Map);
+    _hats = map.values.where((v) => v).length;
+    return map;
   }
 
-  /// Пишем и СРАЗУ читаем обратно. [JsonFile.write] глотает любую ошибку
-  /// молча, и без проверки шапка в интерфейсе «забрана», а после перезапуска
-  /// оказывается, что на диске её нет — вот он «прогресс сбрасывается».
+  /// Снимок позволяет объединить прогресс, записанный другим движком.
   Future<void> _save(Map<String, bool> data) async {
     final payload = jsonEncode(data);
-    await JsonFile.write(_fileKey, payload);
-    if (await JsonFile.read(_fileKey) != payload) {
-      throw Exception('Не удалось сохранить прогресс ивента');
-    }
-    _hats = data.values.where((v) => v).length;
+    final resolved = await JsonFile.writeWithSnapshot(
+      _fileKey,
+      payload,
+      _snapshot,
+    );
+    _snapshot = resolved;
+    _hats = Map<String, bool>.from(
+      jsonDecode(resolved) as Map,
+    ).values.where((v) => v).length;
   }
 
   /// Есть ли отметка за конкретную дату?
@@ -156,6 +155,7 @@ class NewYearEventService extends ChangeNotifier {
   /// Иначе остаётся дыра: тема выключена в интерфейсе, а флаг приза живёт, и
   /// на следующем старте подарок возвращается сам.
   Future<void> reset() async {
+    await _load();
     await _save(const {});
     try {
       await globalPrefs.setBool(_prizeKey, false);

@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/screens/nutrition_screen.dart';
-import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/nutrition_service.dart';
+import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/prefs.dart';
 import 'package:keramika/widgets/norm_sheet.dart';
 import 'package:keramika/widgets/nutrition_trends.dart';
@@ -27,6 +27,8 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
     tmpDir = await Directory.systemTemp.createTemp('keramika_nutrition_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
