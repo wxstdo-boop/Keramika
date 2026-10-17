@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:path_provider/path_provider.dart';
 import 'screens/splash_screen.dart';
+import 'screens/startup_recovery_screen.dart';
 import 'utils/android_settings.dart' show setSecureWindow;
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
@@ -197,6 +198,11 @@ void stopAutoExport() {
 /// JSON-строки, но миграция ещё не отработала (или старый билд в проекте).
 Future<Map<String, dynamic>> buildBackupPayload() async {
   final out = <String, dynamic>{};
+
+  final recoveryEnvelope = await JsonFile.exportRecoveryEnvelope();
+  if (recoveryEnvelope != null) {
+    out['keramika_key_recovery'] = recoveryEnvelope;
+  }
 
   Future<String?> readWithFallback(String key) async {
     final fromFile = await JsonFile.read(key);
@@ -700,6 +706,7 @@ Future<void> _predecodeSplashLogo() async {
 Future<_StartupState> _loadStartupState() async {
   // Инициализируем SharedPreferences ОДИН раз ДО всего.
   await initPrefs();
+  await JsonFile.initialize();
   // Режим плавающего окошка Ады переживает перезапуск приложения.
   // Окошко — внутренний пузырь (одинаково на web и Android): он рисуется
   aiFloating.value = globalPrefs.getBool('ai_floating') ?? false;
@@ -788,10 +795,26 @@ void main() async {
   // уведомления зависят от prefs, и этот порядок сохранён внутри
   // [_loadStartupState].
   late final _StartupState startup;
-  await Future.wait(<Future<void>>[
-    _predecodeSplashLogo(),
-    _loadStartupState().then((value) => startup = value),
-  ]);
+  try {
+    await Future.wait(<Future<void>>[
+      _predecodeSplashLogo(),
+      _loadStartupState().then((value) => startup = value),
+    ]);
+  } catch (error) {
+    if (error is! JsonFileException) rethrow;
+    debugPrint(
+      'Startup stopped before touching encrypted data: ${error.runtimeType}',
+    );
+    final preferredLanguage =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    final locale = switch (preferredLanguage) {
+      'ru' => const Locale('ru'),
+      'fr' => const Locale('fr'),
+      _ => const Locale('en'),
+    };
+    runApp(StartupRecoveryApp(locale: locale, diagnostic: error.message));
+    return;
+  }
   // Payload будильника читаем до первого кадра: от него зависит, что
   // станет домашним экраном (см. [_AlarmBootHost]).
   _alarmBootPayload = await _readAlarmBootPayload();
@@ -1919,7 +1942,9 @@ class _AlarmBootHostState extends State<_AlarmBootHost> {
     super.initState();
     _wakeScreenShowing = true;
     final id = widget.payload.substring('alarm:'.length);
-    _alarmFuture = AlarmService().load().then((_) => AlarmService().getById(id));
+    _alarmFuture = AlarmService().load().then(
+      (_) => AlarmService().getById(id),
+    );
   }
 
   @override

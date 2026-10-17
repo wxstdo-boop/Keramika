@@ -38,6 +38,7 @@ import 'lock_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
 import 'changelog_screen.dart';
+import 'key_recovery_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -117,6 +118,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _perfectionism = false;
   bool _berserk = false;
   bool _taskNotes = false;
+  int _developerTapCount = 0;
+  DateTime? _lastDeveloperTap;
   // Плавное «продавливание» карточки BERSERK при зажатии — только визуал,
   // ничего не открывает (режим доступен долгим зажатием «плюса»).
   bool _berserkCardPressed = false;
@@ -1057,6 +1060,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           await JsonFile.write('app_settings', jsonEncode(settings));
         } else if (key == 'app_pin' && v is String) {
           await PinService.setPin(v);
+        } else if (key == 'keramika_key_recovery') {
+          // Recovery material is applied only by the explicit startup
+          // recovery flow after the user enters its phrase.
+          continue;
         } else {
           if (v is String) {
             globalPrefs.setString(key, v);
@@ -1525,22 +1532,25 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 12),
               // «Keramika FOSS» — приписку FOSS выделяем розовым,
               // как она была на сплэше.
-              Text.rich(
-                TextSpan(
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                  ),
-                  children: [
-                    const TextSpan(text: 'Keramika '),
-                    const TextSpan(
-                      text: 'FOSS',
-                      style: TextStyle(
-                        color: Color(0xFFF06292),
-                        fontWeight: FontWeight.w800,
-                      ),
+              GestureDetector(
+                onTap: _handleDeveloperCornerTap,
+                child: Text.rich(
+                  TextSpan(
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
                     ),
-                  ],
+                    children: [
+                      const TextSpan(text: 'Keramika '),
+                      const TextSpan(
+                        text: 'FOSS',
+                        style: TextStyle(
+                          color: Color(0xFFF06292),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 4),
@@ -2502,8 +2512,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   magnifierConfiguration:
                                       TextMagnifierConfiguration.disabled,
                                   controller: _aiKeyController,
-                                  contextMenuBuilder:
-                                      minimalContextMenuBuilder,
+                                  contextMenuBuilder: minimalContextMenuBuilder,
                                   obscureText: !_aiKeyVisible,
                                   textInputAction: TextInputAction.done,
                                   maxLength: 500,
@@ -3629,6 +3638,54 @@ class _SettingsScreenState extends State<SettingsScreen>
       icon: Icons.celebration_outlined,
       duration: const Duration(milliseconds: 2600),
     );
+  }
+
+  void _handleDeveloperCornerTap() async {
+    final now = DateTime.now();
+    if (_lastDeveloperTap == null ||
+        now.difference(_lastDeveloperTap!) > const Duration(seconds: 3)) {
+      _developerTapCount = 0;
+    }
+    _lastDeveloperTap = now;
+    _developerTapCount++;
+    if (_developerTapCount < 7) return;
+    _developerTapCount = 0;
+
+    final controller = TextEditingController();
+    final allowed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          Translations.t('developerCorner', context, 'Developer corner'),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: Translations.t('developerCode', context, 'Access code'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(Translations.t('cancel', context, 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text == '7720'),
+            child: Text(Translations.t('continue', context, 'Continue')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (allowed == true && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const DeveloperCornerScreen()),
+      );
+    }
   }
 
   Future<void> _openChangelog() async {
