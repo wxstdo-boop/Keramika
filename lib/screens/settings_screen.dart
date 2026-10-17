@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
@@ -17,6 +18,7 @@ import '../services/settings_service.dart';
 import '../services/timer_service.dart';
 import '../services/prefs.dart';
 import '../services/json_file.dart';
+import '../utils/wide_dash_formatter.dart';
 import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../services/nutrition_service.dart';
@@ -27,6 +29,7 @@ import '../utils/context_menu.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_circle_toggle.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/confetti_burst.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/smooth_keyboard_body.dart';
@@ -232,6 +235,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         // Если время утреннего/вечернего отчёта уже наступило — пишем
         // в чат сразу же, не дожидаясь следующего дня.
         final delivered = await AiGuideService.maybeDeliverAdaReports(lang);
+        if (!mounted) return;
         if (delivered.isEmpty) {
           showBeautifulSnackBar(
             context,
@@ -317,7 +321,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       barrierLabel: '',
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 340),
-      pageBuilder: (ctx, _, __) {
+      pageBuilder: (ctx, _, _) {
         final theme = Theme.of(ctx);
         final cs = theme.colorScheme;
         final codes = ['system', 'en', 'ru', 'fr'];
@@ -447,7 +451,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       barrierLabel: '',
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 340),
-      pageBuilder: (ctx, _, __) {
+      pageBuilder: (ctx, _, _) {
         final theme = Theme.of(ctx);
         final cs = theme.colorScheme;
         final fonts = [
@@ -860,13 +864,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     final out = await buildBackupPayload();
     final bytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(out));
     systemUiActive = true;
-    final path = await FilePicker.platform.saveFile(
+    // file_picker 13: статический `saveFile` возвращает `Uri?`, а не путь
+    // строкой — нам нужен только факт успешного сохранения.
+    final savedUri = await FilePicker.saveFile(
       dialogTitle: exportTitle,
       fileName: 'keramika-backup.json',
       bytes: Uint8List.fromList(bytes),
     );
     systemUiActive = false;
-    if (path != null && mounted) {
+    if (savedUri != null && mounted) {
       showBeautifulSnackBar(context, message: exportDoneText);
     }
   }
@@ -974,13 +980,13 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _importData() async {
     systemUiActive = true;
-    final result = await FilePicker.platform.pickFiles(
+    final picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
     systemUiActive = false;
-    if (result == null || result.files.single.path == null || !mounted) return;
-    if (!result.files.single.name.toLowerCase().endsWith('.json')) {
+    if (picked?.path == null || !mounted) return;
+    if (!picked!.name.toLowerCase().endsWith('.json')) {
       if (mounted) {
         showBeautifulSnackBar(
           context,
@@ -996,7 +1002,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
     try {
-      final content = await File(result.files.single.path!).readAsString();
+      final content = await File(picked.path!).readAsString();
       final decoded = jsonDecode(content) as Map<String, dynamic>;
       final serviceKeys = <String>{
         'habits',
@@ -1090,6 +1096,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       // снекбар «Настройки импортированы» показываем через корневой
       // navigatorKey уже ПОСЛЕ пересоздания — он плавно выезжает и плавно
       // уходит на новом дереве.
+      if (!mounted) return;
       await KeramikaApp.of(context).refreshApp();
       final rootCtx = navigatorKey.currentContext;
       if (rootCtx != null && rootCtx.mounted) {
@@ -2124,6 +2131,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ctx,
                     );
                     final opened = await openAppSettingsAndroid();
+                    if (!ctx.mounted) return;
                     if (opened) {
                       showBeautifulSnackBar(ctx, message: batteryText);
                     } else {
@@ -2161,7 +2169,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     final ctx = context;
                     final text = Translations.t('settingsCantOpen', ctx);
                     final opened = await openAutostartSettings();
-                    if (!opened && mounted) {
+                    if (!opened && ctx.mounted) {
                       showBeautifulSnackBar(
                         ctx,
                         message: text,
@@ -2196,7 +2204,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     final ctx = context;
                     final text = Translations.t('settingsCantOpen', ctx);
                     final opened = await openFullScreenNotifSettings();
-                    if (!opened && mounted) {
+                    if (!opened && ctx.mounted) {
                       showBeautifulSnackBar(
                         ctx,
                         message: text,
@@ -2234,13 +2242,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                   'permission_warning_dismissed',
                   false,
                 );
-                if (mounted) {
+                if (context.mounted) {
                   showBeautifulSnackBar(
                     context,
                     message: Translations.t('warningsResetDone', context),
                   );
                 }
-                if (mounted) {
+                if (context.mounted) {
                   KeramikaApp.of(context).refreshApp();
                 }
               },
@@ -2483,61 +2491,73 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       curve: Curves.easeOutCubic,
                                     ),
                                   ),
-                              child: TextField(
-                                cursorOpacityAnimates: true,
-                                magnifierConfiguration:
-                                    TextMagnifierConfiguration.disabled,
+                              child: SmoothTyping(
                                 controller: _aiKeyController,
-                                contextMenuBuilder: minimalContextMenuBuilder,
-                                obscureText: !_aiKeyVisible,
-                                textInputAction: TextInputAction.done,
-                                maxLength: 500,
-                                enableSuggestions: false,
-                                autocorrect: false,
-                                maxLines: 1,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  counterText: '',
-                                  hintText:
-                                      'Вставь ключ Poolside, Agnes AI или Zen',
-                                  suffixIcon: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 220),
-                                    switchInCurve: Curves.easeOutCubic,
-                                    switchOutCurve: Curves.easeInCubic,
-                                    transitionBuilder: (child, animation) =>
-                                        FadeTransition(
-                                          opacity: animation,
-                                          child: ScaleTransition(
-                                            scale: animation,
-                                            child: child,
+                                // Ключ, скрытый «звёздочками», рисует само поле:
+                                // по точкам анимация бессмысленна.
+                                enabled: _aiKeyVisible,
+                                builder: (style) => TextField(
+                                  style: style,
+                                  cursorOpacityAnimates: true,
+                                  magnifierConfiguration:
+                                      TextMagnifierConfiguration.disabled,
+                                  controller: _aiKeyController,
+                                  contextMenuBuilder:
+                                      minimalContextMenuBuilder,
+                                  obscureText: !_aiKeyVisible,
+                                  textInputAction: TextInputAction.done,
+                                  maxLength: 500,
+                                  inputFormatters: [WideDashFormatter()],
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  maxLines: 1,
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    counterText: '',
+                                    hintText:
+                                        'Вставь ключ Poolside, Agnes AI или Zen',
+                                    suffixIcon: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 220,
+                                      ),
+                                      switchInCurve: Curves.easeOutCubic,
+                                      switchOutCurve: Curves.easeInCubic,
+                                      transitionBuilder: (child, animation) =>
+                                          FadeTransition(
+                                            opacity: animation,
+                                            child: ScaleTransition(
+                                              scale: animation,
+                                              child: child,
+                                            ),
                                           ),
+                                      child: IconButton(
+                                        key: ValueKey(
+                                          'ai_key_eye_$_aiKeyVisible',
                                         ),
-                                    child: IconButton(
-                                      key: ValueKey(
-                                        'ai_key_eye_$_aiKeyVisible',
+                                        icon: Icon(
+                                          _aiKeyVisible
+                                              ? Icons.visibility_off_outlined
+                                              : Icons.visibility_outlined,
+                                          size: 20,
+                                        ),
+                                        onPressed: () {
+                                          setState(
+                                            () =>
+                                                _aiKeyVisible = !_aiKeyVisible,
+                                          );
+                                          // Мягкий «перелив» текста ключа.
+                                          _keyPulse.forward(from: 0);
+                                        },
                                       ),
-                                      icon: Icon(
-                                        _aiKeyVisible
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                        size: 20,
-                                      ),
-                                      onPressed: () {
-                                        setState(
-                                          () => _aiKeyVisible = !_aiKeyVisible,
-                                        );
-                                        // Мягкий «перелив» текста ключа.
-                                        _keyPulse.forward(from: 0);
-                                      },
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
                                     ),
                                   ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
+                                  onChanged: (v) => _aiKey = v,
+                                  onSubmitted: (v) =>
+                                      SettingsService.saveAiKey(v),
                                 ),
-                                onChanged: (v) => _aiKey = v,
-                                onSubmitted: (v) =>
-                                    SettingsService.saveAiKey(v),
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -2653,7 +2673,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     await Future.delayed(const Duration(milliseconds: 1500));
                     await player.stop();
                   } catch (_) {}
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   player.dispose();
                   showBeautifulSnackBar(context, message: played);
                 },
@@ -2889,6 +2909,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             Translations.settingsOf(context),
             overflow: TextOverflow.ellipsis,
           ),
+          // Задизайненный «Назад» (тултип), а не голый системный стрелочный —
+          // как в остальных экранах.
+          leading: const BackButtonTooltip(),
           centerTitle: true,
           backgroundColor: Colors.transparent, // Make AppBar transparent
           elevation: 0, // Remove shadow
@@ -3298,20 +3321,29 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(Translations.t('devMode', context)),
-        content: TextField(
-          cursorOpacityAnimates: true,
-          magnifierConfiguration: TextMagnifierConfiguration.disabled,
+        content: SmoothTyping(
           controller: ctrl,
-          contextMenuBuilder: minimalContextMenuBuilder,
-          keyboardType: TextInputType.number,
-          obscureText: true,
-          maxLength: 50,
-          enableSuggestions: false,
-          autocorrect: false,
-          buildCounter: smoothCharCounterBuilder,
-          decoration: InputDecoration(
-            hintText: '7720',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+          // Пароль под «звёздочками» рисует само поле.
+          enabled: false,
+          builder: (style) => TextField(
+            style: style,
+            cursorOpacityAnimates: true,
+            magnifierConfiguration: TextMagnifierConfiguration.disabled,
+            controller: ctrl,
+            contextMenuBuilder: minimalContextMenuBuilder,
+            keyboardType: TextInputType.number,
+            obscureText: true,
+            maxLength: 50,
+            inputFormatters: [WideDashFormatter()],
+            enableSuggestions: false,
+            autocorrect: false,
+            buildCounter: smoothCharCounterBuilder,
+            decoration: InputDecoration(
+              hintText: '7720',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
           ),
         ),
         actions: [

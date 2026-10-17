@@ -1,0 +1,46 @@
+name: Идея
+description: Предложение по новой функции или улучшению
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Идеи приветствуются. Опиши не только «что», но и «зачем» —
+        так проще понять, стоит ли браться.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему это решает
+      description: Опиши ситуацию, в которой текущих возможностей не хватает.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Что предлагаешь
+      description: Как это могло бы выглядеть. Скриншот или описание интерфейса — идеально.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Рассмотренные варианты
+      description: Какие способы решения ты уже пробовал или обдумывал?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Раздел
+      multiple: true
+      options:
+        - Будильники
+        - Задачи
+        - Привычки
+        - Питание
+        - Ада (ИИ)
+        - Интерфейс и анимации
+        - Настройки
+        - Другое

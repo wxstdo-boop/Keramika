@@ -7,7 +7,9 @@ import 'package:audioplayers/audioplayers.dart';
 import '../models/wake_task.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_keyboard_body.dart';
+import '../utils/wide_dash_formatter.dart';
 
 class WakeTaskScreen extends StatefulWidget {
   final WakeUpTask taskType;
@@ -47,6 +49,12 @@ class _WakeTaskScreenState extends State<WakeTaskScreen>
   /// карточка в это же время меняет свою. Поэтому смену содержимого
   /// запускаем только когда `viewInsets.bottom` уже вернулся к нулю.
   bool _solvedPending = false;
+
+  /// Защита от двойного закрытия: авто-закрытие (1 с после решения) и
+  /// ручной «Выключить» оба зовут [_finish]. Без гравы два `pop(true)`
+  /// летят на уже снятый маршрут — «при закрытии задачи будильника
+  /// вылетает» (Navigator: pop on a route that is no longer current).
+  bool _finished = false;
   Timer? _flipGuard;
 
   /// Ключ слоя задачи — по нему меряем её высоту (см. [_challengeH]).
@@ -186,6 +194,13 @@ class _WakeTaskScreenState extends State<WakeTaskScreen>
   }
 
   Future<void> _finish() async {
+    // Однократное закрытие: авто-закрытие (1 с после решения) и ручной
+    // «Выключить» могут прийти одновременно — второй вызов гасим, иначе
+    // двойной pop/stopAlarmSound роняет экран («вылетает при закрытии»).
+    if (_finished) return;
+    _finished = true;
+    _flipGuard?.cancel();
+    _flipGuard = null;
     // Плавное затухание вместо резкого stop — без «щелчка» на конце.
     try {
       for (var i = 10; i > 0; i--) {
@@ -593,31 +608,36 @@ class _MathChallengeState extends State<_MathChallenge> {
           const SizedBox(height: 24),
           SizedBox(
             width: 200,
-            child: TextField(
-              cursorOpacityAnimates: true,
-              magnifierConfiguration: TextMagnifierConfiguration.disabled,
+            child: SmoothTyping(
               controller: _ctrl,
-              // Ответ набираем с клавиатуры: выделение, копирование и вставка
-              // в полях задач пробуждения запрещены.
-              enableInteractiveSelection: false,
-              contextMenuBuilder: noContextMenuBuilder,
-              keyboardType: TextInputType.number,
-              // Потолок в 10 цифр без счётчика под полем: `maxLength` рисует
-              // Material'овский «n/10», который и наезжал, и портил вид.
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
-                LengthLimitingTextInputFormatter(10),
-              ],
-              textAlign: TextAlign.center,
               style: theme.textTheme.headlineSmall,
-              decoration: InputDecoration(
-                hintText: '?',
-                // `errorText` здесь убран: Material вставляет подпись ошибки
-                // в макет поля, и поле вместе с кнопкой под ним каждый раз
-                // перескакивало на высоту ошибки.
-                border: const OutlineInputBorder(),
+              builder: (style) => TextField(
+                style: style,
+                cursorOpacityAnimates: true,
+                magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                controller: _ctrl,
+                // Ответ набираем с клавиатуры: выделение, копирование и вставка
+                // в полях задач пробуждения запрещены.
+                enableInteractiveSelection: false,
+                contextMenuBuilder: noContextMenuBuilder,
+                keyboardType: TextInputType.number,
+                // Потолок в 10 цифр без счётчика под полем: `maxLength` рисует
+                // Material'овский «n/10», который и наезжал, и портил вид.
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
+                  LengthLimitingTextInputFormatter(10),
+                  WideDashFormatter(),
+                ],
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  hintText: '?',
+                  // `errorText` здесь убран: Material вставляет подпись ошибки
+                  // в макет поля, и поле вместе с кнопкой под ним каждый раз
+                  // перескакивало на высоту ошибки.
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _check(),
               ),
-              onSubmitted: (_) => _check(),
             ),
           ),
           _WrongLine(show: _wrong),
@@ -1012,37 +1032,43 @@ class _MemoryChallengeState extends State<_MemoryChallenge> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Center(
-                                    child: TextField(
-                                      cursorOpacityAnimates: true,
-                                      magnifierConfiguration:
-                                          TextMagnifierConfiguration.disabled,
+                                    child: SmoothTyping(
                                       controller: _ctrls[i],
-                                      // Цифру набираем с клавиатуры: вставка и
-                                      // копирование в полях задачи запрещены.
-                                      enableInteractiveSelection: false,
-                                      contextMenuBuilder: noContextMenuBuilder,
-                                      focusNode: _focus[i],
-                                      keyboardType: TextInputType.number,
-                                      textAlign: TextAlign.center,
-                                      textAlignVertical:
-                                          TextAlignVertical.center,
                                       style: theme.textTheme.titleLarge,
-                                      maxLength: 1,
-                                      enableSuggestions: false,
-                                      autocorrect: false,
-                                      decoration: const InputDecoration(
-                                        counterText: '',
-                                        border: InputBorder.none,
-                                        contentPadding: EdgeInsets.zero,
-                                        isCollapsed: true,
+                                      builder: (style) => TextField(
+                                        style: style,
+                                        cursorOpacityAnimates: true,
+                                        magnifierConfiguration:
+                                            TextMagnifierConfiguration.disabled,
+                                        controller: _ctrls[i],
+                                        // Цифру набираем с клавиатуры: вставка и
+                                        // копирование в полях задачи запрещены.
+                                        enableInteractiveSelection: false,
+                                        contextMenuBuilder: noContextMenuBuilder,
+                                        focusNode: _focus[i],
+                                        keyboardType: TextInputType.number,
+                                        textAlign: TextAlign.center,
+                                        textAlignVertical:
+                                            TextAlignVertical.center,
+                                        maxLength: 1,
+                                        inputFormatters: [WideDashFormatter()],
+                                        enableSuggestions: false,
+                                        autocorrect: false,
+                                        decoration: const InputDecoration(
+                                          counterText: '',
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.zero,
+                                          isCollapsed: true,
+                                        ),
+                                        onChanged: (v) {
+                                          if (v.isNotEmpty &&
+                                              i < _length - 1) {
+                                            _focus[i + 1].requestFocus();
+                                          } else if (v.isEmpty && i > 0) {
+                                            _focus[i - 1].requestFocus();
+                                          }
+                                        },
                                       ),
-                                      onChanged: (v) {
-                                        if (v.isNotEmpty && i < _length - 1) {
-                                          _focus[i + 1].requestFocus();
-                                        } else if (v.isEmpty && i > 0) {
-                                          _focus[i - 1].requestFocus();
-                                        }
-                                      },
                                     ),
                                   ),
                                 ),

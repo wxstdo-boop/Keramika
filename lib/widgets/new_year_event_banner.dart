@@ -201,6 +201,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     } catch (_) {
       // Запись не легла на диск. Шапку НЕ отмечаем забранной: иначе она
       // горит в интерфейсе, а после перезапуска исчезает.
+      if (!mounted) return;
       _say(
         Translations.t('nySaveFailed', context, 'Не удалось сохранить'),
         Icons.error_outline,
@@ -223,6 +224,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     } catch (_) {
       // Опять же: без подтверждения не верим, что записалось. Иначе счётчик
       // в окне переехал бы, а после перезапуска встал на место.
+      if (!mounted) return;
       _say(
         Translations.t('nySaveFailed', context, 'Не удалось сохранить'),
         Icons.error_outline,
@@ -251,6 +253,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
       // Флаг не лег на диск: тему НЕ включаем, иначе в этом окне она бы
       // появилась, а после перезапуска подарок исчез бы без следа.
       if (announce) {
+        if (!mounted) return;
         _say(
           Translations.t('nySaveFailed', context, 'Не удалось сохранить'),
           Icons.error_outline,
@@ -1404,7 +1407,7 @@ class _SwapBox extends StatelessWidget {
         switchOutCurve: Curves.easeOutQuad,
         layoutBuilder: (current, previous) => Stack(
           alignment: align,
-          children: <Widget>[...previous, if (current != null) current],
+          children: <Widget>[...previous, ?current],
         ),
         transitionBuilder: (child, anim) {
           // Уходящая строка доезжает до нуля ВВЕРХ, откуда пришла новая.

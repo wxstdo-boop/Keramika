@@ -12,11 +12,14 @@ import '../services/prefs.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
 import '../utils/snackbar.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/sliding_picker.dart';
 import '../widgets/manual_time_dialog.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_keyboard_body.dart';
 
 class AddAlarmScreen extends StatefulWidget {
@@ -51,7 +54,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     if (widget.existing != null) {
       _time = widget.existing!.time;
       _repeatDays = List.from(widget.existing!.repeatDays);
-      _labelCtrl = TextEditingController(text: widget.existing!.label);
+      _labelCtrl = WideDashController(text: widget.existing!.label);
       _taskType = widget.existing!.taskType;
       _vibrate = widget.existing!.vibrate;
       _soundName = widget.existing!.soundName;
@@ -63,7 +66,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
         minute: DateTime.now().minute,
       );
       _repeatDays = [];
-      _labelCtrl = TextEditingController();
+      _labelCtrl = WideDashController();
       _taskType = WakeUpTask.none;
       _vibrate = true;
       _soundName = 'Default';
@@ -150,8 +153,24 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
       await player.stop();
       if (seq != _playSeq) return;
       await player.setVolume(1.0);
-      if (name == 'Custom' && _customSoundPath != null) {
-        await player.play(DeviceFileSource(_customSoundPath!));
+      if (name == 'Custom') {
+        // Свой файл — только если он реально читается. Без проверки
+        // DeviceFileSource кидал бы исключение и тест проигрывал тишину.
+        final fallback = _builtinSource('Default') ?? AssetSource('sounds/default.wav');
+        if (_customSoundPath != null) {
+          try {
+            final f = File(_customSoundPath!);
+            if (f.existsSync() && f.lengthSync() > 0) {
+              await player.play(DeviceFileSource(_customSoundPath!));
+            } else {
+              await player.play(fallback);
+            }
+          } catch (_) {
+            await player.play(fallback);
+          }
+        } else {
+          await player.play(fallback);
+        }
       } else {
         final source = _builtinSource(name);
         if (source != null) {
@@ -255,21 +274,24 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
     // Системный пикер на время открытия — отключаем PIN-блюр, иначе
     // экран «сереет» до появления выбора файлов.
     systemUiActive = true;
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    // file_picker 13: статические методы вместо `platform`, одиночный выбор —
+    // `pickFile` (отдаёт `PlatformFile?`, при отмене null).
+    final picked = await FilePicker.pickFile(type: FileType.audio);
     systemUiActive = false;
-    final picked = result?.files.single;
     if (picked?.path == null) return;
     final srcPath = picked!.path!;
-    // Файл обязан пережить чистку кэша и удаление источника: звонок играет
-    // по сохранённому пути, а file_picker отдаёт либо путь общего
-    // хранилища (на Android 13+ MediaPlayer без READ_MEDIA_AUDIO его не
-    // читает), либо свой кэш, который система стирает. Молча копируем в
-    // приватную папку приложения — и храним уже этот путь.
+    // Звонок играет по сохранённому пути, который переживёт очистку кэша и
+    // удаление источника. file_picker отдаёт либо путь общего хранилища
+    // (на Android 13+ MediaPlayer/FileDataSource без READ_MEDIA_AUDIO не
+    // читает), либо кэш, который система стирает. Поэтому всегда копируем в
+    // приватную папку приложения и храним именно её путь. Если копия не
+    // удалась — не оставляем нечитаемый путь: иначе будильник будет звонеть
+    // системным файлом, а тест — тихой.
     try {
       final directory = await getApplicationDocumentsDirectory();
       final soundsDir = Directory('${directory.path}/sounds');
       await soundsDir.create(recursive: true);
-      final ext = picked.extension?.isNotEmpty == true ? picked.extension! : 'mp3';
+      final ext = picked.extension?.isNotEmpty == true ? picked.extension! : 'wav';
       final newPath =
           '${soundsDir.path}/custom_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await File(srcPath).copy(newPath);
@@ -281,36 +303,58 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
       }
       return;
     } catch (_) {
-      // Копия не удалась — оставляем исходный путь: до очистки кэша он
-      // ещё playable, тишина была бы хуже.
-    }
-    if (mounted) {
-      setState(() {
-        _customSoundPath = srcPath;
-        _soundName = 'Custom';
-      });
+      // Копия не удалась — прерываем: путь, который оставим без копии,
+      // нельзя прочитать на целевом устройстве (content-URI или
+      // внешний файл), и иначе звук проигрывается не своим.
+      if (mounted) {
+        showBeautifulSnackBar(
+          context,
+          message: Translations.t(
+            'pickCustomFailed',
+            context,
+            'Could not load the selected sound',
+          ),
+          icon: Icons.error_outline,
+          iconColor: Colors.red,
+        );
+      }
     }
   }
 
   void _renameCustomSound() {
     if (_customSoundPath == null) return;
     final path = _customSoundPath!;
-    final ctrl = TextEditingController(text: path.split('/').last);
+    // Показываем ТОЛЬКО базовое имя (без расширения); расширение берём из
+    // исходного файла. Не добавляем постоянно ".wav", иначе вдвоём получалось
+    // ".mp3.wav" / ".wav.wav" — имя менялось, а формат файла сломался.
+    final fileName = path.split('/').last;
+    final ext = fileName.contains('.')
+        ? '.${fileName.split('.').last}'
+        : '.wav';
+    final baseName = fileName.contains('.')
+        ? fileName.substring(0, fileName.length - ext.length)
+        : fileName;
+    final ctrl = WideDashController(text: baseName);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(Translations.t('renameSound', context, 'Rename sound')),
-        content: TextField(
-          cursorOpacityAnimates: true,
-          magnifierConfiguration: TextMagnifierConfiguration.disabled,
+        content: SmoothTyping(
           controller: ctrl,
-          contextMenuBuilder: minimalContextMenuBuilder,
-          maxLength: 20,
-          enableSuggestions: false,
-          autocorrect: false,
-          buildCounter: smoothCharCounterBuilder,
-          decoration: InputDecoration(
-            labelText: Translations.t('soundName', context),
+          builder: (style) => TextField(
+            style: style,
+            cursorOpacityAnimates: true,
+            magnifierConfiguration: TextMagnifierConfiguration.disabled,
+            controller: ctrl,
+            contextMenuBuilder: minimalContextMenuBuilder,
+            maxLength: 20,
+            inputFormatters: [WideDashFormatter()],
+            enableSuggestions: false,
+            autocorrect: false,
+            buildCounter: smoothCharCounterBuilder,
+            decoration: InputDecoration(
+              labelText: Translations.t('soundName', context),
+            ),
           ),
         ),
         actions: [
@@ -320,8 +364,16 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
           ),
           TextButton(
             onPressed: () async {
-              final newName = ctrl.text.trim();
+              final raw = ctrl.text.trim();
+              // Разрешаем вводить только имя: любое расширение, которое
+              // пользователь напишет, отбрасываем, чтобы формат файла
+              // оставался неизменным (исходный ext).
+              final newName = raw.contains('.')
+                  ? raw.substring(0, raw.lastIndexOf('.'))
+                  : raw;
               if (newName.isEmpty || newName.length > 20) return;
+              // Нельзя ввести имя каталога или любые разделители.
+              if (newName.contains('/') || newName.contains('\\')) return;
               final directory = await getApplicationDocumentsDirectory();
               final soundsDir = Directory('${directory.path}/sounds');
               try {
@@ -329,8 +381,11 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                 // в «фолбэк» (имя не менялось, английский снекбар).
                 await soundsDir.create(recursive: true);
                 final oldFile = File(path);
-                final newPath = '${soundsDir.path}/$newName.wav';
-                if (oldFile.existsSync() &&
+                final newPath = '${soundsDir.path}/$newName$ext';
+                if (newPath == path) {
+                  // Имя не изменилось — ничего копировать/переименовывать не
+                  // нужно (избегаем копирования файла на себя).
+                } else if (oldFile.existsSync() &&
                     oldFile.parent.path == soundsDir.path) {
                   await oldFile.rename(newPath);
                 } else if (oldFile.existsSync()) {
@@ -338,6 +393,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   // в документы приложения, чтобы имя реально сохранилось.
                   await oldFile.copy(newPath);
                 }
+                if (!mounted || !ctx.mounted) return;
                 setState(() {
                   _customSoundPath = newPath;
                   _soundName = 'Custom';
@@ -352,6 +408,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   ),
                 );
               } catch (e) {
+                if (!mounted || !ctx.mounted) return;
                 Navigator.pop(ctx);
                 showBeautifulSnackBar(
                   context,
@@ -625,26 +682,31 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: TextField(
-                      cursorOpacityAnimates: true,
-                      magnifierConfiguration:
-                          TextMagnifierConfiguration.disabled,
+                    child: SmoothTyping(
                       controller: _labelCtrl,
-                      contextMenuBuilder: minimalContextMenuBuilder,
-                      maxLength: 100,
-                      enableSuggestions: false,
-                      autocorrect: false,
-                      maxLines: 2,
-                      buildCounter: smoothCharCounterBuilder,
-                      decoration: InputDecoration(
-                        labelText: Translations.labelOf(context),
-                        prefixIcon: const Icon(Icons.label_outline),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
+                      builder: (style) => TextField(
+                        style: style,
+                        cursorOpacityAnimates: true,
+                        magnifierConfiguration:
+                            TextMagnifierConfiguration.disabled,
+                        controller: _labelCtrl,
+                        contextMenuBuilder: minimalContextMenuBuilder,
+                        maxLength: 100,
+                        inputFormatters: [WideDashFormatter()],
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        maxLines: 2,
+                        buildCounter: smoothCharCounterBuilder,
+                        decoration: InputDecoration(
+                          labelText: Translations.labelOf(context),
+                          prefixIcon: const Icon(Icons.label_outline),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                       ),
                     ),
@@ -698,7 +760,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                 alignment: Alignment.center,
                                 children: <Widget>[
                                   ...previousChildren,
-                                  if (currentChild != null) currentChild,
+                                  ?currentChild,
                                 ],
                               ),
                           switchInCurve: Curves.easeOutCubic,

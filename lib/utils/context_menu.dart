@@ -41,7 +41,7 @@ void _toggleItalic(EditableTextState editableTextState) {
   } else {
     controller.value = TextEditingValue(
       text:
-          text.substring(0, start) + '*' + selected + '*' + text.substring(end),
+          '${text.substring(0, start)}*$selected*${text.substring(end)}',
       selection: TextSelection(baseOffset: start, extentOffset: end + 2),
     );
   }

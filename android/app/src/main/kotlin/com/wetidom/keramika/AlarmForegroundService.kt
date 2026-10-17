@@ -5,7 +5,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -46,6 +48,30 @@ class AlarmForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        // Регистрируем приёмник остановки: так при остановке остановятся ВСЕ
+        // одновременно запущенные экземпляры сервиса, а не только один
+        // (ctx.stopService() с простым Intent остановил бы не более одного).
+        val i = StopReceiver()
+        stopReceiver = i
+        try {
+            registerReceiver(i, IntentFilter(ACTION_STOP))
+        } catch (_: Exception) {}
+    }
+
+
+    private var stopReceiver: StopReceiver? = null
+
+    private inner class StopReceiver : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            if (intent.action == ACTION_STOP) {
+                stopEverything()
+                stopSelf()
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopEverything()
@@ -80,7 +106,12 @@ class AlarmForegroundService : Service() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Звонок будильника", NotificationManager.IMPORTANCE_LOW).apply {
+                // FIX (дубли в шторке): канал FGS держит сервис звонка живым,
+                // но LOW + ongoing делает вторую карточку («Звонок будильника»)
+                // рядом с основной (из AlarmReceiver). MIN убирает badge и
+                // звук у FGS-таблички — сервис и звук MediaPlayer от этого
+                // не зависят.
+                NotificationChannel(CHANNEL, "Звонок будильника", NotificationManager.IMPORTANCE_MIN).apply {
                     description = "Непрерывный сигнал будильника"
                     setSound(null, null)
                     enableVibration(false)
@@ -268,8 +299,20 @@ class AlarmForegroundService : Service() {
             ringtone?.stop()
         } catch (_: Exception) {}
         ringtone = null
+        // FIX (вибрация не гаснет на API 31+): отменять вибрацию надо тем же
+        // экземпляром, на котором она запускалась. startVibrationLoop на API 31+
+        // крутит её через VibratorManager.defaultVibrator, а cancel через
+        // deprecated VIBRATOR_SERVICE на мультивибраторных HyperOS/MIUI брал
+        // «другой» мотор — и циклическая вибрация (postDelayed, VIBRATE_CYCLE_MS)
+        // продолжала гудеть до MAX_RING_MS после выключения будильника.
+        @Suppress("DEPRECATION")
         try {
-            (getSystemService(VIBRATOR_SERVICE) as? Vibrator)?.cancel()
+            val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                getSystemService(VIBRATOR_SERVICE) as Vibrator
+            }
+            vib.cancel()
         } catch (_: Exception) {}
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
@@ -282,6 +325,9 @@ class AlarmForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        try {
+            stopReceiver?.let { unregisterReceiver(it) }
+        } catch (_: Exception) {}
         stopEverything()
         super.onDestroy()
     }
@@ -342,19 +388,19 @@ class AlarmForegroundService : Service() {
         /**
          * Остановить звонок (после решения задачи пробуждения / отмены).
          *
-         * Именно [Context.stopService], а НЕ старт с `ACTION_STOP`:
-         * `startForegroundService()` обязан привести к вызову
-         * `startForeground()` в течение ~10 с, а обработчик остановки его не
-         * делает — система поднимала
-         * `ForegroundServiceDidNotStartInTimeException` и убивала процесс
-         * прямо на закрытии экрана задачи (замер logcat Redmi Note 12: стоп
-         * шёл из `MainActivity` по `stopAlarmSound`).
-         * `stopService()` ничего не требует: сервис получает [onDestroy],
-         * где [stopEverything] гасит звук, вибрацию и wake-lock.
+         * Всё новое — широковещательная остановка. [ctx.stopService] с
+         * простым Intent остановит НЕ БОЛЕЕ одного из запущенных
+         * экземпляров сервиса, и тогда второй звонок продолжит проигрываться
+         * после первого (именно это было в описанной проблеме). Отправляем
+         * [ACTION_STOP] широковещательно; каждый зарегистрированный в
+         * сервисе экземпляр захватит его и вызовет [stopEverything] + [stopSelf].
          */
         fun stop(ctx: Context) {
             try {
-                ctx.stopService(Intent(ctx, AlarmForegroundService::class.java))
+                val i = Intent(ctx, AlarmForegroundService::class.java).apply {
+                    action = ACTION_STOP
+                }
+                ctx.sendBroadcast(i)
             } catch (_: Exception) {}
         }
     }

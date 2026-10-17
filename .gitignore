@@ -33,6 +33,25 @@ android/app/*.jks
 # Keramika local build artifacts
 build_logs/
 
+# Служебные каталоги внешних инструментов на машине разработчика.
+# К приложению отношения не имеют — в репозиторий не едут.
+.freebuff/
+.workbuddy-ai/
+.agnes/
+
+# Локальные worktree'ы и обучающая выборка Ады (см. tools/build_ada_dataset.py)
+worktrees/
+data/
+
+# Kotlin/Gradle локальный кэш
+android/.kotlin/
+
+# Бэкапы конфигов
+*.bak
+
+# Служебные файлы Flutter CLI
+.flutter_tool_state
+
 # Keramika локальные черновики: одноразовые скрипты правок, логи прогонов,
 # дампы adb и собранные APK. Лежат в корне и к коду приложения не относятся —
 # в репозиторий не едут. (tools/ и lib/ с живым кодом — НЕ здесь.)
@@ -44,8 +63,5 @@ build_logs/
 /*.pid
 /*.jpeg
 /*.jpg
-.agnes/
-data/
-worktrees/
 tools/_*/
 $null

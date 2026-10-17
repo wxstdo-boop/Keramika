@@ -26,13 +26,14 @@ class _SplashScreenState extends State<SplashScreen>
   /// приходился ровно на смену экрана.
   late final CurvedAnimation _shine;
 
-  /// Ход левитации стикмана под подписью. Отдельный бесшовный цикл, а не
-  /// часть мастер-контроллера: сплэш живёт 2200 мс, и за это время обязан
-  /// успеть показаться хотя бы один полный вздох вверх-вниз.
-  late final CurvedAnimation _stickmanFade;
 
   /// Левитирующий человечек — независимый бесшовный цикл.
   late final AnimationController _float;
+
+  /// Финальное растворение человечка: в последние 20 % хода мастер-контроллера
+  /// (0.80→1.0) его альфа идёт 1→0 — иконка исчезает ровно в момент, когда
+  /// сплеш уходит на контент, а не в начале.
+  late final CurvedAnimation _badgeExit;
 
   Timer? _splashTimer;
 
@@ -69,20 +70,23 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
     _controller.forward();
-    // Человечек исчезает В КОНЦЕ — с 90% до 100% (1800→2000 мс),
-    // то есть сразу перед переходом на главную. Весь контент исчезает почти
-    // одновременно, затем экран плавно меняется.
-    _stickmanFade = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.90, 1.0, curve: Curves.easeInOutCubic),
-    );
-    // Левитация — независимый бесшовный цикл: 1600 мс на полный «вздох»
-    // вверх-вниз, за 2200 мс сплэша помещается больше цикла, поэтому
-    // человек успевает и подняться, и опуститься, а не застыть на середине.
+    // Левитация — бесконечный цикл (repeat()): пейнтер рисует
+    // sin(2π·p), поэтому на стыке p=1→0 значение И скорость совпадают —
+    // ни замирания в конце, ни рывка при развороте нет.
+    // Ровно один «вздох» левитации за ВСЁ время сплеша (2200 мс = таймер
+    // ухода), бесшовно через sin(2π·p) в пейнтере. Ни замирания в конце,
+    // ни рывка: человечек доигрывает цикл именно к моменту, когда экран уходит.
     _float = AnimationController(
-      duration: const Duration(milliseconds: 1600),
+      duration: const Duration(milliseconds: 2200),
       vsync: this,
     )..repeat();
+    // Человечек доигрывает левитацию и затем мягко растворяется: за
+    // последние ~400 мс (t 0.80→1.0) альфа 1→0. Таким образом он живёт
+    // весь сплэш и исчезает в КОНЦЕ, когда экран уже уходит.
+    _badgeExit = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.80, 1.0, curve: Curves.easeIn),
+    );
     // Заранее прогреваем кэш логотипа: первый кадр после сплэша
     // не «мигает» и не показывает пустое место. PrcacheImage сам
     // отработает, когда у него будет MediaQuery.
@@ -111,7 +115,7 @@ class _SplashScreenState extends State<SplashScreen>
     // его dispose() идёт ДО dispose родителя. Отдельного таймера старта
     // больше нет — он и ронял smoke-тест на «A Timer is still pending».
     _shine.dispose();
-    _stickmanFade.dispose();
+    _badgeExit.dispose();
     _float.dispose();
     _controller.dispose();
     super.dispose();
@@ -303,34 +307,63 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
               const Spacer(),
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 48),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 48),
+                child: Center(
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
                     children: [
-                  // Человечек исчезает В КОНЦЕ — с 1800 до 2000 мс,
-                  // то есть прямо перед переходом на главную.
-                  FadeTransition(
-                    opacity: _stickmanFade,
-                    child: _LevitationBadge(
-                      t: _float,
-                      color: accent,
-                      isDark: isDark,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                      _ShineText(
-                        'by Wetcorp.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          // Читаемая подпись: заметнее, чем был бледный grey[400].
-                          color: isDark ? Colors.grey[500] : Colors.grey[600],
-                          letterSpacing: 3,
+                      // Подпись остаётся строго по центру кадра — без
+                      // «by», с точкой в конце, «Wetcorp.».
+                      // Подпись проявляется с логотипом и растворится в
+                      // самом конце сплеша вместе с человечком — тем же
+                      // окном _badgeExit (0.80→1.0), что и иконка.
+                      AnimatedBuilder(
+                        animation: _badgeExit,
+                        builder: (context, _) => Opacity(
+                          opacity: 1.0 - _badgeExit.value,
+                          child: FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: _ShineText(
+                              'Wetcorp.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                                letterSpacing: 3,
+                              ),
+                              shine: _shine,
+                            ),
+                          ),
                         ),
-                        shine: _shine,
+                      ),
+                      // Человечек наложен ВНЕ потока СЛЕВА от «W» — он
+                      // не сдвигает центрированный текст. Живёт весь сплэш
+                      // и плавно растворяется в последние 400 мс (_badgeExit),
+                      // то есть исчезает в КОНЦЕ, когда сплеш уходит на
+                      // контент.
+                      Positioned(
+                        left: -34,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: AnimatedBuilder(
+                            animation: Listenable.merge([_badgeExit, _fadeAnimation]),
+                            builder: (context, _) => Opacity(
+                              // В начале — невидим, проявляется вместе с текстом
+                              // Wetcorp. (_fadeAnimation); в конце плавно
+                              // растворяется (_badgeExit). Ничего не «доезжает».
+                              opacity: _fadeAnimation.value *
+                                  (1.0 - _badgeExit.value),
+                              child: _LevitationBadge(
+                                t: _float,
+                                color: accent,
+                                isDark: isDark,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -504,7 +537,7 @@ class _GlassSweepPainter extends CustomPainter {
       oldDelegate.t != t || oldDelegate.strength != strength;
 }
 
-/// Левитирующий стикман рядом с подписью «by Wetcorp.»
+/// Левитирующий стикман рядом с подписью «Wetcorp.»
 ///
 /// Всё движение считается из одного хода 0→1 по синусоиде, поэтому цикл
 /// бесшовный: человек плавно взлетает и опускается, слегка заваливаясь на
@@ -526,12 +559,18 @@ class _LevitationBadge extends StatelessWidget {
     return AnimatedBuilder(
       animation: t,
       builder: (context, _) => RepaintBoundary(
-        child: CustomPaint(
-          size: const Size(30, 36),
-          painter: _LevitationPainter(
-            phase: t.value,
-            color: color,
-            glow: isDark ? 0.30 : 0.20,
+        // Пейнтер рассчитан на абсолютные координаты в 30×36, поэтому
+        // уменьшаем целую фигуру через Transform.scale, а не size — иначе
+        // картинка просто обрезалась и человечек не становился меньше.
+        child: Transform.scale(
+          scale: 0.68,
+          child: CustomPaint(
+            size: const Size(30, 36),
+            painter: _LevitationPainter(
+              phase: t.value,
+              color: color,
+              glow: isDark ? 0.30 : 0.20,
+            ),
           ),
         ),
       ),

@@ -9,8 +9,6 @@ import '../services/pin_service.dart';
 import '../l10n/translations.dart';
 import '../utils/jank_probe.dart';
 import '../widgets/brand_emblem.dart';
-import '../widgets/drip_backdrop.dart';
-import '../widgets/glass_sheen.dart';
 
 class LockScreen extends StatefulWidget {
   final bool isSetting;
@@ -31,7 +29,10 @@ class LockScreen extends StatefulWidget {
 }
 
 class _LockScreenState extends State<LockScreen>
-    with SingleTickerProviderStateMixin {
+    // Не `SingleTickerProviderStateMixin`: контроллеров два (тряска и
+    // стаканчик), и второй `createTicker` ронял экран в отладочной
+    // сборке — из-за этого падали и диалог выхода, и его локализация.
+    with TickerProviderStateMixin {
   final _pin = <int>[];
   String? _error;
   String? _confirmPin;
@@ -48,6 +49,7 @@ class _LockScreenState extends State<LockScreen>
   /// Момент, когда набрана последняя цифра — по нему считаем, сколько ещё
   /// доигрывать подсветку индикаторов (см. [_waitForDots]).
   DateTime? _fullAt;
+
 
   /// Контроллер анимации стаканчика — живёт на уровне LockScreen, чтобы
   /// при открытии/закрытии диалога анимация не сбрасывалась и не начиналась
@@ -98,6 +100,8 @@ class _LockScreenState extends State<LockScreen>
       _error = null;
     });
     Haptics.select();
+    // Роняем пятно из-под KID-капсулы: x зависит от нажатой цифры
+    // (цифры 1-9 стоят в три ряда, x = 0.3, 0.5, 0.7 для колонок).
     if (_pin.length == _pinLength) {
       _fullAt = DateTime.now();
       _onComplete();
@@ -263,18 +267,6 @@ class _LockScreenState extends State<LockScreen>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Живой фон окна: пятна вытекают из-под капсулы KID и
-                    // стекают к медальону ПИНа, растворяясь на обоих концах.
-                    // Внутри ClipRRect — поэтому углы колоныroundятся вместе
-                    // с окном, а не торчат прямыми срезами.
-                    Positioned.fill(
-                      child: DripBackdrop(
-                        colors: [cs.primary, cs.tertiary, cs.secondary, cs.error],
-                        top: 0.04,
-                        bottom: 0.60,
-                        xSpread: 0.62,
-                      ),
-                    ),
                     // Бока окна KID: узкие полосы дымки по краям стекла.
                     ..._kidFrostedEdges(cs, isDark),
                     Column(
@@ -311,16 +303,26 @@ class _LockScreenState extends State<LockScreen>
                               children: [
                                 const _PinMedallion(size: 104),
                                 const SizedBox(height: 18),
-                                Text(
-                                  widget.isSetting
-                                      ? (_confirmPin == null
-                                            ? Translations.t('setPin', context)
-                                            : Translations.t(
-                                                'confirmPin',
-                                                context,
-                                              ))
-                                      : Translations.t('enterPin', context),
-                                  style: theme.textTheme.titleLarge,
+                                // IntrinsicWidth: подчёркивание строго по
+                                // ширине текста, концы полоски закруглены.
+                                IntrinsicWidth(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        widget.isSetting
+                                            ? (_confirmPin == null
+                                                  ? Translations.t('setPin', context)
+                                                  : Translations.t(
+                                                      'confirmPin',
+                                                      context,
+                                                    ))
+                                            : Translations.t('enterPin', context),
+                                        style: theme.textTheme.titleLarge,
+                                      ),
+                                      _WavyUnderline(),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -408,34 +410,16 @@ class _LockScreenState extends State<LockScreen>
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: List.generate(_pinLength, (i) {
                                 final filled = i < _pin.length;
-                                return AnimatedScale(
-                                  scale: filled ? 1.16 : 1.0,
-                                  duration: const Duration(milliseconds: 320),
-                                  curve: Curves.easeInOutCubic,
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 320),
-                                    curve: Curves.easeInOutCubic,
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                    ),
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: filled
-                                          ? theme.colorScheme.primary
-                                          : theme.colorScheme.outlineVariant,
-                                      boxShadow: filled
-                                          ? [
-                                              BoxShadow(
-                                                color: theme.colorScheme.primary
-                                                    .withValues(alpha: 0.4),
-                                                blurRadius: 8,
-                                                spreadRadius: 1,
-                                              ),
-                                            ]
-                                          : null,
-                                    ),
+                                final c = theme.colorScheme;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: _PinSlot(
+                                    shape: i % 4,
+                                    filled: filled,
+                                    color: c.primary,
+                                    ghost: c.outlineVariant,
                                   ),
                                 );
                               }),
@@ -554,6 +538,170 @@ List<Widget> _kidFrostedEdges(ColorScheme cs, bool isDark) {
 /// ID-капсула на PIN-экране: логотип + название + версия + кнопка «Выйти».
 /// Слева — фирменная иконка и название, справа — кнопка выхода,
 /// визуально продолжение той же капсулы (одна обводка, один фон).
+/// Индикаторы ПИНа: четыре РАЗНЫЕ фигуры (ромб, шестиугольник, капля,
+/// восьмиугольник) вместо четырёх одинаковых кружков. Заполненная фигура
+/// горит цветом темы с мягким ореолом и градиентом, пустая — только тонкий
+/// контур, так что набор цифр читается и как «отметка», и как узор.
+/// Индикаторы ПИНа: четыре РАЗНЫЕ фигуры (ромб, шестиугольник, капля,
+/// восьмиугольник) вместо четырёх одинаковых кружков. Фигура ПЛАВНО
+/// наливается при вводе цифры и плавno высветляется при удалении:
+/// TweenAnimationBuilder ведёт прогресс 0↔1 за 560 мс (easeInOutCubic),
+/// контур контура растворяется по мере наполнения, заливка с мягким
+/// ореолом и бликом проявляется вместе с лёгким «подъёмом» масштаба.
+class _PinSlot extends StatelessWidget {
+  final int shape;
+  final bool filled;
+  final Color color;
+  final Color ghost;
+  const _PinSlot({
+    required this.shape,
+    required this.filled,
+    required this.color,
+    required this.ghost,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: filled ? 1 : 0),
+      duration: const Duration(milliseconds: 560),
+      curve: Curves.easeInOutCubic,
+      builder: (context, progress, _) {
+        return CustomPaint(
+          size: const Size.square(30),
+          painter: _PinShapePainter(
+            shape: shape,
+            progress: progress,
+            color: color,
+            ghost: ghost,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PinShapePainter extends CustomPainter {
+  final int shape;
+  /// 0 — пустая фигура (только контур), 1 — полностью залита.
+  final double progress;
+  final Color color;
+  final Color ghost;
+  _PinShapePainter({
+    required this.shape,
+    required this.progress,
+    required this.color,
+    required this.ghost,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.width / 2;
+    final r = size.width * 0.44;
+    final path = _pathFor(shape, c, r);
+    final pr = progress.clamp(0.0, 1.0);
+
+    // Пустой контур: виден, пока фигура не залита; растворяется вместе
+    // с наполнением, чтобы не «двойнить» линии.
+    if (pr < 0.999) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..color = ghost.withValues(alpha: 0.6 * (1 - pr)),
+      );
+    }
+
+    // Заливка: появляется со своей скоростью и лёгким «подъёмом».
+    if (pr > 0.001) {
+      final s = 0.92 + 0.08 * pr;
+      canvas.save();
+      canvas.translate(c, c);
+      canvas.scale(s);
+      canvas.translate(-c, -c);
+      // Мягкий внешний ореол.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color.withValues(alpha: 0.35 * pr)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      // Основная заливка + тонкий верхний блик для объёма.
+      canvas.drawPath(path, Paint()..color = color.withValues(alpha: pr));
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(c - r * 0.25, c - r * 0.35),
+          width: r * 0.9,
+          height: r * 0.45,
+        ),
+        Paint()..color = Colors.white.withValues(alpha: 0.14 * pr),
+      );
+      canvas.restore();
+    }
+  }
+
+  Path _pathFor(int shape, double c, double r) {
+    final p = Path();
+    switch (shape) {
+      case 0:
+        // Ромб.
+        p.moveTo(c, c - r);
+        p.lineTo(c + r, c);
+        p.lineTo(c, c + r);
+        p.lineTo(c - r, c);
+        p.close();
+        break;
+      case 1:
+        // Шестиугольник.
+        for (int i = 0; i < 6; i++) {
+          final a = -math.pi / 2 + i * math.pi / 3;
+          final x = c + r * math.cos(a);
+          final y = c + r * math.sin(a);
+          if (i == 0) {
+            p.moveTo(x, y);
+          } else {
+            p.lineTo(x, y);
+          }
+        }
+        p.close();
+        break;
+      case 2:
+        // Капля (острый кончик сверху, округлое дно).
+        final tipY = c - r;
+        final botY = c + r * 0.9;
+        final w = r * 0.78;
+        p.moveTo(c, tipY);
+        p.cubicTo(c + w, c - r * 0.05, c + w, botY - r * 0.4, c, botY);
+        p.cubicTo(c - w, botY - r * 0.4, c - w, c - r * 0.05, c, tipY);
+        p.close();
+        break;
+      default:
+        // Восьмиугольник.
+        for (int i = 0; i < 8; i++) {
+          final a = math.pi / 8 + i * math.pi / 4;
+          final x = c + r * 0.92 * math.cos(a);
+          final y = c + r * 0.92 * math.sin(a);
+          if (i == 0) {
+            p.moveTo(x, y);
+          } else {
+            p.lineTo(x, y);
+          }
+        }
+        p.close();
+    }
+    return p;
+  }
+
+  @override
+  bool shouldRepaint(_PinShapePainter old) =>
+      old.shape != shape ||
+      old.progress != progress ||
+      old.color != color ||
+      old.ghost != ghost;
+}
+
+
 class _IdBadgeCapsule extends StatelessWidget {
   final ThemeData theme;
   final VoidCallback onExit;
@@ -632,7 +780,7 @@ class _KIDCapsuleButton extends StatelessWidget {
               ),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.18)
+                    ? Colors.white.withValues(alpha: 0.12)
                     : Colors.white.withValues(alpha: 0.85),
                 width: 1,
               ),
@@ -689,9 +837,7 @@ class _KIDCapsuleButton extends StatelessWidget {
               ],
             ),
           ),
-          // Бегущий по «стеклу» блик: цикл с плавным разгоном и торможением,
-          // поэтому капсула дышит, а не мигает.
-          const Positioned.fill(child: GlassSheen(intensity: 0.26)),
+  
         ],
       ),
     );
@@ -753,7 +899,7 @@ class _ExitCapsuleButtonState extends State<_ExitCapsuleButton> {
                   color: _pressed
                       ? widget.cs.primary.withValues(alpha: 0.45)
                       : (widget.isDark
-                            ? Colors.white.withValues(alpha: 0.18)
+                            ? Colors.white.withValues(alpha: 0.12)
                             : Colors.white.withValues(alpha: 0.85)),
                   width: 1,
                 ),
@@ -790,7 +936,7 @@ Future<void> _showExitDialog(
   AnimationController glassLoop,
 ) async {
   final cs = Theme.of(context).colorScheme;
-  final _isDark = Theme.of(context).brightness == Brightness.dark;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
   // Одна длительность на вход и на выход — её же ждёт задержка перед
   // SystemNavigator.pop() в кнопке «Выйти».
   const glassMs = 380;
@@ -850,7 +996,7 @@ Future<void> _showExitDialog(
     // жёлтым ДВОЙНЫМ подчёркиванием. Наш TextStyle перекрывает размер и
     // цвет, но decoration/decorationColor/decorationStyle наследуются —
     // отсюда и жёлтые подчёркивания. Material возвращает тексту стиль темы.
-    pageBuilder: (ctx, _, __) => Material(
+    pageBuilder: (ctx, _, _) => Material(
       type: MaterialType.transparency,
       child: Container(
         width: 312,
@@ -859,36 +1005,64 @@ Future<void> _showExitDialog(
           // Полупрозрачное «стеклянное» основание:
           // тёмная тема → почти чёрный фон, светлая → почти белый,
           // чтобы текст всегда читался.
-          color: _isDark
-              ? Colors.black.withValues(alpha: 0.45)
+          // Тёмный фон чуть плотнее — на сильном свечении primary он
+          // почти не читался, и «бьёт по глазам».
+          color: isDark
+              ? Colors.black.withValues(alpha: 0.62)
               : Colors.white.withValues(alpha: 0.55),
           borderRadius: BorderRadius.circular(24),
           // Красивая полупрозрачная обводка в акцентный цвет темы:
           // rose → розовая, peach → персиковая, grok → её акцент.
           border: Border.all(
-            color: cs.primary.withValues(alpha: _isDark ? 0.62 : 0.38),
+            color: cs.primary.withValues(alpha: isDark ? 0.35 : 0.38),
             width: 1.5,
           ),
           boxShadow: [
             // Мягкое свечение акцентного цвета вокруг окна.
             BoxShadow(
-              color: cs.primary.withValues(alpha: _isDark ? 0.34 : 0.20),
-              blurRadius: 30,
-              spreadRadius: 1,
+              color: cs.primary.withValues(alpha: isDark ? 0.18 : 0.20),
+              blurRadius: 24,
+              spreadRadius: 0,
             ),
             // Дополнительная тень на тёмной теме — контраст к стеклу.
-            if (_isDark)
+            if (isDark)
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.42),
-                blurRadius: 16,
-                spreadRadius: 1,
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 12,
+                spreadRadius: 0,
               ),
           ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _AnimatedGlass(loop: glassLoop, color: cs.primary, isDark: _isDark),
+            // Стакан поверх мягкого свечения: ореол тянется из того же цвета
+            // (cs.primary), поэтому на любом фоне читается «жидкость в свете».
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 78,
+                  height: 78,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        cs.primary.withValues(alpha: isDark ? 0.16 : 0.20),
+                        cs.primary.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 1.0],
+                    ),
+                  ),
+                ),
+                _AnimatedGlass(
+                  loop: glassLoop,
+                  color: cs.primary,
+                  isDark: isDark,
+                  size: 40,
+                ),
+              ],
+            ),
             const SizedBox(height: 14),
             Text(
               Translations.t('exitConfirmTitle', context),
@@ -999,17 +1173,21 @@ class _AnimatedGlass extends StatelessWidget {
     required this.loop,
     required this.color,
     required this.isDark,
+    this.size = 34,
   });
 
   final Animation<double> loop;
   final Color color;
   final bool isDark;
 
+  /// Габарит стаканчика (обычный — 34, в диалоге чуть крупнее).
+  final double size;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 34,
-      height: 34,
+      width: size,
+      height: size,
       child: CustomPaint(
         painter: _GlassPainter(
           loop: loop,
@@ -1823,7 +2001,7 @@ class _MedallionMotionPainter extends CustomPainter {
               ..shader = RadialGradient(
                 colors: [
                   accent.withValues(alpha: 0.0),
-                  accent.withValues(alpha: (isDark ? 0.42 : 0.34) * k),
+                  accent.withValues(alpha: (isDark ? 0.34 : 0.34) * k),
                   accent.withValues(alpha: 0.0),
                 ],
                 stops: const [0.86, 0.945, 1.0],
@@ -1931,7 +2109,7 @@ class _MedallionMotionPainter extends CustomPainter {
           ..strokeJoin = StrokeJoin.round,
       )
       ..drawPath(hole(s * 0.010), ink(isDark ? 0.30 : 0.22))
-      ..drawPath(hole(0), ink(isDark ? 0.72 : 0.88))
+      ..drawPath(hole(0), ink(isDark ? 0.58 : 0.88))
       ..restore();
   }
 
@@ -1941,4 +2119,63 @@ class _MedallionMotionPainter extends CustomPainter {
       old.accent != accent ||
       old.isDark != isDark ||
       old.frost != frost;
+}
+
+
+/// Плавная извилистая красная линия под заголовком «Введите PIN» —
+/// полупрозрачная, лёгкая волна, как росчерк кисти.
+class _WavyUnderline extends StatelessWidget {
+  const _WavyUnderline();
+
+  @override
+  Widget build(BuildContext context) {
+    // Ширина = доступная (даёт IntrinsicWidth от текста), высота 12.
+    // Концы закруглены (StrokeCap.round в пейнтере), поэтому полоска
+    // ровно укладывается под границы надписи и не вылезает в стороны.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = (constraints.maxWidth.isFinite ? constraints.maxWidth : 200).toDouble();
+        return CustomPaint(
+          size: Size(w, 12),
+          painter: _WavyLinePainter(
+            color: const Color(0xFFB3121F).withValues(alpha: 0.42),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WavyLinePainter extends CustomPainter {
+  final Color color;
+  _WavyLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    final path = Path();
+    final amplitude = size.height * 0.32;
+    const frequency = 4.0;
+    const steps = 100;
+    for (var i = 0; i <= steps; i++) {
+      final t = i / steps;
+      final x = t * size.width;
+      final y =
+          size.height / 2 +
+          amplitude * math.sin(t * math.pi * 2 * frequency);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_WavyLinePainter old) => old.color != color;
 }

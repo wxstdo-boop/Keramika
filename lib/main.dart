@@ -599,11 +599,11 @@ Future<void> _precacheLogo() async {
   final stream = provider.resolve(ImageConfiguration.empty);
   late final ImageStreamListener listener;
   listener = ImageStreamListener(
-    (_, __) {
+    (_, _) {
       stream.removeListener(listener);
       if (!completer.isCompleted) completer.complete();
     },
-    onError: (_, __) {
+    onError: (_, _) {
       stream.removeListener(listener);
       if (!completer.isCompleted) completer.complete();
     },
@@ -877,14 +877,14 @@ void main() async {
 
   // Флаг — уже обработали запуск от будильника, чтобы не открыть
   // WakeTaskScreen дважды (из getLaunchDetails и getAlarmPayload).
-  bool _alarmHandled = false;
+  bool alarmHandled = false;
 
   if (startup.launchedByNotification) {
     _pendingAlarmPayload = startup.notificationPayload;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleNotificationTap(_pendingAlarmPayload);
       _pendingAlarmPayload = null;
-      _alarmHandled = true;
+      alarmHandled = true;
     });
   }
 
@@ -893,7 +893,7 @@ void main() async {
     final intentPayload = await _alarmPayloadChannel.invokeMethod<String>(
       'getAlarmPayload',
     );
-    if (!_alarmHandled && intentPayload != null && intentPayload.isNotEmpty) {
+    if (!alarmHandled && intentPayload != null && intentPayload.isNotEmpty) {
       _pendingAlarmPayload = intentPayload;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _handleNotificationTap(_pendingAlarmPayload);
@@ -1161,6 +1161,7 @@ class KeramikaAppState extends State<KeramikaApp>
     _goSplash();
   }
 
+  @override
   void initState() {
     super.initState();
     _themeKey = widget.initialTheme;

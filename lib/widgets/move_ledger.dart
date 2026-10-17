@@ -15,9 +15,9 @@ import 'package:flutter/rendering.dart' show RenderProxyBox;
 /// старого.
 class MoveLedger {
   MoveLedger({
-    required TickerProvider vsync,
+    required this._vsync,
     this.duration = const Duration(milliseconds: 420),
-  }) : _vsync = vsync;
+  });
 
   /// Кривая переезда: быстрый старт и мягкая посадка.
   static const Curve curve = Curves.easeOutCubic;

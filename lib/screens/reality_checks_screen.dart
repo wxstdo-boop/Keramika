@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../services/haptics.dart';
 import '../models/reality_check.dart';
@@ -9,7 +9,7 @@ import '../services/task_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/animated_strike_text.dart';
-import '../widgets/press_scale.dart';
+import '../widgets/press_splat.dart' show OrganicFab;
 import '../widgets/section_pill.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/rolling_number.dart';
@@ -42,7 +42,7 @@ class RealityChecksScreen extends StatefulWidget {
 }
 
 class _RealityChecksScreenState extends State<RealityChecksScreen>
-    with AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
   final _service = RealityCheckService();
@@ -60,6 +60,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pillCtrl.addListener(_syncPillOffset);
     _service.load().then((_) => _scheduleReminders());
     _habitSvc.load();
@@ -68,7 +69,42 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     // map держит старый прокрут и таблетка висит невидимой пока первый скролл
     // не обновит значение.
     sectionOffsetByPage[widget.pillIndex] = 0.0;
+    sectionCurrentIndex.addListener(_onCurrentSectionChanged);
   }
+
+  /// Раздел стал активным — форсируем ресинк офсета таблетки (keep-alive
+  /// вкладка не присылает событий скролла, а общий notifier мог остаться с
+  /// устаревшей высотой: таблетка разделов исчезала до первого скролла).
+  void _onCurrentSectionChanged() {
+    if (sectionCurrentIndex.value != widget.pillIndex) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncPillOffset();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
+    _pillCtrl.removeListener(_syncPillOffset);
+    _pillCtrl.dispose();
+    _fabVisible.dispose();
+    super.dispose();
+  }
+
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Возврат из фона: keep-alive восстановил позицию скролла, а общий
+    // sectionScrollOffset мог остаться stale. Форсируем ресинк с реального
+    // контроллера, чтобы таблетка встала по месту сразу.
+    if (state == AppLifecycleState.resumed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncPillOffset();
+      });
+    }
+  }
+
 
   void _syncPillOffset() {
     final target = widget.scrollOffset;
@@ -83,7 +119,13 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     final v = _pillCtrl.offset;
     final vv = v < 0 ? 0.0 : v;
     sectionOffsetByPage[widget.pillIndex] = vv;
-    if ((target.value - vv).abs() > 0.5) target.value = vv;
+    // Пишем в общий sectionScrollOffset только активная вкладка:
+    // неактивные keep-alive экраны иначе сбрасывают его на свой офсет и
+    // таблетка вылазит на весь рост поверх прокрученного списка.
+    if (sectionCurrentIndex.value == widget.pillIndex &&
+        (target.value - vv).abs() > 0.5) {
+      target.value = vv;
+    }
   }
 
   /// Потянуть вниз — обновить: перечитываем данные с диска и заново
@@ -177,6 +219,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     if (shouldCancel) {
       notificationService.cancelAllRealityChecks();
     }
+    if (!mounted) return;
     showBeautifulSnackBar(
       context,
       message: Translations.t('rcDone', context),
@@ -185,8 +228,9 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
   }
 
   bool _shouldCancelNotificationsToday() {
-    if (!notificationService.enabled || !notificationService.isInitialized)
+    if (!notificationService.enabled || !notificationService.isInitialized) {
       return false;
+    }
     return _service.notificationsDoneForToday;
   }
 
@@ -354,17 +398,10 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
               children: [
                 const AiGuideFloatingButton(),
                 const SizedBox(width: 10),
-                PressScale(
-                  child: BerserkFabStack(
-                    // Долгое зажатие «плюса» открывает режим BERSERK.
-                    child: GestureDetector(
-                      onLongPress: () => showBerserkSheet(context),
-                      child: FloatingActionButton(
-                        onPressed: _addCheck,
-                        child: const Icon(Icons.add),
-                      ),
-                    ),
-                  ),
+                OrganicFab(
+                  seed: 9.3,
+                  onTap: _addCheck,
+                  onLongPress: () => showBerserkSheet(context),
                 ),
               ],
             ),
@@ -450,18 +487,19 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                                 height: 36,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  // Цвет кружка — primary темы, а не
-                                  // жёсткий Colors.pink: на персиковой/зелёной
-                                  // теме розовый «сделано» выглядел чужим.
+                                  // Цвет кружка — primary темы.
                                   color: check.isDoneToday
                                       ? theme.colorScheme.primary
                                       : theme.colorScheme.primary.withValues(
                                           alpha: 0.12,
                                         ),
+                                  // Красивая обводка: выбранная — яркий
+                                  // primary, не выбранная — тематический
+                                  // outline (мягкий, не серый).
                                   border: Border.all(
                                     color: check.isDoneToday
                                         ? theme.colorScheme.primary
-                                        : theme.colorScheme.primary,
+                                        : theme.colorScheme.outline,
                                     width: 2,
                                   ),
                                 ),
@@ -513,16 +551,16 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                                     const TextStyle(fontSize: 19.5),
                                 textScaler: MediaQuery.textScalerOf(context),
                                 struck: check.isDoneToday,
-                                struckColor: theme.colorScheme.onSurfaceVariant,
+                                // Полупрозрачный приглушённый текст: раньше
+                                // цвет был непрозрачным, и «выполненная» фраза
+                                // оставалась такой же яркой.
+                                struckColor: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.42),
                                 // Линия берётся НЕ `outline`: он светлее
                                 // текста примерно на 15 уровней серого, и на
                                 // телефоне зачёркивание не читалось совсем.
-                                strikeColor: theme.colorScheme.onSurface
-                                    .withValues(
-                                      alpha: theme.brightness == Brightness.dark
-                                          ? 0.72
-                                          : 0.6,
-                                    ),
+                                strikeColor:
+                                    Colors.red.shade500.withValues(alpha: 0.9),
                                 maxLines: null,
                               ),
                             ),

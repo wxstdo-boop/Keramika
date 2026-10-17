@@ -122,9 +122,24 @@ class _AnimatedStrikeTextState extends State<AnimatedStrikeText>
     );
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (context, child) {
+      builder: (context, _) {
         final t = widget.curve.transform(_ctrl.value);
-        final color = Color.lerp(baseColor, struckColor, t)!;
+        // Полупрозрачность текста едет ВМЕСТЕ с линией: при отметке текст
+        // мягко уходит в приглушённый, при снятии — так же мягко
+        // возвращается.
+        //
+        // Цвет подставляется в САМ InlineSpan: `RichText` не наследует
+        // `DefaultTextStyle`, поэтому «прозрачность» через него до букв не
+        // доходила вовсе, и текст оставался полностью непрозрачным.
+        final textSpan = t <= 0.001
+            ? layoutSpan // на покое — тот же объект: лишней работы нет
+            : parseMarkdownSpans(
+                widget.text,
+                widget.style.copyWith(
+                  color: Color.lerp(baseColor, struckColor, t),
+                  decoration: TextDecoration.none,
+                ),
+              );
         return CustomPaint(
           painter: _StrikePainter(
             span: layoutSpan,
@@ -136,22 +151,15 @@ class _AnimatedStrikeTextState extends State<AnimatedStrikeText>
             strikeColor: strikeColor,
             textScaler: textScaler,
           ),
-          child: DefaultTextStyle.merge(
-            style: widget.style.copyWith(
-              color: color,
-              decoration: TextDecoration.none,
-            ),
-            child: child!,
+          child: RichText(
+            text: textSpan,
+            maxLines: widget.maxLines,
+            overflow: widget.overflow,
+            textAlign: widget.textAlign ?? TextAlign.start,
+            softWrap: true,
           ),
         );
       },
-      child: RichText(
-        text: layoutSpan,
-        maxLines: widget.maxLines,
-        overflow: widget.overflow,
-        textAlign: widget.textAlign ?? TextAlign.start,
-        softWrap: true,
-      ),
     );
   }
 }
@@ -259,7 +267,7 @@ class _StrikePainter extends CustomPainter {
       // Было: max(1.8, fontSize*0.11). При 19.5px это 1.8 — на телефоне линия
       // визуально сливалась с текстом и «зачёркивания не видно». 0.15 с
       // порогом 2.6 читается уверенно, но всё ещё не режет глаз.
-      ..strokeWidth = math.max(2.6, fontSize * 0.15)
+      ..strokeWidth = math.max(3.0, fontSize * 0.18)
       ..strokeCap = StrokeCap.round;
     // «Перо» на растущем конце рисует со blur-маской, а это каждый вызов —
     // отдельный saveLayer. Краска создаётся один раз на кадр, а не на строку.

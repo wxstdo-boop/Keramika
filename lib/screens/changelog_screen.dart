@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import '../l10n/translations.dart';
 
 class ChangelogScreen extends StatelessWidget {
@@ -190,6 +191,8 @@ class ChangelogScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(Translations.t('patchNotes', context)),
+        // Задизайненный «Назад» (тултип) — единый стиль со всеми экранами.
+        leading: const BackButtonTooltip(),
         centerTitle: true,
       ),
       body: ListView(

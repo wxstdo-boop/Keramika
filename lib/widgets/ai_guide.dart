@@ -13,6 +13,8 @@ import 'stagger_in.dart';
 import '../l10n/translations.dart';
 import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../services/prefs.dart';
 import '../services/screen_reader_service.dart';
 import '../services/settings_service.dart';
@@ -24,6 +26,7 @@ import '../utils/markdown_text.dart';
 import '../widgets/beautiful_selection.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/model_label.dart';
+import '../widgets/smooth_typing.dart';
 
 export 'berserk_sheet.dart';
 
@@ -302,7 +305,7 @@ class _AiChatBodyState extends State<_AiChatBody>
   static const _pinsKey = 'ai_pinned_messages';
   static const int _maxPins = 10;
 
-  final _inputCtrl = TextEditingController();
+  final _inputCtrl = WideDashController();
   final _inputFocus = FocusNode();
   final _scrollCtrl = ScrollController();
   final List<AiMessage> _messages = [];
@@ -352,15 +355,9 @@ class _AiChatBodyState extends State<_AiChatBody>
     vsync: this,
     duration: const Duration(milliseconds: 220),
   );
-  // «Буквы появляются плавно»: при каждом изменении текста поле мягко
-  // проявляется коротким fade-пульсом (0.75 → 1), а не щёлкает мгновенно.
-  // Работает и при печати, и при стирании, и при вставке из быстрых чипов.
-  late final AnimationController _letterPulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 130),
-    value: 1.0,
-  );
-  String _lastInputText = '';
+  // «Буквы появляются плавно» теперь делает SmoothTyping: каждая буква
+  // проявляется и гаснет сама, поэтому общий fade-пульс поля убран —
+  // он и был тем самым «миганием» всего текста на каждый символ.
 
   @override
   void initState() {
@@ -385,8 +382,6 @@ class _AiChatBodyState extends State<_AiChatBody>
     // ленту к низу, чтобы последнее сообщение/«сочиняю» не прятались
     // за формой (клавиатура поднимается раньше, чем список перестроится).
     _inputFocus.addListener(_onInputFocus);
-    _inputCtrl.addListener(_onInputTextChanged);
-    _lastInputText = _inputCtrl.text;
     // Модель могла смениться в мини-окошке (отдельный движок) — тик
     // приходит по мосту, перечитываем лейбл.
     AiGuideService.modelLabelTick.addListener(_onModelLabelTick);
@@ -516,8 +511,9 @@ class _AiChatBodyState extends State<_AiChatBody>
   void _refreshModelLabel() {
     AiGuideService.currentModelLabel()
         .then((m) {
-          if (mounted && m.isNotEmpty && m != _modelLabel)
+          if (mounted && m.isNotEmpty && m != _modelLabel) {
             setState(() => _modelLabel = m);
+          }
         })
         .catchError((_) {});
   }
@@ -537,21 +533,10 @@ class _AiChatBodyState extends State<_AiChatBody>
     _clearCtrl.dispose();
     _dotsCtrl.dispose();
     _focusAnim.dispose();
-    _letterPulse.dispose();
-    _inputCtrl.removeListener(_onInputTextChanged);
     _inputCtrl.dispose();
     _inputFocus.dispose();
     _scrollCtrl.dispose();
     super.dispose();
-  }
-
-  /// Текст изменился (печать/стирание/чипы/очистка) — мягкий fade-пульс
-  /// поля, чтобы буквы «появлялись/исчезали» плавно.
-  void _onInputTextChanged() {
-    final t = _inputCtrl.text;
-    if (t == _lastInputText) return;
-    _lastInputText = t;
-    if (mounted) _letterPulse.forward(from: 0);
   }
 
   Future<void> _loadHistory() async {
@@ -852,7 +837,7 @@ class _AiChatBodyState extends State<_AiChatBody>
     }
     // Включение: сначала проверяем реальное разрешение.
     final hasPerm = await ScreenReaderService.hasPermission();
-    if (!mounted) return;
+    if (!mounted || !context.mounted) return;
     if (hasPerm) {
       setState(() => _screenAware = true);
       try {
@@ -1171,6 +1156,7 @@ class _AiChatBodyState extends State<_AiChatBody>
       globalPrefs.setBool('ai_floating', true);
       // Свернули — закрываем чат (на Android живёт системный оверлей,
       // на web — внутренний пузырь).
+      if (!mounted) return;
       showBeautifulSnackBar(
         context,
         message: Translations.t(
@@ -1673,24 +1659,19 @@ class _AiChatBodyState extends State<_AiChatBody>
                     },
                     child: Stack(
                       children: [
-                        // Предпросмотр markdown убран: прозрачный
-                        // TextField + RichText давали «разъехавшиеся
-                        // буквы» (шрифт Avenir Next недоступен на Android
-                        // и фолбэк рендерил слои со сдвигом). Теперь
-                        // текст обычный, видимый, без артефактов.
-                        // Настоящее поле СВЕРХУ: текст прозрачный (его
-                        // рисует предпросмотр), но каретка, выделение и
-                        // клавиатура работают как обычно.
-                        FadeTransition(
-                          // Короткий fade-пульс при каждом изменении
-                          // текста — буквы «появляются/исчезают» плавно.
-                          opacity: Tween<double>(begin: 0.72, end: 1.0).animate(
-                            CurvedAnimation(
-                              parent: _letterPulse,
-                              curve: Curves.easeOut,
-                            ),
+                        // Каждую букву рисует SmoothTyping: она проявляется
+                        // из пустоты и плавно гаснет при стирании. Само поле
+                        // ниже — прозрачное, оно отвечает за каретку,
+                        // выделение и клавиатуру.
+                        SmoothTyping(
+                          controller: _inputCtrl,
+                          style: TextStyle(
+                            fontSize: 18,
+                            height: 1.4,
+                            color: cs.onSurface,
                           ),
-                          child: TextField(
+                          builder: (style) => TextField(
+                            style: style,
                             magnifierConfiguration:
                                 TextMagnifierConfiguration.disabled,
                             controller: _inputCtrl,
@@ -1700,6 +1681,7 @@ class _AiChatBodyState extends State<_AiChatBody>
                             minLines: 1,
                             maxLines: 4,
                             maxLength: 13000,
+                            inputFormatters: [WideDashFormatter()],
                             // Отключаем автоподсказки/автокоррекцию
                             // клавиатуры: Gboard/MIUI добавляет свой
                             // автопробел после выбранного слова — отсюда
@@ -1714,11 +1696,6 @@ class _AiChatBodyState extends State<_AiChatBody>
                             // EditableText при каждом кадре IME: лист уже
                             // сам двигается.
                             scrollPadding: EdgeInsets.zero,
-                            style: TextStyle(
-                              fontSize: 18,
-                              height: 1.4,
-                              color: cs.onSurface,
-                            ),
                             cursorColor: cs.primary,
                             // Каретка мигает ПЛАВНО (fade-переход, а не
                             // резкое вкл/выкл) — «палка» не дёргается.
@@ -2499,7 +2476,7 @@ class _QuickChips extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         itemCount: chips.length + leadCount,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (context, i) {
           if (i < leadCount) return leading[i];
           final (label, template) = chips[i - leadCount];
@@ -2666,7 +2643,7 @@ class _PinnedBar extends StatelessWidget {
       child: ListView.separated(
         shrinkWrap: true,
         itemCount: pinned.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 4),
+        separatorBuilder: (_, _) => const SizedBox(height: 4),
         itemBuilder: (context, i) {
           final m = pinned[i];
           return AnimatedSwitcher(
@@ -2767,7 +2744,7 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
   int _openedCount = 0;
   // Свёрнуто ли окошко в мелкий кружок-аватарку (тап по названию/аватарке).
   bool _collapsed = false;
-  final _inputCtrl = TextEditingController();
+  final _inputCtrl = WideDashController();
   final _scrollCtrl = ScrollController();
   // Плавное появление/исчезание окошка при переключении режима «в окне».
   late final AnimationController _ctrl = AnimationController(
@@ -3283,43 +3260,46 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
               Expanded(
                 child: Stack(
                   children: [
-                    // Предпросмотр markdown убран (тот же артефакт
-                    // «разъехавшихся букв», что и в основном чате).
-                    // Текст обычный и видимый.
-                    TextField(
-                      magnifierConfiguration:
-                          TextMagnifierConfiguration.disabled,
-                      contextMenuBuilder: minimalContextMenuBuilder,
+                    // Каждую букву рисует SmoothTyping (как в основном чате).
+                    SmoothTyping(
                       controller: _inputCtrl,
-                      minLines: 1,
-                      maxLines: 2,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      // Автопробел клавиатуры — убираем подсказки.
-                      enableSuggestions: false,
-                      autocorrect: false,
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.3,
                         color: cs.onSurface,
                       ),
-                      cursorColor: cs.primary,
-                      // Каретка мигает плавно (fade), а не резко вкл/выкл.
-                      cursorOpacityAnimates: true,
-                      decoration: InputDecoration(
-                        counterText: '',
-                        isDense: true,
-                        filled: true,
-                        fillColor: cs.surfaceContainerHigh.withValues(
-                          alpha: 0.7,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+                      builder: (style) => TextField(
+                        style: style,
+                        magnifierConfiguration:
+                            TextMagnifierConfiguration.disabled,
+                        contextMenuBuilder: minimalContextMenuBuilder,
+                        controller: _inputCtrl,
+                        minLines: 1,
+                        maxLines: 2,
+                        inputFormatters: [WideDashFormatter()],
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        // Автопробел клавиатуры — убираем подсказки.
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        cursorColor: cs.primary,
+                        // Каретка мигает плавно (fade), а не резко вкл/выкл.
+                        cursorOpacityAnimates: true,
+                        decoration: InputDecoration(
+                          counterText: '',
+                          isDense: true,
+                          filled: true,
+                          fillColor: cs.surfaceContainerHigh.withValues(
+                            alpha: 0.7,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),

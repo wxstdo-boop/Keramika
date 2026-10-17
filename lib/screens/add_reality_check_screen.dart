@@ -5,8 +5,11 @@ import '../models/reality_check.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
 import '../utils/icon_map.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../widgets/icon_picker_sheet.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_keyboard_body.dart';
 
 class AddRealityCheckScreen extends StatefulWidget {
@@ -26,11 +29,11 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
   void initState() {
     super.initState();
     if (widget.existing != null) {
-      _questionCtrl = TextEditingController(text: widget.existing!.question);
+      _questionCtrl = WideDashController(text: widget.existing!.question);
       _iconCodePoint = widget.existing!.iconCodePoint;
       _editing = true;
     } else {
-      _questionCtrl = TextEditingController();
+      _questionCtrl = WideDashController();
       // По умолчанию — «голова с шестерёнкой» (psychology_outlined),
       // как просил пользователь.
       _iconCodePoint = 0xf2d2;
@@ -129,25 +132,30 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: TextField(
-                  cursorOpacityAnimates: true,
-                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                child: SmoothTyping(
                   controller: _questionCtrl,
-                  contextMenuBuilder: minimalContextMenuBuilder,
-                  maxLength: 200,
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  maxLines: 3,
-                  buildCounter: smoothCharCounterBuilder,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _save(),
-                  decoration: InputDecoration(
-                    labelText: Translations.t('rcQuestion', context),
-                    prefixIcon: const Icon(Icons.help_outline),
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
+                  builder: (style) => TextField(
+                    style: style,
+                    cursorOpacityAnimates: true,
+                    magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                    controller: _questionCtrl,
+                    contextMenuBuilder: minimalContextMenuBuilder,
+                    maxLength: 200,
+                    inputFormatters: [WideDashFormatter()],
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    maxLines: 3,
+                    buildCounter: smoothCharCounterBuilder,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _save(),
+                    decoration: InputDecoration(
+                      labelText: Translations.t('rcQuestion', context),
+                      prefixIcon: const Icon(Icons.help_outline),
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
                     ),
                   ),
                 ),

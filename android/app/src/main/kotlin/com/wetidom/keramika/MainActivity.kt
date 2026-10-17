@@ -44,6 +44,33 @@ class MainActivity : FlutterActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         applyAlarmWindowFlags()
+        // FIX (swipe не глушит звонок): удаление основного уведомления
+        // будильника приходит через deleteIntent (см.
+        // AlarmReceiver.showNotification) как Intent с action CANCEL_ALARM.
+        // На холодном старте он приходит прямо в onCreate — глушим
+        // фоновый звонок/вибрацию там же.
+        handleCancelAlarm()
+    }
+
+    /**
+     * Swipe-удаление основного уведомления будильника.
+     *
+     * Раньше этот Intent НЕ обрабатывался нигде: сервис звонка
+     * (AlarmForegroundService: MediaPlayer + циклическая вибрация)
+     * доживал до MAX_RING_MS (5 минут) после того, как пользователь
+     * уже «выключил» будильник свайпом. Теперь в любом режиме
+     * (onCreate / onNewIntent) звонок и вибрация гаснут немедленно.
+     */
+    private fun handleCancelAlarm() {
+        val intent = intent ?: return
+        if (intent.action != "com.wetidom.keramika.CANCEL_ALARM") return
+        val aid = intent.getIntExtra("alarm_id", 0)
+        Log.i("MainActivity", "CANCEL_ALARM id=$aid — stop ring + clear wake flags")
+        AlarmForegroundService.stop(applicationContext)
+        cancelAlarmNotifications()
+        clearAlarmWakeFlags()
+        intent.removeExtra("alarm_id")
+        intent.action = null
     }
 
     /**
@@ -63,37 +90,63 @@ class MainActivity : FlutterActivity() {
         val isAlarm = intent?.getBooleanExtra("alarm_launch", false) == true ||
             (intent?.getStringExtra("payload")?.startsWith("alarm:") == true)
         if (!isAlarm) return
+        // FIX (другой путь на экран): AlarmReceiver теперь ВСЕГДА запускает
+        // MainActivity при срабатывании будильника (не только при
+        // fullscreen=true). Два уровня:
+        //  1) ЭКРАН ВСЕГДА ЗАЖИГАЕТСЯ (turnScreenOn + keepScreenOn): будильник
+        //     ни при каких настройках не остаётся молчащим — телефон проснётся
+        //     и покажет экран задачи. Это и есть «другой способ» в обход
+        //     FSI-права.
+        //  2) СВЕРХУ БЛОКИРОВКИ (showWhenLocked + снятие ключгейрда) — только
+        //     если тумблер «поверх экрана блокировки» включён (extra
+        //     alarm_fullscreen). Выключил — задача откроется сразу после
+        //     разблокировки (или при снятой блокировке — мгновенно),
+        //     ключгейрд мы при этом не рвём.
+        val overLock = intent?.getBooleanExtra("alarm_fullscreen", true) ?: true
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
             setTurnScreenOn(true)
+            if (overLock) setShowWhenLocked(true)
         } else {
             @Suppress("DEPRECATION")
-            window.addFlags(
-                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-            )
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            if (overLock) {
+                @Suppress("DEPRECATION")
+                window.addFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+                )
+            }
         }
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Снимаем ключгейрд. С PIN/отпечатком система всё равно покажет
-        // экран разблокировки — но НАША активность рисуется поверх него
-        // (благодаря showWhenLocked), как у системного будильника.
-        try {
-            val km = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                km.requestDismissKeyguard(this, null)
+        if (overLock) {
+            // Снимаем ключгейрд. С PIN/отпечатком система всё равно покажет
+            // экран разблокировки — но НАША активность рисуется поверх него
+            // (благодаря showWhenLocked), как у системного будильника.
+            try {
+                val km = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    km.requestDismissKeyguard(this, null)
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "requestDismissKeyguard failed: $e")
             }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "requestDismissKeyguard failed: $e")
         }
     }
 
     /** Снимает «не гасить экран» после того, как будильник отзвонил. */
     private fun clearAlarmWakeFlags() {
         try {
-            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            // Снимаем ВСЁ, что add'илось в applyAlarmWindowFlags: иначе
+            // TURN_SCREEN_ON висел бы вечно — экран телефона не гаснет
+            // даже после того, как будильник уже отзвонил.
+            @Suppress("DEPRECATION")
+            window.clearFlags(
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
+            )
         } catch (_: Exception) {}
     }
 
@@ -805,6 +858,9 @@ class MainActivity : FlutterActivity() {
             methodChannel?.invokeMethod("onNewAlarmPayload", payload)
             intent.removeExtra("payload")
         }
+        // Свайп-удаление основного уведомления (см. handleCancelAlarm):
+        // в hot-режиме приходит сюда, глушим звонок/вибрацию немедленно.
+        handleCancelAlarm()
         // Приложение уже было запущено, а телефон перезагрузился —
         // сигнализируем Dart, чтобы перепланировал будильники.
         if (intent.getBooleanExtra("boot_completed", false)) {

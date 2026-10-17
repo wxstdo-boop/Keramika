@@ -68,23 +68,45 @@ class Haptics {
 /// «обратная связь при касании» подавлена. Оборачивает штатный splashFactory
 /// темы: плеск создаётся только при целевом нажатии, на скролл не реагирует.
 ///
-/// [_inner] и аргументы [create] прокидываются через [noSuchMethod], чтобы не
-/// зависеть от точной сигнатуры фабрики в текущей версии Flutter.
+/// Фаbrika реализована ПРЯМЫМ переопределением [create] с ПОЛНОЙ сигнатурой
+/// и пробросом всех аргументов в вложенную фабрику. Прежний путь через
+/// `noSuchMethod` + `Function.apply` молча падал (не совпадала сигнатура),
+/// и отдача кнопок терялась целиком — «хаптика не работает вовсе».
 class TapHapticsSplash implements InteractiveInkFeatureFactory {
   const TapHapticsSplash(this._inner);
 
   final InteractiveInkFeatureFactory _inner;
 
   @override
-  dynamic noSuchMethod(Invocation invocation) {
-    if (invocation.memberName == #create) {
-      unawaited(Haptics.light());
-      return Function.apply(
-        _inner.create,
-        invocation.positionalArguments,
-        invocation.namedArguments,
-      );
-    }
-    return super.noSuchMethod(invocation);
+  InteractiveInkFeature create({
+    required Offset position,
+    required RenderBox referenceBox,
+    required MaterialInkController controller,
+    required Color color,
+    required TextDirection textDirection,
+    double? radius,
+    bool containedInkWell = false,
+    ShapeBorder? customBorder,
+    BorderRadius? borderRadius,
+    VoidCallback? onRemoved,
+    RectCallback? rectCallback,
+  }) {
+    // Бьём лёгкую вибрацию ТОЛЬКО на целевом тапе: создаётся Feature
+    // (вместе с плеском) и сразу идёт Haptics.light(), сам плеск рисует
+    // штатная фабрика темы.
+    unawaited(Haptics.light());
+    return _inner.create(
+      position: position,
+      referenceBox: referenceBox,
+      controller: controller,
+      color: color,
+      textDirection: textDirection,
+      radius: radius,
+      containedInkWell: containedInkWell,
+      customBorder: customBorder,
+      borderRadius: borderRadius,
+      onRemoved: onRemoved,
+      rectCallback: rectCallback,
+    );
   }
 }

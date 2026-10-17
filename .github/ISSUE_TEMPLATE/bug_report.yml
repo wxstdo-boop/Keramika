@@ -1,0 +1,63 @@
+name: Баг
+description: Что-то в приложении работает неправильно
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо! Перед отправкой проверь, пожалуйста, что баг не описан
+        в существующих issues — иногда он уже известен.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что произошло
+      description: Опиши, что ты ожидал и что получил на самом деле.
+      placeholder: |
+        Ожидал: будильник на 7:00 сработает ровно в 7:00
+        Получил: сработал в 7:03, а после перезагрузки вообще пропал
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: |
+        1. Открыл «Будильники»
+        2. Нажал «+»
+        3. Выставил 7:00
+        4. Перезагрузил телефон
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия приложения
+      placeholder: 1.6.49+45121
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Устройство и Android
+      placeholder: Redmi Note 12, Android 14
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи
+      description: |
+        Если сработал будильник или сработала Ада — приложение ведёт
+        внутренний журнал. Пришли вывод из «Настройки → Ада → Журнал».
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Проверил
+      options:
+        - label: Обновился до последней версии, баг остался
+          required: true

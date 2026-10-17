@@ -1,16 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-// Глобальный дедуп: одно и то же сообщение в окне кулдауна не показывается,
-// а разные сообщения с одним groupKey обновляют активный снекбар плавно,
-// не создавая шторм overlay-entries (важно для быстрых toggle-кнопок).
-// Сообщения из ДРУГИХ групп не вырезают предыдущий мгновенно, а принимают
-// эстафету: старый мягко уплывает вниз, новый стартует через 180мс.
+// Глобальный дедуп и мягкая замена: пока плашка висит, новое сообщение
+// подменяет её содержимое на месте (никаких «вторых» снекбаров поверх) —
+// поэтому быстрые тапы не превращаются в шторм overlay-entries.
 OverlayEntry? _activeSnackBar;
 _AnimatedSnackBarState? _activeSnackState;
 // Вставка нового снекбара отложена на время ухода старого.
 Timer? _pendingInsert;
-String? _activeGroupKey;
 DateTime? _lastSnackTime;
 String? _lastSnackMessage;
 final Duration _snackCooldown = const Duration(milliseconds: 1200);
@@ -34,15 +31,24 @@ void showBeautifulSnackBar(
       now.difference(_lastSnackTime!) < _snackCooldown) {
     return;
   }
-
-  // Плавная замена внутри группы: если уже висит снекбар той же группы —
-  // обновляем контент без удаления overlay. Это убирает шторм при быстром
-  // ON↔OFF-переключении (например, тогл раздела «Проверки реальности»).
-  if (groupKey != null &&
-      _activeGroupKey == groupKey &&
-      _activeSnackState != null &&
-      _activeSnackState!.mounted) {
-    _activeSnackState!.updateContent(message, icon, iconColor);
+  // Плавная замена «на месте»: пока плашка висит, ЛЮБОЕ новое сообщение
+  // мягко подменяет её текст. Второй снекбар поверх неё не появляется вовсе,
+  // поэтому «наложения» двух плашек больше нет: нет ни дублей, ни рывка.
+  // Единственное исключение — появление/исчезновение action-кнопки: её
+  // нельзя дорисовать в уже существующей плашке, там идёт аккуратная эстафета.
+  final visible = _activeSnackState;
+  final wantsAction = onAction != null && actionLabel != null;
+  if (visible != null &&
+      visible.mounted &&
+      !visible.isLeaving &&
+      visible.hasAction == wantsAction) {
+    visible.updateContent(
+      message,
+      icon,
+      iconColor,
+      actionLabel: actionLabel,
+      onAction: onAction,
+    );
     _lastSnackTime = now;
     _lastSnackMessage = message;
     return;
@@ -50,7 +56,6 @@ void showBeautifulSnackBar(
 
   _lastSnackTime = now;
   _lastSnackMessage = message;
-  _activeGroupKey = groupKey;
 
   final theme = Theme.of(context);
   final colorScheme = theme.colorScheme;
@@ -75,7 +80,6 @@ void showBeautifulSnackBar(
           if (_activeSnackBar == entry) {
             _activeSnackBar = null;
             _activeSnackState = null;
-            _activeGroupKey = null;
           }
           entry.remove();
         },
@@ -83,7 +87,6 @@ void showBeautifulSnackBar(
           if (_activeSnackBar == entry) {
             _activeSnackBar = null;
             _activeSnackState = null;
-            _activeGroupKey = null;
           }
         },
       ),
@@ -92,17 +95,19 @@ void showBeautifulSnackBar(
     overlay.insert(entry);
   }
 
-  // Смена снекбаров: предыдущий больше не вырезается мгновенно — он плавно
-  // уплывает вниз, а новый влетает через 180мс, то есть получается мягкая
-  // эстафета. Очередь быстрых сообщений отменяет незапущенную вставку, так
-  // что на экране оседает только последнее.
+  // Смена снекбаров (например, при появлении action-кнопки): предыдущий
+  // мягко уплывает вниз (400 мс, easeInOutCubic), а новый влетает ЧУТЬ
+  // позже, когда первый уже ушёл — поэтому две плашки не накладываются
+  // друг на друга, переход выглядит спокойным.
+  // Очередь быстрых сообщений отменяет незапущенную вставку, так что на
+  // экране оседает только последнее.
   final leaving = _activeSnackState;
   _activeSnackState = null;
   _activeSnackBar = null;
   _pendingInsert?.cancel();
   if (leaving != null && leaving.mounted) {
-    leaving.dismissOut();
-    _pendingInsert = Timer(const Duration(milliseconds: 180), () {
+    leaving.dismissOut(ms: 400);
+    _pendingInsert = Timer(const Duration(milliseconds: 430), () {
       _pendingInsert = null;
       insert();
     });
@@ -155,6 +160,14 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
   Timer? _dismissTimer;
   bool _leaving = false;
 
+  /// Когда плашка появилась (или обновилась) — окно «шквала» считается от
+  /// этого момента.
+  DateTime shownAt = DateTime.now();
+
+  /// Плашка уже уплывает — новое сообщение должно идти эстафетой, а не
+  /// «оживлять» уходящую.
+  bool get isLeaving => _leaving;
+
   @override
   void initState() {
     super.initState();
@@ -163,23 +176,24 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
     _iconColor = widget.iconColor;
     _actionLabel = widget.actionLabel;
     _onAction = widget.onAction;
+    shownAt = DateTime.now();
 
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 520),
+      duration: const Duration(milliseconds: 420),
       vsync: this,
     );
 
     // easeOutCubic вместо easeOutBack: мягкий выезд без резкого
     // «перелёта»/дребезга — плашка плавно оседает снизу и так же
-    // мягко (reverseCurve easeInCubic) уплывает вниз при скрытии.
+    // мягко (reverseCurve easeInOutCubic) уплывает вниз при скрытии.
     final curved = CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
+      reverseCurve: Curves.easeInOutCubic,
     );
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.35),
+      begin: const Offset(0, 0.28),
       end: Offset.zero,
     ).animate(curved);
 
@@ -191,24 +205,39 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
   }
 
   /// Плавно обновляет содержимое без пересоздания overlay-entry.
-  /// Используется при быстрых ON↔OFF-переключениях одной группы,
-  /// чтобы пользователь видел одну плашку вместо шторма.
-  void updateContent(String newMessage, IconData newIcon, Color? newColor) {
+  /// Используется при быстрых ON↔OFF-переключениях одной группы и вообще
+  /// для любого сообщения, пока плашка висит: пользователь видит одну
+  /// плашку с мягко сменившимся текстом вместо второй поверх первой.
+  void updateContent(
+    String newMessage,
+    IconData newIcon,
+    Color? newColor, {
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     // Уже уплывает — не «оживляем» его, новый снекбар встанет следом.
     if (_leaving) return;
+    shownAt = DateTime.now();
     setState(() {
       _message = newMessage;
       _icon = newIcon;
       if (newColor != null) _iconColor = newColor;
+      _actionLabel = actionLabel;
+      _onAction = onAction;
     });
     // Таймер отложенного скрытия — перезапускаем, чтобы пользователь успел
     // прочитать новый текст после быстрого toggle.
     _scheduleDismiss();
   }
 
-  /// Плавный уход вниз. Быстрый вариант (180мс) — при эстафете сообщений,
-  /// медленный (750мс) — когда снекбар сам дотикал до конца.
-  void dismissOut({int ms = 180}) {
+  /// Есть ли у плашки action-кнопка — по этому признаку решается, можно ли
+  /// обновить содержимое «на месте» или нужна эстафета плашек.
+  bool get hasAction => _onAction != null && _actionLabel != null;
+
+  /// Плавный уход вниз. 400 мс — при эстафете сообщений, 900 мс — когда
+  /// снекбар сам дотикал до конца. Кривая easeInOutCubic: плашка трогается
+  /// мягко и так же мягко «растворяется» в конце, без обрыва.
+  void dismissOut({int ms = 320}) {
     if (_leaving || !mounted) return;
     _leaving = true;
     _dismissTimer?.cancel();
@@ -216,7 +245,7 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
         .animateTo(
           0.0,
           duration: Duration(milliseconds: ms),
-          curve: Curves.easeInCubic,
+          curve: Curves.easeInOutCubic,
         )
         .then((_) => _finish());
     // Страховка: если тикер не доехал (быстрый тап, потеря vsync), entry
@@ -233,7 +262,7 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
 
   void _scheduleDismiss() {
     _dismissTimer?.cancel();
-    _dismissTimer = Timer(widget.duration, () => dismissOut(ms: 750));
+    _dismissTimer = Timer(widget.duration, () => dismissOut(ms: 900));
   }
 
   @override
@@ -301,17 +330,26 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                     const SizedBox(width: 12),
                     Expanded(
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 280),
-                        transitionBuilder: (child, anim) => FadeTransition(
-                          opacity: anim,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0.15, 0),
-                              end: Offset.zero,
-                            ).animate(anim),
-                            child: child,
-                          ),
+                        // 320 мс и ЧИСТЫЙ фейд без сдвига: общий префикс
+                        // сообщений («Привычка закреплена» → «…откреплена»)
+                        // остаётся на месте, буквы не «скачут» — меняется
+                        // только хвост, мягко проявляясь.
+                        duration: const Duration(milliseconds: 320),
+                        switchInCurve: Curves.easeInOutCubic,
+                        switchOutCurve: Curves.easeInOutCubic,
+                        // ВАЖНО: текст прижат ВЛЕВО и в стопке остаётся только
+                        // предыдущий вариант. Стандартная стопка центрировала
+                        // короткий текст, и при смене сообщения буквы уезжали
+                        // в сторону.
+                        layoutBuilder: (current, previous) => Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            if (previous.isNotEmpty) previous.last,
+                            ?current,
+                          ],
                         ),
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
                         child: Text(
                           _message,
                           key: ValueKey(_message),

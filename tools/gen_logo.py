@@ -110,10 +110,11 @@ def draw_sparkle(d, cx, cy, r, color):
 
 
 def build_logo(size):
-    """Full emblem tile (splash avatar, notification large)."""
+    """Full emblem tile (splash avatar, notification large) — white K + sparkle
+    on a deep black tile."""
     w = h = size
     W = H = w * SS
-    colors = ((232, 96, 132), (255, 158, 120))  # rose -> tangerine
+    colors = ((18, 18, 20), (0, 0, 0))  # near-black -> pure black
     tile = make_tile((W, H), 0.25, colors, glow=True)
     d = ImageDraw.Draw(tile)
     s = 0.27 * W
@@ -124,14 +125,14 @@ def build_logo(size):
 
 
 def build_foreground(size):
-    """Full logo tile (gradient + K + sparkle) filling the whole canvas.
+    """Full logo tile (black + K + sparkle) filling the whole canvas.
     Launcher mask (circle/squircle) clips it to the icon shape, so the
-    icon looks exactly like the splash logo: rose→tangerine gradient with
+    icon looks exactly like the splash logo: deep black tile with a crisp
     white K. Background gradient XML matches, so any sliver between the
-    mask and the icon edge still shows the same gradient."""
+    mask and the icon edge still shows the same black."""
     w = h = size
     W = H = w * SS
-    colors = ((232, 96, 132), (255, 158, 120))  # rose -> tangerine
+    colors = ((18, 18, 20), (0, 0, 0))  # near-black -> pure black
     # full-bleed gradient (no rounded corners — the mask shapes it)
     grad = Image.new("RGB", (W, H))
     gpx = grad.load()
@@ -178,7 +179,7 @@ def build_legacy(size):
     systems and as a fallback) — the same tile with K + sparkle."""
     w = h = size
     W = H = w * SS
-    colors = ((232, 96, 132), (255, 158, 120))
+    colors = ((18, 18, 20), (0, 0, 0))  # near-black -> pure black
     grad = Image.new("RGB", (W, H))
     gpx = grad.load()
     c1, c2 = colors
@@ -207,7 +208,7 @@ def build_legacy(size):
 
 
 def main():
-    build_logo(768).save("assets/keramika.png")
+    build_logo(1024).save("assets/keramika.png")
     build_foreground(432).save("android/app/src/main/res/drawable/ic_launcher_foreground.png")
     build_monochrome(432).save("android/app/src/main/res/drawable/ic_launcher_monochrome.png")
     build_logo(216).save("android/app/src/main/res/drawable-nodpi/ic_notification_large.png")

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../l10n/translations.dart';
@@ -11,9 +13,16 @@ import '../services/haptics.dart';
 /// открывают. Здесь панель лежит в потоке layout и раскрывается тем же
 /// приёмом, что и карточки, — соседям есть куда расступиться.
 ///
-/// Клавиши отзываются цветом и подсветкой, а не масштабом: «прыжок» размера
-/// на слабом GPU читается как дёрганье, а нажатие без отклика вообще не
-/// читается.
+/// Отклик клавиши считывается сразу по указателю (`Listener`), а не по
+/// tap-down арбитра жестов: внутри скролла tap-down приходит только после
+/// ~100 мс (арбитр ждёт, не начнётся ли прокрутка), и подсветка «догоняла»
+/// палец уже после отпускания. Действие при этом остаётся у [GestureDetector],
+/// поэтому протяжка по панели по-прежнему прокручивает экран, а не набирает
+/// цифры.
+///
+/// Клавиши отзываются мягким вдавливанием и заливкой акцентом, а не резким
+/// «щелчком»: масштаб и цвет ведёт один короткий контроллер, поэтому нажатие
+/// читается даже на слабом GPU и ничего не «дёргается» при быстром наборе.
 class NumberPad extends StatefulWidget {
   const NumberPad({
     super.key,
@@ -39,10 +48,18 @@ class _NumberPadState extends State<NumberPad> {
   static const int _clearSlot = 10;
   static const int _backspaceSlot = 11;
 
-  int _pressed = -1;
+  /// Автоповтор стереть: пауза, как у системной клавиатуры, затем учащение.
+  static const Duration _holdDelay = Duration(milliseconds: 420);
+  static const Duration _holdRepeat = Duration(milliseconds: 75);
 
-  void _press(int slot) => setState(() => _pressed = slot);
-  void _release() => setState(() => _pressed = -1);
+  Timer? _hold;
+  bool _holdRepeated = false;
+
+  @override
+  void dispose() {
+    _hold?.cancel();
+    super.dispose();
+  }
 
   void _append(String digit) {
     final text = widget.controller.text;
@@ -76,22 +93,46 @@ class _NumberPadState extends State<NumberPad> {
     widget.controller.value = TextEditingValue.empty;
   }
 
+  /// Зажатие «стереть»: сначала одна цифра, затем ускоряющийся ряд.
+  void _beginBackspaceHold() {
+    _hold?.cancel();
+    _holdRepeated = false;
+    _hold = Timer(_holdDelay, () {
+      _holdRepeated = true;
+      _backspace();
+      _hold = Timer.periodic(_holdRepeat, (_) => _backspace());
+    });
+  }
+
+  void _endBackspaceHold() {
+    _hold?.cancel();
+    _hold = null;
+  }
+
+  void _backspaceTap() {
+    // Если автоповтор уже стёр цифры, отпускание пальца не должно стереть
+    // ещё одну — иначе «зажал и отпустил» съедало на две цифры больше.
+    final repeated = _holdRepeated;
+    _holdRepeated = false;
+    if (!repeated) _backspace();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final digits = List.generate(10, (i) => '$i')..removeAt(0);
     // 1 2 3 / 4 5 6 / 7 8 9 / ОЧИСТИТЬ 0 СТЕРЕТЬ. Слоты 0…9 заняли цифры,
     // 10 и 11 — служебные клавиши.
+    const digits = <String>['1', '2', '3', '4', '5', '6', '7', '8', '9'];
     final rows = <List<_PadSpec>>[
       for (var r = 0; r < 3; r++)
         [
           for (var k = 0; k < 3; k++)
             _PadSpec.digit(digits[r * 3 + k], r * 3 + k),
         ],
-      [
-        const _PadSpec.action(_clearSlot, Icons.vertical_align_top_rounded),
+      const [
+        _PadSpec.action(_clearSlot, Icons.vertical_align_top_rounded),
         _PadSpec.digit('0', 9),
-        const _PadSpec.action(_backspaceSlot, Icons.backspace_outlined),
+        _PadSpec.action(_backspaceSlot, Icons.backspace_outlined),
       ],
     ];
     return Column(
@@ -109,21 +150,21 @@ class _NumberPadState extends State<NumberPad> {
                       child: _PadKey(
                         spec: spec,
                         label: spec.digit ?? _actionLabel(context, spec.slot),
-                        pressed: _pressed == spec.slot,
                         colorScheme: cs,
-                        onTapDown: () => _press(spec.slot),
-                        onTapUp: () {
-                          _release();
-                          switch (spec.slot) {
-                            case _clearSlot:
-                              _clear();
-                            case _backspaceSlot:
-                              _backspace();
-                            default:
-                              _append(spec.digit!);
-                          }
+                        onTapDown: spec.slot == _backspaceSlot
+                            ? _beginBackspaceHold
+                            : null,
+                        onTap: switch (spec.slot) {
+                          _clearSlot => _clear,
+                          _backspaceSlot => () {
+                            _endBackspaceHold();
+                            _backspaceTap();
+                          },
+                          _ => () => _append(spec.digit!),
                         },
-                        onTapCancel: _release,
+                        onTapCancel: spec.slot == _backspaceSlot
+                            ? _endBackspaceHold
+                            : null,
                       ),
                     ),
                   ),
@@ -149,68 +190,138 @@ class _PadSpec {
   final IconData? icon;
 }
 
-/// Одна клавиша панели: залитый скруглённый прямоугольник, который при
-/// нажатии наливается акцентом и получает акцентную обводку.
-class _PadKey extends StatelessWidget {
+/// Одна клавиша панели: скруглённый прямоугольник, который при нажатии
+/// мягко вдавливается и наливается акцентом.
+class _PadKey extends StatefulWidget {
   const _PadKey({
     required this.spec,
     required this.label,
-    required this.pressed,
     required this.colorScheme,
-    required this.onTapDown,
-    required this.onTapUp,
-    required this.onTapCancel,
+    required this.onTap,
+    this.onTapDown,
+    this.onTapCancel,
   });
 
   final _PadSpec spec;
   final String label;
-  final bool pressed;
   final ColorScheme colorScheme;
-  final VoidCallback onTapDown;
-  final VoidCallback onTapUp;
-  final VoidCallback onTapCancel;
+  final VoidCallback onTap;
+  final VoidCallback? onTapDown;
+  final VoidCallback? onTapCancel;
+
+  @override
+  State<_PadKey> createState() => _PadKeyState();
+}
+
+class _PadKeyState extends State<_PadKey> with SingleTickerProviderStateMixin {
+  late final AnimationController _press = AnimationController(vsync: this);
+  bool _held = false;
+
+  @override
+  void dispose() {
+    _press.dispose();
+    super.dispose();
+  }
+
+  void _down() {
+    if (_held) return;
+    _held = true;
+    // 190 мс вместо 90: на 90 клавиша «проваливалась» за три кадра — это и
+    // читалось как резкое зажатие. Вдавливание теперь успевает быть
+    // замеченным, а быстрый набор всё равно не ждёт: нажатие засчитывается
+    // сразу по указателю, анимация только догоняет.
+    _press.animateTo(
+      1,
+      duration: const Duration(milliseconds: 190),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _up() {
+    if (!_held) return;
+    _held = false;
+    // Возврат мягче и длиннее вдавливания — отпускание не «щёлкает».
+    _press.animateBack(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final cs = colorScheme;
-    final icon = spec.icon;
+    final cs = widget.colorScheme;
+    final icon = widget.spec.icon;
     return Semantics(
       button: true,
-      label: label,
-      child: GestureDetector(
-        key: Key('numberpad_${spec.slot}'),
-        behavior: HitTestBehavior.opaque,
-        excludeFromSemantics: true,
-        onTapDown: (_) => onTapDown(),
-        onTapUp: (_) => onTapUp(),
-        onTapCancel: onTapCancel,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOutCubic,
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: pressed
-                ? cs.primary.withValues(alpha: 0.22)
-                : cs.surfaceContainerHighest.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: pressed
-                  ? cs.primary.withValues(alpha: 0.55)
-                  : cs.outline.withValues(alpha: 0.28),
-            ),
-          ),
-          child: icon != null
-              ? Icon(icon, size: 22, color: cs.onSurfaceVariant)
-              : Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+      label: widget.label,
+      child: Listener(
+        onPointerDown: (_) => _down(),
+        onPointerUp: (_) => _up(),
+        onPointerCancel: (_) => _up(),
+        child: GestureDetector(
+          key: Key('numberpad_${widget.spec.slot}'),
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTapDown: (_) => widget.onTapDown?.call(),
+          onTap: widget.onTap,
+          onTapCancel: () {
+            _up();
+            widget.onTapCancel?.call();
+          },
+          child: AnimatedBuilder(
+            animation: _press,
+            builder: (context, _) {
+              // Кривая уже применена самим контроллером (`animateTo(curve:)`).
+              // Повторный easeOutCubic поверх неё сдвигал всю анимацию в
+              // начало — клавиша «прыгала» в нажатое состояние и потом стояла.
+              final t = _press.value;
+              final foreground = Color.lerp(
+                cs.onSurfaceVariant,
+                cs.primary,
+                t,
+              )!;
+              return Transform.scale(
+                scale: 1 - 0.038 * t,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color.lerp(
+                      cs.surfaceContainerHighest.withValues(alpha: 0.55),
+                      cs.primary.withValues(alpha: 0.22),
+                      t,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Color.lerp(
+                        cs.outline.withValues(alpha: 0.28),
+                        cs.primary.withValues(alpha: 0.6),
+                        t,
+                      )!,
+                      width: 1 + 0.3 * t,
+                    ),
+                  ),
+                  child: SizedBox(
+                    height: 46,
+                    child: Center(
+                      child: icon != null
+                          ? Icon(icon, size: 22, color: foreground)
+                          : Text(
+                              widget.label,
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
+                                color: Color.lerp(cs.onSurface, cs.primary, t),
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                    ),
                   ),
                 ),
+              );
+            },
+          ),
         ),
       ),
     );

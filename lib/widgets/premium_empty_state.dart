@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// A calm, elevated empty state used when a section has no user content yet.
-class PremiumEmptyState extends StatelessWidget {
+/// Карточка пустого состояния: иконка в круге, заголовок, подсказка, совет и
+/// кнопка действия. Вынесена отдельно от [PremiumEmptyState], потому что её
+/// переиспользуют и как элемент прокрутки (внутри header'а списка задач), где
+/// нельзя держать Expanded/свой скролл.
+class PremiumEmptyCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String hint;
@@ -10,11 +13,7 @@ class PremiumEmptyState extends StatelessWidget {
   final VoidCallback onPressed;
   final Color? accent;
 
-  /// Содержимое над карточкой (таблетка разделов) — скроллится вместе
-  /// с пустым состоянием, чтобы таблетка «листалась как контент».
-  final Widget? header;
-
-  const PremiumEmptyState({
+  const PremiumEmptyCard({
     super.key,
     required this.icon,
     required this.title,
@@ -23,7 +22,6 @@ class PremiumEmptyState extends StatelessWidget {
     required this.actionLabel,
     required this.onPressed,
     this.accent,
-    this.header,
   });
 
   @override
@@ -32,10 +30,7 @@ class PremiumEmptyState extends StatelessWidget {
     final cs = theme.colorScheme;
     final tint = accent ?? cs.primary;
 
-    final header = this.header;
-    // С таблеткой: таблетка сверху (как в списке), карточка-совет по центру
-    // оставшегося места. Без таблетки — весь блок по центру, как было.
-    final card = ConstrainedBox(
+    return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 360),
       child: Container(
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
@@ -140,6 +135,50 @@ class PremiumEmptyState extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A calm, elevated empty state used when a section has no user content yet.
+class PremiumEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String hint;
+  final String advice;
+  final String actionLabel;
+  final VoidCallback onPressed;
+  final Color? accent;
+
+  /// Содержимое над карточкой (таблетка разделов) — скроллится вместе
+  /// с пустым состоянием, чтобы таблетка «листалась как контент».
+  final Widget? header;
+
+  const PremiumEmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.hint,
+    required this.advice,
+    required this.actionLabel,
+    required this.onPressed,
+    this.accent,
+    this.header,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final card = PremiumEmptyCard(
+      icon: icon,
+      title: title,
+      hint: hint,
+      advice: advice,
+      actionLabel: actionLabel,
+      onPressed: onPressed,
+      accent: accent,
+    );
+
+    final header = this.header;
+    // С таблеткой: таблетка сверху (как в списке), карточка-совет по центру
+    // оставшегося места. Без таблетки — весь блок по центру, как было.
     if (header == null) {
       return Center(
         child: SingleChildScrollView(
