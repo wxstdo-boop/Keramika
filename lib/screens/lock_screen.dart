@@ -303,25 +303,38 @@ class _LockScreenState extends State<LockScreen>
                               children: [
                                 const _PinMedallion(size: 104),
                                 const SizedBox(height: 18),
-                                // IntrinsicWidth: подчёркивание строго по
-                                // ширине текста, концы полоски закруглены.
-                                IntrinsicWidth(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        widget.isSetting
-                                            ? (_confirmPin == null
-                                                  ? Translations.t('setPin', context)
-                                                  : Translations.t(
-                                                      'confirmPin',
-                                                      context,
-                                                    ))
-                                            : Translations.t('enterPin', context),
-                                        style: theme.textTheme.titleLarge,
-                                      ),
-                                      _WavyUnderline(),
-                                    ],
+                                // Волна рисуется в отступе под текстом:
+                                // CustomPaint с ребёнком (Text) наследует его
+                                // ширину и отдаёт корректные intrinsics. Раньше
+                                // здесь был IntrinsicWidth+LayoutBuilder — та
+                                // пара НЕ умеет считать intrinsics и падала в
+                                // debug/тестах («LayoutBuilder does not support
+                                // returning intrinsic dimensions»).
+                                CustomPaint(
+                                  painter: _UnderlineWavePainter(
+                                    color: const Color(0xFFB3121F).withValues(
+                                      alpha: 0.42,
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 13),
+                                    child: Text(
+                                      widget.isSetting
+                                          ? (_confirmPin == null
+                                                ? Translations.t(
+                                                    'setPin',
+                                                    context,
+                                                  )
+                                                : Translations.t(
+                                                    'confirmPin',
+                                                    context,
+                                                  ))
+                                          : Translations.t(
+                                              'enterPin',
+                                              context,
+                                            ),
+                                      style: theme.textTheme.titleLarge,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -2124,31 +2137,13 @@ class _MedallionMotionPainter extends CustomPainter {
 
 /// Плавная извилистая красная линия под заголовком «Введите PIN» —
 /// полупрозрачная, лёгкая волна, как росчерк кисти.
-class _WavyUnderline extends StatelessWidget {
-  const _WavyUnderline();
-
-  @override
-  Widget build(BuildContext context) {
-    // Ширина = доступная (даёт IntrinsicWidth от текста), высота 12.
-    // Концы закруглены (StrokeCap.round в пейнтере), поэтому полоска
-    // ровно укладывается под границы надписи и не вылезает в стороны.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = (constraints.maxWidth.isFinite ? constraints.maxWidth : 200).toDouble();
-        return CustomPaint(
-          size: Size(w, 12),
-          painter: _WavyLinePainter(
-            color: const Color(0xFFB3121F).withValues(alpha: 0.42),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _WavyLinePainter extends CustomPainter {
+/// Рисует волну-подчёркивание в НИЖНЕЙ части полученного size (в зоне
+/// нижнего отступа вокруг Text). CustomPaint с ребёнком наследует ширину
+/// ребёнка и отдаёт корректные intrinsics — в отличие от старой пары
+/// IntrinsicWidth + LayoutBuilder, которая падала при расчёте intrinsics.
+class _UnderlineWavePainter extends CustomPainter {
   final Color color;
-  _WavyLinePainter({required this.color});
+  _UnderlineWavePainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2158,15 +2153,14 @@ class _WavyLinePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = color;
     final path = Path();
-    final amplitude = size.height * 0.32;
+    final centerY = size.height - 6.5;
+    final amplitude = 3.8;
     const frequency = 4.0;
     const steps = 100;
     for (var i = 0; i <= steps; i++) {
       final t = i / steps;
       final x = t * size.width;
-      final y =
-          size.height / 2 +
-          amplitude * math.sin(t * math.pi * 2 * frequency);
+      final y = centerY + amplitude * math.sin(t * math.pi * 2 * frequency);
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -2177,5 +2171,5 @@ class _WavyLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_WavyLinePainter old) => old.color != color;
+  bool shouldRepaint(_UnderlineWavePainter old) => old.color != color;
 }

@@ -56,7 +56,6 @@ class _NumberPadState extends State<NumberPad> {
 
   Timer? _hold;
   bool _holdRepeated = false;
-  int? _holdSlot;
 
   @override
   void dispose() {
@@ -121,7 +120,6 @@ class _NumberPadState extends State<NumberPad> {
   void _beginHold(int slot) {
     _hold?.cancel();
     _holdRepeated = false;
-    _holdSlot = slot;
     _hold = Timer(_holdDelay, () {
       _holdRepeated = true;
       _fire(slot);
@@ -151,7 +149,6 @@ class _NumberPadState extends State<NumberPad> {
   void _endHold() {
     _hold?.cancel();
     _hold = null;
-    _holdSlot = null;
   }
 
   /// Отпускание клавиши: если автоповтор уже крутил значения, отпускание
@@ -206,7 +203,6 @@ class _NumberPadState extends State<NumberPad> {
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
