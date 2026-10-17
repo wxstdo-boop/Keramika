@@ -78,6 +78,52 @@ class Translations {
       'importDone': 'Settings imported',
       'importError': 'Import failed',
       'importWrongFile': 'Please select a .json file',
+      'startupRecoveryTitle': 'Keramika stopped safely',
+      'startupRecoveryBody':
+          'Keramika could not safely open its encrypted data and stopped before creating a replacement key. Existing files were left unchanged.',
+      'startupRecoveryBackupAdvice':
+          'Do not clear app storage or uninstall until you have verified a separate Keramika JSON backup. If key recovery fails, preserve that backup before reinstalling, then import it.',
+      'startupRecoveryDetails': 'Technical details',
+      'developerCorner': 'Developer corner',
+      'developerCode': 'Access code',
+      'recoveryPhraseTitle': 'Encryption recovery phrase',
+      'recoveryPhraseWarning':
+          'This 24-word phrase can unlock your encrypted data. Keep it private and offline. Keramika never stores the phrase or the unwrapped key in a backup. If you lose the phrase, it cannot be recreated.',
+      'recoveryCreateButton': 'Create recovery phrase',
+      'recoveryReplaceButton': 'Create a new phrase',
+      'recoveryReplaceTitle': 'Replace recovery phrase?',
+      'recoveryReplaceBody':
+          'The previous phrase will stop working. Continue only if you can safely save and confirm the new phrase.',
+      'recoveryConfirmInstructions':
+          'Write the phrase down in order and enter all 24 words to confirm. This screen will not show it again after confirmation.',
+      'recoveryConfirmLabel': 'Confirm all words',
+      'recoveryConfirmButton': 'Confirm and protect',
+      'recoveryPhraseMismatch':
+          'The confirmation does not match. Nothing was saved.',
+      'recoveryPhraseSaved':
+          'Recovery protection is set. Test it below, keep the phrase offline, and export a new backup. A backup made before setup cannot recover this key.',
+      'recoverySetupFailed':
+          'Could not save recovery protection. Existing data was not changed.',
+      'recoveryTestTitle': 'Test recovery',
+      'recoveryTestInstructions':
+          'Enter the saved phrase to test that it unlocks the current key. This is a non-destructive test; actual recovery is available on the startup recovery screen.',
+      'recoveryPhraseInput': 'Recovery phrase',
+      'recoveryTestButton': 'Test phrase',
+      'recoveryTestPassed':
+          'Recovery phrase verified against this encrypted data. No data or key was changed.',
+      'recoveryTestFailed': 'Phrase verification failed. Nothing was changed.',
+      'recoveryRestoreTitle': 'Restore with a recovery phrase',
+      'recoveryRestoreInstructions':
+          'Choose the Keramika backup that contains your recovery information, then enter its 24-word phrase. The phrase is only used on this device and is not saved.',
+      'recoveryChooseBackup': 'Choose recovery backup',
+      'recoveryRestoreButton': 'Restore encryption key',
+      'recoveryLocalEnvelope': 'Recovery information found on this device.',
+      'recoveryBackupInvalid':
+          'This backup does not contain valid recovery information. No data was changed.',
+      'recoveryRestoreSuccess':
+          'The encryption key was restored without replacing existing data. Close and reopen Keramika. If you recovered from a backup after reinstalling, import that same backup from Settings.',
+      'recoveryRestoreFailed':
+          'Recovery failed. The key and encrypted files were not replaced. Check the phrase and backup, and keep the backup unchanged.',
       'license': 'License: MIT',
       'madeWithLove': 'Made with',
       'refresh': 'Refresh app',
@@ -873,6 +919,52 @@ class Translations {
       'importDone': 'Настройки импортированы',
       'importError': 'Не удалось импортировать',
       'importWrongFile': 'Выберите файл .json',
+      'startupRecoveryTitle': 'Запуск остановлен безопасно',
+      'startupRecoveryBody':
+          'Keramika не смогла безопасно открыть зашифрованные данные и остановила запуск, не создавая новый ключ. Существующие файлы не изменены.',
+      'startupRecoveryBackupAdvice':
+          'Не очищайте данные приложения и не удаляйте его, пока не проверена отдельная JSON-копия Keramika. Если восстановить ключ не удастся, сначала сохраните копию, затем переустановите приложение и импортируйте её.',
+      'startupRecoveryDetails': 'Технические сведения',
+      'developerCorner': 'Уголок разработчика',
+      'developerCode': 'Код доступа',
+      'recoveryPhraseTitle': 'Фраза восстановления шифрования',
+      'recoveryPhraseWarning':
+          'Эта фраза из 24 слов даёт доступ к зашифрованным данным. Храните её отдельно и в тайне. Keramika не сохраняет фразу или открытый ключ в резервной копии. Потерянную фразу нельзя восстановить.',
+      'recoveryCreateButton': 'Создать фразу восстановления',
+      'recoveryReplaceButton': 'Создать новую фразу',
+      'recoveryReplaceTitle': 'Заменить фразу восстановления?',
+      'recoveryReplaceBody':
+          'Предыдущая фраза перестанет работать. Продолжайте, только если сможете надёжно сохранить и подтвердить новую фразу.',
+      'recoveryConfirmInstructions':
+          'Запишите слова по порядку и введите все 24 слова для подтверждения. После подтверждения экран больше не покажет фразу.',
+      'recoveryConfirmLabel': 'Повторите все слова',
+      'recoveryConfirmButton': 'Подтвердить и защитить',
+      'recoveryPhraseMismatch':
+          'Подтверждение не совпадает. Ничего не сохранено.',
+      'recoveryPhraseSaved':
+          'Защита восстановления настроена. Проверьте её ниже, храните фразу отдельно и создайте новую резервную копию. Копия до настройки не восстановит этот ключ.',
+      'recoverySetupFailed':
+          'Не удалось сохранить защиту восстановления. Данные не изменены.',
+      'recoveryTestTitle': 'Проверка восстановления',
+      'recoveryTestInstructions':
+          'Введите сохранённую фразу, чтобы проверить доступ к текущему ключу. Проверка ничего не меняет; восстановление доступно на экране безопасного запуска.',
+      'recoveryPhraseInput': 'Фраза восстановления',
+      'recoveryTestButton': 'Проверить фразу',
+      'recoveryTestPassed':
+          'Фраза подтверждена для этих зашифрованных данных. Данные и ключ не изменены.',
+      'recoveryTestFailed': 'Проверка не пройдена. Ничего не изменено.',
+      'recoveryRestoreTitle': 'Восстановление по фразе',
+      'recoveryRestoreInstructions':
+          'Выберите резервную копию Keramika с данными восстановления и введите фразу из 24 слов. Фраза используется только на этом устройстве и не сохраняется.',
+      'recoveryChooseBackup': 'Выбрать резервную копию',
+      'recoveryRestoreButton': 'Восстановить ключ шифрования',
+      'recoveryLocalEnvelope': 'На устройстве найдены данные восстановления.',
+      'recoveryBackupInvalid':
+          'В резервной копии нет корректных данных восстановления. Данные не изменены.',
+      'recoveryRestoreSuccess':
+          'Ключ восстановлен без замены существующих данных. Закройте и снова откройте Keramika. Если восстановление выполнено после переустановки, импортируйте эту же копию в настройках.',
+      'recoveryRestoreFailed':
+          'Восстановление не удалось. Ключ и зашифрованные файлы не заменены. Проверьте фразу и резервную копию, не изменяя её.',
       'license': 'Лицензия: MIT',
       'madeWithLove': 'Сделано с',
       'refresh': 'Обновить',
@@ -1677,6 +1769,53 @@ class Translations {
       'importDone': 'Paramètres importés',
       'importError': 'Échec de l’importation',
       'importWrongFile': 'Veuillez sélectionner un fichier .json',
+      'startupRecoveryTitle': 'Keramika s’est arrêtée en toute sécurité',
+      'startupRecoveryBody':
+          "Keramika n'a pas pu ouvrir les données chiffrées en toute sécurité. Le démarrage a été arrêté sans créer de nouvelle clé et sans modifier les fichiers existants.",
+      'startupRecoveryBackupAdvice':
+          "N'effacez pas les données de l'application et ne la désinstallez pas avant d'avoir vérifié une copie JSON Keramika séparée. Si la clé ne peut pas être récupérée, conservez cette copie avant de réinstaller, puis importez-la.",
+      'startupRecoveryDetails': 'Détails techniques',
+      'developerCorner': 'Espace développeur',
+      'developerCode': 'Code d’accès',
+      'recoveryPhraseTitle': 'Phrase de récupération du chiffrement',
+      'recoveryPhraseWarning':
+          'Cette phrase de 24 mots peut déverrouiller vos données chiffrées. Gardez-la secrète et hors ligne. Keramika ne stocke jamais la phrase ni la clé déverrouillée dans une sauvegarde. Une phrase perdue ne peut pas être recréée.',
+      'recoveryCreateButton': 'Créer une phrase de récupération',
+      'recoveryReplaceButton': 'Créer une nouvelle phrase',
+      'recoveryReplaceTitle': 'Remplacer la phrase de récupération ?',
+      'recoveryReplaceBody':
+          'L’ancienne phrase ne fonctionnera plus. Continuez uniquement si vous pouvez enregistrer et confirmer la nouvelle phrase en sécurité.',
+      'recoveryConfirmInstructions':
+          'Notez les mots dans l’ordre, puis saisissez les 24 mots pour confirmer. Cette phrase ne sera plus affichée après confirmation.',
+      'recoveryConfirmLabel': 'Confirmer les 24 mots',
+      'recoveryConfirmButton': 'Confirmer et protéger',
+      'recoveryPhraseMismatch':
+          'La confirmation ne correspond pas. Rien n’a été enregistré.',
+      'recoveryPhraseSaved':
+          'La protection est configurée. Testez-la ci-dessous, gardez la phrase hors ligne et exportez une nouvelle sauvegarde. Une ancienne sauvegarde ne peut pas récupérer cette clé.',
+      'recoverySetupFailed':
+          'Impossible d’enregistrer la protection. Les données existantes n’ont pas été modifiées.',
+      'recoveryTestTitle': 'Tester la récupération',
+      'recoveryTestInstructions':
+          'Saisissez la phrase enregistrée pour vérifier qu’elle déverrouille la clé actuelle. Ce test ne modifie rien ; la récupération réelle est disponible sur l’écran de démarrage sécurisé.',
+      'recoveryPhraseInput': 'Phrase de récupération',
+      'recoveryTestButton': 'Tester la phrase',
+      'recoveryTestPassed':
+          'La phrase correspond aux données chiffrées. Aucune donnée ni clé n’a été modifiée.',
+      'recoveryTestFailed': 'La vérification a échoué. Rien n’a été modifié.',
+      'recoveryRestoreTitle': 'Récupérer avec une phrase',
+      'recoveryRestoreInstructions':
+          'Choisissez une sauvegarde Keramika contenant les informations de récupération, puis saisissez sa phrase de 24 mots. La phrase est utilisée uniquement sur cet appareil et n’est pas enregistrée.',
+      'recoveryChooseBackup': 'Choisir une sauvegarde',
+      'recoveryRestoreButton': 'Restaurer la clé de chiffrement',
+      'recoveryLocalEnvelope':
+          'Informations de récupération trouvées sur cet appareil.',
+      'recoveryBackupInvalid':
+          'Cette sauvegarde ne contient pas d’informations de récupération valides. Aucune donnée n’a été modifiée.',
+      'recoveryRestoreSuccess':
+          'La clé a été restaurée sans remplacer les données existantes. Fermez puis rouvrez Keramika. Après une réinstallation, importez cette même sauvegarde depuis les paramètres.',
+      'recoveryRestoreFailed':
+          'Échec de la récupération. La clé et les fichiers chiffrés n’ont pas été remplacés. Vérifiez la phrase et la sauvegarde sans la modifier.',
       'license': 'Licence : MIT',
       'madeWithLove': 'Fait avec',
       'refresh': 'Actualiser',

@@ -19,7 +19,8 @@
         android:label="Keramika"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round">
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false">
         <!-- Skia вместо Impeller: на бюджетных GPU (Adreno 610 у Redmi
              Note 12) Vulkan-рендерер Impeller подтормаживает и рисует
              текст (особенно курсив) с артефактами-зазорами между глифами.
