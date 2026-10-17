@@ -57,7 +57,7 @@ void main() {
 
   group('Habit streaks', () {
     test(
-      'первая отметка — стрик 1, повторная в тот же день — без изменений',
+      'первая отметка — стрик 1, снятие откатывает, повторная в тот же день — снова 1',
       () async {
         await resetHabits();
         final svc = HabitService();
@@ -67,27 +67,37 @@ void main() {
         expect(svc.habits.first.streak, 1);
         expect(svc.habits.first.doneToday, isTrue);
 
-        // Сняли отметку — doneToday сброшен, стрик цел.
+        // Снятие отметки: до сегодня ничего не было — стрик откатывается
+        // на 0, дата стирается (модель отката, как в habit_streak_test).
         await svc.toggle('h1');
         expect(svc.habits.first.doneToday, isFalse);
-        expect(svc.habits.first.streak, 1);
+        expect(svc.habits.first.streak, 0);
+        expect(svc.habits.first.lastDoneDate, isNull);
 
-        // Вернули в тот же день — стрик не удвоился.
+        // Вернули в тот же день — стрик снова 1: не удваивается и не
+        // застревает на 0.
         await svc.toggle('h1');
         expect(svc.habits.first.doneToday, isTrue);
         expect(svc.habits.first.streak, 1);
       },
     );
 
-    test('снятие отметки не убивает стрик', () async {
+    test('снятие отметки откатывает стрик на день назад, но не убивает серию', () async {
       await resetHabits();
       final svc = HabitService();
-      await svc.add(Habit(id: 'h2', name: 'Read'));
+      final today = HabitService.mskToday();
+      final yesterday = today.subtract(const Duration(days: 1));
+      // Стрик из прошлых дней: серия 3, последняя отметка вчера.
+      await svc.add(Habit(id: 'h2', name: 'Read', streak: 3, lastDoneDate: yesterday));
 
-      await svc.toggle('h2'); // streak 1
-      await svc.toggle('h2'); // сняли
+      await svc.toggle('h2'); // сегодня: 3 → 4
+      expect(svc.habits.first.streak, 4);
+      expect(svc.habits.first.doneToday, isTrue);
+
+      await svc.toggle('h2'); // сняли: откат на вчера, стрик 3 жив
       expect(svc.habits.first.doneToday, isFalse);
-      expect(svc.habits.first.streak, 1, reason: 'стрик сохраняется');
+      expect(svc.habits.first.streak, 3, reason: 'снятие откатывает на день назад, но не убивает серию');
+      expect(svc.habits.first.lastDoneDate, yesterday);
     });
 
     test('отметка на следующий день продлевает цепочку (стрик 2)', () async {
