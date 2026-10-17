@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip, BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import '../models/habit.dart';
@@ -8,11 +9,14 @@ import '../services/notification_service_instance.dart';
 import '../utils/context_menu.dart';
 import '../utils/snackbar.dart';
 import '../utils/icon_map.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../widgets/icon_picker_sheet.dart';
 import '../widgets/manual_time_dialog.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_keyboard_body.dart';
 
 class AddHabitScreen extends StatefulWidget {
@@ -36,7 +40,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
 
   /// Текст напоминания (до 60 символов).
   String? _reminderText;
-  final _reminderTextCtrl = TextEditingController();
+  final _reminderTextCtrl = WideDashController();
   bool _editing = false;
 
   /// Секцию «Вспомнить всё» скрываем, если напоминание уже установлено
@@ -52,9 +56,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   void initState() {
     super.initState();
     if (widget.existing != null) {
-      _nameCtrl = TextEditingController(text: widget.existing!.name);
-      _notesCtrl = TextEditingController(text: widget.existing!.notes);
-      _statusCtrl = TextEditingController(text: widget.existing!.status);
+      _nameCtrl = WideDashController(text: widget.existing!.name);
+      _notesCtrl = WideDashController(text: widget.existing!.notes);
+      _statusCtrl = WideDashController(text: widget.existing!.status);
       _iconCodePoint = widget.existing!.iconCodePoint;
       _activeDays = List.from(widget.existing!.activeDays);
       _habitType = widget.existing!.type;
@@ -63,9 +67,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       if (_reminderText != null) _reminderTextCtrl.text = _reminderText!;
       _editing = true;
     } else {
-      _nameCtrl = TextEditingController();
-      _notesCtrl = TextEditingController();
-      _statusCtrl = TextEditingController();
+      _nameCtrl = WideDashController();
+      _notesCtrl = WideDashController();
+      _statusCtrl = WideDashController();
       // По умолчанию — цветок (spa_outlined), чтобы новая привычка
       // сразу выглядела «живой», а не сноубордом.
       _iconCodePoint = 62395;
@@ -150,7 +154,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   }
 
   void _showNotesDialog() {
-    final ctrl = TextEditingController(text: _statusCtrl.text);
+    final ctrl = WideDashController(text: _statusCtrl.text);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -162,22 +166,27 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
             Text(Translations.t('habitStatusTitle', context)),
           ],
         ),
-        content: TextField(
-          cursorOpacityAnimates: true,
-          magnifierConfiguration: TextMagnifierConfiguration.disabled,
+        content: SmoothTyping(
           controller: ctrl,
-          contextMenuBuilder: minimalContextMenuBuilder,
-          maxLength: 50,
-          enableSuggestions: false,
-          autocorrect: false,
-          maxLines: 3,
-          buildCounter: smoothCharCounterBuilder,
-          decoration: InputDecoration(
-            hintText: Translations.t('habitStatusHint', context),
-            border: const OutlineInputBorder(),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
+          builder: (style) => TextField(
+            style: style,
+            cursorOpacityAnimates: true,
+            magnifierConfiguration: TextMagnifierConfiguration.disabled,
+            controller: ctrl,
+            contextMenuBuilder: minimalContextMenuBuilder,
+            maxLength: 50,
+            inputFormatters: [WideDashFormatter()],
+            enableSuggestions: false,
+            autocorrect: false,
+            maxLines: 3,
+            buildCounter: smoothCharCounterBuilder,
+            decoration: InputDecoration(
+              hintText: Translations.t('habitStatusHint', context),
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
             ),
           ),
         ),
@@ -205,7 +214,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       id: widget.existing?.id ?? const Uuid().v4(),
       name: name,
       notes: _notesCtrl.text.trim(),
-      status: _statusCtrl.text.trim(),
+      status: _habitType == 'bad' ? '' : _statusCtrl.text.trim(),
       streak: widget.existing?.streak ?? 0,
       doneToday: widget.existing?.doneToday ?? false,
       iconCodePoint: _iconCodePoint,
@@ -268,6 +277,10 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
+                      border: Border.all(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.50),
+                        width: 2,
+                      ),
                     ),
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),
@@ -375,39 +388,22 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         style: theme.textTheme.titleSmall,
                       ),
                       const SizedBox(width: 12),
-                      ChoiceChip(
-                        label: Text(Translations.t('habitTypeGood', context)),
+                      _TypeCapsule(
+                        label: Translations.t('habitTypeGood', context),
                         selected: _habitType == 'good',
-                        selectedColor: theme.colorScheme.primaryContainer,
-                        checkmarkColor: theme.colorScheme.onPrimaryContainer,
-                        labelStyle: TextStyle(
-                          color: _habitType == 'good'
-                              ? theme.colorScheme.onPrimaryContainer
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                        // Тип меняется и у СОЗДАННОЙ привычки: раньше чипы
-                        // были заглушены (`_editing ? null`), и «переезд из
-                        // вредных в полезные» было не сделать в принципе.
-                        // Переезд анимирует MoveLedger в habits_screen, а
-                        // закрепление вредной снимает _normalizeOrder.
-                        onSelected: (_) => setState(() {
-                          _habitType = 'good';
-                        }),
+                        color: theme.colorScheme.primary,
+                        containerColor: theme.colorScheme.primaryContainer,
+                        onSelectedColor: theme.colorScheme.onPrimaryContainer,
+                        onTap: () => setState(() => _habitType = 'good'),
                       ),
                       const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: Text(Translations.t('habitTypeBad', context)),
+                      _TypeCapsule(
+                        label: Translations.t('habitTypeBad', context),
                         selected: _habitType == 'bad',
-                        selectedColor: theme.colorScheme.errorContainer,
-                        checkmarkColor: theme.colorScheme.onErrorContainer,
-                        labelStyle: TextStyle(
-                          color: _habitType == 'bad'
-                              ? theme.colorScheme.onErrorContainer
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                        onSelected: (_) => setState(() {
-                          _habitType = 'bad';
-                        }),
+                        color: theme.colorScheme.error,
+                        containerColor: theme.colorScheme.errorContainer,
+                        onSelectedColor: theme.colorScheme.onErrorContainer,
+                        onTap: () => setState(() => _habitType = 'bad'),
                       ),
                     ],
                   ),
@@ -420,24 +416,30 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: TextField(
-                    cursorOpacityAnimates: true,
-                    magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                  child: SmoothTyping(
                     controller: _nameCtrl,
-                    contextMenuBuilder: minimalContextMenuBuilder,
-                    maxLength: 150,
-                    enableSuggestions: false,
-                    autocorrect: false,
-                    maxLines: 5,
-                    buildCounter: smoothCharCounterBuilder,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: Translations.t('habitName', context),
-                      prefixIcon: const Icon(Icons.edit_outlined),
-                      border: const OutlineInputBorder(),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
+                    builder: (style) => TextField(
+                      style: style,
+                      cursorOpacityAnimates: true,
+                      magnifierConfiguration:
+                          TextMagnifierConfiguration.disabled,
+                      controller: _nameCtrl,
+                      contextMenuBuilder: minimalContextMenuBuilder,
+                      maxLength: 150,
+                      inputFormatters: [WideDashFormatter()],
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      maxLines: 5,
+                      buildCounter: smoothCharCounterBuilder,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: Translations.t('habitName', context),
+                        prefixIcon: const Icon(Icons.edit_outlined),
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                       ),
                     ),
                   ),
@@ -471,27 +473,35 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(4),
-                              child: TextField(
-                                cursorOpacityAnimates: true,
-                                magnifierConfiguration:
-                                    TextMagnifierConfiguration.disabled,
+                              child: SmoothTyping(
                                 controller: _notesCtrl,
-                                contextMenuBuilder: minimalContextMenuBuilder,
-                                maxLength: 500,
-                                enableSuggestions: false,
-                                autocorrect: false,
-                                minLines: 5,
-                                maxLines: 12,
-                                buildCounter: smoothCharCounterBuilder,
-                                keyboardType: TextInputType.multiline,
-                                textInputAction: TextInputAction.newline,
-                                decoration: InputDecoration(
-                                  labelText: Translations.t('notes', context),
-                                  prefixIcon: const Icon(Icons.notes_outlined),
-                                  border: const OutlineInputBorder(),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 16,
+                                builder: (style) => TextField(
+                                  style: style,
+                                  cursorOpacityAnimates: true,
+                                  magnifierConfiguration:
+                                      TextMagnifierConfiguration.disabled,
+                                  controller: _notesCtrl,
+                                  contextMenuBuilder:
+                                      minimalContextMenuBuilder,
+                                  maxLength: 500,
+                                  inputFormatters: [WideDashFormatter()],
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  minLines: 5,
+                                  maxLines: 12,
+                                  buildCounter: smoothCharCounterBuilder,
+                                  keyboardType: TextInputType.multiline,
+                                  textInputAction: TextInputAction.newline,
+                                  decoration: InputDecoration(
+                                    labelText: Translations.t('notes', context),
+                                    prefixIcon: const Icon(
+                                      Icons.notes_outlined,
+                                    ),
+                                    border: const OutlineInputBorder(),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 16,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -501,7 +511,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         ],
                       )
                     : const SizedBox.shrink(
-                        key: const ValueKey('bad_no_notes'),
+                        key: ValueKey('bad_no_notes'),
                       ),
               ),
               Card(
@@ -784,54 +794,59 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  TextField(
-                                    cursorOpacityAnimates: true,
+                                  SmoothTyping(
                                     controller: _reminderTextCtrl,
-                                    maxLength: 60,
-                                    enableSuggestions: false,
-                                    autocorrect: false,
-                                    maxLines: 1,
-                                    buildCounter: smoothCharCounterBuilder,
-                                    // Как во ВСЕХ остальных полях
-                                    // приложения: без лупы при
-                                    // выделении и без «троеточия»/
-                                    // «Спросить копилот» в меню
-                                    // выделения — только копировать/
-                                    // вставить/вырезать.
-                                    magnifierConfiguration:
-                                        TextMagnifierConfiguration.disabled,
-                                    contextMenuBuilder:
-                                        minimalContextMenuBuilder,
-                                    decoration: InputDecoration(
-                                      hintText: Translations.t(
-                                        "remindCustomHint",
-                                        context,
-                                        "Например: Пора пить воду",
-                                      ),
-                                      hintStyle: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant
-                                                .withValues(alpha: 0.5),
-                                          ),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                      counterStyle: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant
-                                                .withValues(alpha: 0.5),
-                                          ),
-                                    ),
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.w500,
                                     ),
-                                    onChanged: (v) => setState(
-                                      () =>
-                                          _reminderText = v.isEmpty ? null : v,
+                                    builder: (style) => TextField(
+                                      style: style,
+                                      cursorOpacityAnimates: true,
+                                      controller: _reminderTextCtrl,
+                                      maxLength: 60,
+                                      inputFormatters: [WideDashFormatter()],
+                                      enableSuggestions: false,
+                                      autocorrect: false,
+                                      maxLines: 1,
+                                      buildCounter: smoothCharCounterBuilder,
+                                      // Как во ВСЕХ остальных полях
+                                      // приложения: без лупы при
+                                      // выделении и без «троеточия»/
+                                      // «Спросить копилот» в меню
+                                      // выделения — только копировать/
+                                      // вставить/вырезать.
+                                      magnifierConfiguration:
+                                          TextMagnifierConfiguration.disabled,
+                                      contextMenuBuilder:
+                                          minimalContextMenuBuilder,
+                                      decoration: InputDecoration(
+                                        hintText: Translations.t(
+                                          "remindCustomHint",
+                                          context,
+                                          "Например: Пора пить воду",
+                                        ),
+                                        hintStyle: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant
+                                                  .withValues(alpha: 0.5),
+                                            ),
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        counterStyle: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant
+                                                  .withValues(alpha: 0.5),
+                                            ),
+                                      ),
+                                      onChanged: (v) => setState(
+                                        () =>
+                                            _reminderText = v.isEmpty ? null : v,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -917,6 +932,70 @@ class _DayChip extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _TypeCapsule extends StatelessWidget {
+  const _TypeCapsule({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.containerColor,
+    required this.onSelectedColor,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final Color color;
+  final Color containerColor;
+  final Color onSelectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return PressScale(
+      pressedScale: 0.97,
+      duration: const Duration(milliseconds: 320),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: selected ? containerColor : cs.surfaceContainerHighest,
+            border: Border.all(
+              color: selected
+                  ? color.withValues(alpha: 0.6)
+                  : cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.45),
+              width: selected ? 1.4 : 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: isDark ? 0.30 : 0.18),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeInOutCubic,
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+              color: selected ? onSelectedColor : cs.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+            child: Text(label),
           ),
         ),
       ),

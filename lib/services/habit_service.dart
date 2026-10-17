@@ -257,30 +257,27 @@ class HabitService extends ChangeNotifier {
         h.lastDoneDate!.day,
       );
       final gap = todayDayUtc.difference(lastDayUtc).inDays;
-      // БАГ «стрик слетает на привычках с выбранными днями»: раньше любой
-      // календарный gap >= 2 рвал цепочку. Но для привычки с расписанием
-      // (activeDays) дни вне расписания отмечать не обязательно — пропуск
-      // «не положенного» дня НЕ должен ломать стрик. Считаем только
-      // пропущенные ПОЛОЖЕННЫЕ дни: ни один не пропущен → цепочка
-      // продолжается (streak + 1), пропущен хотя бы один → новая серия (1).
-      // Для привычек без расписания «положен» каждый день — поведение
-      // прежнее (gap >= 2 = пропуск).
+      // СТРОГОЕ ПРАВИЛО: стрик продолжается ТОЛЬКО пока ни один
+      // «положенный» день не пропущен. Пропуск хотя бы одного такого
+      // дня (missedDue >= 1) обрывает цепочку — новая серия стартует с 1.
+      // Для ежедневных привычек это значит: пропуск 1 дня = сброс.
+      // Для расписаний (activeDays) «положен» только свой день недели,
+      // поэтому пропуск чужих дней НЕ рвёт стрик.
       final missedDue = _missedDueDays(lastDayUtc, todayDayUtc, h.activeDays);
-      if (gap >= 2 && missedDue >= 1) {
-        // Пропущен положенный день — цепочка оборвана, начинаем новую.
-        newStreak = 1;
-        newLastDate = today;
-      } else if (gap >= 1) {
-        // Соседний день (или gap через «не положенные» дни) — продлеваем.
-        newStreak = h.streak + 1;
-        newLastDate = today;
-      } else if (gap <= 0) {
-        // Защита от глитча часовых поясов: lastDone == today (та же
-        // дата) или в будущем. такое возможно, если устройство только
-        // что переехало в другой TZ. Не сбрасываем стрик ниже
-        // сохранённого значения и не двигаем дату назад.
+      if (gap <= 0) {
+        // Защита от глитча часовых поясов: дата в будущем или та же.
         newStreak = h.streak;
         newLastDate = h.lastDoneDate!;
+      } else if (missedDue == 0) {
+        // Все «положенные» дни между последней отметкой и сегодня
+        // выполнены — цепочка продолжает расти.
+        newStreak = h.streak + 1;
+        newLastDate = today;
+      } else {
+        // Пропущен хотя бы 1 «положенный» день (missedDue >= 1) —
+        // цепочка оборвана, новая серия начинается с 1.
+        newStreak = 1;
+        newLastDate = today;
       }
     }
 
@@ -404,13 +401,18 @@ class HabitService extends ChangeNotifier {
         : lang == 'fr'
         ? 'Rappelle-toi'
         : 'Remember';
-    return '$prefix 🌱 ${habitName}';
+    return '$prefix 🌱 $habitName';
   }
 
   Future<void> reorder(int oldIndex, int newIndex) async {
     if (oldIndex < 0 || oldIndex >= _habits.length) return;
     if (newIndex < 0 || newIndex > _habits.length) return;
     if (oldIndex == newIndex) return;
+    // Pinned-привычки живут в начале списка. Не-pinned, которую пытаются
+    // перетащить в pinned-зону (выше), не пускаем: порядок pinned сохранён.
+    // Pinned между собой переставляются свободно.
+    final pinnedCount = _habits.where((h) => h.pinned).length;
+    if (! _habits[oldIndex].pinned && newIndex < pinnedCount) return;
     // The UI uses ReorderableListView.onReorderItem, which already gives
     // newIndex for the list after the dragged item is removed.
     final item = _habits.removeAt(oldIndex);

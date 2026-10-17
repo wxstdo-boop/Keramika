@@ -35,6 +35,7 @@ class _UpdatePillState extends State<UpdatePill> {
     });
     try {
       final info = await Installer.appInfo();
+      if (!mounted) return;
       if (info == null) {
         _toast(
           Translations.t(
@@ -50,16 +51,15 @@ class _UpdatePillState extends State<UpdatePill> {
         abi: abi,
         currentVersionCode: info.versionCode,
       );
+      if (!mounted) return;
       if (update == null) {
         pendingUpdate.value = null;
-        _toast(
-          Translations.t(
-            'updateLatest',
-            context,
-            'У вас последняя версия',
-          ) +
-              ' · v${info.versionName}',
+        final latestMsg = Translations.t(
+          'updateLatest',
+          context,
+          'У вас последняя версия',
         );
+        _toast('$latestMsg · v${info.versionName}');
         return;
       }
       pendingUpdate.value = update;
@@ -79,6 +79,7 @@ class _UpdatePillState extends State<UpdatePill> {
           );
         },
       );
+      if (!mounted) return;
       if (path == null) {
         _toast(
           Translations.t(
@@ -94,6 +95,7 @@ class _UpdatePillState extends State<UpdatePill> {
       final can = await Installer.canInstall();
       if (!can) {
         await Installer.openInstallSettings();
+        if (!mounted) return;
         _toast(
           Translations.t(
             'updateAllowSource',
@@ -108,6 +110,7 @@ class _UpdatePillState extends State<UpdatePill> {
         () => _phase = Translations.t('updateInstalling', context, 'Установка…'),
       );
       final ok = await Installer.installApk(path, expectedSha256: update.sha256);
+      if (!mounted) return;
       if (!ok) {
         _toast(
           Translations.t(
@@ -118,6 +121,7 @@ class _UpdatePillState extends State<UpdatePill> {
         );
       }
     } catch (_) {
+      if (!mounted) return;
       _toast(
         Translations.t('updateError', context, 'Ошибка обновления'),
       );

@@ -57,8 +57,11 @@ class TaskService extends ChangeNotifier {
 
   Future<bool> addCategory(String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty || trimmed.length > 15 || _categories.contains(trimmed))
+    if (trimmed.isEmpty ||
+        trimmed.length > 15 ||
+        _categories.contains(trimmed)) {
       return false;
+    }
     if (_categories.length >= maxCategories) return false;
     _categories.add(trimmed);
     notifyListeners();
@@ -71,8 +74,9 @@ class TaskService extends ChangeNotifier {
     if (trimmed.isEmpty ||
         trimmed.length > 15 ||
         _categories.contains(trimmed) ||
-        !_categories.contains(oldName))
+        !_categories.contains(oldName)) {
       return false;
+    }
     final idx = _categories.indexOf(oldName);
     _categories[idx] = trimmed;
     for (final t in _tasks) {

@@ -114,13 +114,15 @@ class AlarmReceiver : BroadcastReceiver() {
                 fallbackSound = !isRealityCheck && !ringStarted,
             )
 
-            // Стартуем Activity ТОЛЬКО для payload-будильников (не rc) и
-            // только если пользователь хочет полноэкранный показ: переключатель
-            // «Показывать поверх экрана блокировки» — его намерение, а не
-            // наша прихоть. Подробности — в launchAlarmActivity: это НЕ обычный
-            // startActivity, который Android 10+ молча блокирует из фона.
-            if (!isRealityCheck && fullscreen) {
-                launchAlarmActivity(context, id, payload)
+            // Стартуем Activity ТОЛЬКО для payload-будильников (не rc).
+            // FIX (другой путь на экран): всегда вызываем, а не только
+            // при включённом полноэкранном режиме. Тумблер теперь влияет
+            // только на showWhenLocked/turnScreenOn (через extra
+            // fullscreen_intent), а не на сам факт вывода на экран.
+            // Без FSI-права (API 34+) ActivityOptions.backgroundStart
+            // даёт запасной путь через PendingIntent.
+            if (!isRealityCheck) {
+                launchAlarmActivity(context, id, payload, fullscreen)
             }
 
             // Перепланируем следующий — но НЕ для догона: BootReceiver уже
@@ -187,7 +189,7 @@ class AlarmReceiver : BroadcastReceiver() {
      * не может быть отозвано. FSI при этом остаётся как улучшение (когда
      * право выдано), но больше не является единственным путём наверх.
      */
-    private fun launchAlarmActivity(ctx: Context, id: Int, payload: String) {
+    private fun launchAlarmActivity(ctx: Context, id: Int, payload: String, showWhenLocked: Boolean) {
         val i = Intent(ctx, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -196,6 +198,11 @@ class AlarmReceiver : BroadcastReceiver() {
             // MainActivity по этому флагу включает showWhenLocked /
             // turnScreenOn / keepScreenOn и просит снять ключгейрд.
             putExtra("alarm_launch", true)
+            // FIX: «поверх блокировки» теперь управляется ОТДЕЛЬНО от факта
+            // вывода на экран. Активность всё равно открывается (заносит
+            // пользователя на экран задачи), но showWhenLocked/keyguard
+            // применяются только если тумблер включён.
+            putExtra("alarm_fullscreen", showWhenLocked)
         }
         val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT

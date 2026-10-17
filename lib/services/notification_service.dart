@@ -152,8 +152,10 @@ class NotificationService extends ChangeNotifier {
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('ic_notification');
     final initSettings = InitializationSettings(android: androidSettings);
+    // С flutter_local_notifications 20 инициализация принимает именованные
+    // аргументы: первый позиционный параметр переименован в `settings:`.
     await _plugin.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: (response) =>
           onNotificationTap?.call(response.payload),
     );
@@ -285,8 +287,9 @@ class NotificationService extends ChangeNotifier {
   /// Whether notifications are allowed at the OS level (Android 13+).
   /// Returns true when not supported / can't be determined.
   Future<bool> areNotificationsEnabled() async {
-    if (_notificationsEnabledCached != null)
+    if (_notificationsEnabledCached != null) {
       return _notificationsEnabledCached!;
+    }
     if (!_supported) return true;
     final android = _plugin
         .resolvePlatformSpecificImplementation<
@@ -313,31 +316,29 @@ class NotificationService extends ChangeNotifier {
     String? payload,
   }) async {
     try {
+      // 19+ убрал `uiLocalNotificationDateInterpretation` (даты и так
+      // абсолютные), 20-я версия перевела параметры в именованные.
       await _plugin.zonedSchedule(
-        id,
-        title,
-        body,
-        scheduled,
-        details,
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: scheduled,
+        notificationDetails: details,
         payload: payload,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: matchDateTimeComponents,
       );
     } catch (e) {
       // Exact failed → fallback to inexact (still fires, just less precise)
       try {
         await _plugin.zonedSchedule(
-          id,
-          title,
-          body,
-          scheduled,
-          details,
+          id: id,
+          title: title,
+          body: body,
+          scheduledDate: scheduled,
+          notificationDetails: details,
           payload: payload,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: matchDateTimeComponents,
         );
       } catch (e2) {
@@ -534,7 +535,7 @@ class NotificationService extends ChangeNotifier {
   /// Отменяет ежедневное напоминание.
   Future<void> cancelReminder(int id) async {
     try {
-      await _plugin.cancel(id);
+      await _plugin.cancel(id: id);
     } catch (_) {}
   }
 
@@ -621,7 +622,12 @@ class NotificationService extends ChangeNotifier {
         largeIcon: const DrawableResourceAndroidBitmap('ic_notification_large'),
       ),
     );
-    await _plugin.show(id, title, body, details);
+    await _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: details,
+    );
   }
 
   Future<bool> scheduleAlarm(Alarm alarm) async {
@@ -641,6 +647,20 @@ class NotificationService extends ChangeNotifier {
       );
       return false;
     }
+    // Слой-диагностика «почему не сработает утром»: фиксируем ПЕРЕД постановкой
+    // состояние прав, по которым на OEM (MIUI/HyperOS) будильник тихо превращается
+    // в inexact и пролетает вовсе. exact=false -> пойдёт только whileIdle (неточно),
+    // battery=false -> MIUI засыпает/душит фоновые будильники, fsi=false -> экран
+    // не выйдет поверх блокировки. По этой строке видно, какой именно слой упал,
+    // а не "телефон не прозвенел". Чистое логирование - поведение не меняет.
+    try {
+      final exact = await AlarmScheduler.canScheduleExactAlarms();
+      final battery = await AlarmScheduler.isIgnoringBatteryOptimizations();
+      await AlarmBlackBox.log(
+        'DART GATES id=${alarm.id.hashCode} exact=$exact battery=$battery '
+        'fsi=$_fullScreenGranted',
+      );
+    } catch (_) {}
     final now = DateTime.now();
     var scheduled = DateTime(
       now.year,
@@ -782,8 +802,9 @@ class NotificationService extends ChangeNotifier {
   }
 
   String _rawSoundName(Alarm alarm) {
-    if (alarm.soundName == 'Custom' && alarm.customSoundPath != null)
+    if (alarm.soundName == 'Custom' && alarm.customSoundPath != null) {
       return 'alarm_default';
+    }
     switch (alarm.soundName) {
       case 'Gentle':
         return 'gentle';
@@ -801,7 +822,7 @@ class NotificationService extends ChangeNotifier {
   Future<void> cancelAlarm(String alarmId) async {
     if (!_supported) return;
     await AlarmScheduler.cancelAlarmClock(alarmId.hashCode);
-    await _plugin.cancel(alarmId.hashCode);
+    await _plugin.cancel(id: alarmId.hashCode);
   }
 
   Future<void> scheduleRealityChecks(
@@ -856,7 +877,7 @@ class NotificationService extends ChangeNotifier {
     // Сначала отменяем ВСЕ возможные ID-слоты, чтобы не было дубликатов после изменений расписания.
     for (int i = _rcBaseId; i < _rcBaseId + _maxRcSlots; i++) {
       await AlarmScheduler.cancelAlarmClock(i);
-      await _plugin.cancel(i);
+      await _plugin.cancel(id: i);
     }
 
     for (int i = 0; i < toSchedule.length; i++) {
@@ -944,7 +965,7 @@ class NotificationService extends ChangeNotifier {
     if (!_initialized || !_supported) return;
     for (int i = _rcBaseId; i < _rcBaseId + _maxRcSlots; i++) {
       await AlarmScheduler.cancelAlarmClock(i);
-      await _plugin.cancel(i);
+      await _plugin.cancel(id: i);
     }
     _rcCancelledToday = true;
     _rcCancelDateKey =

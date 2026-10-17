@@ -1,20 +1,21 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import 'dart:async';
 import '../services/haptics.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
-import 'package:flutter/services.dart';
 import '../models/task.dart';
 import '../services/task_service.dart';
 import '../services/ai_guide_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
-import '../widgets/press_scale.dart';
+import '../widgets/press_splat.dart' show OrganicFab;
 import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../widgets/swipe_to_delete.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/ai_guide.dart';
 import '../widgets/animated_strike_text.dart';
@@ -22,28 +23,53 @@ import '../widgets/animated_fab_row.dart';
 import '../widgets/sliding_picker.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/premium_empty_state.dart';
+import '../widgets/section_pill.dart'
+    show kSectionPillSlotHeight, sectionCurrentIndex;
 import 'add_task_screen.dart';
 
 class TasksScreen extends StatefulWidget {
+  /// Персональный notifier скролла раздела (см. AlarmsScreen).
+  final ValueNotifier<double>? scrollOffset;
+
   /// Индекс этого раздела в PageView — ключ в sectionOffsetByPage.
   final int pillIndex;
-  const TasksScreen({super.key, this.pillIndex = 0});
-
-  @override
-  State<TasksScreen> createState() => _TasksScreenState();
-}
+  const TasksScreen({super.key, this.scrollOffset, this.pillIndex = 0});
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
 }
 
 class _TasksScreenState extends State<TasksScreen>
-    with AutomaticKeepAliveClientMixin {
+    with
+        WidgetsBindingObserver,
+        AutomaticKeepAliveClientMixin,
+        SingleTickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
   final _service = TaskService();
   String _filter = '';
+
+  /// Плавная смена содержимого при переключении категории: и список задач, и
+  /// пустое состояние мягко «проявляются» (фейд + лёгкий подъём). Карусель
+  /// категорий при этом не пересоздаётся и никуда не прыгает.
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+    value: 1,
+  );
+  late final Animation<double> _revealFade = Tween<double>(
+    // Начинаем не с нуля: если пользователь тапает по категориям подряд,
+    // список не «пропадает в пустоту», а лишь мягко подсвечивается.
+    begin: 0.35,
+    end: 1.0,
+  ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOut));
+  late final Animation<Offset> _revealSlide =
+      Tween<Offset>(
+        begin: const Offset(0, 0.02),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic));
   // Hide FAB row on scroll: smoothly slides down + fades when scrolled past
   // 8px; comes back when scrolled to top. Используем NotificationListener
   // (как на экране будильников), а НЕ ScrollController на внутреннем
@@ -60,8 +86,24 @@ class _TasksScreenState extends State<TasksScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pillCtrl.addListener(_syncPillOffset);
+    // Свежий контроллер стоит на 0 — карта офсетов могла держать высоту
+    // ПРЕДЫДУЩЕЙ жизни вкладки. Без сброса таблетка разделов оставалась
+    // спрятанной, пока пользователь не начнёт крутить.
+    sectionOffsetByPage[widget.pillIndex] = 0.0;
+    sectionCurrentIndex.addListener(_onCurrentSectionChanged);
     _service.load();
+  }
+
+  /// Раздел стал активным — форсируем ресинк офсета таблетки (keep-alive
+  /// вкладка не присылает событий скролла, а общий notifier мог остаться с
+  /// устаревшей высотой: таблетка разделов исчезала до первого скролла).
+  void _onCurrentSectionChanged() {
+    if (sectionCurrentIndex.value != widget.pillIndex) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncPillOffset();
+    });
   }
 
   /// Пишет РЕАЛЬНУЮ позицию основного скроллера в персональный notifier
@@ -73,16 +115,50 @@ class _TasksScreenState extends State<TasksScreen>
     final v = _pillCtrl.offset;
     final vv = v < 0 ? 0.0 : v;
     sectionOffsetByPage[widget.pillIndex] = vv;
-    if ((target.value - vv).abs() > 0.5) target.value = vv;
+    // Пишем в общий sectionScrollOffset только активная вкладка:
+    // неактивные keep-alive экраны иначе сбрасывают его на свой офсет и
+    // таблетка вылазит на весь рост поверх прокрученного списка.
+    if (sectionCurrentIndex.value == widget.pillIndex &&
+        (target.value - vv).abs() > 0.5) {
+      target.value = vv;
+    }
   }
 
   @override
   void dispose() {
     _pillCtrl.removeListener(_syncPillOffset);
+    sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.dispose();
     _fabVisible.dispose();
-    super.dispose();
+    _reveal.dispose();
+        WidgetsBinding.instance.removeObserver(this);
+super.dispose();
   }
+
+  /// Смена категории: сначала меняем фильтр, затем мягко проявляем новое
+  /// содержимое. Карусель живёт своим ходом (SlidingPicker сам подъезжает к
+  /// выбранной таблетке) — она не входит в анимацию проявления.
+  void _setFilter(String value) {
+    if (value == _filter) return;
+    setState(() => _filter = value);
+    // Волна проявления НЕ перезапускается с нуля, пока идёт предыдущая: при
+    // быстром тапании по двум категориям список иначе мигал бы (туда-сюда),
+    // каждый раз снова уезжая в прозрачность и обратно. Новое содержимое
+    // просто вливается в текущую волну.
+    if (!_reveal.isAnimating) _reveal.forward(from: 0);
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Возврат из фона: keep-alive восстановил позицию скролла, а общий
+    // sectionScrollOffset мог остаться stale. Форсируем ресинк с реального
+    // контроллера, чтобы таблетка встала по месту сразу, без пролистывания.
+    if (state == AppLifecycleState.resumed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncPillOffset();
+      });
+    }
+  }
+
 
   void _addTask() async {
     Haptics.light();
@@ -147,151 +223,6 @@ class _TasksScreenState extends State<TasksScreen>
     } catch (_) {}
   }
 
-  void _manageCategories() async {
-    final ctrl = TextEditingController();
-    // Локальная копия + AnimatedList: появление категории разворачивается,
-    // удаление плавно сжимается по высоте (служба хранит готовый список
-    // без анимаций, а тут мы хотим «живые» переходы).
-    final listKey = GlobalKey<AnimatedListState>();
-    final cats = List<String>.of(_service.categories);
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) {
-          // Появление/удаление категории: разворот по высоте + fade.
-          Widget buildCategoryTile(String c, Animation<double> anim) {
-            return SizeTransition(
-              sizeFactor: anim,
-              child: FadeTransition(
-                opacity: anim,
-                child: ListTile(
-                  title: Text(c),
-                  trailing: IconButton(
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: ctx,
-                        builder: (dctx) => AlertDialog(
-                          title: Text(
-                            Translations.t('deleteCategory', context),
-                          ),
-                          content: Text(c),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(dctx, false),
-                              child: Text(Translations.cancelOf(context)),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(dctx, true),
-                              child: Text(Translations.deleteOf(context)),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        final idx = cats.indexOf(c);
-                        if (idx == -1) return;
-                        cats.removeAt(idx);
-                        listKey.currentState?.removeItem(
-                          idx,
-                          (context, animation) =>
-                              buildCategoryTile(c, animation),
-                          duration: const Duration(milliseconds: 260),
-                        );
-                        setSt(() {});
-                        _service.removeCategory(c);
-                        FocusManager.instance.primaryFocus?.unfocus();
-                      }
-                    },
-                  ),
-                ),
-              ),
-            );
-          }
-
-          return AlertDialog(
-            title: Text(Translations.t('manageCategories', context)),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(cursorOpacityAnimates: true,
-                          magnifierConfiguration:
-                              TextMagnifierConfiguration.disabled,
-                          controller: ctrl,
-                          contextMenuBuilder: minimalContextMenuBuilder,
-                          inputFormatters: [
-                            LengthLimitingTextInputFormatter(15),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: Translations.t('categoryName', context),
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: () async {
-                          if (await _service.addCategory(ctrl.text)) {
-                            final name = ctrl.text;
-                            ctrl.clear();
-                            final idx = cats.length;
-                            cats.add(name);
-                            listKey.currentState?.insertItem(
-                              idx,
-                              duration: const Duration(milliseconds: 260),
-                            );
-                            setSt(() {});
-                          } else {
-                            showBeautifulSnackBar(
-                              ctx,
-                              message: Translations.t('categoryExists', ctx),
-                              icon: Icons.warning_amber_outlined,
-                              iconColor: Colors.orange,
-                            );
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    child: AnimatedList(
-                      key: listKey,
-                      shrinkWrap: true,
-                      initialItemCount: cats.length,
-                      itemBuilder: (context, index, animation) =>
-                          buildCategoryTile(cats[index], animation),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(Translations.okOf(context)),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    if (_filter != '' && !_service.categories.contains(_filter)) {
-      _filter = '';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -304,6 +235,9 @@ class _TasksScreenState extends State<TasksScreen>
     final theme = Theme.of(context);
 
     return RefreshIndicator(
+      // Кружок выезжает из-под таблетки разделов, а не появляется за ней
+      // (поверх её) - как на экране будильников.
+      edgeOffset: kSectionPillSlotHeight,
       onRefresh: () async {
         await _service.load();
         return;
@@ -317,56 +251,23 @@ class _TasksScreenState extends State<TasksScreen>
             if (_filter == '__uncat__') return t.category.isEmpty;
             return t.category == _filter;
           }).toList();
-          final hasTasks = tasks.isNotEmpty;
           return Scaffold(
-            // Без своего AppBar: белая полоса под таблеткой убрана. Кнопка
-            // управления категориями стоит в ОДНОЙ строке с самим выбором
-            // категорий у самого верха, под таблеткой — без белых зазоров.
+            // Без своего AppBar: белая полоса под таблеткой убрана.
+            // Карусель категорий лежит в header'е списка/пустого состояния —
+            // листается вместе с содержимым, а не стоит фиксированной полосой.
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(
                 visible: _fabVisible,
-                child: Column(
-                  children: [
-                    // Таблетка разделов и выбор категорий переехали ВНУТРЬ
-                    // скролла списка (header): листаются вместе с задачами,
-                    // как обычный контент. Управление категориями (создание
-                    // и удаление) — прямо в выборе, рядом с каруселью.
-                    Expanded(
-                      // Плавная и медленная смена задач при переключении
-                      // категории: старый список мягко гаснет (fade + лёгкий
-                      // сдвиг вниз на 4%), новый плавно «выезжает снизу» и
-                      // проявляется (300 мс, easeInOutCubic — без резких
-                      // рывков). Фильтр применяется МГНОВЕННО (см.
-                      // SlidingPicker), анимация чисто визуальная.
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        switchInCurve: Curves.easeInOutCubic,
-                        switchOutCurve: Curves.easeInOutCubic,
-                        transitionBuilder: (child, animation) => FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0, 0.06),
-                              end: Offset.zero,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        ),
-                        child: hasTasks
-                            ? KeyedSubtree(
-                                key: ValueKey('list_$_filter'),
-                                child: RepaintBoundary(
-                                  child: _buildList(context, theme, tasks, all),
-                                ),
-                              )
-                            : KeyedSubtree(
-                                key: ValueKey('empty_$_filter'),
-                                child: _buildEmpty(context, theme),
-                              ),
-                      ),
-                    ),
-                  ],
+                // ОДИН и тот же скролл-вью для списка и для пустого состояния
+                // (пустое состояние — это 0 задач + карточка в header'е).
+                // Поэтому карусель категорий живёт в дереве постоянно, при
+                // переходе «непусто → пусто» НЕ пересоздаётся и не «скачет»
+                // (раньше пустое состояние было другим виджетом и карусель
+                // прыгала вместе с пересозданием).
+                child: RepaintBoundary(
+                  key: const ValueKey('tasks_scroll_view'),
+                  child: _buildScrollList(context, theme, tasks, all),
                 ),
               ),
             ),
@@ -378,21 +279,18 @@ class _TasksScreenState extends State<TasksScreen>
                 children: [
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
-                  PressScale(
-                    child: BerserkFabStack(
-                    // Долгое зажатие «плюса» открывает BERSERK.
-                    child: GestureDetector(
-                      onLongPress: () => showBerserkSheet(context),
-                      child: FloatingActionButton(
-                        onPressed: () {
-                          Haptics.light();
-                          _addTask();
-                        },
-                        child: const Icon(Icons.add),
-                      ),
-                    ),
+                  // Кнопка-«плюс» как на экране будильников: обычная круглая
+                  // FAB + мелкие размашистые пятнышки на её поверхности. Долгое
+                  // зажатие — режим BERSERK (showBerserkSheet сам проверяет,
+                  // включён ли режим в настройках).
+                  OrganicFab(
+                    seed: 5.2,
+                    onTap: () {
+                      Haptics.light();
+                      _addTask();
+                    },
+                    onLongPress: () => showBerserkSheet(context),
                   ),
-                ),
                 ],
               ),
             ),
@@ -402,22 +300,46 @@ class _TasksScreenState extends State<TasksScreen>
     );
   }
 
-  Widget _buildEmpty(BuildContext context, ThemeData theme) {
-    return PremiumEmptyState(
-      key: ValueKey('empty_$_filter'),
-      // Таблетка разделов + выбор категорий сверху пустого состояния:
-      // листаются вместе с ним.
-      header: _buildCategoryHeader(context, theme),
-      icon: Icons.task_alt_outlined,
-      title: Translations.noTasksOf(context),
-      hint: Translations.t('emptyTaskHint', context),
-      advice: Translations.t('emptyTaskAdvice', context),
-      actionLabel: Translations.t('newTask', context),
-      accent: const Color(0xFF5E8FB5),
-      onPressed: () {
-        Haptics.light();
-        _addTask();
-      },
+  /// Карточка пустого состояния (та же, что в [PremiumEmptyState]) — но как
+  /// обычный блок ВНУТРИ скролла: без Expanded и без своего скролла.
+  Widget _buildEmptyCard(BuildContext context, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 28, 4, 32),
+      child: Center(
+        child: PremiumEmptyCard(
+          icon: Icons.task_alt_outlined,
+          title: Translations.noTasksOf(context),
+          hint: Translations.t('emptyTaskHint', context),
+          advice: Translations.t('emptyTaskAdvice', context),
+          actionLabel: Translations.t('newTask', context),
+          accent: const Color(0xFF5E8FB5),
+          onPressed: () {
+            Haptics.light();
+            _addTask();
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Header скролла: карусель категорий всегда, а под ней — карточка пустого
+  /// состояния (только когда задач нет). Структура одна и та же, поэтому
+  /// карусель НЕ пересоздаётся при переходе «непусто ↔ пусто».
+  Widget _buildHeader(BuildContext context, ThemeData theme, bool empty) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCategoryHeader(context, theme),
+        if (empty)
+          FadeTransition(
+            opacity: _revealFade,
+            child: SlideTransition(
+              position: _revealSlide,
+              child: _buildEmptyCard(context, theme),
+            ),
+          ),
+      ],
     );
   }
 
@@ -425,24 +347,33 @@ class _TasksScreenState extends State<TasksScreen>
   /// header скролла задач — листается вместе с ними.
   Widget _buildCategoryHeader(BuildContext context, ThemeData theme) {
     final chips = <String>['', ..._service.categories];
-    return Column(
+    // Центрированная карусель категорий + корзина (удаление выбранной).
+    // Без кнопки «управление» — добавление только в форме задачи.
+        // Блок категорий: верхний слот kSectionPillSlotHeight оставляем
+        // для таблетки разделов (как раньше делал padding списка) —
+        // карусель стоит ПОД таблеткой, а не налезает на неё.
+        return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Категории по центру; рядом — управление (папка). Длинное название
-        // масштабируется (FittedBox), чтобы последний символ не обрезался.
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          padding: EdgeInsets.only(
+            top: kSectionPillSlotHeight + 8,
+            bottom: 4,
+          ),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Expanded(
+                flex: 3,
                 child: _service.categories.isEmpty
                     ? const SizedBox.shrink()
                     : SlidingPicker<String>(
+                        key: const ValueKey('cat_carousel'),
                         items: chips,
                         selected: _filter,
                         height: 34,
-                        viewportFraction: 0.55,
-                        onChanged: (c) => setState(() => _filter = c),
+                        viewportFraction: 0.50,
+                        onChanged: _setFilter,
                         itemBuilder: (context, c, selected) {
                           final label = c == ''
                               ? Translations.allOf(context)
@@ -453,29 +384,29 @@ class _TasksScreenState extends State<TasksScreen>
                                 horizontal: 6,
                               ),
                               child: AnimatedContainer(
-                                // Плавная смена выделения категории.
-                                duration: const Duration(milliseconds: 200),
+                                // Без boxShadow (размытая тень давала
+                                // «серый квадрат»). Только чистый цвет
+                                // + тонкая обводка у выбранного.
+                                // 450 → 220 мс: старая таблетка успевала
+                                // «гаснуть» целых 450 мс и всё это время
+                                // ехала рядом с новой — читалось как
+                                // «призрак/дубль» таблетки за категорией.
+                                duration: const Duration(milliseconds: 220),
                                 curve: Curves.easeInOutCubic,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
-                                  vertical: 4,
+                                  vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(18),
+                                  borderRadius: BorderRadius.circular(999),
                                   color: selected
                                       ? theme.colorScheme.primary
-                                      : theme
-                                            .colorScheme
-                                            .surfaceContainerHighest,
-                                  boxShadow: selected
-                                      ? [
-                                          BoxShadow(
-                                            color: theme.colorScheme.primary
-                                                .withValues(alpha: 0.25),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ]
+                                      : Colors.transparent,
+                                  border: selected
+                                      ? Border.all(
+                                          color: theme.colorScheme.primary,
+                                          width: 2,
+                                        )
                                       : null,
                                 ),
                                 child: FittedBox(
@@ -500,17 +431,6 @@ class _TasksScreenState extends State<TasksScreen>
                         },
                       ),
               ),
-              // Управление категориями — создание и УДАЛЕНИЕ — прямо в выборе.
-              IconButton(
-                icon: Icon(
-                  Icons.folder_outlined,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                tooltip: Translations.t('manageCategories', context),
-                onPressed: _manageCategories,
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
             ],
           ),
         ),
@@ -518,25 +438,30 @@ class _TasksScreenState extends State<TasksScreen>
     );
   }
 
-  Widget _buildList(
+  /// Единственный скролл раздела задач: и для списка, и для пустого состояния.
+  /// Сам ReorderableListView — основной скроллер (без shrinkWrap и без
+  /// вложенного SingleChildScrollView): элементы строятся лениво, только
+  /// видимые. На слабых телефонах длинный список раньше собирался целиком
+  /// за один кадр и «замирал» — теперь прокручивается плавно даже с
+  /// десятками задач.
+  Widget _buildScrollList(
     BuildContext context,
     ThemeData theme,
     List<Task> tasks,
     List<Task> all,
   ) {
-    if (tasks.isEmpty) return const SizedBox.shrink();
-    // Сам ReorderableListView — основной скроллер (без shrinkWrap и без
-    // вложенного SingleChildScrollView): элементы строятся лениво, только
-    // видимые. На слабых телефонах длинный список раньше собирался целиком
-    // за один кадр и «замирал» — теперь прокручивается плавно даже с
-    // десятками задач.
+    final empty = tasks.isEmpty;
     return ReorderableListView.builder(
       key: const ValueKey('list'),
       scrollController: _pillCtrl,
-      // Таблетка разделов + выбор категорий — первый (непереставляемый)
-      // элемент списка: листаются вместе с задачами, как обычный контент.
-      header: _buildCategoryHeader(context, theme),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      // Таблетка разделов + карусель категорий (+ карточка пустого состояния,
+      // если задач нет) — первый (непереставляемый) элемент списка: листаются
+      // вместе с задачами, как обычный контент.
+      header: _buildHeader(context, theme, empty),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      // AlwaysScrollable: иначе на пустом списке не работает pull-to-refresh
+      // (раньше это делал SingleChildScrollView пустого состояния).
+      physics: const AlwaysScrollableScrollPhysics(),
       scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
       buildDefaultDragHandles: false,
       itemCount: tasks.length,
@@ -561,7 +486,15 @@ class _TasksScreenState extends State<TasksScreen>
       },
       itemBuilder: (context, i) => KeyedSubtree(
         key: ValueKey('item_task_${tasks[i].id}'),
-        child: _buildTaskCard(context, theme, tasks[i], i),
+        // Плавная смена содержимого при переключении категории: задачи мягко
+        // проявляются (фейд + лёгкий подъём), а не подменяются рывком.
+        child: FadeTransition(
+          opacity: _revealFade,
+          child: SlideTransition(
+            position: _revealSlide,
+            child: _buildTaskCard(context, theme, tasks[i], i),
+          ),
+        ),
       ),
     );
   }
@@ -619,32 +552,29 @@ class _TasksScreenState extends State<TasksScreen>
               children: [
                 // Drag handle слева — ReorderableDragStartListener включает
                 // перетаскивание (как в привычках).
-                ReorderableDragStartListener(
-                  index: index,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(
-                      Icons.drag_indicator,
-                      size: 24,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-                // Чекбокс в левой колонке, как в привычках: колонка уже (40)
-                // и значок крупнее (23) — иконка ближе к драг-хэндлу слева.
                 SizedBox(
-                  width: 40,
-                  child: Column(
+                width: 46,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Галка СВЕРХУ драг-хэндла (одна колонка 46px).
+                    Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // (scale 0.9) — «чуть выделяется», без мигания и
                       // вспышек. Иконка меняется сразу (фон заливается
                       // плавно AnimatedContainer'ом).
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _toggleTask(task),
-                        child: AnimatedContainer(
+                      Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
+                          onTap: () => _toggleTask(task),
+                          splashColor: theme.colorScheme.primary.withValues(alpha: 0.14),
+                          highlightColor: theme.colorScheme.primary.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(16),
+                          child: AnimatedContainer(
                           duration: const Duration(milliseconds: 260),
                           width: 32,
                           height: 32,
@@ -690,9 +620,25 @@ class _TasksScreenState extends State<TasksScreen>
                           ),
                         ),
                       ),
+                    ),
                     ],
                   ),
+                    const SizedBox(height: 6),
+                    // Драг-хэндл — снизу.
+                    ReorderableDragStartListener(
+                  index: index,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.drag_indicator,
+                      size: 24,
+                      color: Colors.grey,
+                    ),
+                  ),
                 ),
+                  ],
+                ),
+              ),
                 // Основное содержимое
                 Expanded(
                   child: Padding(
@@ -721,10 +667,16 @@ class _TasksScreenState extends State<TasksScreen>
                                 // масштабе ≠ 1.0 не совпадают со строками.
                                 textScaler: MediaQuery.textScalerOf(context),
                                 struck: task.done,
-                                struckColor: theme.colorScheme.onSurfaceVariant,
-                                strikeColor: theme.colorScheme.outline,
-                                maxLines: 6,
-                                overflow: TextOverflow.ellipsis,
+                                // Текст в отмеченном состоянии — заметно
+                                // полупрозрачный (а не просто другой оттенок):
+                                // прозрачность едет вместе с линией.
+                                struckColor: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.42),
+                                strikeColor:
+                                    Colors.red.shade500.withValues(alpha: 0.9),
+                                // Полный текст без троеточия: заголовок
+                                // задачи всегда виден целиком, а не обрезан.
+                                maxLines: null,
                               ),
                             ),
                             IconButton(
@@ -855,26 +807,26 @@ class _TasksScreenState extends State<TasksScreen>
     };
     return TweenAnimationBuilder<double>(
       key: ValueKey('priority_pill_$p'),
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      tween: Tween(begin: 1.0, end: 1.0),
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutBack,
       builder: (context, t, child) => Opacity(
         opacity: t,
-        child: Transform.scale(scale: 0.95 + 0.05 * t, child: child),
+        child: Transform.scale(scale: 0.88 + 0.12 * t, child: child),
       ),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+          gradient: RadialGradient(
+            center: const Alignment(-0.5, -0.5),
+            radius: 1.15,
             colors: [
-              color.withValues(alpha: 0.25),
-              color.withValues(alpha: 0.15),
+              color.withValues(alpha: 0.30),
+              color.withValues(alpha: 0.10),
             ],
           ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.28), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -910,7 +862,7 @@ class _TasksScreenState extends State<TasksScreen>
     )!;
     return TweenAnimationBuilder<double>(
       key: ValueKey('note_chip'),
-      tween: Tween(begin: 0.0, end: 1.0),
+      tween: Tween(begin: 1.0, end: 1.0),
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
       builder: (context, t, child) => Opacity(
@@ -979,7 +931,7 @@ class _TasksScreenState extends State<TasksScreen>
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 340),
-      pageBuilder: (ctx, _, __) => Center(
+      pageBuilder: (ctx, _, _) => Center(
         // Окно плавно поднимается ВМЕСТЕ с клавиатурой: нижние кнопки
         // («Сохранить», «Очистить») никогда не оказываются под ней и не
         // дёргаются скачком — раньше низ окна уезжал под клавиатуру.
@@ -1071,7 +1023,7 @@ class _TaskNoteSheet extends StatefulWidget {
 }
 
 class _TaskNoteSheetState extends State<_TaskNoteSheet> {
-  late final TextEditingController _ctrl = TextEditingController(
+  late final TextEditingController _ctrl = WideDashController(
     text: widget.task.note,
   );
   late final FocusNode _focus = FocusNode();
@@ -1233,33 +1185,39 @@ class _TaskNoteSheetState extends State<_TaskNoteSheet> {
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: TextField(cursorOpacityAnimates: true,
+              child: SmoothTyping(
                 controller: _ctrl,
-                focusNode: _focus,
-                maxLength: 150,
-                enableSuggestions: false,
-                autocorrect: false,
-                // ВСЕ строки заметки всегда видны: поле растёт под весь
-                // текст без ограничения строк (раньше кап 10 строк срезал
-                // длинные заметки), а общее окно скроллится при нехватке
-                // места на экране.
-                maxLines: null,
-                minLines: 3,
-                textCapitalization: TextCapitalization.sentences,
-                magnifierConfiguration: TextMagnifierConfiguration.disabled,
-                contextMenuBuilder: minimalContextMenuBuilder,
-                buildCounter: smoothCharCounterBuilder,
-                decoration: InputDecoration(
-                  hintText: Translations.t('taskNoteHint', context),
-                  filled: true,
-                  fillColor: cs.surfaceContainerLowest.withValues(alpha: 0.7),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  counterStyle: TextStyle(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                    fontSize: 12,
+                builder: (style) => TextField(
+                  style: style,
+                  cursorOpacityAnimates: true,
+                  controller: _ctrl,
+                  focusNode: _focus,
+                  maxLength: 150,
+                  inputFormatters: [WideDashFormatter()],
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  // ВСЕ строки заметки всегда видны: поле растёт под весь
+                  // текст без ограничения строк (раньше кап 10 строк срезал
+                  // длинные заметки), а общее окно скроллится при нехватке
+                  // места на экране.
+                  maxLines: null,
+                  minLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                  contextMenuBuilder: minimalContextMenuBuilder,
+                  buildCounter: smoothCharCounterBuilder,
+                  decoration: InputDecoration(
+                    hintText: Translations.t('taskNoteHint', context),
+                    filled: true,
+                    fillColor: cs.surfaceContainerLowest.withValues(alpha: 0.7),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    counterStyle: TextStyle(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),

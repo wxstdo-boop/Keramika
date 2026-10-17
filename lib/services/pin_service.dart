@@ -15,7 +15,7 @@ class PinService {
   static bool hasPinSync() => _hasPinCache ?? false;
 
   static Future<void> refreshCache() async {
-    final pin = await globalPrefs.getString(_key);
+    final pin = globalPrefs.getString(_key);
     _hasPinCache = pin != null && pin.isNotEmpty;
   }
 

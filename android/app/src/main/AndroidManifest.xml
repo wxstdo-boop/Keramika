@@ -106,7 +106,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Приёмники flutter_local_notifications (17.2.4). Плагин НЕ объявляет
+        <!-- Приёмники flutter_local_notifications (22.3.2). Плагин НЕ объявляет
              их в своём манифесте — это обязанность приложения (проверено:
              android/src/main/AndroidManifest.xml плагина содержит только
              uses-permission). Без них zonedSchedule регистрирует PendingIntent

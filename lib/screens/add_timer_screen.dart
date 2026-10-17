@@ -5,8 +5,11 @@ import '../models/app_timer.dart';
 import '../services/timer_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/smooth_keyboard_body.dart';
 
@@ -35,14 +38,14 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
       _hours = total ~/ 3600;
       _minutes = (total % 3600) ~/ 60;
       _seconds = total % 60;
-      _labelCtrl = TextEditingController(text: widget.existing!.label);
+      _labelCtrl = WideDashController(text: widget.existing!.label);
       _soundName = widget.existing!.soundName;
       _vibrate = widget.existing!.vibrate;
     } else {
       _hours = 0;
       _minutes = 5;
       _seconds = 0;
-      _labelCtrl = TextEditingController();
+      _labelCtrl = WideDashController();
       _soundName = 'Default';
       _vibrate = true;
     }
@@ -333,22 +336,27 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextField(
-                      cursorOpacityAnimates: true,
-                      magnifierConfiguration:
-                          TextMagnifierConfiguration.disabled,
+                    SmoothTyping(
                       controller: _labelCtrl,
-                      contextMenuBuilder: minimalContextMenuBuilder,
-                      maxLength: 20,
-                      enableSuggestions: false,
-                      autocorrect: false,
-                      buildCounter: smoothCharCounterBuilder,
-                      decoration: InputDecoration(
-                        hintText: AppTimer.formatDuration(_totalSeconds),
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                      builder: (style) => TextField(
+                        style: style,
+                        cursorOpacityAnimates: true,
+                        magnifierConfiguration:
+                            TextMagnifierConfiguration.disabled,
+                        controller: _labelCtrl,
+                        contextMenuBuilder: minimalContextMenuBuilder,
+                        maxLength: 20,
+                        inputFormatters: [WideDashFormatter()],
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        buildCounter: smoothCharCounterBuilder,
+                        decoration: InputDecoration(
+                          hintText: AppTimer.formatDuration(_totalSeconds),
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),

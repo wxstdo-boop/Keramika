@@ -1,7 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math';
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
+import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../models/habit.dart';
@@ -9,6 +10,7 @@ import '../services/habit_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
+import '../widgets/press_splat.dart' show OrganicFab, PressSplat;
 import '../widgets/press_scale.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
@@ -18,6 +20,8 @@ import '../widgets/animated_strike_text.dart';
 import '../widgets/ai_guide.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
+import '../widgets/section_pill.dart'
+    show kSectionPillSlotHeight, sectionCurrentIndex;
 import 'add_habit_screen.dart';
 
 class _PerfPlaque {
@@ -179,13 +183,19 @@ const _perfPlaques = [
 ];
 
 class HabitsScreen extends StatefulWidget {
-  const HabitsScreen({super.key});
+  /// Персональный notifier скролла раздела (см. AlarmsScreen).
+  final ValueNotifier<double>? scrollOffset;
+
+  /// Индекс этого раздела в PageView — ключ в sectionOffsetByPage.
+  final int pillIndex;
+  const HabitsScreen({super.key, this.scrollOffset, this.pillIndex = 0});
+
   @override
   State<HabitsScreen> createState() => _HabitsScreenState();
 }
 
 class _HabitsScreenState extends State<HabitsScreen>
-    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
   final _service = HabitService();
@@ -198,6 +208,21 @@ class _HabitsScreenState extends State<HabitsScreen>
 
   // Long-press on the habit body toggles the pinned state.
 
+  /// Плавная смена раскладки при закрепе/открепе: список мягко гаснет,
+  /// применяется новый порядок и список так же мягко проявляется —
+  /// БЕЗ одновременного показа двух раскладок (из-за него привычка
+  /// «двоилась» и казалось, что она чуть-чуть смещается).
+  late final AnimationController _pinFade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: 1,
+  );
+  /// Направление сдвига при появлении: +1 — список «поднимается» (закреп),
+  /// -1 — «опускается» (откреп).
+  double _pinDir = 1;
+  /// Идёт анимация закрепа/открепа — второй тап не принимаем.
+  bool _pinBusy = false;
+
   // Triple tap on habit card = smooth streak reset.
   // 3 taps within 600ms window on the same habit trigger update().
   // _lastResetAt provides a 1500ms cooldown so spam-tapping doesn't
@@ -206,16 +231,27 @@ class _HabitsScreenState extends State<HabitsScreen>
   DateTime? _lastTapTime;
   String? _tappedHabitId;
   // Per-habit cooldown: 1500ms after reset, only blocks the SAME habit.
-  Map<String, DateTime> _lastResetByHabit = <String, DateTime>{};
+  final Map<String, DateTime> _lastResetByHabit = <String, DateTime>{};
 
   // Данные ещё не загружены: показываем пустоту вместо кросс-фейда
   // «пусто → список», который при старте выглядел как мигание после
   // сплэша.
   bool _loaded = false;
 
+  // Контроллер основного скроллера раздела — источник правды для офсета
+  // таблетки разделов (см. _syncPillOffset в AlarmsScreen).
+  final ScrollController _pillCtrl = ScrollController();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pillCtrl.addListener(_syncPillOffset);
+    // Свежий контроллер стоит на 0 — карта офсетов могла держать высоту
+    // ПРЕДЫДУЩЕЙ жизни вкладки (её State пересоздан). Без сброса таблетка
+    // разделов оставалась спрятанной, пока пользователь не начнёт крутить.
+    sectionOffsetByPage[widget.pillIndex] = 0.0;
+    sectionCurrentIndex.addListener(_onCurrentSectionChanged);
     // Данные уже загружены в main() до первого кадра — показываем их
     // СРАЗУ, без ожидания повторного load() (иначе после Splash раздел
     // привычек мигает: кадр пустоты → резкое появление списка).
@@ -340,31 +376,102 @@ class _HabitsScreenState extends State<HabitsScreen>
   }
 
   void _togglePin(Habit habit) async {
+    // Вредная привычка не закрепляется: при зажатии ничего не происходит.
+    if (habit.type == 'bad') return;
+    // Пока идёт анимация перестановки — второй тап игнорируем: иначе
+    // быстрые тапы складывали очередь обновлений и привычка «дёргалась».
+    if (_pinBusy) return;
+    _pinBusy = true;
     Haptics.medium();
-    final updated = habit.copyWith(pinned: !habit.pinned);
-    await _service.update(updated);
-    if (!mounted) return;
-    // Кросс-фейд списка в новую раскладку запускает сам AnimatedSwitcher:
-    // ключ (раскладка закрепления) меняется вместе с перестановкой, и
-    // карточка плавно «перетекает» наверх без телепорта.
+    final willPin = !habit.pinned;
+    // Направление «подъезда»: закреп — список идёт вверх, откреп — вниз.
+    _pinDir = willPin ? 1 : -1;
+    // 1) Мягко гасим текущую раскладку.
+    await _pinFade.reverse();
+    if (!mounted) {
+      _pinBusy = false;
+      return;
+    }
+    // 2) Применяем новый порядок …
+    await _service.update(habit.copyWith(pinned: willPin));
+    if (!mounted) {
+      _pinBusy = false;
+      return;
+    }
+    // 3) … и проявляем его в новом порядке.
+    _pinFade.forward();
+    _pinBusy = false;
     showBeautifulSnackBar(
       context,
-      message: updated.pinned
+      // Одна группа: закреп↔откреп при частых тапах плавно меняет ТЕКСТ
+      // висящей плашки, а не плодит дублирующиеся снекбары.
+      groupKey: 'habit_pin',
+      message: willPin
           ? Translations.t('habitPinned', context, 'Habit pinned')
           : Translations.t('habitUnpinned', context, 'Habit unpinned'),
       icon: Icons.push_pin,
     );
   }
 
+  /// Раздел стал активным — форсируем ресинк офсета таблетки.
+  ///
+  /// Keep-alive вкладка не присылает событий скролла, пока на ней ничего не
+  /// двигают, а общий [sectionScrollOffset] мог остаться с устаревшей высотой
+  /// другого раздела. Из-за этого таблетка разделов иногда исчезала при
+  /// перезаходе и возвращалась только после первого ручного скролла.
+  void _onCurrentSectionChanged() {
+    if (sectionCurrentIndex.value != widget.pillIndex) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncPillOffset();
+    });
+  }
+
+  /// Пишет РЕАЛЬНУЮ позицию основного скроллера в персональный notifier
+  /// раздела (см. _syncPillOffset в AlarmsScreen).
+  void _syncPillOffset() {
+    final target = widget.scrollOffset;
+    if (target == null) return;
+    // Позиция на миг отваливается при пересборке страницы — не зная реальной
+    // позиции, держим последнюю (настоящая приедет своим событием скролла).
+    if (_pillCtrl.positions.length != 1) return;
+    final v = _pillCtrl.offset;
+    final vv = v < 0 ? 0.0 : v;
+    sectionOffsetByPage[widget.pillIndex] = vv;
+    // Пишем в общий sectionScrollOffset только активная вкладка:
+    // неактивные keep-alive экраны иначе сбрасывают его на свой офсет и
+    // таблетка вылазит на весь рост поверх прокрученного списка.
+    if (sectionCurrentIndex.value == widget.pillIndex &&
+        (target.value - vv).abs() > 0.5) {
+      target.value = vv;
+    }
+  }
+
   @override
   void dispose() {
     _dayTimer?.cancel();
+    sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
+    _pillCtrl.removeListener(_syncPillOffset);
+    _pillCtrl.dispose();
     _fabVisible.dispose();
+    _pinFade.dispose();
     SettingsService.perfectionismEnabled.removeListener(
       _onPerfectionismChanged,
     );
-    super.dispose();
+        WidgetsBinding.instance.removeObserver(this);
+super.dispose();
   }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Возврат из фона: keep-alive восстановил позицию скролла, а общий
+    // sectionScrollOffset мог остаться stale. Форсируем ресинк с реального
+    // контроллера, чтобы таблетка встала по месту сразу, без пролистывания.
+    if (state == AppLifecycleState.resumed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncPillOffset();
+      });
+    }
+  }
+
 
   void _showPerfFullScreen(String body, String title, Color color) {
     if (_perfScreenOpened) return;
@@ -381,6 +488,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                 backgroundColor: color,
                 foregroundColor: Colors.white,
                 title: Text(title),
+                // Задизайненный «Назад» (тултип) — белым под цветную подложку.
+                leading: const BackButtonTooltip(),
                 centerTitle: true,
               ),
               body: Container(
@@ -428,11 +537,7 @@ class _HabitsScreenState extends State<HabitsScreen>
   }
 
   List<_PerfPlaque> _todaysPlaques() {
-    final now = DateTime.now();
-    // День + час — меняем подборку каждый час.
-    final seed =
-        now.year * 1000000 + now.month * 10000 + now.day * 100 + now.hour;
-    final rng = Random(seed);
+    final rng = Random(_perfSeed());
     final shuffled = List<_PerfPlaque>.from(_perfPlaques);
     for (int i = shuffled.length - 1; i > 0; i--) {
       final j = rng.nextInt(i + 1);
@@ -443,6 +548,14 @@ class _HabitsScreenState extends State<HabitsScreen>
     // Каждый день 4-6 карточек вместо 3 — более глубокий рандом.
     final count = min(shuffled.length, rng.nextInt(3) + 4);
     return shuffled.sublist(0, count);
+  }
+
+  /// «Час» подборки перфекционизма: день + час. Меняется раз в час — по этому
+  /// же числу анимируется смена карточек (кросс-фейд), поэтому подборка не
+  /// «прыгает», а мягко перетекает в новую.
+  int _perfSeed() {
+    final now = DateTime.now();
+    return now.year * 1000000 + now.month * 10000 + now.day * 100 + now.hour;
   }
 
   /// Глобальная сортировка привычек: pinned сверху, затем полезные перед
@@ -461,6 +574,9 @@ class _HabitsScreenState extends State<HabitsScreen>
     final theme = Theme.of(context);
 
     return RefreshIndicator(
+      // Кружок выезжает из-под таблетки разделов, а не появляется за ней
+      // (поверх её) - как на экране будильников.
+      edgeOffset: kSectionPillSlotHeight,
       onRefresh: () async {
         await _service.load();
         return;
@@ -491,7 +607,10 @@ class _HabitsScreenState extends State<HabitsScreen>
                               key: const ValueKey('list'),
                               child: _buildBody(context, theme, habits),
                             )
-                          : _buildEmpty(context, theme),
+                          : Padding(
+                              padding: const EdgeInsets.only(top: kSectionPillSlotHeight),
+                              child: _buildEmpty(context, theme),
+                            ),
                     ),
                   ],
                 ),
@@ -506,21 +625,14 @@ class _HabitsScreenState extends State<HabitsScreen>
                 children: [
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
-                  PressScale(
-                    child: BerserkFabStack(
-                    // Долгое зажатие «плюса» открывает режим BERSERK.
-                    child: GestureDetector(
-                      onLongPress: () => showBerserkSheet(context),
-                      child: FloatingActionButton(
-                        onPressed: () {
-                          Haptics.light();
-                          _addHabit();
-                        },
-                        child: const Icon(Icons.add),
-                      ),
-                    ),
+                  OrganicFab(
+                    seed: 7.7,
+                    onTap: () {
+                      Haptics.light();
+                      _addHabit();
+                    },
+                    onLongPress: () => showBerserkSheet(context),
                   ),
-                ),
                 ],
               ),
             ),
@@ -550,62 +662,54 @@ class _HabitsScreenState extends State<HabitsScreen>
     final splitSections = goodHabits.isNotEmpty && badHabits.isNotEmpty;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      controller: _pillCtrl,
+      padding: const EdgeInsets.fromLTRB(16, kSectionPillSlotHeight, 16, 0),
       // AlwaysScrollable: потягивание для RefreshIndicator работает даже
       // при коротком списке — иначе жест «хватается» только у самого
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
       child: Column(
         children: [
-          // Ключ анимации — сама раскладка закрепления: при закрепе/открепе
-          // сервис переставляет карточку, сигнатура меняется, и AnimatedSwitcher
-          // плавно «перетекает» из старого порядка в новый (без телепорта).
-          // Ручной drag порядок без смены пинов сигнатуру не меняет — вспышек
-          // нет. На первом кадре после Splash анимации нет (первый build без
-          // предыдущего ребёнка), поэтому рывка «пусто → привычки» не бывает.
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 380),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.985, end: 1.0).animate(animation),
-                child: child,
-              ),
-            ),
-            // Ключ на РЕБЁНКЕ (не на самом переключателе): при смене раскладки
-            // закрепления AnimatedSwitcher видит новый ключ и кросс-фейдит
-            // старый порядок в новый. Ручной drag сигнатуру не меняет — вспышек нет.
-            child: KeyedSubtree(
-              key: ValueKey(
-                'pin_sig_${sorted.map((h) => h.pinned ? '1' : '0').join()}',
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Полоса «борьбы с неидеальным» раскрывается плавно (и на
-                  // старте синхронно уже присутствует — без резкого впрыгива-
-                  // ния и мигания после сплэша).
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topCenter,
-                    child: _perfectionismMode
-                        ? _buildPerfectionismStrip(context, theme)
-                        : const SizedBox.shrink(),
-                  ),
-                  splitSections
-                      ? _buildSectionedList(
-                          context,
-                          theme,
-                          sorted,
-                          goodHabits,
-                          badHabits,
-                        )
-                      : _buildFlatList(context, theme, sorted),
-                ],
-              ),
+          // Плавная смена раскладки при закрепе/открепе: контент мягко гаснет
+          // (фейд + лёгкий «подъезд») и так же мягко проявляется уже в новом
+          // порядке. Последовательно, а не двумя раскладками сразу —
+          // никакого «двоения» привычки.
+          AnimatedBuilder(
+            animation: _pinFade,
+            builder: (context, child) {
+              final t = Curves.easeOutCubic.transform(_pinFade.value);
+              return Opacity(
+                opacity: t,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - t) * 12 * _pinDir),
+                  child: child,
+                ),
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Полоса «борьбы с неидеальным» раскрывается плавно (и на
+                // старте синхронно уже присутствует — без резкого впрыгива-
+                // ния и мигания после сплэша).
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: _perfectionismMode
+                      ? _buildPerfectionismStrip(context, theme)
+                      : const SizedBox.shrink(),
+                ),
+                splitSections
+                    ? _buildSectionedList(
+                        context,
+                        theme,
+                        sorted,
+                        goodHabits,
+                        badHabits,
+                      )
+                    : _buildFlatList(context, theme, sorted),
+              ],
             ),
           ),
         ],
@@ -613,35 +717,54 @@ class _HabitsScreenState extends State<HabitsScreen>
     );
   }
 
-  /// Один ReorderableListView (только один тип привычек существует).
+  /// Закреплённые и незакреплённые — ФИЗИЧЕСКИ РАЗНЫЕ списки (два
+  /// ReorderableListView в одном Column). Незакреплённую из нижнего списка
+  /// в верхнюю (pinned) зону перетащить невозможно в принципе — это разные
+  /// списки, drag-прокси не пересекает границу. Внутри каждой зоны порядок
+  /// можно менять.
   Widget _buildFlatList(
     BuildContext context,
     ThemeData theme,
     List<Habit> habits,
   ) {
-    return ReorderableListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      // Бывший горизонтальный margin карточки перенесён сюда: item = карточка,
-      // drag-proxy не выходит за края и не перекрывает обводку.
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      itemCount: habits.length,
-      // Плавная прокрутка при 4+ привычках: предзагрузка вне вьюпорта
-      // и изоляция отрисовки каждой карточки от соседних.
-      scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
-      buildDefaultDragHandles: false,
-      onReorderItem: (oldIndex, newIndex) =>
-          _service.reorder(oldIndex, newIndex),
-      proxyDecorator: (child, index, animation) =>
-          buildDragProxy(child, theme, animation),
-      // Ключ на ВНЕШНЕМ виджете: ReorderableListView берёт key от него.
-      // (KeyedSubtree внутри RepaintBoundary Flutter не видит — каждый
-      // элемент списка превращался бы в ErrorWidget «Every item of
-      // ReorderableListView must have a key».)
-      itemBuilder: (context, i) => RepaintBoundary(
-        key: ValueKey('item_habit_${habits[i].id}'),
-        child: _buildHabitCard(context, theme, habits, _FlatIndexSource(i)),
-      ),
+    final pinned = habits.where((h) => h.pinned).toList();
+    final unpinned = habits.where((h) => !h.pinned).toList();
+
+    Widget zoneList(List<Habit> list, {required int base, required String idPrefix}) {
+      if (list.isEmpty) return const SizedBox.shrink();
+      return ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: list.length,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
+        buildDefaultDragHandles: false,
+        onReorderItem: (oldLocal, newLocal) {
+          // Перевод локального индекса зоны в глобальный (base = сдвиг).
+          // Reorder внутри зоны: не-pinned физически не могут попасть в
+          // pinned-зону (отдельный список), guard в service — защита.
+          final oldGlobal = base + oldLocal;
+          final newGlobal = base + newLocal.clamp(0, list.length - 1);
+          if (newGlobal == oldGlobal) return;
+          _service.reorder(oldGlobal, newGlobal);
+        },
+        proxyDecorator: (child, index, animation) =>
+            buildDragProxy(child, theme, animation),
+        itemBuilder: (context, i) => RepaintBoundary(
+          key: ValueKey('${idPrefix}_${list[i].id}'),
+          child: _buildHabitCard(context, theme, list, _FlatIndexSource(i)),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        zoneList(pinned, base: 0, idPrefix: 'item_habit_pinned'),
+        if (pinned.isNotEmpty && unpinned.isNotEmpty)
+          const SizedBox(height: 8),
+        zoneList(unpinned, base: pinned.length, idPrefix: 'item_habit'),
+      ],
     );
   }
 
@@ -715,41 +838,53 @@ class _HabitsScreenState extends State<HabitsScreen>
     required List<Habit> sorted,
   }) {
     if (habits.isEmpty) return const SizedBox.shrink();
-    return ReorderableListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      buildDefaultDragHandles: false,
-      itemCount: habits.length,
-      scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
-      proxyDecorator: (child, index, animation) =>
-          buildDragProxy(child, theme, animation),
-      onReorderItem: (oldLocal, newLocal) {
-        // Локальный→Глобальный: просим сервис переставить элемент между
-        // соответствующими глобальными позициями.
-        final oldGlobal = sorted.indexOf(habits[oldLocal]);
-        if (oldGlobal < 0) return;
-        int newGlobal;
-        if (newLocal >= habits.length) {
-          newGlobal = sorted.indexOf(habits.last) + 1;
-          if (newGlobal > sorted.length) newGlobal = sorted.length;
-        } else {
-          newGlobal = sorted.indexOf(habits[newLocal]);
-          if (newGlobal < 0) newGlobal = oldGlobal;
-        }
-        if (newGlobal == oldGlobal) return;
-        _service.reorder(oldGlobal, newGlobal);
-      },
-      // Ключ на ВНЕШНЕМ виджете: ReorderableListView берёт key от него.
-      itemBuilder: (context, i) => RepaintBoundary(
-        key: ValueKey('item_habit_${habits[i].id}'),
-        child: _buildHabitCard(
-          context,
-          theme,
-          habits,
-          _SectionIndexSource(i, habits),
+    // Физическое разделение pinned/unpinned: два отдельных списка,
+    // незакреплённую нельзя перетащить в pinned-зону.
+    final pinnedHabits = habits.where((h) => h.pinned).toList();
+    final unpinnedHabits = habits.where((h) => !h.pinned).toList();
+    final pBase =
+        pinnedHabits.isNotEmpty ? sorted.indexOf(pinnedHabits.first) : 0;
+    final uBase = unpinnedHabits.isNotEmpty
+        ? sorted.indexOf(unpinnedHabits.first)
+        : 0;
+
+    Widget zone(List<Habit> list, int base, String prefix) {
+      if (list.isEmpty) return const SizedBox.shrink();
+      return ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: list.length,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
+        buildDefaultDragHandles: false,
+        onReorderItem: (oldLocal, newLocal) {
+          final oldGlobal = base + oldLocal;
+          final newGlobal = base + newLocal.clamp(0, list.length - 1);
+          if (newGlobal == oldGlobal) return;
+          _service.reorder(oldGlobal, newGlobal);
+        },
+        proxyDecorator: (child, index, animation) =>
+            buildDragProxy(child, theme, animation),
+        itemBuilder: (context, i) => RepaintBoundary(
+          key: ValueKey('${prefix}_${list[i].id}'),
+          child: _buildHabitCard(
+            context,
+            theme,
+            list,
+            _SectionIndexSource(i, list),
+          ),
         ),
-      ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        zone(pinnedHabits, pBase, 'sec_pinned'),
+        if (pinnedHabits.isNotEmpty && unpinnedHabits.isNotEmpty)
+          const SizedBox(height: 8),
+        zone(unpinnedHabits, uBase, 'sec_unpinned'),
+      ],
     );
   }
 
@@ -830,50 +965,14 @@ class _HabitsScreenState extends State<HabitsScreen>
               // Фиксированная ширина слота: при смене пин↔драг-хэндл текст
               // не сдвигается, а сам значок меняется кросс-фейдом + scale.
               SizedBox(
-                width: 38,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: animation, child: child),
-                  ),
-                  child: habit.pinned
-                      ? const Padding(
-                          key: ValueKey('pin'),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 8,
-                          ),
-                          child: Icon(
-                            Icons.push_pin,
-                            size: 26,
-                            color: Colors.grey,
-                          ),
-                        )
-                      : _HabitDragHandle(
-                          index: dragIndex,
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 8,
-                            ),
-                            child: Icon(
-                              Icons.drag_indicator,
-                              size: 26,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-              // Чекбокс (сверху) + тип привычки (снизу).
-              // Колонка уже (40) и значок крупнее (23) — иконка ближе
-              // к драг-хэндлу слева, тексту — больше места.
-              SizedBox(
-                width: 40,
+                width: 46,
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Галка СВЕРХУ драг-хэндла (одна колонка 46px): текст
+                    // получает всю оставшуюся ширину и умещается целиком.
+                    Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -884,6 +983,9 @@ class _HabitsScreenState extends State<HabitsScreen>
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => _tapHabitOnce(habit),
+                        // Чистая тематическая обводка большого значка
+                        // (без IconRing — он сдвигал layout). Кольцо на
+                        // самом кружке, без внешнего зазора.
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 260),
                           width: 32,
@@ -893,6 +995,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                             color: habit.doneToday
                                 ? theme.colorScheme.primary
                                 : Colors.transparent,
+                            // Красивая обводка: выбранная — primary (яркая),
+                            // не выбранная — тематический outline (мягкий).
                             border: Border.all(
                               color: habit.doneToday
                                   ? theme.colorScheme.primary
@@ -933,6 +1037,44 @@ class _HabitsScreenState extends State<HabitsScreen>
                     ),
                   ],
                 ),
+                    const SizedBox(height: 6),
+                    // Драг-хэндл / пин — снизу.
+                    AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: animation, child: child),
+                  ),
+                  child: habit.pinned
+                      ? const Padding(
+                          key: ValueKey('pin'),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 4,
+                          ),
+                          child: Icon(
+                            Icons.push_pin,
+                            size: 24,
+                            color: Colors.grey,
+                          ),
+                        )
+                      : _HabitDragHandle(
+                          index: dragIndex,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 4,
+                            ),
+                            child: Icon(
+                              Icons.drag_indicator,
+                              size: 24,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                ),
+                  ],
+                ),
               ),
               Expanded(
                 child: GestureDetector(
@@ -945,13 +1087,17 @@ class _HabitsScreenState extends State<HabitsScreen>
                   onTap: () => _handleHabitTap(habit),
                   onLongPress: () => _togglePin(habit),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 10, 8, 4),
+                    // Тот же ритм отступов, что в задачах (4,12,12,8):
+                    // карточка привычек не «скукожена» относительно задач.
+                    padding: const EdgeInsets.fromLTRB(4, 12, 12, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Title row: name takes remaining width; compact actions on the right.
+                        // Кнопки действий фиксированной ширины — не давят на
+                        // текст, имя привычки занимает всё оставшееся место.
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Expanded(
                               // Плавное зачёркивание: линия «рисуется» по
@@ -961,7 +1107,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 text: habit.name,
                                 style: theme.textTheme.titleMedium!.copyWith(
                                   fontSize: 22.5,
-                                  height: 1.25,
+                                  height: 1.3,
                                   color: theme.colorScheme.onSurface,
                                 ),
                                 // Тот же масштаб шрифта, что рендерит текст:
@@ -969,12 +1115,23 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 // масштабе ≠ 1.0 не совпадают со строками.
                                 textScaler: MediaQuery.textScalerOf(context),
                                 struck: habit.doneToday,
-                                struckColor: theme.colorScheme.onSurfaceVariant,
-                                strikeColor: theme.colorScheme.outline,
-                                maxLines: 6,
-                                overflow: TextOverflow.ellipsis,
+                                // Текст в отмеченном состоянии — заметно
+                                // полупрозрачный (а не просто другой оттенок):
+                                // прозрачность едет вместе с линией.
+                                struckColor: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.42),
+                                strikeColor:
+                                    Colors.red.shade500.withValues(alpha: 0.9),
+                                // Полный текст без троеточия: имя привычки
+                                // всегда видно целиком (как в задачах), а не
+                                // «скукожено» до двух строк. Действия справа
+                                // (колокольчик/раскрытие/карандаш) стоят в своей
+                                // зоне, а текст расширяется на всю оставшуюся
+                                // ширину через Expanded — и не налезает на них.
+                                maxLines: null,
                               ),
                             ),
+                            const SizedBox(width: 6),
                             // Текст напоминания в списке НЕ показываем — только
                             // колокольчик времени ниже. Сам текст живёт в
                             // редактировании привычки и в самом уведомлении.
@@ -983,7 +1140,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                             // всё». Плотно прижат к кнопке разворота заметки.
                             if (habit.reminderTime != null)
                               Padding(
-                                padding: const EdgeInsets.only(right: 2),
+                                padding: const EdgeInsets.only(right: 6),
                                 child: Icon(
                                   Icons.notifications_active_outlined,
                                   size: 17,
@@ -993,28 +1150,48 @@ class _HabitsScreenState extends State<HabitsScreen>
                             // Значок закрепления справа убран: пин и так виден
                             // слева (drag-handle превращается в пин у
                             // закреплённой привычки) — дублировать не нужно.
-                            if (habit.notes.isNotEmpty ||
-                                habit.status.isNotEmpty)
-                              _compactIconButton(
-                                // Плавно поворачиваем стрелку на 180° при
-                                // открытии/закрытии заметки, а не рвём её
-                                // между двумя разными иконками.
-                                icon: Icons.keyboard_arrow_down,
-                                rotation: (_expandedNotes[habit.id] ?? false)
-                                    ? 3.14159 // пи — стрелка вверх
-                                    : 0,
-                                color: (_expandedNotes[habit.id] ?? false)
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurfaceVariant,
-                                onPressed: () => setState(
-                                  () => _expandedNotes[habit.id] =
-                                      !(_expandedNotes[habit.id] ?? false),
+                            //
+                            // Действия идут ВЕРТИКАЛЬНО (раскрытие СВЕРХУ,
+                            // карандаш ПОД ним), а не в ряд. Раньше ряд из двух
+                            // кнопок съедал ~54 px по ширине, и имя привычки
+                            // «скукоживалось», не доходя до правого края —
+                            // хотя место справа было. Теперь блок действий
+                            // шириной в одну кнопку, и текст занимает почти
+                            // всю ширину карточки.
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                // Кнопка раскрытия есть только если реально
+                                // есть что показывать: заметки — всегда;
+                                // статус — только у полезной привычки (у
+                                // вредной статус не отображается, поэтому и
+                                // кнопки нет).
+                                if (habit.notes.isNotEmpty ||
+                                    (habit.type == 'good' &&
+                                        habit.status.isNotEmpty))
+                                  _compactIconButton(
+                                    cornerRipple: true,
+                                    icon: Icons.keyboard_arrow_down,
+                                    rotation:
+                                        (_expandedNotes[habit.id] ?? false)
+                                            ? 3.14159 // пи — стрелка вверх
+                                            : 0,
+                                    color: (_expandedNotes[habit.id] ?? false)
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurfaceVariant,
+                                    onPressed: () => setState(
+                                      () => _expandedNotes[habit.id] =
+                                          !(_expandedNotes[habit.id] ?? false),
+                                    ),
+                                  ),
+                                const SizedBox(height: 2),
+                                _compactIconButton(
+                                  icon: Icons.edit_outlined,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  onPressed: () => _editHabit(habit),
                                 ),
-                              ),
-                            _compactIconButton(
-                              icon: Icons.edit_outlined,
-                              color: theme.colorScheme.onSurfaceVariant,
-                              onPressed: () => _editHabit(habit),
+                              ],
                             ),
                           ],
                         ),
@@ -1098,34 +1275,112 @@ class _HabitsScreenState extends State<HabitsScreen>
                                   ),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      Translations.t(
-                                        'todayErased',
-                                        context,
-                                        'TODAY CLEARED',
-                                      ).toUpperCase(),
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: Colors.red.shade600,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.4,
+                                    // «Красная» таблетка-победа: глубокий
+                                    // винный градиент + светлая кромка,
+                                    // плотный светлый текст. Без размытий
+                                    // (MaskFilter/boxShadow) — только чистые
+                                    // заливки, поэтому «серых квадратов» нет.
+                                    child: Container(
+                                      // «Сегодня очищено»: на тёмной теме —
+                                      // тонкое виноградное стекло (мягкий
+                                      // блик + полупрозрачная заливка), на
+                                      // светлой — плотная винная таблетка.
+                                      // Никаких размытий и теней.
+                                      decoration: _erasedDecoration(theme),
+                                      // Мелкие «кровавые» пятнышки: painter
+                                      // ложится ПОВЕРХ заливки, но ПОД текстом —
+                                      // буквы остаются чистыми.
+                                      child: CustomPaint(
+                                        painter: _BloodSpeckPainter(
+                                          isDark:
+                                              theme.brightness ==
+                                              Brightness.dark,
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 7,
                                           ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons
+                                                    .check_circle_outline_rounded,
+                                                size: 16,
+                                                color: Color(0xFFFFE1E3),
+                                              ),
+                                              const SizedBox(width: 7),
+                                              Text(
+                                                Translations.t(
+                                                  'todayErased',
+                                                  context,
+                                                  'Сегодня очищено',
+                                                ),
+                                                style: theme
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(
+                                                      color: const Color(
+                                                        0xFFFFEEF0,
+                                                      ),
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      letterSpacing: 0.5,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 )
                               : const SizedBox.shrink(
-                                  key: const ValueKey('streak_empty'),
+                                  key: ValueKey('streak_empty'),
                                 ),
                         ),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 380),
-                          curve: Curves.easeOutCubic,
-                          alignment: Alignment.topCenter,
-                          child:
-                              (_expandedNotes[habit.id] ?? false) &&
-                                  (habit.notes.isNotEmpty ||
-                                      habit.status.isNotEmpty)
-                              ? Padding(
+                        // Раскрытие/закрытие заметки: высота и прозрачность
+                        // едут ВМЕСТЕ по одной кривой (Align.heightFactor +
+                        // Opacity), поэтому при закрытии панель не «исчезает
+                        // мгновенно», а так же плавно сжимается и растворяется,
+                        // как раскрывалась.
+                        // 760 мс (было 480): вход и выход — одна мягкая волна
+                        // (easeInOutCubic), без рывка в конце.
+                        if (habit.notes.isNotEmpty ||
+                            (habit.type == 'good' && habit.status.isNotEmpty))
+                          TweenAnimationBuilder<double>(
+                            tween: Tween<double>(
+                              // begin всегда 0: при первом построении закрытая
+                              // панель не «проигрывает» открытие. Когда end
+                              // меняется, твин стартует с ТЕКУЩЕГО значения —
+                              // поэтому закрытие идёт из 1 в 0 так же гладко.
+                              begin: 0.0,
+                              end: (_expandedNotes[habit.id] ?? false)
+                                  ? 1.0
+                                  : 0.0,
+                            ),
+                            duration: const Duration(milliseconds: 760),
+                            curve: Curves.easeInOutCubic,
+                            builder: (context, t, child) => ClipRect(
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                // Высота сжимается вместе с прозрачностью:
+                                // панель уезжает вверх, а не пропадает.
+                                heightFactor: t,
+                                child: Opacity(
+                                  opacity: t,
+                                  child: Transform.translate(
+                                    offset: Offset(0, (1.0 - t) * -12),
+                                    child: child,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Панель строится ВСЕГДА (пока есть контент): заметки
+                            // — всегда; статус — только у полезной привычки
+                            // (у вредной статус не рисуется).
+                            child: Padding(
                                   padding: const EdgeInsets.only(
                                     top: 6,
                                     bottom: 4,
@@ -1143,7 +1398,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        if (habit.status.isNotEmpty) ...[
+                                        if (habit.type == 'good' &&
+                                    habit.status.isNotEmpty) ...[
                                           Row(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
@@ -1190,9 +1446,8 @@ class _HabitsScreenState extends State<HabitsScreen>
                                       ],
                                     ),
                                   ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
+                                ),
+                              ),
                         _daysRow(habit, theme, context),
                       ],
                     ),
@@ -1207,44 +1462,84 @@ class _HabitsScreenState extends State<HabitsScreen>
     return inner;
   }
 
-  /// Ряд дней недели: активные дни привычки подсвечены кружками.
+  /// Оформление таблетки «Сегодня очищено».
+  ///
+  /// Светлая тема: плотная винная таблетка (заливка чуть прозрачная, чтобы
+  /// карточка мягко проглядывала). Тёмная тема: тонкое «виноградное стекло» —
+  /// заметно прозрачнее, с мягким бликом в левом верхнем углу и тонкой светлой
+  /// кромкой: на тёмном фоне плотный красный выглядел грязно и бил по глазам.
+  BoxDecoration _erasedDecoration(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final colors = isDark
+        ? [
+            // Блик «стекла»: чуть ярче и прозрачнее основной заливки.
+            const Color(0xFFE86A72).withValues(alpha: 0.22),
+            const Color(0xFFA0101C).withValues(alpha: 0.34),
+            const Color(0xFF5E0710).withValues(alpha: 0.30),
+          ]
+        : [
+            const Color(0xFFC0202C).withValues(alpha: 0.66),
+            const Color(0xFF96101B).withValues(alpha: 0.62),
+            const Color(0xFF6E0810).withValues(alpha: 0.58),
+          ];
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: colors,
+        stops: const [0.0, 0.42, 1.0],
+      ),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(
+        color: (isDark ? const Color(0xFFFFA2A8) : const Color(0xFFE0525C))
+            .withValues(alpha: isDark ? 0.26 : 0.45),
+        width: 1.2,
+      ),
+    );
+  }
+
+  /// Ряд дней недели: активные дни привычки подсвечены компактными кружками.
   Widget _daysRow(Habit habit, ThemeData theme, BuildContext context) {
     if (habit.activeDays.isEmpty) return const SizedBox.shrink();
     final names = Translations.dayNames(context);
+    final cs = theme.colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      // Компактнее (было 24 px кружки с шагом 5): ряд дней стал мельче и
+      // «спокойнее» по цвету — не спорит с названием привычки.
+      padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: List.generate(7, (i) {
           final day = i + 1;
           final active = habit.activeDays.contains(day);
-          return Container(
-            width: 24,
-            height: 24,
-            margin: const EdgeInsets.only(right: 5),
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            width: 18,
+            height: 18,
+            margin: const EdgeInsets.only(right: 3.5),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: active
-                  ? theme.colorScheme.primary.withValues(alpha: 0.14)
-                  : Colors.transparent,
+                  ? cs.primary.withValues(alpha: 0.16)
+                  : cs.onSurfaceVariant.withValues(alpha: 0.045),
               border: Border.all(
                 color: active
-                    ? theme.colorScheme.primary.withValues(alpha: 0.55)
-                    : theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
-                width: 1,
+                    ? cs.primary.withValues(alpha: 0.42)
+                    : cs.outlineVariant.withValues(alpha: 0.22),
+                width: active ? 1.1 : 0.8,
               ),
             ),
             child: Text(
               names[i][0].toUpperCase(),
               style: theme.textTheme.labelSmall?.copyWith(
-                fontSize: 13,
+                fontSize: 9.5,
                 height: 1,
+                letterSpacing: 0,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 color: active
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.55,
-                      ),
+                    ? cs.primary
+                    : cs.onSurfaceVariant.withValues(alpha: 0.42),
               ),
             ),
           );
@@ -1258,21 +1553,97 @@ class _HabitsScreenState extends State<HabitsScreen>
     required Color color,
     required VoidCallback onPressed,
     double rotation = 0,
+    // true — угловая кнопка раскрытия заметки: кнопка компактная и на своём
+    // месте, а поверх неё живёт фирменное пятно (только на тап, не на
+    // зажатие — см. PressSplat.bloomOnRelease).
+    bool cornerRipple = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 2),
-      child: InkResponse(
-        onTap: onPressed,
-        radius: 18,
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: AnimatedRotation(
-            turns: rotation / 3.14159 / 2,
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeInOutCubic,
-            child: Icon(icon, size: 18, color: color),
+    final cs = Theme.of(context).colorScheme;
+    // Иконка + плавный поворот — общая для обеих кнопок.
+    final rotatingIcon = AnimatedRotation(
+      turns: rotation / 3.14159 / 2,
+      // Медленнее (было 240 мс): стрелка переворачивается так же плавно, как
+      // раскрывается заметка, — без «щелчка» в конце.
+      duration: const Duration(milliseconds: 460),
+      curve: Curves.easeInOutCubic,
+      child: Icon(icon, size: 18, color: color),
+    );
+
+    // Компактная кнопка (карандаш и подобные): без ink-«пятен» — при
+    // удержании мягко уменьшается сама кнопка (та же отдача, что у карандаша
+    // и корзины в окне задачи).
+    if (!cornerRipple) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 2),
+        child: PressScale(
+          pressedScale: 0.9,
+          duration: const Duration(milliseconds: 460),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onPressed,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: rotatingIcon,
+              ),
+            ),
           ),
         ),
+      );
+    }
+
+    // Угловая кнопка (раскрытие заметки): иконка компактная и на месте, а
+    // поверх — фирменное размашистое пятно, которое расцветает ВМЕСТЕ с
+    // раскрытием заметки и так же мягко растворяется.
+    //
+    // ВАЖНО: пока палец ДЕРЖИТ кнопку, пятна нет (bloomOnRelease) — под
+    // пальцем видна только плавная отдача самой кнопки. Пятно появляется на
+    // отпускании, одновременно с раскрытием заметки.
+    return PressScale(
+      pressedScale: 0.9,
+      duration: const Duration(milliseconds: 460),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topRight,
+        children: [
+          Positioned(
+            top: -16,
+            right: -20,
+            width: 76,
+            height: 76,
+            child: PressSplat(
+              color: cs.primary,
+              maxRadius: 42,
+              alpha: 0.06,
+              seed: 47.9,
+              smeary: 0.85,
+              // Вспышка — 900 мс, уход — 1300 мс: пятно раскрывается медленно,
+              // а уходит ещё медленнее и ровнее (мягкое растворение, без
+              // «сдувания» в последних кадрах).
+              duration: const Duration(milliseconds: 900),
+              exitDuration: const Duration(milliseconds: 1300),
+              hitBox: const Size(84, 84),
+              bloomOnRelease: true,
+              onTap: onPressed,
+              child: const SizedBox(width: 76, height: 76),
+            ),
+          ),
+          IgnorePointer(
+            child: Material(
+              color: cs.primaryContainer.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
+              clipBehavior: Clip.none,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: rotatingIcon,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1280,6 +1651,7 @@ class _HabitsScreenState extends State<HabitsScreen>
   /// Полоса перфекционизма: 4-6 карточек-напоминаний на сегодня.
   Widget _buildPerfectionismStrip(BuildContext context, ThemeData theme) {
     final plaques = _todaysPlaques();
+    final seed = _perfSeed();
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -1306,13 +1678,37 @@ class _HabitsScreenState extends State<HabitsScreen>
             ),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 118,
-            child: ListView.separated(
+          // Смена подборки (раз в час) — мягким кросс-фейдом: старые
+          // карточки растворяются, новые так же плавно приходят на их место.
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 700),
+            switchInCurve: Curves.easeInOutCubic,
+            switchOutCurve: Curves.easeInOutCubic,
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                ...previous,
+                ?current,
+              ],
+            ),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.06, 0),
+                  end: Offset.zero,
+                ).animate(anim),
+                child: child,
+              ),
+            ),
+            child: SizedBox(
+              key: ValueKey('perf_strip_$seed'),
+              height: 118,
+              child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 4),
               itemCount: plaques.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
               itemBuilder: (context, i) {
                 final p = plaques[i];
                 return SmoothHover(
@@ -1380,6 +1776,7 @@ class _HabitsScreenState extends State<HabitsScreen>
               },
             ),
           ),
+          ),
         ],
       ),
     );
@@ -1433,3 +1830,73 @@ class _SectionIndexSource implements IndexSource {
     return global < 0 ? index : global;
   }
 }
+
+/// Мелкие «кровавые» пятнышки на таблетке «Сегодня очищено».
+///
+/// Пятна рисуются ПОД текстом (painter у CustomPaint), поэтому буквы
+/// остаются чистыми, а заливка выглядит подтёкшей. Никаких размытий —
+/// только чистые заливки, чтобы на Adreno не появлялись «серые квадраты».
+class _BloodSpeckPainter extends CustomPainter {
+  const _BloodSpeckPainter({this.isDark = false});
+
+  /// На тёмной теме заливка тонкая и тёмная, поэтому пятнышки чуть плотнее
+  /// и светлее — иначе они пропадали вовсе.
+  final bool isDark;
+
+  /// x, y (доли ширины/высоты), радиус (доля высоты), плотность (0..1).
+  static const List<List<double>> _spots = [
+    [0.05, 0.34, 0.15, 0.85],
+    [0.13, 0.74, 0.09, 0.55],
+    [0.22, 0.30, 0.07, 0.45],
+    [0.33, 0.78, 0.11, 0.65],
+    [0.44, 0.26, 0.06, 0.40],
+    [0.55, 0.72, 0.08, 0.52],
+    [0.66, 0.34, 0.07, 0.44],
+    [0.76, 0.76, 0.12, 0.60],
+    [0.86, 0.32, 0.06, 0.38],
+    [0.95, 0.62, 0.09, 0.50],
+  ];
+
+  static const Color _dry = Color(0xFF3C0206);
+  static const Color _wet = Color(0xFFFF8A90);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.height <= 0) return;
+    for (final s in _spots) {
+      final center = Offset(size.width * s[0], size.height * s[1]);
+      final r = size.height * s[2];
+      final density = s[3];
+      final dryPaint = Paint()
+        ..color = _dry.withValues(
+          alpha: (isDark ? 0.52 : 0.34) * density,
+        );
+      // Основное пятнышко.
+      canvas.drawCircle(center, r, dryPaint);
+      // Мазок рядом — пятно получается неровным, «живым».
+      canvas.drawCircle(
+        center + Offset(r * 1.6, r * 0.5),
+        r * 0.52,
+        Paint()
+          ..color = _dry.withValues(
+            alpha: (isDark ? 0.40 : 0.24) * density,
+          ),
+      );
+      // Влажный блик — чуть светлее заливки.
+      canvas.drawCircle(
+        center - Offset(r * 0.35, r * 0.4),
+        r * 0.32,
+        Paint()
+          ..color = _wet.withValues(
+            alpha: (isDark ? 0.22 : 0.14) * density,
+          ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BloodSpeckPainter oldDelegate) =>
+      oldDelegate.isDark != isDark;
+}
+
+

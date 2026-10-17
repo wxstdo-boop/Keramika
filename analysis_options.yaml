@@ -5,6 +5,7 @@
 # Прогон по корню из-за этого шёл 78 с и выдал 8 замечаний из чужого
 # `third_party/flutter_overlay_window` внутри воркдерепа — при нуле замечаний по
 # `lib/` и `test/`. Проверяем только сам проект.
+include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - worktrees/**

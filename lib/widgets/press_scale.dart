@@ -10,15 +10,29 @@ import 'package:flutter/material.dart';
 class PressScale extends StatefulWidget {
   final Widget child;
   final double pressedScale;
+
+  /// Сколько длится вдавливание.
   final Duration duration;
+
+  /// Сколько длится возврат. Отдельно от [duration]: «уйти» под палец
+  /// хочется быстро и послушно, а вернуться — заметно мягче, иначе отпускание
+  /// читается как щелчок. `null` — тот же [duration], как было раньше.
+  final Duration? releaseDuration;
+
   final Curve curve;
+
+  /// Отключённое «вдавливание» (например, когда палец ушёл на перетаскивание
+  /// родителя): нажатие не учитывается, элемент мягко возвращается в размер.
+  final bool enabled;
 
   const PressScale({
     super.key,
     required this.child,
     this.pressedScale = 0.985,
     this.duration = const Duration(milliseconds: 280),
+    this.releaseDuration,
     this.curve = Curves.easeOutCubic,
+    this.enabled = true,
   });
 
   @override
@@ -38,21 +52,38 @@ class _PressScaleState extends State<PressScale>
   }
 
   @override
+  void didUpdateWidget(covariant PressScale oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled && _ctrl.value > 0) _ctrl.reverse();
+  }
+
+  @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
   }
 
+  // Проверка `mounted` обязательна: при быстром смахивании элемент успевает
+  // размонтироваться до pointer-up, и `reverse()` на уничтоженном
+  // контроллере ронял диспетчер жестов (флин в пикере это ловил).
   void _down(PointerDownEvent _) {
-    if (!_ctrl.isAnimating) _ctrl.forward();
+    if (!mounted || !widget.enabled) return;
+    // Длительность переключаем ДО старта: контроллер живёт один, и без этого
+    // после первого же нажатия он запомнил бы длину отпускания.
+    _ctrl.duration = widget.duration;
+    _ctrl.forward();
   }
 
   void _up(PointerUpEvent _) {
-    if (_ctrl.value > 0) _ctrl.reverse();
+    if (!mounted || _ctrl.value <= 0) return;
+    _ctrl.duration = widget.releaseDuration ?? widget.duration;
+    _ctrl.reverse();
   }
 
   void _cancel(PointerCancelEvent _) {
-    if (_ctrl.value > 0) _ctrl.reverse();
+    if (!mounted || _ctrl.value <= 0) return;
+    _ctrl.duration = widget.releaseDuration ?? widget.duration;
+    _ctrl.reverse();
   }
 
   @override

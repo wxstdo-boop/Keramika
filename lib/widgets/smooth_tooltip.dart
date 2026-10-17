@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../l10n/translations.dart';
@@ -18,6 +18,41 @@ const double _kArrowW = 13;
 const double _kArrowH = 6;
 const double _kPadX = 11;
 const double _kPadY = 6;
+
+/// Общий реестр активных пузырей по тексту подсказки. При переходе между
+/// экранами старые и новые экземпляры SmoothTooltip (например, таблетки
+/// разделов) одновременно снимают/ставят пузырь для ОДНОГО И ТОГО ЖЕ текста —
+/// в общем оверлее они налезали друг на друга и подсказка «показывалась по
+/// два раза». Реестр хранит живые СОСТОЯНИЯ владельцев по тексту: перед новым
+/// показом для данного текста все ЧУЖИЕ пузыри той же подписи принудительно
+/// гасятся (вместе со своими таймерами), поэтому в оверлее одновременно
+/// существует не более одного пузыря на подпись.
+///
+/// Раньше реестр хранил только OverlayEntry, а состояния чужих владельцев
+/// оставались «живыми»: их отложенные таймеры продолжали тикать и заново
+/// показывали пузырь уже после снятия — отсюда «тултип появляется по много
+/// раз» и «вечное» самопоявление при переходах между экранами.
+final Map<String, Set<_SmoothTooltipState>> _activeTips =
+    <String, Set<_SmoothTooltipState>>{};
+
+/// Гасит все ЧУЖИЕ пузыри с тем же текстом и регистрирует [keep].
+void _purgeForeignTips(String msg, _SmoothTooltipState keep) {
+  final set = _activeTips[msg];
+  if (set != null) {
+    for (final s in set.toList()) {
+      if (!identical(s, keep)) s._forceHide();
+    }
+  }
+  (_activeTips[msg] ??= <_SmoothTooltipState>{}).add(keep);
+}
+
+/// Снимает [state] с реестра (при гашении пузыря или смерти владельца).
+void _unregisterTip(String msg, _SmoothTooltipState state) {
+  final set = _activeTips[msg];
+  if (set == null) return;
+  set.remove(state);
+  if (set.isEmpty) _activeTips.remove(msg);
+}
 
 /// Всплывающая подсказка со стрелкой-указателем.
 ///
@@ -78,23 +113,37 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
 
   @override
   void dispose() {
+    // Владелец умирает (переход на другой экран, смена категории,
+    // перестроение ряда) — пузырь и все таймеры снимаем СРАЗУ: живой пузырь
+    // на общем оверлее перекрывал пузырь нового экземпляра с той же подписью,
+    // а «висящие» таймеры потом снова его показывали.
+    _forceHide();
+    super.dispose();
+  }
+
+  /// Экстренно снять пузырь (владелец умер/сменился, либо чужой экземпляр с
+  /// той же подписью перехватил показ) — ВМЕСТЕ со всеми отложенными
+  /// таймерами. Без отмены таймеров отложенный `_hide`/`_show` дёрнул бы уже
+  /// снятый OverlayEntry, а состояние навсегда осталось бы «показывающим».
+  void _forceHide() {
     _showTimer?.cancel();
     _hideTimer?.cancel();
     _backstop?.cancel();
-    // Владелец умирает (уход с экрана, перестроение) — пузырь НЕ убираем
-    // резко: он живёт в элементе Overlay, а не в этом дереве, и доиграет
-    // плавное исчезание сам.
-    final shell = _shell;
-    _shell = null;
-    final entry = _entry;
-    _entry = null;
+    _showTimer = null;
+    _hideTimer = null;
+    _backstop = null;
+    _reshowPending = false;
+    _pointerDown = false;
     _showing = false;
-    if (shell != null && shell.mounted) {
-      shell.detachAndFadeOut();
-    } else {
-      entry?.remove();
+    _shell = null;
+    final e = _entry;
+    _entry = null;
+    if (e != null) {
+      try {
+        e.remove();
+      } catch (_) {}
     }
-    super.dispose();
+    _unregisterTip(widget.message, this);
   }
 
   // ── Жесты ──────────────────────────────────────────────────────────
@@ -145,9 +194,17 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
 
   void _show() {
     if (!mounted || widget.message.isEmpty) return;
+    // Не показываем подсказку, если экран-владелец уже НЕ на вершине: при
+    // переходе на другой экран отложенный таймер иначе «выстреливал» пузырём
+    // поверх нового экрана (и так — на каждом переходе), а вернувшись, можно
+    // было получить ещё и накопленные пузыри. Показываем только своё.
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
     final anchor = _anchorKey.currentContext;
     final box = anchor?.findRenderObject();
-    if (anchor == null || box is! RenderBox || !box.hasSize) return;
+    if (anchor == null || box is! RenderBox || !box.hasSize || !box.attached) {
+      return;
+    }
     final overlay = Overlay.of(context);
     final oBox = overlay.context.findRenderObject();
     if (oBox is! RenderBox || !oBox.hasSize) return;
@@ -188,10 +245,16 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
         above: _above,
         textStyle: _textStyle,
         onReady: _attachShell,
-        remove: () => entry.remove(),
+        remove: () {
+          entry.remove();
+          _unregisterTip(widget.message, this);
+        },
         onGone: () => _gone(entry),
       ),
     );
+    // Перед вставкой гасим ЧУЖИЕ пузыри с той же подписью — иначе при
+    // переходе между экранами дубль налезает и подсказка показывается дважды.
+    _purgeForeignTips(widget.message, this);
     _entry = entry;
     overlay.insert(entry);
     // Абсолютная страховка от «залипания»: даже если up/cancel потерялись
@@ -229,6 +292,7 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
       _shell = null;
       _showing = false;
     }
+    _unregisterTip(widget.message, this);
     _backstop?.cancel();
   }
 
@@ -237,8 +301,14 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
     _backstop?.cancel();
     _showing = false;
     _shell = null;
-    _entry?.remove();
+    final e = _entry;
     _entry = null;
+    if (e != null) {
+      try {
+        e.remove();
+      } catch (_) {}
+    }
+    _unregisterTip(widget.message, this);
   }
 
   void _attachShell(_TipShellState shell) {

@@ -20,7 +20,9 @@ class ProgressRing extends StatelessWidget {
     this.size = 96,
     this.thickness = 9,
     this.centerBuilder,
-    this.duration = const Duration(milliseconds: 520),
+    // 700 мс вместо 520: при добавлении приёма пищи дуга и число в кольце
+    // должны перетекать заметно, а не успевать «дощёлкнуть» за полсекунды.
+    this.duration = const Duration(milliseconds: 700),
   });
 
   /// Показанное значение — ккал за сегодня.
@@ -44,24 +46,34 @@ class ProgressRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Норма тоже едет анимацией: при сохранении новой суточной нормы дуга
+    // раньше пересчитывалась одним кадром — при том же значении калорий она
+    // «прыгала» на новый радиус, хотя соседнее число оставалось прежним.
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: value),
+      tween: Tween<double>(begin: target, end: target),
       duration: duration,
       curve: Curves.easeOutCubic,
-      builder: (context, shown, _) => RepaintBoundary(
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: CustomPaint(
-            painter: _RingPainter(
-              fraction: target <= 0 ? 0 : shown / target,
-              shown: shown,
-              color: color,
-              overColor: overColor,
-              trackColor: trackColor,
-              thickness: thickness,
+      builder: (context, shownTarget, _) => TweenAnimationBuilder<double>(
+        // `begin: 0` — входная прокрутка кольца при открытии экрана;
+        // после первого построения стартом служит текущий кадр.
+        tween: Tween<double>(begin: 0, end: value),
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        builder: (context, shown, _) => RepaintBoundary(
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: CustomPaint(
+              painter: _RingPainter(
+                fraction: shownTarget <= 0 ? 0 : shown / shownTarget,
+                shown: shown,
+                color: color,
+                overColor: overColor,
+                trackColor: trackColor,
+                thickness: thickness,
+              ),
+              child: Center(child: centerBuilder?.call(context, shown)),
             ),
-            child: Center(child: centerBuilder?.call(context, shown)),
           ),
         ),
       ),

@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -7,7 +6,6 @@ import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
 import 'smooth_tooltip.dart';
-import 'stained_glass.dart';
 
 /// Занимаемая таблеткой высота (отступы 4 + капсула 54 + отступ 6).
 /// Таблетка лежит в Stack НАД PageView, поэтому каждый экран-раздел
@@ -21,8 +19,9 @@ const double kSectionPillSlotHeight = 64;
 ///
 /// Позиция круга в Material: низ = edgeOffset + sizeFactor*(displacement+40).
 /// При sizeFactor=1 верх круга = edgeOffset + displacement (40) — поэтому
-/// edgeOffset = 58 (низ капсулы) - 40 = 18.
-const double kSectionRefreshEdgeOffset = kSectionPillSlotHeight - 6 - 40;
+/// edgeOffset = 58 (низ капсулы) - 40 = 18. Увеличили на 6 px, чтобы кружок
+/// не налезал на обводку капсулы и не выглядел «слишком高о».
+const double kSectionRefreshEdgeOffset = kSectionPillSlotHeight - 6 - 34;
 
 /// Верхний «запретный пояс» для плавающего окошка Ады: статус-бар + шапка +
 /// таблетка разделов.
@@ -51,6 +50,15 @@ final ValueNotifier<double> sectionRailPage = ValueNotifier<double>(0);
 
 /// Тик тапа по разделу: Home слушает и доезжает до нужной страницы.
 final ValueNotifier<int> sectionTabTap = ValueNotifier<int>(0);
+
+/// Тяга по таблетке разделов. Пилюля кладёт сюда ДРОБНУЮ страницу, к которой
+/// палец подтянул камень, а Home двигает PageController — разделы едут под
+/// пальцем. `null` — тяга закончилась, дальше камень ведёт пружина Home.
+///
+/// Почему отдельный канал: таблетка не знает ни про PageController, ни про
+/// пружину, а Home не должен знать, как устроен жест. Это тот же способ
+/// связи, что уже используют [sectionCurrentIndex] и [sectionRailPage].
+final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 
 /// Значки разделов: у каждого своя геометрическая фигура.
 const List<IconData> sectionIcons = [
@@ -92,6 +100,84 @@ class SectionPill extends StatefulWidget {
 class _SectionPillState extends State<SectionPill> {
   int? _pressedIndex;
 
+  /// Ширина внутренней части капсулы: 304 минус набивка 4 слева и справа.
+  /// По ней считается, сколько пикселей приходится на один раздел.
+  static const double _innerWidth = 304 - 4 * 2;
+
+  /// Идёт ли тяга пальцем по таблетке.
+  bool _dragging = false;
+
+  /// Куда палец увёл камень (дробная страница).
+  double _dragPage = 0;
+
+  /// Ближайший раздел на прошлом кадре — по нему звучит хаптик, когда палец
+  /// пересекает границу раздела.
+  int _dragNearest = -1;
+
+  @override
+  void dispose() {
+    // Экран мог закрыться прямо во время тяги — не оставляем Home с
+    // висящей ненулевой страницей.
+    if (_dragging) sectionDragPage.value = null;
+    super.dispose();
+  }
+
+  void _dragStart(int count) {
+    if (count < 2) return;
+    _dragging = true;
+    _dragPage = sectionRailPage.value
+        .clamp(0.0, (count - 1).toDouble())
+        .toDouble();
+    _dragNearest = _dragPage.round();
+    // Пока палец ведёт камень, иконки не «вдавливаются»: нажатия нет.
+    setState(() => _pressedIndex = null);
+    sectionDragPage.value = _dragPage;
+  }
+
+  void _dragUpdate(DragUpdateDetails details, int count) {
+    if (!_dragging) return;
+    final slot = _innerWidth / count;
+    if (slot <= 0) return;
+    // Влево (delta < 0) — к следующему разделу.
+    _dragPage = (_dragPage - details.delta.dx / slot).clamp(
+      0.0,
+      (count - 1).toDouble(),
+    );
+    final nearest = _dragPage.round();
+    if (nearest != _dragNearest) {
+      _dragNearest = nearest;
+      Haptics.light();
+    }
+    sectionDragPage.value = _dragPage;
+  }
+
+  void _dragEnd(int count) {
+    if (!_dragging) return;
+    _dragging = false;
+    final target = _dragPage.round().clamp(0, count - 1);
+    // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт
+    // пружина Home, которая стартует с текущей страницы PageView.
+    sectionDragPage.value = null;
+    // Хаптик на отпускании не дублируем: его даёт _onTabTap в Home, а
+    // границы разделов уже «щёлкнули» в _dragUpdate.
+    sectionCurrentIndex.value = target;
+    // Тап-канал: Home доведёт карусель пружиной от текущего положения, а не
+    // «с нуля», поэтому отпускание после тяги не даёт рывка.
+    sectionTabTap.value++;
+  }
+
+  void _dragCancel() {
+    if (!_dragging) return;
+    _dragging = false;
+    sectionDragPage.value = null;
+    final count = sectionIconsFor(context).length;
+    if (count > 1) {
+      final target = sectionRailPage.value.round().clamp(0, count - 1);
+      sectionCurrentIndex.value = target;
+      sectionTabTap.value++;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final labels = sectionLabels(context);
@@ -99,253 +185,199 @@ class _SectionPillState extends State<SectionPill> {
     final count = icons.length;
     if (count == 0) return const SizedBox.shrink();
 
-    return ValueListenableBuilder<int>(
-      valueListenable: sectionCurrentIndex,
-      builder: (context, current, _) => ValueListenableBuilder<double>(
-        valueListenable: sectionRailPage,
-        builder: (context, page, __) {
-          final cs = Theme.of(context).colorScheme;
-          final dark = Theme.of(context).brightness == Brightness.dark;
-          final rawPage = page.isFinite ? page : current.toDouble();
-          final p = rawPage.clamp(0.0, (count - 1).toDouble());
-          final selectedIndex = p.round().clamp(0, count - 1);
-          final indicatorAlignment = count == 1
-              ? 0.0
-              : -1.0 + (2.0 * p / (count - 1));
+    // КАПСУЛА (заливка, обводка, тень) не зависит от положения индикатора,
+    // поэтому лежит отдельным НЕПОДВИЖНЫМ слоем под движущимся: пока камень
+    // едет, капсула не перестраивается вообще. Экземпляр капсулы — const:
+    // элемент дерева не пересобирается даже при перестройке родителя.
+    return Padding(
+      // Таблетка в Home чуть выше (под AppBar), компактный отступ.
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Center(
+        child: SizedBox(
+          width: 304,
+          height: 54,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const _GlassCapsule(child: SizedBox.expand()),
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: sectionCurrentIndex,
+                    builder: (context, current, _) => ValueListenableBuilder<double>(
+                      valueListenable: sectionRailPage,
+                      builder: (context, page, _) {
+                        final cs = Theme.of(context).colorScheme;
+                        final dark =
+                            Theme.of(context).brightness == Brightness.dark;
+                        final rawPage = page.isFinite
+                            ? page
+                            : current.toDouble();
+                        final p = rawPage.clamp(0.0, (count - 1).toDouble());
+                        final selectedIndex = p.round().clamp(0, count - 1);
+                        final indicatorAlignment = count == 1
+                            ? 0.0
+                            : -1.0 + (2.0 * p / (count - 1));
 
-          // «Змейка»: в полёте индикатор вытягивается (капля растёт до 1.4) и по
-          // нему бежит световой блик — переливание/«волна». Парабола
-          // (не sin) — без рывка на границах, плавно следует за [p].
-          final transit = (p - p.roundToDouble())
-              .abs(); // 0 в покое, 0.5 в полёте
-          final t2 = transit * 2.0; // 0..1 (0 в покое, 1 в полёте)
-          final wave = 1.0 - (1.0 - t2) * (1.0 - t2); // парабола 0 → 1 плавно
-          final capStretch = 1.0 + 0.40 * wave; // растягивается до 1.4
-          final capRadius = 21.5 + 12.0 * wave; // мягко закругляются концы
-          // Фаза блика: бегает по индикатору вместе с [p] (-1..1).
+                        // Лёгкая «резинка»: в полёте камень чуть
+                        // вытягивается и мягко закругляется. Никаких
+                        // бликов и переливов — движение читается само,
+                        // без световых наклеек поверх таблетки.
+                        final transit = (p - p.roundToDouble()).abs();
+                        final t2 = transit * 2.0; // 0..1 (0 — покой)
+                        final wave = 1.0 - (1.0 - t2) * (1.0 - t2);
+                        final capStretch = 1.0 + 0.07 * wave;
+                        final capRadius = 22.0 + 3.0 * wave;
 
-          return Padding(
-            // Таблетка в Home чуть выше (под AppBar), компактный отступ.
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
-            child: Center(
-              child: SizedBox(
-                width: 304,
-                height: 54,
-                child: _GlassCapsule(
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: Stack(
-                        clipBehavior: Clip.hardEdge,
-                        fit: StackFit.expand,
-                        children: [
-                          // Позиция индикатора берётся прямо из page —
-                          // непрерывно, без AnimatedAlign-скачков. Внутри
-                          // — «капля»: при перелёте сжимается + по ней
-                          // бежит световой блик (переливание).
-                          Align(
-                            alignment: Alignment(indicatorAlignment, 0),
-                            child: FractionallySizedBox(
-                              widthFactor: capStretch / count,
-                              heightFactor: 1,
-                              child: _GlassStone(
-                                capRadius: capRadius,
-                                primary: cs.primary,
-                                deep: Color.lerp(
-                                  cs.primary,
-                                  cs.tertiary,
-                                  0.42,
-                                )!,
-                                dark: dark,
+                        return Stack(
+                          clipBehavior: Clip.hardEdge,
+                          fit: StackFit.expand,
+                          children: [
+                            // Позиция камня берётся прямо из page —
+                            // непрерывно, без AnimatedAlign-скачков: он
+                            // именно скользит, а не перескакивает.
+                            Align(
+                              alignment: Alignment(indicatorAlignment, 0),
+                              child: FractionallySizedBox(
+                                widthFactor: capStretch / count,
+                                heightFactor: 1,
+                                child: RepaintBoundary(
+                                  child: _GlassStone(
+                                    capRadius: capRadius,
+                                    primary: cs.primary,
+                                    deep: Color.lerp(
+                                      cs.primary,
+                                      cs.tertiary,
+                                      0.42,
+                                    )!,
+                                    dark: dark,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          Row(
-                            children: List.generate(count, (i) {
-                              final label = i < labels.length ? labels[i] : '';
-                              final proximity = (1.0 - (p - i).abs()).clamp(
-                                0.0,
-                                1.0,
-                              );
-                              final iconColor = Color.lerp(
-                                cs.onSurfaceVariant,
-                                cs.onPrimary,
-                                proximity,
-                              );
-                              final isPressed = _pressedIndex == i;
-                              final isSelected = selectedIndex == i;
-                              final badgeT = proximity;
-                              final restingScale = isSelected ? 1.05 : 1.0;
-                              final pressedScale = isSelected ? 0.96 : 0.90;
-                              return Expanded(
-                                // Подсказка — НАД таблеткой (preferredAbove):
-                                // иначе пузырь ложится на саму таблетку и
-                                // прячется за пальцем.
-                                child: SmoothTooltip(
-                                  message: label,
-                                  waitDuration: const Duration(
-                                    milliseconds: 350,
-                                  ),
-                                  preferredAbove: true,
-                                  child: Semantics(
-                                    button: true,
-                                    selected: isSelected,
-                                    label: label,
-                                    child: Material(
-                                      type: MaterialType.transparency,
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(
-                                          21.5,
-                                        ),
-                                        splashColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        // Переключение — ТОЛЬКО при ОТПУСКАНИИ пальца (onTap).
-                                        // Касание/свайп по таблетке не меняет активный раздел «на лету».
-                                        onTapDown: (_) {
-                                          setState(() => _pressedIndex = i);
-                                        },
-                                        onTapCancel: () {
-                                          if (mounted) {
-                                            setState(
-                                              () => _pressedIndex = null,
-                                            );
-                                          }
-                                        },
-                                        onTap: () {
-                                          if (!mounted) return;
-                                          setState(() => _pressedIndex = null);
-                                          Haptics.select();
-                                          sectionCurrentIndex.value = i;
-                                          sectionTabTap.value++;
-                                        },
-                                        child: Center(
-                                          child: AnimatedScale(
-                                            scale: isPressed
-                                                ? pressedScale
-                                                : restingScale,
-                                            duration: const Duration(
-                                              milliseconds: 160,
+                            // Тяга пальцем: как в выборе приоритета — камень
+                            // едет за пальцем, а отпускание доводит его до
+                            // ближайшего раздела пружиной Home. Тап по иконке
+                            // при этом остаётся тапом: арбитр жестов отдаёт
+                            // победу перетаскиванию только после сдвига.
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragStart: (_) => _dragStart(count),
+                              onHorizontalDragUpdate: (d) =>
+                                  _dragUpdate(d, count),
+                              onHorizontalDragEnd: (_) => _dragEnd(count),
+                              onHorizontalDragCancel: _dragCancel,
+                              child: Row(
+                                children: List.generate(count, (i) {
+                                  final label = i < labels.length
+                                      ? labels[i]
+                                      : '';
+                                  final proximity = (1.0 - (p - i).abs()).clamp(
+                                    0.0,
+                                    1.0,
+                                  );
+                                  final iconColor = Color.lerp(
+                                    cs.onSurfaceVariant,
+                                    cs.onPrimary,
+                                    proximity,
+                                  );
+                                  final isPressed = _pressedIndex == i;
+                                  final isSelected = selectedIndex == i;
+                                  final badgeT = proximity;
+                                  final restingScale = isSelected ? 1.05 : 1.0;
+                                  final pressedScale = isSelected ? 0.96 : 0.90;
+                                  return Expanded(
+                                    // Подсказка — НАД таблеткой (preferredAbove):
+                                    // иначе пузырь ложится на саму таблетку и
+                                    // прячется за пальцем.
+                                    child: SmoothTooltip(
+                                      message: label,
+                                      waitDuration: const Duration(
+                                        milliseconds: 350,
+                                      ),
+                                      preferredAbove: true,
+                                      child: Semantics(
+                                        button: true,
+                                        selected: isSelected,
+                                        label: label,
+                                        child: Material(
+                                          type: MaterialType.transparency,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              21.5,
                                             ),
-                                            curve: Curves.easeOutCubic,
-                                            child: _GeoBadge(
-                                              index: i,
-                                              size: 31,
-                                              // Невыбранная — заметный
-                                              // фирменный оттенок (чтобы
-                                              // фигуры читались), выбранная —
-                                              // сочный градиентный «камень».
-                                              color: Color.lerp(
-                                                cs.primary.withValues(
-                                                  alpha: 0.3,
+                                            splashColor: Colors.transparent,
+                                            highlightColor: Colors.transparent,
+                                            // Переключение — ТОЛЬКО при ОТПУСКАНИИ пальца (onTap).
+                                            // Касание/свайп по таблетке не меняет активный раздел «на лету».
+                                            onTapDown: (_) {
+                                              setState(() => _pressedIndex = i);
+                                            },
+                                            onTapCancel: () {
+                                              if (mounted) {
+                                                setState(
+                                                  () => _pressedIndex = null,
+                                                );
+                                              }
+                                            },
+                                            onTap: () {
+                                              if (!mounted) return;
+                                              setState(
+                                                () => _pressedIndex = null,
+                                              );
+                                              Haptics.select();
+                                              sectionCurrentIndex.value = i;
+                                              sectionTabTap.value++;
+                                            },
+                                            child: Center(
+                                              child: AnimatedScale(
+                                                scale: isPressed
+                                                    ? pressedScale
+                                                    : restingScale,
+                                                duration: const Duration(
+                                                  milliseconds: 160,
                                                 ),
-                                                cs.primary,
-                                                badgeT,
-                                              )!,
-                                              child: Icon(
-                                                icons[i],
-                                                size: 17,
-                                                color: iconColor,
+                                                curve: Curves.easeOutCubic,
+                                                child: _GeoBadge(
+                                                  index: i,
+                                                  size: 31,
+                                                  // Невыбранная — заметный
+                                                  // фирменный оттенок (чтобы
+                                                  // фигуры читались), выбранная —
+                                                  // сочный градиентный «камень».
+                                                  color: Color.lerp(
+                                                    cs.primary.withValues(
+                                                      alpha: 0.3,
+                                                    ),
+                                                    cs.primary,
+                                                    badgeT,
+                                                  )!,
+                                                  child: Icon(
+                                                    icons[i],
+                                                    size: 17,
+                                                    color: iconColor,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ],
-                      ),
+                                  );
+                                }),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Настоящее стекло капсулы разделов: реальный [BackdropFilter] (размывает
-/// прокручиваемый контент, который уходит под таблетку) + дымная полупрозрачная
-/// подложка с фирменным оттенком + зеркальный блик, светкая кромка и тень
-/// ПОД клипом (внутри скругления тень обрезалась и стекло выглядело плоским).
-///
-/// Под таблеткой в покое лежит однотонный фон страницы, поэтому «преломления»
-/// там нет и стекло продают именно оттенок подложки, блик, кромка и тень; при
-/// прокрутке добавляется размытый контент, а поверх подложки лежат пятна
-/// фирменного цвета темы — стекло выглядит окрашенным, а не плоским.
-class _GlassCapsule extends StatelessWidget {
-  final Widget child;
-
-  /// Фильтр — `static const`: подложка перерисовывается каждый кадр прокрутки
-  /// (контент под капсулой двигается, бэкдроп сбрасывается), и каждый раз
-  /// создавать нативный ImageFilter значимо дороже, чем переиспользовать
-  /// закэшированный объект того же blur.
-  ///
-  /// sigma 12 вместо 20: на Adreno 610 размытие упирается в fill-rate, а
-  /// визуально 12 и 20 под полупрозрачной подложкой неотличимы — контент
-  /// всё равно читается как матовое стекло.
-  static final ImageFilter _blur = ImageFilter.blur(sigmaX: 12, sigmaY: 12);
-
-  const _GlassCapsule({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    // Убрали BackdropFilter и размытие — таблетка теперь выглядит как плотная
-    // глина/пластик, а не стекло. Без блюра контент под ней виден чётко.
-    final base = dark ? cs.surfaceContainerHigh : cs.surfaceContainerHighest;
-    // Светлая глиняная основа с лёгким фирменным оттенком — матовая, без
-    // стеклянного свечения изнутри. Глубину делаем минимальной для «сухого»
-    // пластика вместо влажного стекла.
-    final tint = Color.lerp(base, cs.primary, dark ? 0.12 : 0.10)!;
-    return DecoratedBox(
-      // Тень ВНЕ ClipRRect: внутри клипа она обрезалась на границе
-      // скругления и капсула повисала без объёма.
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: dark ? 0.18 : 0.12),
-            blurRadius: 14,
-            spreadRadius: -2,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        // MATTOVAYA PLOTKAYA GLINA: одноцветная твёрдая поверхность,
-        // никакой прозрачности и подложек под ней нет — пластик сплошной.
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
-            // Матовый градиент для лёгкого объёма сверху-вниз — без стеклянных
-            // бликов и прозрачных переходов. Цвет плотный, непрозрачный.
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                tint.withValues(alpha: 0.92),
-                tint.withValues(alpha: 0.88),
-              ],
-            ),
-          ),
-          child: CustomPaint(
-            painter: StainedGlassPainter(
-              color: cs.primary,
-              alpha: dark ? 0.08 : 0.06,
-              diffuse: 1,
-              kiss: true,
-            ),
-            child: child,
+            ],
           ),
         ),
       ),
@@ -353,10 +385,74 @@ class _GlassCapsule extends StatelessWidget {
   }
 }
 
-/// Выбранный раздел — стеклянный «камень»: полупрозрачный, плотнее к центру
-/// (там лежит иконка — нужен контраст) и всё более прозрачный к краям, через
-/// которые читается матовое стекло капсулы. Сверху зеркальный блик, снизу
-/// рефракция, по контуру светкая кромка, под камнем — тень на капсуле.
+/// Капсула разделов — плотная матовая «глина»: один градиент, тонкая
+/// фирменная обводка и мягкая тень под ней.
+///
+/// Никакого стекла, витражных пятен и бликов: они читались как грязь
+/// по центру таблетки, а в тёмной теме ещё и спорили с выбранным разделом —
+/// глаз цеплялся за пятна вместо иконок. Плоская заливка рисуется одним
+/// слоем и не перестраивается в полёте камня.
+class _GlassCapsule extends StatelessWidget {
+  final Widget child;
+
+  const _GlassCapsule({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final base = dark ? cs.surfaceContainerHigh : cs.surfaceContainerHighest;
+    // Лёгкий фирменный оттенок — таблетка «своя», но не цветная плитка.
+    final tint = Color.lerp(base, cs.primary, dark ? 0.10 : 0.08)!;
+    return DecoratedBox(
+      // Тень снаружи клипа: внутри скругления она обрезается и капсула
+      // выглядит наклеенной.
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: dark ? 0.22 : 0.10),
+            blurRadius: 12,
+            spreadRadius: -3,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            // Объём — только мягким градиентом сверху вниз, без бликов.
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                tint.withValues(alpha: 0.94),
+                tint.withValues(alpha: 0.90),
+              ],
+            ),
+            border: Border.all(
+              // Тонкая обводка: раньше 3 px яркого primary давали неоновую
+              // рамку, которая перетягивала внимание с иконок.
+              color: cs.primary.withValues(alpha: dark ? 0.24 : 0.30),
+              width: 1.2,
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Выбранный раздел — «камень»: сплошная заливка цветом темы с мягким
+/// затемнением к низу и тенью под ним.
+///
+/// Раньше это было стекло с зеркальным бликом, бегущей полосой и белыми
+/// каплями внутри. В тёмной теме такой камень вспыхивал при каждом
+/// переключении: глаз ловил блик, а не раздел. Теперь движение камня — само
+/// по себе акцент, без световых эффектов поверх.
 class _GlassStone extends StatelessWidget {
   final double capRadius;
   final Color primary;
@@ -372,95 +468,49 @@ class _GlassStone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // В тёмной теме primary — светлый пастельный тон: на матовой капсуле он
+    // «горит». Приглушаем его к чёрному, чтобы камень читался как камень,
+    // а не как подсветка.
+    final top = dark ? Color.lerp(primary, Colors.black, 0.14)! : primary;
+    final bottom = dark
+        ? Color.lerp(deep, Colors.black, 0.24)!
+        : Color.lerp(deep, Colors.black, 0.10)!;
+
     return DecoratedBox(
-      // Тень вне ClipRRect — иначе она обрезалась и камень не «отрывался»
-      // от стекла.
+      // Тень вне клипа — иначе она обрезается и камень не «отрывается»
+      // от капсулы.
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(capRadius),
         boxShadow: [
           BoxShadow(
-            color: (dark ? Colors.black : primary).withValues(
-              alpha: dark ? 0.45 : 0.32,
-            ),
-            blurRadius: 5,
+            color: Colors.black.withValues(alpha: dark ? 0.34 : 0.16),
+            blurRadius: 6,
             spreadRadius: -2,
-            offset: const Offset(0, 1),
+            offset: const Offset(0, 1.5),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(capRadius),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  colors: [
-                    primary.withValues(alpha: 0.74),
-                    deep.withValues(alpha: 0.62),
-                    deep.withValues(alpha: 0.42),
-                  ],
-                  stops: const [0.0, 0.62, 1.0],
-                ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(capRadius),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [top, bottom],
+            ),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(capRadius),
+              border: Border.all(
+                // Едва заметная кромка — только чтобы контур читался.
+                color: Colors.white.withValues(alpha: dark ? 0.10 : 0.16),
+                width: 1,
               ),
             ),
-            // Пятна-капли НА фоне самого камня (та же «витражная» техника,
-            // что на стекле капсулы — общий StainedGlassPainter). Пигмент
-            // белый, а не primary: фон камня и так залит цветом темы, и
-            // цветное пятно на цветном стекле просто не читалось бы. Клип
-            // выше по дереву, поэтому пятно не вылезает за контур камня.
-            //
-            // Паттерн квантован по размеру (см. stained_glass.dart), поэтому
-            // растяжение камня в полёте не перестраивает геометрию каждый
-            // кадр.
-            CustomPaint(
-              painter: StainedGlassPainter(
-                color: Colors.white,
-                alpha: dark ? 0.22 : 0.30,
-                diffuse: 1,
-                specks: 12,
-              ),
-            ),
-            // Рефракция по нижнему краю — стекло утолщается и темнеет.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x00000000), Color(0x22000000)],
-                  stops: [0.58, 1.0],
-                ),
-              ),
-            ),
-            // Зеркальный блик.
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: dark ? 0.24 : 0.36),
-                    Colors.white.withValues(alpha: dark ? 0.06 : 0.10),
-                    Colors.white.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.0, 0.42, 0.74],
-                ),
-              ),
-            ),
-            // Светкая кромка по контуру камня.
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(capRadius),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: dark ? 0.26 : 0.42),
-                    width: 1,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

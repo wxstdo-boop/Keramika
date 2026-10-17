@@ -14,8 +14,11 @@ import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
 import '../services/prefs.dart';
 import '../services/settings_service.dart';
+import '../utils/wide_dash_formatter.dart';
+import '../utils/wide_dash_controller.dart';
 import '../widgets/ada_avatars.dart';
 import '../widgets/model_label.dart';
+import '../widgets/smooth_typing.dart';
 
 /// Канал системного оверлея.
 const MethodChannel _overlayChannel = MethodChannel('x-slayer/overlay');
@@ -176,7 +179,7 @@ class _OverlayChatState extends State<_OverlayChat>
 
   static const _historyKey = 'ai_chat_history';
 
-  final _inputCtrl = TextEditingController();
+  final _inputCtrl = WideDashController();
   final _inputFocus = FocusNode();
   final _scrollCtrl = ScrollController();
   final List<AiMessage> _messages = [];
@@ -1172,54 +1175,8 @@ class _OverlayChatState extends State<_OverlayChat>
           Expanded(
             child: Stack(
               children: [
-                TextField(
-                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
-                  // Поле мини-окна не должно открывать выделение/тулбар:
-                  // long-press оставляем для обычного ввода, без полупрозрачного
-                  // selection overlay поверх оверлея.
-                  contextMenuBuilder: (_, __) => const SizedBox.shrink(),
-                  selectionControls: null,
-                  enableInteractiveSelection: false,
+                SmoothTyping(
                   controller: _inputCtrl,
-                  focusNode: _inputFocus,
-                  minLines: 1,
-                  maxLines: 3,
-                  scrollPadding: EdgeInsets.zero,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _send(),
-                  onTap: () async {
-                    // Первый тап: окно становится фокусирующим, поле — фокусом.
-                    // Некоторые прошивки «съедают» первый requestFocus, пока
-                    // натив применяет флаг — пробуем до 6 раз, плюс прямой
-                    // показ IME, плюс страховка на следующий кадр.
-                    for (var i = 0; i < 6 && mounted; i++) {
-                      await _setFocusable(true);
-                      if (!mounted) return;
-                      _inputFocus.requestFocus();
-                      try {
-                        await SystemChannels.textInput.invokeMethod<void>(
-                          'TextInput.show',
-                        );
-                      } catch (_) {}
-                      if (!mounted) return;
-                      if (_inputFocus.hasFocus) break;
-                      await Future<void>.delayed(
-                        const Duration(milliseconds: 110),
-                      );
-                    }
-                    if (mounted && !_inputFocus.hasFocus) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          _inputFocus.requestFocus();
-                          try {
-                            SystemChannels.textInput.invokeMethod<void>(
-                              'TextInput.show',
-                            );
-                          } catch (_) {}
-                        }
-                      });
-                    }
-                  },
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.3,
@@ -1227,21 +1184,73 @@ class _OverlayChatState extends State<_OverlayChat>
                     // а не чёрные — фон поля тёмный.
                     color: cs.onSurface,
                   ),
-                  cursorColor: cs.primary,
-                  // Каретка мигает плавно (fade), а не резко вкл/выкл.
-                  cursorOpacityAnimates: true,
-                  decoration: InputDecoration(
-                    counterText: '',
-                    isDense: true,
-                    filled: true,
-                    fillColor: cs.surfaceContainerHigh,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                  builder: (style) => TextField(
+                    style: style,
+                    magnifierConfiguration:
+                        TextMagnifierConfiguration.disabled,
+                    // Поле мини-окна не должно открывать выделение/тулбар:
+                    // long-press оставляем для обычного ввода, без полупрозрачного
+                    // selection overlay поверх оверлея.
+                    contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                    selectionControls: null,
+                    enableInteractiveSelection: false,
+                    controller: _inputCtrl,
+                    focusNode: _inputFocus,
+                    minLines: 1,
+                    maxLines: 3,
+                    inputFormatters: [WideDashFormatter()],
+                    scrollPadding: EdgeInsets.zero,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
+                    onTap: () async {
+                      // Первый тап: окно становится фокусирующим, поле — фокусом.
+                      // Некоторые прошивки «съедают» первый requestFocus, пока
+                      // натив применяет флаг — пробуем до 6 раз, плюс прямой
+                      // показ IME, плюс страховка на следующий кадр.
+                      for (var i = 0; i < 6 && mounted; i++) {
+                        await _setFocusable(true);
+                        if (!mounted) return;
+                        _inputFocus.requestFocus();
+                        try {
+                          await SystemChannels.textInput.invokeMethod<void>(
+                            'TextInput.show',
+                          );
+                        } catch (_) {}
+                        if (!mounted) return;
+                        if (_inputFocus.hasFocus) break;
+                        await Future<void>.delayed(
+                          const Duration(milliseconds: 110),
+                        );
+                      }
+                      if (mounted && !_inputFocus.hasFocus) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            _inputFocus.requestFocus();
+                            try {
+                              SystemChannels.textInput.invokeMethod<void>(
+                                'TextInput.show',
+                              );
+                            } catch (_) {}
+                          }
+                        });
+                      }
+                    },
+                    cursorColor: cs.primary,
+                    // Каретка мигает плавно (fade), а не резко вкл/выкл.
+                    cursorOpacityAnimates: true,
+                    decoration: InputDecoration(
+                      counterText: '',
+                      isDense: true,
+                      filled: true,
+                      fillColor: cs.surfaceContainerHigh,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),

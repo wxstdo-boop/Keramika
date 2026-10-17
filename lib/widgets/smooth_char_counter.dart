@@ -52,14 +52,27 @@ class SmoothCharCounter extends StatelessWidget {
     return SizedBox(
       width: counterWidth,
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 240),
+        duration: const Duration(milliseconds: 170),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
+        // В стопке держим ТОЛЬКО последний уходящий вариант. Раньше при
+        // быстром вводе накапливались десятки полупрозрачных цифр друг на
+        // друге — было «грязно». Теперь максимум две: уходящая и текущая,
+        // поэтому цифры сменяются чисто и мягко даже при быстром тапании.
+        layoutBuilder: (currentChild, previousChildren) => Stack(
+          alignment: Alignment.centerRight,
+          children: [
+            if (previousChildren.isNotEmpty) previousChildren.last,
+            ?currentChild,
+          ],
+        ),
         transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, 0.35),
+              // Сдвиг короткий (было 0.35): цифры не «прыгают» вверх-вниз,
+              // только мягко проявляются на месте.
+              begin: const Offset(0, 0.18),
               end: Offset.zero,
             ).animate(animation),
             child: child,

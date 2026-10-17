@@ -55,6 +55,11 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   void initState() {
     super.initState();
     _pillCtrl.addListener(_syncPillOffset);
+    // Свежий контроллер стоит на 0 — карта офсетов могла держать высоту
+    // ПРЕДЫДУЩЕЙ жизни вкладки. Без сброса таблетка разделов оставалась
+    // спрятанной, пока пользователь не начнёт крутить.
+    sectionOffsetByPage[widget.pillIndex] = 0.0;
+    sectionCurrentIndex.addListener(_onCurrentSectionChanged);
     _service.load();
     _timerSvc.load();
     SettingsService.loadExperimental();
@@ -79,10 +84,21 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   void dispose() {
     _timerSvc.onTimerDone = null;
     _fabVisible.dispose();
+    sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.removeListener(_syncPillOffset);
     _pillCtrl.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Раздел стал активным — форсируем ресинк офсета таблетки (keep-alive
+  /// вкладка не присылает событий скролла, а общий notifier мог остаться с
+  /// устаревшей высотой: таблетка разделов исчезала до первого скролла).
+  void _onCurrentSectionChanged() {
+    if (sectionCurrentIndex.value != widget.pillIndex) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncPillOffset();
+    });
   }
 
   /// Пишет РЕАЛЬНУЮ позицию основного скроллера в персональный notifier
@@ -100,7 +116,13 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     final v = _pillCtrl.offset;
     final vv = v < 0 ? 0.0 : v;
     sectionOffsetByPage[widget.pillIndex] = vv;
-    if ((target.value - vv).abs() > 0.5) target.value = vv;
+    // Пишем в общий sectionScrollOffset только активная вкладка:
+    // неактивные keep-alive экраны иначе сбрасывают его на свой офсет и
+    // таблетка вылазит на весь рост поверх прокрученного списка.
+    if (sectionCurrentIndex.value == widget.pillIndex &&
+        (target.value - vv).abs() > 0.5) {
+      target.value = vv;
+    }
   }
 
   /// Система сняла право полноэкранного показа (это её обычное поведение
@@ -516,7 +538,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                               );
                               final ok = await notificationService
                                   .scheduleAlarm(updated);
-                              if (!ok && mounted) {
+                              if (!ok && ctx.mounted) {
                                 showBeautifulSnackBar(
                                   ctx,
                                   message: noExactText,
@@ -621,8 +643,9 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
                                   sanitizeTextForWrap(alarm.label),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
+                                  // Полный текст без троеточия: метка
+                                  // будильника всегда видна целиком.
+                                  maxLines: null,
                                   // Метка того же масштаба, что заголовки
                                   // задач и привычек: 20.5 в узкой колонке
                                   // роняло по слову на строку.
@@ -805,13 +828,15 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                                             if (timer.label.isNotEmpty)
                                               Text(
                                                 timer.label,
+                                                // Полный текст без троеточия:
+                                                maxLines: null,
                                                 style: theme.textTheme.bodySmall
                                                     ?.copyWith(
                                                       color: theme
                                                           .colorScheme
                                                           .onSurfaceVariant,
                                                     ),
-                                                overflow: TextOverflow.ellipsis,
+                                                overflow: TextOverflow.clip,
                                               ),
                                           ],
                                         ),

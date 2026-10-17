@@ -1132,8 +1132,8 @@ class AiGuideService {
           }
           results.add(
             snippet.isNotEmpty
-                ? '$title: $snippet [${lang}.wikipedia.org]'
-                : '$title [${lang}.wikipedia.org]',
+                ? '$title: $snippet [$lang.wikipedia.org]'
+                : '$title [$lang.wikipedia.org]',
           );
         }
       } catch (_) {}
@@ -1190,7 +1190,7 @@ class AiGuideService {
     }
   }
 
-  /// Bing прячет реальный URL в редиректе /ck/a?...&u=a1<base64>...
+  /// Bing прячет реальный URL в редиректе `/ck/a?...&u=a1<base64>...`
   /// Декодирует base64-часть и возвращает настоящий адрес.
   static String? _bingRealUrl(String href) {
     try {
@@ -2449,8 +2449,9 @@ class AiGuideService {
   /// Все иконки — константы MaterialIcons, поэтому tree-shake-icons
   /// включает их в сборку (никаких динамических IconData).
   static int iconCodePointForName(String? name) {
-    if (name == null || name.isEmpty)
+    if (name == null || name.isEmpty) {
       return Icons.check_circle_outline.codePoint;
+    }
     final map = {
       'water': Icons.water_drop_outlined.codePoint,
       'run': Icons.directions_run.codePoint,
