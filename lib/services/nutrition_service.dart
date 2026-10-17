@@ -190,6 +190,7 @@ class NutritionService extends ChangeNotifier {
   NutritionService._();
 
   List<Meal> _meals = [];
+  String? _snapshot;
   static const _key = 'nutrition_meals';
   static const _normKey = 'nutrition_calorie_norm';
 
@@ -273,15 +274,11 @@ class NutritionService extends ChangeNotifier {
   );
 
   Future<void> load() async {
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null) {
-        final data = jsonDecode(raw) as List;
-        _meals = data.map((e) => Meal.fromJson(e)).toList();
-      }
-    } catch (e) {
-      debugPrint('Error loading nutrition data: $e');
-      _meals = [];
+    final raw = await JsonFile.read(_key);
+    _snapshot = raw;
+    if (raw != null) {
+      final data = jsonDecode(raw) as List;
+      _meals = data.map((e) => Meal.fromJson(e)).toList();
     }
     try {
       _norm = globalPrefs.getInt(_normKey) ?? kDefaultCalorieNorm;
@@ -308,10 +305,9 @@ class NutritionService extends ChangeNotifier {
   }
 
   Future<void> _save() async {
-    await JsonFile.write(
-      _key,
-      jsonEncode(_meals.map((e) => e.toJson()).toList()),
-    );
+    final value = jsonEncode(_meals.map((e) => e.toJson()).toList());
+    final resolved = await JsonFile.writeWithSnapshot(_key, value, _snapshot);
+    if (resolved == value) _snapshot = resolved;
   }
 
   Future<void> add(Meal meal) async {

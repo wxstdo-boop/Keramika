@@ -27,6 +27,7 @@ class RealityCheckService extends ChangeNotifier {
   bool _enabled = true;
 
   static const _key = 'reality_check_data';
+  String? _snapshot;
   bool _loaded = false;
 
   List<RealityCheck> get checks => List.unmodifiable(_checks);
@@ -110,12 +111,11 @@ class RealityCheckService extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null && raw.isNotEmpty) {
-        _fromMap(jsonDecode(raw) as Map<String, dynamic>);
-      }
-    } catch (_) {}
+    final raw = await JsonFile.read(_key);
+    _snapshot = raw;
+    if (raw != null && raw.isNotEmpty) {
+      _fromMap(jsonDecode(raw) as Map<String, dynamic>);
+    }
     // Сбрасываем «уведомления отменены» при смене дня.
     final today = RealityCheck.todayKey();
     for (final c in _checks) {
@@ -130,7 +130,9 @@ class RealityCheckService extends ChangeNotifier {
 
   Future<void> _save() async {
     if (!_loaded) return;
-    await JsonFile.write(_key, jsonEncode(_toMap()));
+    final value = jsonEncode(_toMap());
+    final resolved = await JsonFile.writeWithSnapshot(_key, value, _snapshot);
+    if (resolved == value) _snapshot = resolved;
   }
 
   void _generateTodaySchedule() {

@@ -128,16 +128,17 @@ class _HomeScreenState extends State<HomeScreen>
     }
     _pageSpring.stop();
     final pos = _pageController.position;
-    final current = _pageController.page;
-    if (current == null || !current.isFinite) return;
     final perPage = pos.viewportDimension * _pageController.viewportFraction;
     if (perPage <= 0) return;
-    final delta = (page - current) * perPage;
-    if (delta.abs() < 0.01) return;
-    pos.jumpTo(pos.pixels + delta);
-    // Пустая «заявка на удержание»: заменяет баллистику страницы, которую
-    // та создала бы сама, иначе она подтягивала бы карусель к ближайшей
-    // странице прямо под пальцем.
+    // АБСОЛЮТНАЯ установка позиции: дробная страница таблетки ставится
+    // ровно на соответствующее смещение PageController. jumpTo запускает
+    // собственную баллистику даже при нулевой скорости; без hold она
+    // конкурирует со следующим событием пальца и создаёт дрожание.
+    final target = (page * perPage).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    pos.jumpTo(target);
     pos.hold(() {});
   }
 

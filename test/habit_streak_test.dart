@@ -1,9 +1,53 @@
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:keramika/models/habit.dart';
 import 'package:keramika/services/habit_service.dart';
+import 'package:keramika/services/json_file.dart';
+
+Future<void> _deleteTempDirectory(Directory directory) async {
+  for (var attempt = 0; attempt < 10; attempt++) {
+    try {
+      await directory.delete(recursive: true);
+      return;
+    } on FileSystemException {
+      if (attempt == 9) rethrow;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory tmpDir;
+
+  setUpAll(() async {
+    tmpDir = await Directory.systemTemp.createTemp('keramika_streak_test');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => call.method == 'getApplicationDocumentsDirectory'
+              ? tmpDir.path
+              : null,
+        );
+  });
+
+  setUp(() async {
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
+    HabitService().debugClear();
+    await JsonFile.remove('habits');
+  });
+
+  tearDownAll(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+    await _deleteTempDirectory(tmpDir);
+  });
 
   Habit makeHabit({
     int streak = 0,
@@ -91,6 +135,7 @@ void main() {
       final svc = HabitService();
       final today = HabitService.mskToday();
       final yesterdayWeekday = today.subtract(const Duration(days: 1)).weekday;
+      await seed(svc, makeHabit());
       await svc.update(
         Habit(
           id: 'h1',
@@ -119,6 +164,7 @@ void main() {
     () async {
       final svc = HabitService();
       final today = HabitService.mskToday();
+      await seed(svc, makeHabit());
       await svc.update(
         Habit(
           id: 'h1',

@@ -4,10 +4,10 @@ publish_to: 'none'
 # versionCode должен быть строго ВЫШЕ установленного на телефоне, иначе
 # `adb install -r` падает с INSTALL_FAILED_VERSION_DOWNGRADE. У split-APK
 # Flutter прибавляет к номеру из pubspec индекс ABI (v7a +1000, arm64 +2000),
-# т.е. 45121 здесь → 47121 в app-arm64-v8a-release.apk. На телефоне сейчас
-# 47120 (1.6.48) — следующий номер базы должен быть 45122 и выше.
+# т.е. 45123 здесь → 47123 в app-arm64-v8a-release.apk. Установлена версия
+# 1.6.50 (код 47122), поэтому следующий номер базы должен быть 45123 и выше.
 # Обновление ставится поверх старого с сохранением данных (PIN, будильники).
-version: 1.6.49+45121
+version: 1.6.51+45123
 
 environment:
   sdk: ^3.12.2
@@ -25,6 +25,9 @@ dependencies:
   # не импортируется) откатывает file_picker и flutter_local_notifications
   # на старыеmajor-версии и ломает компиляцию. Не откатывать без нужды.
   dynamic_color: ^1.9.0
+  characters: ^1.4.1
+  cryptography: ^2.7.0
+  flutter_secure_storage: 11.2.0
   shared_preferences: ^2.5.0
   uuid: ^4.5.1
   audioplayers: ^6.1.0

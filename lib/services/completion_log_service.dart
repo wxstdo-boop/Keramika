@@ -36,6 +36,7 @@ class CompletionLogService extends ChangeNotifier {
 
   static const _key = 'completion_log';
   final Map<String, DayCompletion> _log = {};
+  String? _snapshot;
   bool _loaded = false;
 
   /// 'yyyy-MM-dd' по Москве (совпадает с датами стриков).
@@ -47,16 +48,15 @@ class CompletionLogService extends ChangeNotifier {
   Map<String, DayCompletion> get log => Map.unmodifiable(_log);
 
   Future<void> load() async {
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null && raw.isNotEmpty) {
-        final list = jsonDecode(raw) as List;
-        for (final e in list) {
-          final d = DayCompletion.fromJson(e as Map<String, dynamic>);
-          _log[d.date] = d;
-        }
+    final raw = await JsonFile.read(_key);
+    _snapshot = raw;
+    if (raw != null && raw.isNotEmpty) {
+      final list = jsonDecode(raw) as List;
+      for (final e in list) {
+        final d = DayCompletion.fromJson(e as Map<String, dynamic>);
+        _log[d.date] = d;
       }
-    } catch (_) {}
+    }
     _loaded = true;
     notifyListeners();
   }
@@ -65,7 +65,9 @@ class CompletionLogService extends ChangeNotifier {
     if (!_loaded) return;
     final list = _log.values.map((d) => d.toJson()).toList()
       ..sort((a, b) => (a['d'] as String).compareTo(b['d'] as String));
-    await JsonFile.write(_key, jsonEncode(list));
+    final value = jsonEncode(list);
+    final resolved = await JsonFile.writeWithSnapshot(_key, value, _snapshot);
+    if (resolved == value) _snapshot = resolved;
   }
 
   /// Записывает/обновляет «сегодня» и сохраняет. Вызывается при каждом

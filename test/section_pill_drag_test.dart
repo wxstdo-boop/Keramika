@@ -4,8 +4,19 @@ import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/widgets/section_pill.dart';
 
 /// Таблетку разделов можно не только тапнуть, но и «протянуть» пальцем —
-/// как приоритет в задаче. Камень едет за пальцем, а отпускание доводит его
-/// до ближайшего раздела.
+/// как выбор приоритета.
+///
+/// Жест — ПОЗИЦИОННЫЙ скраббер: доля прохода пальца по капсуле сразу
+/// становится позицией камня, поэтому камень едет ровно под пальцем, и
+/// палец вправо ведёт к ПОСЛЕДНЕМУ разделу (позиция = выбор, как в
+/// приоритете). На отпускании выбирается ближайший раздел.
+///
+/// Жест стартует сразу от касания (`DragStartBehavior.down`) — отдельного
+/// «рывка за порог slop» не требуется.
+///
+/// Проверяем ИНВАРИАНТЫ, а не абсолютную геометрию: точный размер дорожки
+/// в тестовом дереве отличается от боевого, а вот направление, монотонность,
+/// мгновенный старт, зажим краёв и доводка от размера не зависят.
 void main() {
   setUp(() {
     sectionCurrentIndex.value = 0;
@@ -13,7 +24,7 @@ void main() {
     sectionDragPage.value = null;
   });
 
-  Future<void> pumpPill(WidgetTester tester) async {
+  Future<int> pumpPill(WidgetTester tester) async {
     await tester.pumpWidget(
       LocaleProvider(
         locale: const Locale('ru'),
@@ -27,56 +38,91 @@ void main() {
       ),
     );
     await tester.pump();
+    return sectionLabels(tester.element(find.byType(SectionPill))).length;
   }
 
-  testWidgets('тяга влево уводит камень на следующий раздел', (tester) async {
-    await pumpPill(tester);
-    final count = sectionLabels(tester.element(find.byType(SectionPill))).length;
-    expect(count, greaterThan(1), reason: 'нужно хотя бы два раздела');
+  testWidgets('жест стартует сразу и палец вправо ведёт к последнему разделу', (tester) async {
+    final count = await pumpPill(tester);
+    expect(count, greaterThan(1));
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(SectionPill)),
-    );
+    final center = tester.getCenter(find.byType(SectionPill));
+    final gesture = await tester.startGesture(center);
     await tester.pump();
 
-    // Шаг одного раздела — внутренняя ширина капсулы, делённая на число
-    // разделов. К первому сдвигу добавляем touch slop: распознаватель
-    // «съедает» его до того, как отдаст жест тяге.
-    final slot = (304 - 8) / count;
-    await gesture.moveBy(Offset(-(slot * 0.8 + 24), 0));
+    // Небольшой шаг вправо: жест стартовал от касания, поэтому значение
+    // появляется сразу, и оно БОЛЬШЕ серединного (~1.5 при четырёх разделах):
+    // палец ушёл вправо — к последующим разделам, а не к началу.
+    await gesture.moveBy(const Offset(30, 0));
     await tester.pump();
 
+    final first = sectionDragPage.value;
+    expect(first, isNotNull, reason: 'жест стартует сразу, без порога slop');
     expect(
-      sectionDragPage.value,
-      isNotNull,
-      reason: 'пока палец на таблетке, камень ведёт рука',
+      first!,
+      greaterThan((count - 1) / 2),
+      reason: 'вправо — к последним разделам (позиция = выбор, как приоритет)',
     );
-    expect(sectionDragPage.value, greaterThan(0.3));
 
-    await gesture.moveBy(Offset(-slot * 0.4, 0));
-    await tester.pump();
     await gesture.up();
     await tester.pump();
-
-    expect(sectionDragPage.value, isNull, reason: 'палец отпущен — ведёт пружина');
-    expect(sectionCurrentIndex.value, 1, reason: 'ближайший раздел — следующий');
+    expect(sectionDragPage.value, isNull);
   });
 
-  testWidgets('тяга вправо за левый край не уводит в минус', (tester) async {
-    await pumpPill(tester);
+  testWidgets('движение монотонно: вправо — больше, влево — меньше', (tester) async {
+    final count = await pumpPill(tester);
+    expect(count, greaterThan(1));
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(SectionPill)),
     );
     await tester.pump();
-    await gesture.moveBy(const Offset(200, 0));
-    await tester.pump();
 
-    expect(sectionDragPage.value, 0.0, reason: 'левый край — первый раздел');
+    // Шагами вправо — значение только растёт.
+    var prev = sectionDragPage.value ?? sectionRailPage.value;
+    for (var i = 0; i < 3; i++) {
+      await gesture.moveBy(const Offset(20, 0));
+      await tester.pump();
+      final now = sectionDragPage.value!;
+      expect(now, greaterThan(prev));
+      prev = now;
+    }
+
+    // А теперь шагами влево — только падает, и не уходит ниже нуля.
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      final now = sectionDragPage.value!;
+      expect(now, lessThanOrEqualTo(prev));
+      expect(now, greaterThanOrEqualTo(0));
+      prev = now;
+    }
+    expect(prev, 0.0, reason: 'левый край дорожки — первый раздел');
 
     await gesture.up();
     await tester.pump();
     expect(sectionCurrentIndex.value, 0);
+  });
+
+  testWidgets('зажим правого края уводит на последний раздел', (tester) async {
+    final count = await pumpPill(tester);
+    expect(count, greaterThan(1));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(SectionPill)),
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(400, 0));
+    await tester.pump();
+
+    expect(sectionDragPage.value, (count - 1).toDouble());
+
+    await gesture.up();
+    await tester.pump();
+    expect(
+      sectionCurrentIndex.value,
+      count - 1,
+      reason: 'на отпускании выбирается ближайший раздел',
+    );
   });
 
   testWidgets('обычный тап по разделу не считается тягой', (tester) async {

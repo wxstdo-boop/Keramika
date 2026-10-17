@@ -18,6 +18,8 @@ class TaskService extends ChangeNotifier {
 
   List<Task> _tasks = [];
   List<String> _categories = [];
+  String? _tasksSnapshot;
+  String? _categoriesSnapshot;
   bool _loaded = false;
   static const _key = 'tasks';
   static const _catKey = 'task_categories';
@@ -30,29 +32,41 @@ class TaskService extends ChangeNotifier {
       NewYearEventService().prizeGranted ? kMaxPrizeCategories : kMaxCategories;
 
   Future<void> load() async {
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null && raw.isNotEmpty) {
-        _tasks = tasksFromJson(raw);
-      }
-      final catRaw = await JsonFile.read(_catKey);
-      if (catRaw != null && catRaw.isNotEmpty) {
-        final list = jsonDecode(catRaw) as List;
-        _categories = list.map((e) => e as String).toList();
-      }
-    } catch (_) {}
+    final raw = await JsonFile.read(_key);
+    _tasksSnapshot = raw;
+    if (raw != null && raw.isNotEmpty) {
+      _tasks = tasksFromJson(raw);
+    }
+    final catRaw = await JsonFile.read(_catKey);
+    _categoriesSnapshot = catRaw;
+    if (catRaw != null && catRaw.isNotEmpty) {
+      final list = jsonDecode(catRaw) as List;
+      _categories = list.map((e) => e as String).toList();
+    }
     _loaded = true;
     notifyListeners();
   }
 
   Future<void> _save() async {
     if (!_loaded) return;
-    await JsonFile.write(_key, tasksToJson(_tasks));
+    final value = tasksToJson(_tasks);
+    final resolved = await JsonFile.writeWithSnapshot(
+      _key,
+      value,
+      _tasksSnapshot,
+    );
+    if (resolved == value) _tasksSnapshot = resolved;
   }
 
   Future<void> _saveCategories() async {
     if (!_loaded) return;
-    await JsonFile.write(_catKey, jsonEncode(_categories));
+    final value = jsonEncode(_categories);
+    final resolved = await JsonFile.writeWithSnapshot(
+      _catKey,
+      value,
+      _categoriesSnapshot,
+    );
+    if (resolved == value) _categoriesSnapshot = resolved;
   }
 
   Future<bool> addCategory(String name) async {

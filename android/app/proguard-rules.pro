@@ -19,6 +19,26 @@
 -keep class io.flutter.** { *; }
 -keep class com.wetidom.keramika.** { *; }
 
+# ── jnigen JNI (shared_preferences_android 2.x, path_provider_android 2.x) ──
+# Диагноз (apkanalyzer dex): класс и метод getAll В DEX ЕСТЬ, но R8 переименовал
+# параметр `kotlin.coroutines.Continuation` → `u3.c`. jnigen находит метод по
+# СТРОЧНОЙ сигнатуре (String,List,Lkotlin/coroutines/Continuation;) через JNI —
+# после обфускации дескриптор не совпадает → NoSuchMethodError getAll при старте
+# (чёрный экран). Лечение: НЕ переименовывать kotlin.coroutines, чтобы
+# дескриптор suspend-метода оставался буквальным.
+-keep class kotlin.** { *; }
+-keepclassmembers class kotlin.** { *; }
+-keepnames class kotlin.**
+# Конкретно для jnigen: Result/Unit всплывают в JNI-дескрипторах suspend-методов.
+-keep class kotlin.Result { *; }
+-keep class kotlin.ResultKt { *; }
+-keep class kotlin.Unit { *; }
+-keep class io.flutter.plugins.sharedpreferences.** { *; }
+-keep class io.flutter.plugins.pathprovider.** { *; }
+-keepclassmembers class io.flutter.plugins.** { *; }
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
+-keepattributes Signature,InnerClasses,EnclosingMethod
+
 # Метод-каналы обращаются по именам из Dart — не трогаем.
 -keepclassmembers class * {
     @io.flutter.plugin.common.MethodChannel *;
