@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -10,6 +10,7 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:path_provider/path_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/startup_recovery_screen.dart';
+import 'screens/startup_diagnostic_screen.dart';
 import 'utils/android_settings.dart' show setSecureWindow;
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
@@ -772,39 +773,49 @@ Future<_StartupState> _loadStartupState() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
-  // глобальное скругление углов (ClipRRect в корне) доходило и до верхних
-  // углов экрана. Без этого сверху остаётся чёрная квадратная полоса
-  // статус-бара, и при оттягивании крайних разделов (Будильники/РП)
-  // верхние края выглядят незакруглёнными.
-  // Вызов ДО runApp может быть сброшен первым кадром Flutter, поэтому
-  // повторяем его в postFrameCallback сразу после первого кадра.
+  await _runStartup();
+}
+
+/// The actual startup routine. Split out from `main` so that `Retry` on the
+/// diagnostic screen can re-run it without circular re-entrance.
+///
+/// Two classes of failure are handled differently:
+/// - JsonFileException: secure-storage / encryption-key problems. The app
+///   shows the themed recovery screen (user enters a recovery phrase or
+///   loads a JSON backup to restore the AES key).
+/// - ANY OTHER error (plugin failure, missing channel, OOM, a service bug,
+///   ...): the app shows a generic diagnostic screen with the raw error +
+///   stack, a Retry button, and Copy / Save-log buttons. This is
+///   deliberately NOT a silent black screen: on release builds the Android
+///   window is near-black, so an error that escaped `main()` before `runApp`
+///   used to look like "the app is stuck on a black screen".
+Future<void> _runStartup() async {
   if (!kIsWeb) {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
-  // Запуск — два независимых берега вместо одной цепочки.
-  //
-  // Раньше шаги шли строго последовательно: декод PNG → initPrefs →
-  // миграция JSON → инициализация уведомлений → детали тапа → пин →
-  // чтения настроек. Время до первого кадра = СУММА всех шагов, а на
-  // слабом железе (Redmi с бюджетной flash) каждое обращение к диску и
-  // каждый вызов плагина стоит миллисекунды, и они складывались в
-  // заметные «чёрные/белые» доли секунды до сплэша.
-  //
-  // Декод логотипа не зависит ни от чего; prefs → миграция/настройки/
-  // уведомления зависят от prefs, и этот порядок сохранён внутри
-  // [_loadStartupState].
+  // Two independent paths in parallel: PNG pre-decode has no dependency;
+  // prefs / migration / notifications / settings / PIN depend on prefs, and
+  // that order is preserved inside [_loadStartupState].
   late final _StartupState startup;
   try {
+    // Watchdog: if a native call (prefs / secure storage / notification
+    // timezone / a method channel) never returns, `Future.wait` hangs and the
+    // app sits on the near-black Android window forever — the silent
+    // "black screen" with a live process. The budget is generous enough that
+    // a real slow device stays well under it; on exceed it routes to the
+    // retryable diagnostic screen instead of hanging.
     await Future.wait(<Future<void>>[
       _predecodeSplashLogo(),
       _loadStartupState().then((value) => startup = value),
-    ]);
-  } catch (error) {
-    if (error is! JsonFileException) rethrow;
-    debugPrint(
-      'Startup stopped before touching encrypted data: ${error.runtimeType}',
+    ]).timeout(
+      const Duration(seconds: 20),
+      onTimeout: () {
+        throw TimeoutException(
+          'Startup did not finish within 20 s; a native call may be hanging',
+        );
+      },
     );
+  } catch (error, stackTrace) {
     final preferredLanguage =
         WidgetsBinding.instance.platformDispatcher.locale.languageCode;
     final locale = switch (preferredLanguage) {
@@ -812,11 +823,27 @@ void main() async {
       'fr' => const Locale('fr'),
       _ => const Locale('en'),
     };
-    runApp(StartupRecoveryApp(locale: locale, diagnostic: error.message));
+    if (error is JsonFileException) {
+      debugPrint(
+        'Startup stopped before touching encrypted data: $error',
+      );
+      runApp(StartupRecoveryApp(locale: locale, diagnostic: '$error'));
+      return;
+    }
+    // Any other error: visible, retryable diagnostic. Never silent.
+    debugPrint('Startup failed: $error\n$stackTrace');
+    runApp(
+      StartupDiagnosticApp(
+        locale: locale,
+        error: '$error',
+        stack: '$stackTrace',
+        onRetry: _runStartup,
+      ),
+    );
     return;
   }
-  // Payload будильника читаем до первого кадра: от него зависит, что
-  // станет домашним экраном (см. [_AlarmBootHost]).
+  // Alarm payload is read before the first frame: it decides what becomes
+  // the home screen (see [_AlarmBootHost]).
   _alarmBootPayload = await _readAlarmBootPayload();
 
   runApp(
@@ -829,16 +856,26 @@ void main() async {
       alarmBootPayload: _alarmBootPayload,
     ),
   );
-  // Замер кадров включаем ПОСЛЕ runApp: до первого кадра нет ни одного
-  // замера, а `addTimingsCallback` живёт на binding'е. Пишет только кадры
-  // дольше бюджета, поэтому в обычной сборке молчит.
+  // Post-`runApp` setup: data loads, timers, notification reschedule.
+  // Guarded so a failure here can NOT take down the live UI.
+  unawaited(_postRunSetup(startup));
+}
+
+/// Everything that happens AFTER `runApp` has drawn the first frame.
+///
+/// Each sub-step is individually guarded. A failure logs a warning but does
+/// not crash the isolate — the user is already looking at the app. This
+/// replaces the old code that `await`ed every service load in `main()` with
+/// no try/catch; a plugin/channel failure there could kill the isolate on
+/// the background event-loop and leave a black, frozen UI.
+Future<void> _postRunSetup(_StartupState startup) async {
+  // Frame profiler, enabled only after the first frame.
   JankProbe.start();
-  // Тихая проверка обновлений раз в сутки (БЕЗ диалогов): если на GitHub есть
-  // релиз новее, таблетка в Настройках сразу предложит обновиться.
+  // Silent daily GitHub Releases check (no dialogs).
   unawaited(UpdateService.instance.silentDailyCheck());
-  // Повторный edge-to-edge ПОСЛЕ первого кадра — на MIUI/HyperOS вызов  // до runApp не применяется (Flutter сбрасывает системный UI при старте).
-  // Без него сверху остаётся чёрная квадратная полоса статус-бара, и
-  // верхние углы экрана не закруглены при оттягивании крайних разделов.
+
+  // Edge-to-edge AFTER the first frame: MIUI/HyperOS resets system UI on
+  // startup; without this, a black status-bar stripe remains.
   if (!kIsWeb) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -851,14 +888,13 @@ void main() async {
       );
     });
   }
-  // Логотип прогреваем НЕ блокируя старт: сплэш анимируется 1.8с,
-  // картинка успеет загрузиться к первому кадру. Так окно Android
-  // (теперь фирменного цвета) не висит лишние секунды перед runApp.
+
+  // Warm up the logo cache (non-blocking: splash animation is 1.8 s, the
+  // image will be cached by the first frame).
   _precacheLogo();
 
-  // Обратная живая синхронизация: мини-окошко (отдельный движок) сообщает
-  // о смене аватарки — применяем к общему notifier'у, все аватарки главного
-  // чата обновляются мгновенно.
+  // Reverse live sync: the mini-overlay (separate engine) reports avatar
+  // changes; apply to the shared notifier so main-chat avatars update.
   if (!kIsWeb) {
     FlutterOverlayWindow.overlayListener.listen((msg) {
       if (msg is Map && msg['cmd'] == 'sync_avatar') {
@@ -874,32 +910,51 @@ void main() async {
     });
   }
 
-  // Разрешения на уведомления и будильники пользователь включает сам
-  // в настройках приложения (SettingsScreen). Здесь только перепланировка.
+  // Notification permissions are enabled by the user in SettingsScreen;
+  // here we only reschedule.
   Future.delayed(const Duration(milliseconds: 500), _rescheduleAllOnStart);
 
-  // Автосохранение — загружаем данные ПЕРВЫМ ДЕЛОМ, потом стартуем таймер
-  // только если пользователь включал autosave.
-  await HabitService().load();
-  await TaskService().load();
-  await AlarmService().load();
-  await RealityCheckService().load();
-  await TimerService().load();
+  // Load data first, THEN start the autosave timer only if the user had
+  // autosave enabled. Each load is guarded individually.
+  try {
+    await HabitService().load();
+  } catch (e) {
+    debugPrint('HabitService.load() failed at startup: $e');
+  }
+  try {
+    await TaskService().load();
+  } catch (e) {
+    debugPrint('TaskService.load() failed at startup: $e');
+  }
+  try {
+    await AlarmService().load();
+  } catch (e) {
+    debugPrint('AlarmService.load() failed at startup: $e');
+  }
+  try {
+    await RealityCheckService().load();
+  } catch (e) {
+    debugPrint('RealityCheckService.load() failed at startup: $e');
+  }
+  try {
+    await TimerService().load();
+  } catch (e) {
+    debugPrint('TimerService.load() failed at startup: $e');
+  }
 
-  // Дефолтные демо-записи убраны: пользователь добавляет привычки,
-  // задачи и будильники сам. Чистим остатки старых демо-данных,
-  // которые могли сохраниться на диск из прошлых билдов.
+  // One-time cleanup of legacy demo records from old builds.
   await _removeLegacyDemoData();
+
   final autoSaveOn = await SettingsService.loadAutoSave();
   if (autoSaveOn) startAutoSave();
   final autoExportOn = await SettingsService.loadAutoExport();
   if (autoExportOn) {
-    // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
+    // Silent: only back up if the hour has passed (app was closed).
     await maybeCatchUpAutoExport();
   }
 
-  // Флаг — уже обработали запуск от будильника, чтобы не открыть
-  // WakeTaskScreen дважды (из getLaunchDetails и getAlarmPayload).
+  // Flag: already handled the alarm-triggered launch, to avoid opening
+  // WakeTaskScreen twice (from getLaunchDetails and getAlarmPayload).
   bool alarmHandled = false;
 
   if (startup.launchedByNotification) {
@@ -911,7 +966,7 @@ void main() async {
     });
   }
 
-  // Также проверяем payload из intent (для fullScreenIntent).
+  // Also check the payload from the intent (for fullScreenIntent).
   try {
     final intentPayload = await _alarmPayloadChannel.invokeMethod<String>(
       'getAlarmPayload',
@@ -925,30 +980,23 @@ void main() async {
     }
   } catch (_) {}
 
-  // Слушаем новые payload'и когда приложение уже запущено (onNewIntent)
-  // и сигнал о перезагрузке телефона (onBootCompleted).
+  // Listen for new payloads while running (onNewIntent) and the
+  // system-restart signal (onBootCompleted).
   _alarmPayloadChannel.setMethodCallHandler((call) async {
     if (call.method == 'onNewAlarmPayload') {
-      // Если WakeTaskScreen уже виден — игнорируем повторный payload
-      // (пользователь тапнул по уведомлению, пока будильник уже звонит).
       if (_wakeScreenShowing) return;
       final payload = call.arguments as String?;
       if (payload != null && payload.isNotEmpty) {
         _handleNotificationTap(payload);
       }
     } else if (call.method == 'onBootCompleted') {
-      // Телефон перезагрузился (или приложение обновилось) — система
-      // стёрла ВСЕ одноразовые setAlarmClock. Перепланируем будильники
-      // и проверки реальности, иначе они молча пропадут до ручного
-      // открытия приложения.
       await rescheduleAllNotifications();
     }
   });
 
-  // Канал жизненного цикла от нативной стороны. Раньше по нему приходили
-  // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
-  // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
-  // invoke не падал в MissingPluginException.
+  // Lifecycle channel from the native side. The old userLeaveHint /
+  // windowFocus for PIN blur was removed; this handler is kept so native
+  // invoke does not throw MissingPluginException.
   _lifecycleChannel.setMethodCallHandler((call) async {});
 }
 
