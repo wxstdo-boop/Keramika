@@ -12,6 +12,7 @@ import '../l10n/translations.dart';
 import '../utils/markdown_text.dart';
 import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
+import '../screens/startup_recovery_screen.dart';
 import '../services/prefs.dart';
 import '../services/settings_service.dart';
 import '../utils/wide_dash_formatter.dart';
@@ -59,6 +60,7 @@ class AdaOverlayApp extends StatefulWidget {
 class _AdaOverlayAppState extends State<AdaOverlayApp> {
   String _lang = 'en';
   bool _ready = false;
+  String? _startupError;
 
   @override
   void initState() {
@@ -68,6 +70,18 @@ class _AdaOverlayAppState extends State<AdaOverlayApp> {
 
   Future<void> _init() async {
     await initPrefs();
+    try {
+      await JsonFile.initialize();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _startupError = error is JsonFileException
+            ? error.message
+            : 'Encrypted data could not be opened safely.';
+        _ready = true;
+      });
+      return;
+    }
     final lang = await SettingsService.resolveLanguageCode();
     if (!mounted) return;
     setState(() {
@@ -79,6 +93,12 @@ class _AdaOverlayAppState extends State<AdaOverlayApp> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const SizedBox.shrink();
+    if (_startupError != null) {
+      return StartupRecoveryApp(
+        locale: Locale(_lang),
+        diagnostic: _startupError,
+      );
+    }
     // Окошко ВСЕГДА тёмное: фон чёрный с прямыми углами, поэтому даже при
     // светлой теме приложения контраст текста внутри не ломается.
     return MaterialApp(
@@ -1186,8 +1206,7 @@ class _OverlayChatState extends State<_OverlayChat>
                   ),
                   builder: (style) => TextField(
                     style: style,
-                    magnifierConfiguration:
-                        TextMagnifierConfiguration.disabled,
+                    magnifierConfiguration: TextMagnifierConfiguration.disabled,
                     // Поле мини-окна не должно открывать выделение/тулбар:
                     // long-press оставляем для обычного ввода, без полупрозрачного
                     // selection overlay поверх оверлея.
