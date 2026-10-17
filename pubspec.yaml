@@ -69,3 +69,12 @@ flutter:
           weight: 600
         - asset: assets/fonts/Caveat-700.ttf
           weight: 700
+    # Roboto с широким em dash — для тире в режиме Caveat (см. WideDashController).
+    # Бандлим его: fontFamily 'Roboto' НЕ бандлится и на устройстве не
+    # резолвится, из-за чего глиф тире падал обратно в Caveat и оставался узким.
+    - family: RobotoDash
+      fonts:
+        - asset: assets/fonts/RobotoDash-400.ttf
+          weight: 400
+        - asset: assets/fonts/RobotoDash-700.ttf
+          weight: 700

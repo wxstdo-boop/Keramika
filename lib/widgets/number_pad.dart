@@ -20,9 +20,10 @@ import '../services/haptics.dart';
 /// поэтому протяжка по панели по-прежнему прокручивает экран, а не набирает
 /// цифры.
 ///
-/// Клавиши отзываются мягким вдавливанием и заливкой акцентом, а не резким
-/// «щелчком»: масштаб и цвет ведёт один короткий контроллер, поэтому нажатие
-/// читается даже на слабом GPU и ничего не «дёргается» при быстром наборе.
+/// ЗАЖАТИЕ любой клавиши (цифра, «стереть», «очистить») включает автоповтор:
+/// короткая задержка, затем всё более частый ряд. Раньше повтор был только у
+/// «стереть» — цифры приходилось тыкать по одной. Теперь повтор общий для всех
+/// клавиш и одинаково отзывчивый (запуск по tap-down, не по таймеру указателя).
 class NumberPad extends StatefulWidget {
   const NumberPad({
     super.key,
@@ -48,12 +49,14 @@ class _NumberPadState extends State<NumberPad> {
   static const int _clearSlot = 10;
   static const int _backspaceSlot = 11;
 
-  /// Автоповтор стереть: пауза, как у системной клавиатуры, затем учащение.
-  static const Duration _holdDelay = Duration(milliseconds: 420);
-  static const Duration _holdRepeat = Duration(milliseconds: 75);
+  /// Автоповтор при зажатии: первая задержка, затем ускоряющийся ряд.
+  static const Duration _holdDelay = Duration(milliseconds: 260);
+  static const Duration _holdStart = Duration(milliseconds: 110);
+  static const Duration _holdMin = Duration(milliseconds: 48);
 
   Timer? _hold;
   bool _holdRepeated = false;
+  int? _holdSlot;
 
   @override
   void dispose() {
@@ -93,28 +96,71 @@ class _NumberPadState extends State<NumberPad> {
     widget.controller.value = TextEditingValue.empty;
   }
 
-  /// Зажатие «стереть»: сначала одна цифра, затем ускоряющийся ряд.
-  void _beginBackspaceHold() {
+  /// Цифра слота: 0…8 — первые девять цифр, 9 — «0».
+  static String? _digitOfSlot(int slot) {
+    if (slot >= 0 && slot <= 8) return '${slot + 1}';
+    if (slot == 9) return '0';
+    return null;
+  }
+
+  /// Выполнить действие слота один раз.
+  void _fire(int slot) {
+    final digit = _digitOfSlot(slot);
+    if (digit != null) {
+      _append(digit);
+    } else if (slot == _backspaceSlot) {
+      _backspace();
+    } else if (slot == _clearSlot) {
+      _clear();
+    }
+  }
+
+  /// Зажатие: через [_holdDelay] — первый повтор, далее ускоряющийся ряд.
+  /// Интервал плавно сжимается от [_holdStart] до [_holdMin] (×0.82 за шаг),
+  /// поэтому набор не «дребезжит» на постоянной частоте, а разгоняется.
+  void _beginHold(int slot) {
     _hold?.cancel();
     _holdRepeated = false;
+    _holdSlot = slot;
     _hold = Timer(_holdDelay, () {
       _holdRepeated = true;
-      _backspace();
-      _hold = Timer.periodic(_holdRepeat, (_) => _backspace());
+      _fire(slot);
+      _scheduleRepeat(slot, 1);
     });
   }
 
-  void _endBackspaceHold() {
-    _hold?.cancel();
-    _hold = null;
+  void _scheduleRepeat(int slot, int step) {
+    final ms =
+        (_holdStart.inMilliseconds * _pow(0.82, step))
+            .clamp(_holdMin.inMilliseconds, _holdStart.inMilliseconds)
+            .toDouble();
+    _hold = Timer(Duration(milliseconds: ms.toInt()), () {
+      _fire(slot);
+      _scheduleRepeat(slot, step + 1);
+    });
   }
 
-  void _backspaceTap() {
-    // Если автоповтор уже стёр цифры, отпускание пальца не должно стереть
-    // ещё одну — иначе «зажал и отпустил» съедало на две цифры больше.
+  static double _pow(double base, int exp) {
+    var r = 1.0;
+    for (var i = 0; i < exp; i++) {
+      r *= base;
+    }
+    return r;
+  }
+
+  void _endHold() {
+    _hold?.cancel();
+    _hold = null;
+    _holdSlot = null;
+  }
+
+  /// Отпускание клавиши: если автоповтор уже крутил значения, отпускание
+  /// НЕ добавляет ещё одно действие — иначе «зажал и отпустил» срабатывал
+  /// лишний раз.
+  void _tap(int slot) {
     final repeated = _holdRepeated;
     _holdRepeated = false;
-    if (!repeated) _backspace();
+    if (!repeated) _fire(slot);
   }
 
   @override
@@ -151,23 +197,16 @@ class _NumberPadState extends State<NumberPad> {
                         spec: spec,
                         label: spec.digit ?? _actionLabel(context, spec.slot),
                         colorScheme: cs,
-                        onTapDown: spec.slot == _backspaceSlot
-                            ? _beginBackspaceHold
-                            : null,
-                        onTap: switch (spec.slot) {
-                          _clearSlot => _clear,
-                          _backspaceSlot => () {
-                            _endBackspaceHold();
-                            _backspaceTap();
-                          },
-                          _ => () => _append(spec.digit!),
+                        onTapDown: () => _beginHold(spec.slot),
+                        onTap: () {
+                          _endHold();
+                          _tap(spec.slot);
                         },
-                        onTapCancel: spec.slot == _backspaceSlot
-                            ? _endBackspaceHold
-                            : null,
+                        onTapCancel: _endHold,
                       ),
                     ),
                   ),
+                ),
               ],
             ),
           ),
