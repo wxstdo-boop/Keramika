@@ -575,6 +575,7 @@ class Translations {
       'forgeTokenInvalid': 'GitHub rejected the token',
       'forgeTokenReadOnly': 'No write access — the agent cannot commit',
       'forgeTokenEmpty': 'Token needed',
+      'forgeTokenSaveFailed': 'Could not save the token — storage unavailable',
       'forgeTokenForgotten': 'Token removed',
       'forgeChatSection': 'CHAT',
       'forgeTaskHint': 'Ask about the code or describe a change…',
@@ -1428,6 +1429,8 @@ class Translations {
       'forgeTokenInvalid': 'GitHub отклонил токен',
       'forgeTokenReadOnly': 'Нет права записи — агент не сможет коммитить',
       'forgeTokenEmpty': 'Нужен токен',
+      'forgeTokenSaveFailed':
+          'Не удалось сохранить токен — хранилище недоступно',
       'forgeTokenForgotten': 'Токен удалён',
       'forgeChatSection': 'ЧАТ',
       'forgeTaskHint': 'Спроси о коде или опиши, что изменить…',
@@ -2292,6 +2295,8 @@ class Translations {
       'forgeTokenInvalid': 'GitHub a rejeté le jeton',
       'forgeTokenReadOnly': 'Pas de droit d’écriture — l’agent ne peut pas committer',
       'forgeTokenEmpty': 'Jeton requis',
+      'forgeTokenSaveFailed':
+          'Impossible d’enregistrer le jeton — stockage indisponible',
       'forgeTokenForgotten': 'Jeton supprimé',
       'forgeChatSection': 'DISCUSSION',
       'forgeTaskHint': 'Pose une question ou décris la modification…',

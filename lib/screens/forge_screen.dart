@@ -102,11 +102,26 @@ class _ForgeScreenState extends State<ForgeScreen> {
   /// Токен поднимаем из защищённого хранилища при входе в экран — раньше
   /// введённое значение терялось между открытиями.
   Future<void> _restoreToken() async {
-    final saved = await _service.loadToken();
+    String? saved;
+    try {
+      // Ограничение по времени — на случай, когда плагин не отвечает вовсе
+      // (битый Keystore). Экран обязан ожить, даже если хранилище молчит.
+      saved = await _service
+          .loadToken()
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Keystore может быть недоступен — например, после переустановки
+      // приложения старый ключ шифрования потерян. Чтение тогда падает, и
+      // если флаг загрузки снять только на успехе, экран навсегда остаётся
+      // в состоянии «идёт загрузка»: кнопка сохранения не оживает никогда.
+      saved = null;
+    }
     if (!mounted) return;
     setState(() {
       _loadingToken = false;
-      if (saved != null) {
+      // Если пользователь успел что-то ввести, пока читалось хранилище,
+      // его ввод важнее старого значения — не затираем.
+      if (saved != null && _tokenController.text.isEmpty) {
         _tokenController.text = saved;
       }
     });
@@ -126,8 +141,22 @@ class _ForgeScreenState extends State<ForgeScreen> {
       _checking = true;
       _tokenError = null;
     });
+
+    // Сохраняем токен ПЕРВЫМ делом, до обращений к сети. Проверка может не
+    // пройти (нет связи, GitHub недоступен), но введённое значение обязано
+    // остаться в хранилище — иначе «вставил токен, а он не сохранился».
     try {
       await _service.saveToken(token);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _tokenError = Translations.t('forgeTokenSaveFailed', context);
+      });
+      return;
+    }
+
+    try {
       final login = await _service.verifyToken(token);
       final canPush = await _service.canPush(
         widget.owner,
