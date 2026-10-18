@@ -38,6 +38,16 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Настройки Gradle для CI
+        run: |
+          set -euo pipefail
+          # См. ship.yml: локальный heap 1 ГБ вызывает GC-троттлинг демона на
+          # раннере. Поднимаем память только для CI.
+          sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|' android/gradle.properties
+          sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' android/gradle.properties
+          sed -i 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
+          grep -E '^(org.gradle.jvmargs|org.gradle.workers.max|kotlin.daemon.jvmargs)=' android/gradle.properties
+
       - run: flutter build apk --release --split-per-abi
 
       - name: Переименовать APK с версией
