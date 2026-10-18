@@ -78,6 +78,34 @@ git push origin v1.6.50+45122
 Имя ассета содержит версию, поэтому приложение может выбрать свой ABI при
 автообновлении (`lib/services/update_service.dart` парсит его из ссылки).
 
+### Секреты репозитория (нужны для подписи)
+
+Сборка релиза не пройдёт без четырёх секретов GitHub
+(Settings → Secrets and variables → Actions → Repository secrets):
+
+| Секрет | Что это |
+|---|---|
+| `KEYSTORE_BASE64` | сам keystore, закодированный в base64 |
+| `STORE_PASSWORD` | пароль хранилища |
+| `KEY_PASSWORD` | пароль ключа |
+| `KEY_ALIAS` | alias ключа внутри хранилища |
+
+`KEYSTORE_BASE64` собирается так (одной строкой, без переносов):
+
+```bash
+base64 -w0 android/app/keramika-release.jks
+```
+
+Если `KEYSTORE_BASE64` пуст или в него попал не base64, workflow теперь падает
+сразу с внятным сообщением. Раньше это выглядело как загадочное
+
+```
+KeytoolException: Failed to read key  from store ".../keystore.jks":
+Tag number over 30 is not supported
+```
+
+на этапе `:app:packageRelease` — падал разбор пустого файла, а не Gradle.
+
 ### 4. Проверка релиза
 
 Приложение само проверяет GitHub Releases и предлагает обновление:
