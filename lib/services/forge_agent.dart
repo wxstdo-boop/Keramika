@@ -413,11 +413,30 @@ class ForgeAgent {
   static String? _str(dynamic value) => value is String ? value : null;
 }
 
-/// OpenAI-совместимый диалог: Poolside/Laguna напрямую либо через
-/// OpenRouter, если ключ начинается с `sk-or-`.
-class OpenAiForgeChat implements ForgeChat {
-  OpenAiForgeChat({required this.apiKey, http.Client? client})
+/// Пул бесплатных OpenAI-совместимых провайдеров — тот же набор, на котором
+/// работает Ада в приложении. Ключ не нужен, поэтому «Кузница» работает
+/// «из коробки».
+///
+/// Вызов инструментов проверен вживую на всех трёх: модель возвращает
+/// `tool_calls`, понимает результат инструмента и продолжает цикл.
+/// Провайдеры перебираются по очереди: бесплатные площадки часто отдают 429,
+/// и один упавший не должен останавливать прогон.
+class FreePoolForgeChat implements ForgeChat {
+  FreePoolForgeChat({http.Client? client, this.apiKey = '', this.onProvider})
     : _client = client ?? http.Client();
+
+  /// Необязательный свой ключ ИИ (Poolside/Laguna или OpenRouter). Если он
+  /// задан, пробуется первым; при отказе пул всё равно продолжит работу.
+  final String apiKey;
+
+  /// Имя сработавшего провайдера — для журнала агента.
+  final void Function(String name)? onProvider;
+
+  final http.Client _client;
+
+  /// Дольше ждать бессмысленно: прогон агента делает много шагов, и один
+  /// зависший провайдер съел бы весь бюджет времени. Упавший — пропускаем.
+  static const _timeout = Duration(seconds: 45);
 
   static const _poolsideUrl =
       'https://inference.poolside.ai/v1/chat/completions';
@@ -425,53 +444,126 @@ class OpenAiForgeChat implements ForgeChat {
   static const _poolsideModel = 'poolside/laguna-s-2.1';
   static const _openrouterModel = 'poolside/laguna-s-2.1:free';
 
-  final String apiKey;
-  final http.Client _client;
+  static const _kiloUrl = 'https://api.kilo.ai/api/gateway/chat/completions';
+  static const _murakumoUrl = 'https://api.murakumo.cloud/v1/chat/completions';
+  static const _ovhUrl =
+      'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions';
 
   @override
   Future<ForgeChatReply> complete(
     List<Map<String, dynamic>> messages,
     List<Map<String, dynamic>> tools,
   ) async {
-    final viaOpenRouter = apiKey.startsWith('sk-or-');
+    final failures = <String>[];
+
+    for (final provider in _providers()) {
+      try {
+        final reply = await _ask(provider, messages, tools);
+        onProvider?.call(provider.label);
+        return reply;
+      } on ForgeException {
+        rethrow; // осмысленный отказ провайдера — не глотаем
+      } catch (e) {
+        failures.add('${provider.label}: $e');
+      }
+    }
+
+    throw ForgeException(
+      502,
+      'Бесплатные ИИ-провайдеры недоступны. Попробуй ещё раз позже.'
+      '${failures.isEmpty ? '' : ' (${failures.join('; ')})'}',
+    );
+  }
+
+  List<_FreeProvider> _providers() => [
+    if (apiKey.isNotEmpty)
+      // Свой ключ — первым: он надёжнее бесплатных площадок. Если откажет,
+      // пул молча продолжит на бесплатных.
+      if (apiKey.startsWith('sk-or-'))
+        _FreeProvider(
+          label: 'OpenRouter',
+          url: _openrouterUrl,
+          model: _openrouterModel,
+          apiKey: apiKey,
+        )
+      else
+        _FreeProvider(
+          label: 'Poolside',
+          url: _poolsideUrl,
+          model: _poolsideModel,
+          apiKey: apiKey,
+        ),
+    // Основной: анонимно до 200 запросов/час на IP, отвечает сильной
+    // бесплатной моделью и держит целые файлы (проверено: 300 строк без
+    // обрезки при max_tokens 8000).
+    const _FreeProvider(
+      label: 'Kilo',
+      url: _kiloUrl,
+      model: 'openrouter/free',
+      userAgent: 'KeramikaApp/1.6.0',
+    ),
+    const _FreeProvider(
+      label: 'Kilo',
+      url: _kiloUrl,
+      model: 'kilo-auto/free',
+      userAgent: 'KeramikaApp/1.6.0',
+    ),
+    const _FreeProvider(
+      label: 'Murakumo',
+      url: _murakumoUrl,
+      model: 'murakumo/free',
+    ),
+    const _FreeProvider(
+      label: 'OVHcloud',
+      url: _ovhUrl,
+      model: 'Mistral-Nemo-Instruct-2407',
+      userAgent: 'KeramikaApp/1.6.0',
+    ),
+  ];
+
+  Future<ForgeChatReply> _ask(
+    _FreeProvider provider,
+    List<Map<String, dynamic>> messages,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (provider.userAgent != null) {
+      headers['User-Agent'] = provider.userAgent!;
+    }
+    if (provider.apiKey != null) {
+      headers['Authorization'] = 'Bearer ${provider.apiKey}';
+    }
+
     final resp = await _client
         .post(
-          Uri.parse(viaOpenRouter ? _openrouterUrl : _poolsideUrl),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $apiKey',
-          },
+          Uri.parse(provider.url),
+          headers: headers,
           body: jsonEncode({
-            'model': viaOpenRouter ? _openrouterModel : _poolsideModel,
+            'model': provider.model,
             'messages': messages,
             'tools': tools,
-            // Агенту нужно писать целые файлы: 500 токенов хватало чату,
-            // но обрезало бы любой файл на середине.
+            // Агенту нужно писать целые файлы, а не реплики чата.
             'max_tokens': 8000,
           }),
         )
-        .timeout(const Duration(seconds: 120));
+        .timeout(_timeout);
 
-    if (resp.statusCode == 401 || resp.statusCode == 403) {
-      throw ForgeException(resp.statusCode, 'Ключ ИИ отклонён (${resp.statusCode})');
-    }
     if (resp.statusCode != 200) {
-      throw ForgeException(
-        resp.statusCode,
-        'ИИ-провайдер ответил ${resp.statusCode}',
-      );
+      throw Exception('HTTP ${resp.statusCode}');
     }
-    final body = jsonDecode(utf8.decode(resp.bodyBytes));
-    if (body is! Map<String, dynamic>) {
-      throw ForgeException(500, 'Пустой ответ ИИ');
+    final raw = utf8.decode(resp.bodyBytes).trim();
+    // Некоторые площадки отдают HTML-страницу вместо JSON.
+    if (raw.isEmpty || raw.startsWith('<')) {
+      throw Exception('не JSON');
     }
-    final choices = body['choices'];
-    if (choices is! List || choices.isEmpty) {
-      throw ForgeException(500, 'Пустой ответ ИИ');
-    }
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) throw Exception('не JSON-объект');
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) throw Exception('пустой ответ');
     final first = choices.first;
     final message = first is Map ? first['message'] : null;
-    if (message is! Map) throw ForgeException(500, 'Пустой ответ ИИ');
+    if (message is! Map) throw Exception('пустой ответ');
 
     final calls = <ForgeToolCall>[];
     final rawCalls = message['tool_calls'];
@@ -492,23 +584,41 @@ class OpenAiForgeChat implements ForgeChat {
         );
       }
     }
+
     final text = message['content'];
     return ForgeChatReply(
       text: text is String && text.trim().isNotEmpty ? text : null,
       toolCalls: calls,
     );
   }
+}
 
-  static Map<String, dynamic> _decodeArgs(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is String && value.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(value);
-        if (decoded is Map<String, dynamic>) return decoded;
-      } catch (_) {
-        // Модель иногда отдаёт невалидный JSON — считаем, что аргументов нет.
-      }
+class _FreeProvider {
+  const _FreeProvider({
+    required this.label,
+    required this.url,
+    required this.model,
+    this.userAgent,
+    this.apiKey,
+  });
+
+  final String label;
+  final String url;
+  final String model;
+  final String? userAgent;
+  final String? apiKey;
+}
+
+/// Аргументы инструмента приходят строкой JSON (иногда невалидной).
+Map<String, dynamic> _decodeArgs(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {
+      // Модель иногда отдаёт невалидный JSON — считаем, что аргументов нет.
     }
-    return const {};
   }
+  return const {};
 }

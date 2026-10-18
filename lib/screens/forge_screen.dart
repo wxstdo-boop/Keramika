@@ -31,6 +31,7 @@ class ForgeScreen extends StatefulWidget {
     required this.owner,
     required this.repo,
     this.service,
+    this.chatFactory,
   });
 
   final String owner;
@@ -39,6 +40,10 @@ class ForgeScreen extends StatefulWidget {
   /// Подменяемый сервис: в бою создаётся свой с токеном в Keystore,
   /// в тестах подставляется с хранилищем в памяти.
   final ForgeService? service;
+
+  /// Подменяемый диалог с моделью: в бою — пул бесплатных провайдеров,
+  /// в тестах — скрипт, чтобы не ходить в сеть.
+  final ForgeChat Function(String apiKey)? chatFactory;
 
   @override
   State<ForgeScreen> createState() => _ForgeScreenState();
@@ -193,18 +198,16 @@ class _ForgeScreenState extends State<ForgeScreen> {
     // Локаль и ключ ИИ читаем до первого ожидания: после него `context`
     // может быть уже недействителен (экран закрыли во время запроса).
     final languageCode = LocaleProvider.of(context).languageCode;
-    final needAiKeyMessage = Translations.t('forgeNeedAiKey', context);
-    final apiKey = (await SettingsService.loadAiKey()).trim();
-    if (!mounted) return;
-    if (apiKey.isEmpty) {
-      showBeautifulSnackBar(
-        context,
-        message: needAiKeyMessage,
-        icon: Icons.key_off_rounded,
-        iconColor: Colors.orange,
-      );
-      return;
+    final providerNote = Translations.t('forgeProvider', context);
+    // Свой ключ — вещь необязательная: если хранилище настроек недоступно,
+    // прогон должен идти на бесплатных провайдерах, а не падать молча.
+    String apiKey = '';
+    try {
+      apiKey = (await SettingsService.loadAiKey()).trim();
+    } catch (_) {
+      apiKey = '';
     }
+    if (!mounted) return;
 
     setState(() {
       _running = true;
@@ -213,9 +216,25 @@ class _ForgeScreenState extends State<ForgeScreen> {
       _log.clear();
     });
     try {
+      // Пул — единственный путь: «Кузница» работает и без ключа. Свой ключ
+      // ИИ, если задан, просто пробуется первым, а при отказе пул
+      // продолжает на бесплатных провайдерах.
+      var providerLogged = false;
+      final chat =
+          widget.chatFactory?.call(apiKey) ??
+          FreePoolForgeChat(
+            apiKey: apiKey,
+            onProvider: (name) {
+              if (providerLogged || !mounted) return;
+              providerLogged = true;
+              setState(
+                () => _log.add(ForgeStep(tool: name, detail: providerNote)),
+              );
+            },
+          );
       final agent = ForgeAgent(
         service: _service,
-        chat: OpenAiForgeChat(apiKey: apiKey),
+        chat: chat,
         owner: widget.owner,
         repo: widget.repo,
       );

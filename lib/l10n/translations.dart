@@ -582,12 +582,13 @@ class Translations {
       'forgeWorking': 'Working…',
       'forgeThinking': 'Agent is thinking…',
       'forgeTaskEmpty': 'Task needed',
-      'forgeNeedAiKey': 'Add an AI key in Settings first',
+      'forgeProvider': 'free provider',
       'forgeLogSection': 'LOG',
       'forgeDone': 'Pull request ready',
       'forgeBranch': 'Branch',
       'forgeFiles': 'files changed',
-      'forgeSafetyNote': 'The agent works in a branch — main is untouched.',
+      'forgeSafetyNote':
+          'Runs in a branch — main is untouched. AI: built-in free providers.',
       'showPassword': 'Show code',
       'hidePassword': 'Hide code',
       'patchTodos':
@@ -1428,12 +1429,14 @@ class Translations {
       'forgeWorking': 'Работаю…',
       'forgeThinking': 'Агент думает…',
       'forgeTaskEmpty': 'Нужна задача',
-      'forgeNeedAiKey': 'Сначала добавь ключ ИИ в настройках',
+      'forgeProvider': 'бесплатный провайдер',
       'forgeLogSection': 'ЖУРНАЛ',
       'forgeDone': 'Pull request готов',
       'forgeBranch': 'Ветка',
       'forgeFiles': 'файлов изменено',
-      'forgeSafetyNote': 'Работа идёт в отдельной ветке — main не трогается.',
+      'forgeSafetyNote':
+          'Работа идёт в отдельной ветке — main не трогается. '
+          'ИИ: встроенные бесплатные провайдеры.',
       'showPassword': 'Показать код',
       'hidePassword': 'Скрыть код',
       'patchTodos':
@@ -2285,12 +2288,14 @@ class Translations {
       'forgeWorking': 'En cours…',
       'forgeThinking': 'L’agent réfléchit…',
       'forgeTaskEmpty': 'Tâche requise',
-      'forgeNeedAiKey': 'Ajoute d’abord une clé IA dans les réglages',
+      'forgeProvider': 'fournisseur gratuit',
       'forgeLogSection': 'JOURNAL',
       'forgeDone': 'Pull request prête',
       'forgeBranch': 'Branche',
       'forgeFiles': 'fichiers modifiés',
-      'forgeSafetyNote': 'L’agent travaille dans une branche — main intacte.',
+      'forgeSafetyNote':
+          'L’agent travaille dans une branche — main intacte. '
+          'IA : fournisseurs gratuits intégrés.',
       'showPassword': 'Afficher le code',
       'hidePassword': 'Masquer le code',
       'patchTodos':
