@@ -69,31 +69,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ДИАГНОСТИКА keystore (хеш + проверка паролей)
-        env:
-          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
-          SP: ${{ secrets.STORE_PASSWORD }}
-          KP: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -uo pipefail
-          printf '%s' "$KS_B64" | base64 -d > /tmp/ks.jks
-          echo "decoded size : $(stat -c%s /tmp/ks.jks)"
-          echo "decoded sha256: $(sha256sum /tmp/ks.jks | cut -d' ' -f1)"
-          echo "expected size : 2732"
-          echo "expected sha256: 33729b3abe911da93ec68c88f6ea715734cc628e8db1f0046c5ce9bd87fb50b1"
-          echo "SP length    : ${#SP}"
-          echo "KP length    : ${#KP}"
-          echo "--- try STORE_PASSWORD as pkcs12 pass ---"
-          if openssl pkcs12 -in /tmp/ks.jks -passin "pass:$SP" -nokeys -legacy >/dev/null 2>&1; then
-            echo "STORE_PASSWORD opens the store: YES"
-          elif openssl pkcs12 -in /tmp/ks.jks -passin "pass:$SP" -nokeys >/dev/null 2>&1; then
-            echo "STORE_PASSWORD opens the store: YES (non-legacy)"
-          else
-            echo "STORE_PASSWORD opens the store: NO"
-          fi
-          echo "--- aliases inside (no keys printed) ---"
-          openssl pkcs12 -in /tmp/ks.jks -passin "pass:$SP" -nokeys -legacy 2>/dev/null | grep -i friendlyName || echo "(could not list)"
-
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
