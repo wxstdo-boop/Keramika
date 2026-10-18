@@ -2592,37 +2592,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 ),
                               ),
                             ),
-                            // Кнопка «курзина»: стереть сохранённый ключ ИИ.
-                            PressScale(
-                              child: TextButton.icon(
-                                onPressed: _aiKey.isNotEmpty
-                                    ? () async {
-                                        _aiKeyController.clear();
-                                        _aiKey = '';
-                                        await SettingsService.saveAiKey('');
-                                        if (mounted) setState(() {});
-                                      }
-                                    : null,
-                                icon: const Icon(
-                                  Icons.delete_sweep_outlined,
-                                  size: 18,
-                                ),
-                                label: Text(
-                                  Translations.t(
-                                    'aiClearKey',
-                                    context,
-                                    'Очистить ключ',
-                                  ),
-                                ),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: theme.colorScheme.error,
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                            ),
                             const SizedBox(height: 6),
                             // Описание Ады: одна фраза про бесплатные модели.
                             Builder(
