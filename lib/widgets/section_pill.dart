@@ -332,8 +332,8 @@ class _SectionPillState extends State<SectionPill> {
                                           edgeStretch > 0 ||
                                               _edgeAnchorPull != 0
                                           ? ((edgeStretch > 0
-                                                        ? _edgeSide == -1
-                                                        : _edgeAnchorPull < 0)
+                                                    ? _edgeSide == -1
+                                                    : _edgeAnchorPull < 0)
                                                 ? Alignment.centerRight
                                                 : Alignment.centerLeft)
                                           : Alignment.center,
