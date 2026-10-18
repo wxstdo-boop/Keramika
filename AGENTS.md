@@ -30,7 +30,49 @@ flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\
 
 Keystore проекта: `keramika-release.jks`, alias `keramika`, сертификат
 `CN=Keramika` (PKCS12, несмотря на расширение `.jks`). В рабочем дереве его
-нет — он в `.gitignore`, лежит только локально у владельца.
+нет — он в `.gitignore`, лежит только локально у владельца. Из истории
+восстанавливается так:
+`git show 95a5658:android/app/keramika-release.jks` (файл удалён из трекинга
+в `8925a78`, но остался в истории).
+
+Отпечаток для сверки подписи (должен совпасть у собранного APK):
+`4B:48:38:78:6F:5D:00:29:75:F4:51:B2:C9:6B:62:91:5D:74:1D:49:0D:24:F3:D6:9F:3A:0A:F0:45:4E:12:1D`
+(serial `5873E218838878B7`, CN=Keramika, действует до 2053-12-13).
+
+### Диагностика подписи без локального keytool
+
+Локально нет Java/keytool — использовать `openssl` и Python `cryptography`.
+Быстрая проверка, что залитый keystore и пароли верны (секреты читаются из
+env, значения не печатать — только длины и sha256):
+
+```bash
+printf '%s' "$KEYSTORE_BASE64" | base64 -d > /tmp/ks.jks
+openssl pkcs12 -in /tmp/ks.jks -passin "pass:$STORE_PASSWORD" -nokeys -legacy
+```
+
+Подпись готового APK (v2-схема, `META-INF` пуст) проверяется так:
+`python3 -c` скан DER-сертификатов в хвосте APK через
+`openssl x509 -inform DER -fingerprint -sha256`. Сравнить с отпечатком выше.
+
+Грабли, уже пойманные на живых прогонах:
+
+- `SP length : 13` вместо 12 → в секрете `STORE_PASSWORD` оказалось
+  `keramika_2026` (подчёркивание). Секреты **не** тримятся и не
+  нормализуются: вставлять ровно `keramika2026`;
+- `keystore password was incorrect` при верном keystore = опечатка в
+  `STORE_PASSWORD`; `Failed to read key *** from store` при непустом alias =
+  опечатка в `STORE_PASSWORD`/`KEY_PASSWORD`;
+- пароль можно восстановить по хешу: сверить `sha256` секрета с
+  `sha256("keramika2026")` и перебрать одиночные вставки символа.
+
+### Приватность репозитория ломает автообновление
+
+Репозиторий должен оставаться **публичным**. `update_service.dart` дёргает
+`releases/latest` без авторизации; для приватного репозитория GitHub отдаёт
+`404`, `check()` вернёт `null`, обновления перестанут приходить молча.
+`browser_download_url` тоже потребует токена. Если приватность обязательна —
+нужен fine-grained токен внутри APK (`Contents: read`), что небезопасно:
+токен извлекается из сборки.
 
 ## Автообновление на телефоне
 
