@@ -1,0 +1,13 @@
+# CODEOWNERS
+
+# По умолчанию — maintainer репозитория.
+* @wxstdo-boop
+
+#Android-специфичные файлы — كذلك.
+android/ @wxstdo-boop
+
+# GitHub Actions — maintainer.
+.github/ @wxstdo-boop
+
+# Документация — maintainer.
+docs/ @wxstdo-boop
