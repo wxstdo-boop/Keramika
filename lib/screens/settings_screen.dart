@@ -114,6 +114,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _aiKey = '';
   final TextEditingController _aiKeyController = TextEditingController();
   bool _aiKeyVisible = false;
+  String _githubToken = '';
+  final TextEditingController _githubTokenController = TextEditingController();
+  bool _githubTokenVisible = false;
   bool _aiTracking = true;
   bool _autoExport = false;
   bool _experimental = false;
@@ -210,9 +213,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     // Сохраняем введённый AI-ключ, даже если пользователь не нажал
     // «готово» на клавиатуре.
     SettingsService.saveAiKey(_aiKey);
+    SettingsService.saveGitHubToken(_githubToken);
     _perfController.dispose();
     _keyPulse.dispose();
     _aiKeyController.dispose();
+    _githubTokenController.dispose();
     _themePageCtrl?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     notificationService.removeListener(_onNotificationChanged);
@@ -223,6 +228,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     _aiGuide = await SettingsService.loadAiGuide();
     _aiKey = await SettingsService.loadAiKey();
     _aiKeyController.text = _aiKey;
+    _githubToken = await SettingsService.loadGitHubToken();
+    _githubTokenController.text = _githubToken;
   }
 
   Future<void> _loadAiTracking() async {
@@ -3183,6 +3190,82 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
                 onTap: () => saveBerserk(!berserkFlag.value),
+              ),
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                leading: const Icon(
+                  Icons.source_rounded,
+                  color: Color(0xFF90CAF9),
+                ),
+                title: Text(Translations.t('forgeTitle', routeContext)),
+                subtitle: Text(
+                  Translations.t('forgeSubtitle', routeContext),
+                ),
+                trailing: IconButton(
+                  icon: Icon(
+                    _githubTokenVisible
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    size: 20,
+                  ),
+                  onPressed: () {
+                    setState(() => _githubTokenVisible = !_githubTokenVisible);
+                  },
+                ),
+                onTap: () {},
+              ),
+              // Поле токена GitHub (разворачивается при тапе по плитке).
+              // Оставляем поле всегда в развёрнутом виде, чтобы токен
+              // сохранялся при вводе (как AI-ключ — через dispose).
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      Translations.t('forgeTokenLabel', routeContext),
+                      style: Theme.of(routeContext).textTheme.labelSmall
+                          ?.copyWith(
+                        color: Theme.of(routeContext)
+                            .colorScheme
+                            .onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SmoothTyping(
+                      controller: _githubTokenController,
+                      enabled: _githubTokenVisible,
+                      builder: (style) => TextField(
+                        style: style,
+                        controller: _githubTokenController,
+                        contextMenuBuilder: minimalContextMenuBuilder,
+                        obscureText: !_githubTokenVisible,
+                        textInputAction: TextInputAction.done,
+                        maxLength: 500,
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        maxLines: 1,
+                        onChanged: (v) => _githubToken = v,
+                        onSubmitted: (v) =>
+                            SettingsService.saveGitHubToken(v),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          counterText: '',
+                          hintText: Translations.t(
+                            'forgeTokenHint',
+                            routeContext,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           );
