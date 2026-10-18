@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- allowBackup=false уже отключает бэкап через adb/Google. Эти правила
+         дополнительно запрещают извлечение любых файлов приложения при
+         переносе данных на новое устройство (Android 12+). -->
+    <rules>
+        <no-backup/>
+    </rules>
+</data-extraction-rules>
