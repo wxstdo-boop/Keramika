@@ -34,6 +34,55 @@ class _ScriptedChat implements ForgeChat {
 }
 
 void main() {
+  // Живой диалог: вопрос по коду должен получить ответ БЕЗ ветки и PR.
+  // Это главное отличие чата от прежнего «сделай и открой PR».
+  test('LIVE: вопрос по коду — ответ без ветки и PR', () async {
+    final token = Platform.environment['GITHUB_TOKEN'];
+    expect(token, isNotNull, reason: 'нужен GITHUB_TOKEN');
+    const owner = 'wxstdo-boop';
+    const repo = 'Keramika';
+
+    final service = ForgeService(store: InMemoryForgeTokenStore());
+    await service.saveToken(token!);
+
+    final agent = ForgeAgent(
+      service: service,
+      chat: FreePoolForgeChat(
+        onProvider: (name) => print('LIVE-QA: провайдер=$name'),
+      ),
+      owner: owner,
+      repo: repo,
+    );
+
+    final branchesBefore = await service.listBranches(owner, repo, token: token);
+    final turn = await agent.respond(
+      history: const [],
+      task:
+          'Какой файл в этом проекте содержит точку входа приложения? '
+          'Ответь одним предложением, ничего не меняй.',
+      baseBranch: 'main',
+      onStep: (s) => print('LIVE-QA шаг: ${s.tool} — ${s.detail}'),
+    );
+
+    print('LIVE-QA: ответ=${turn.text}');
+    print('LIVE-QA: правок=${turn.filesChanged} ветка=${turn.branch}');
+    expect(turn.text.trim(), isNotEmpty);
+    // Вопрос не должен оставлять следов в репозитории.
+    expect(turn.madeChanges, isFalse);
+    expect(turn.branch, isNull);
+    expect(turn.pullRequestUrl, isNull);
+
+    // И новых веток в репозитории не появилось.
+    final branchesAfter = await service.listBranches(owner, repo, token: token);
+    final fresh = branchesAfter
+        .where((b) => !branchesBefore.contains(b))
+        .toList();
+    print('LIVE-QA: новых веток=${fresh.length}');
+    expect(fresh, isEmpty);
+  },
+      timeout: const Timeout(Duration(minutes: 8)),
+      skip: Platform.environment['FORGE_LIVE'] != '1');
+
   // Второй живой прогон: агент ведут НАСТОЯЩИЕ бесплатные провайдеры
   // (FreePoolForgeChat), без скрипта и без ключа. Это проверка того, что
   // «Кузница» действительно работает «из коробки».
