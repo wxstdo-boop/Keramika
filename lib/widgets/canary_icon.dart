@@ -103,7 +103,11 @@ class _CanaryPainter extends CustomPainter {
       ..strokeWidth = s * 0.032
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(s * 0.60, s * 0.84), Offset(s * 0.60, s * 0.93), feetPaint);
+    canvas.drawLine(
+      Offset(s * 0.60, s * 0.84),
+      Offset(s * 0.60, s * 0.93),
+      feetPaint,
+    );
     canvas.drawLine(
       Offset(s * 0.60, s * 0.93),
       Offset(s * 0.545, s * 0.965),
@@ -146,11 +150,7 @@ class _CanaryPainter extends CustomPainter {
     canvas.translate(s * 0.62, s * 0.55 - hop);
     canvas.rotate(0.35);
     canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset.zero,
-        width: s * 0.56,
-        height: s * 0.40,
-      ),
+      Rect.fromCenter(center: Offset.zero, width: s * 0.56, height: s * 0.40),
       Paint()..color = bodyYellow,
     );
     canvas.restore();
@@ -160,11 +160,7 @@ class _CanaryPainter extends CustomPainter {
     canvas.translate(s * 0.58, s * 0.60 - hop);
     canvas.rotate(0.35);
     canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset.zero,
-        width: s * 0.34,
-        height: s * 0.22,
-      ),
+      Rect.fromCenter(center: Offset.zero, width: s * 0.34, height: s * 0.22),
       Paint()..color = bellyYellow,
     );
     canvas.restore();
@@ -232,7 +228,11 @@ class _CanaryPainter extends CustomPainter {
       ..color = Colors.black.withValues(alpha: 0.10)
       ..strokeWidth = s * 0.022
       ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(s * 0.10, s * -0.01), Offset(s * 0.34, s * -0.01), featherPaint);
+    canvas.drawLine(
+      Offset(s * 0.10, s * -0.01),
+      Offset(s * 0.34, s * -0.01),
+      featherPaint,
+    );
     canvas.restore();
   }
 

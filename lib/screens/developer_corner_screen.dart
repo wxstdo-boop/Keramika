@@ -340,8 +340,7 @@ class _DeveloperModePasswordDialogState
                                   cursorOpacityAnimates: true,
                                   magnifierConfiguration:
                                       TextMagnifierConfiguration.disabled,
-                                  contextMenuBuilder:
-                                      minimalContextMenuBuilder,
+                                  contextMenuBuilder: minimalContextMenuBuilder,
                                   inputFormatters: [
                                     FilteringTextInputFormatter.digitsOnly,
                                   ],
@@ -364,27 +363,25 @@ class _DeveloperModePasswordDialogState
                                     filled: true,
                                     fillColor: colors.surfaceContainerHighest
                                         .withValues(alpha: 0.46),
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                          vertical: 17,
-                                          horizontal: 18,
-                                        ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 17,
+                                      horizontal: 18,
+                                    ),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(19),
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(19),
                                       borderSide: BorderSide(
-                                        color: colors.outlineVariant
-                                            .withValues(alpha: 0.7),
+                                        color: colors.outlineVariant.withValues(
+                                          alpha: 0.7,
+                                        ),
                                       ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(19),
                                       borderSide: BorderSide(
-                                        color: _invalid
-                                            ? colors.error
-                                            : accent,
+                                        color: _invalid ? colors.error : accent,
                                         width: 1.8,
                                       ),
                                     ),
@@ -396,9 +393,7 @@ class _DeveloperModePasswordDialogState
                               // и так же мягко возвращаются, когда PIN
                               // стёрт до нуля.
                               IgnorePointer(
-                                child: ValueListenableBuilder<
-                                  TextEditingValue
-                                >(
+                                child: ValueListenableBuilder<TextEditingValue>(
                                   valueListenable: _maskedController,
                                   builder: (context, value, _) =>
                                       AnimatedOpacity(
@@ -415,8 +410,7 @@ class _DeveloperModePasswordDialogState
                                             '••••',
                                             style: theme.textTheme.bodyLarge
                                                 ?.copyWith(
-                                                  color: colors
-                                                      .onSurfaceVariant
+                                                  color: colors.onSurfaceVariant
                                                       .withValues(alpha: 0.42),
                                                   letterSpacing: 1.2,
                                                 ),
@@ -983,12 +977,7 @@ class _SquigglyRingPainter extends CustomPainter {
     required this.inset,
   });
 
-  void _addWaveSegment(
-    Path path,
-    Offset start,
-    Offset end,
-    Offset normal,
-  ) {
+  void _addWaveSegment(Path path, Offset start, Offset end, Offset normal) {
     final dx = end.dx - start.dx;
     final dy = end.dy - start.dy;
     final len = math.sqrt(dx * dx + dy * dy);

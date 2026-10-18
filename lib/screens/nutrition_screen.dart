@@ -1288,9 +1288,10 @@ class _NutritionScreenState extends State<NutritionScreen>
             curve: Curves.easeOutCubic,
             tween: isJustAdded
                 ? Tween(begin: 0.0, end: 1.0)
-                : Tween(begin: 1.0, end: _pendingRemoveMealId == meal.id
-                      ? 0.25
-                      : 1.0),
+                : Tween(
+                    begin: 1.0,
+                    end: _pendingRemoveMealId == meal.id ? 0.25 : 1.0,
+                  ),
             // Высоту карточки здесь НЕ анимируем: её ведёт единственный
             // AnimatedSize над всем блоком истории. Две анимации высоты
             // одновременно (эта и AnimatedSize) гонялись друг за другом:
