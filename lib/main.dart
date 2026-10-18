@@ -1154,7 +1154,8 @@ void main() async {
 
   // Слушаем новые payload'и когда приложение уже запущено (onNewIntent)
   // и сигнал о перезагрузке телефона (onBootCompleted).
-  _alarmPayloadChannel.setMethodCallHandler((call) async {
+  if (!kIsWeb) {
+    _alarmPayloadChannel.setMethodCallHandler((call) async {
     if (call.method == 'onNewAlarmPayload') {
       // Если WakeTaskScreen уже виден — игнорируем повторный payload
       // (пользователь тапнул по уведомлению, пока будильник уже звонит).
@@ -1177,6 +1178,7 @@ void main() async {
   // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
   // invoke не падал в MissingPluginException.
   _lifecycleChannel.setMethodCallHandler((call) async {});
+  }
 }
 
 /// Поведение скролла для всего приложения: iOS-стиль «баунса»/натяжения

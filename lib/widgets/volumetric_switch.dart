@@ -11,11 +11,17 @@ class VolumetricSwitch extends StatelessWidget {
   final ValueChanged<bool>? onChanged;
   final Color? activeColor;
 
+  /// Масштаб трека/шайбы. 1.0 — стандартный (52×30). В плотных списках
+  /// уголка разработчика берём крупнее — переключатель пару «объёмнее»
+  /// и по нему комфортнее попадать пальцем.
+  final double scale;
+
   const VolumetricSwitch({
     super.key,
     required this.value,
     this.onChanged,
     this.activeColor,
+    this.scale = 1.0,
   });
 
   @override
@@ -24,6 +30,7 @@ class VolumetricSwitch extends StatelessWidget {
     final active = activeColor ?? scheme.primary;
     final trackOff = scheme.surfaceContainerHighest;
     final trackOn = active.withValues(alpha: 0.85);
+    final k = scale;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -36,24 +43,24 @@ class VolumetricSwitch extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
-        width: 52,
-        height: 30,
-        padding: const EdgeInsets.all(3),
+        width: 52 * k,
+        height: 30 * k,
+        padding: EdgeInsets.all(3 * k),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(15 * k),
           color: value ? trackOn : trackOff,
           border: Border.all(
             color: value
                 ? active.withValues(alpha: 0.9)
                 : scheme.outlineVariant.withValues(alpha: 0.7),
-            width: 1,
+            width: 1 * k,
           ),
           boxShadow: [
             if (value)
               BoxShadow(
-                color: active.withValues(alpha: 0.35),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: active.withValues(alpha: 0.35 * k),
+                blurRadius: 8 * k,
+                offset: Offset(0, 2 * k),
               ),
           ],
         ),
@@ -65,8 +72,8 @@ class VolumetricSwitch extends StatelessWidget {
               curve: Curves.easeOutBack,
               alignment: value ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
-                width: 24,
-                height: 24,
+                width: 24 * k,
+                height: 24 * k,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
@@ -77,20 +84,20 @@ class VolumetricSwitch extends StatelessWidget {
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.28),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1.5),
+                      blurRadius: 4 * k,
+                      offset: Offset(0, 1.5 * k),
                     ),
                   ],
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.95),
-                    width: 1,
+                    width: 1 * k,
                   ),
                 ),
                 child: Center(
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    width: value ? 9 : 8,
-                    height: value ? 9 : 8,
+                    width: (value ? 9 : 8) * k,
+                    height: (value ? 9 : 8) * k,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: value
@@ -101,7 +108,7 @@ class VolumetricSwitch extends StatelessWidget {
                           color: value
                               ? active.withValues(alpha: 0.55)
                               : Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 2.5,
+                          blurRadius: 2.5 * k,
                         ),
                       ],
                     ),
