@@ -7,6 +7,7 @@
   Задачи, привычки, питание и ИИ-ассистент Ада — в одном приложении.</p>
 
   <p>
+    <a href="https://github.com/wxstdo-boop/Keramika/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/wxstdo-boop/Keramika/ci.yml?label=CI&color=%232ea44f" /></a>
     <a href="https://github.com/wxstdo-boop/Keramika/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wxstdo-boop/Keramika?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=%23c2185b" /></a>
     <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
     <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.35%2B-02569a?logo=flutter&logoColor=white" />
