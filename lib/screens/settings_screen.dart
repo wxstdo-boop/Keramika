@@ -21,7 +21,6 @@ import '../services/settings_service.dart';
 import '../services/timer_service.dart';
 import '../services/prefs.dart';
 import '../services/json_file.dart';
-import '../utils/wide_dash_formatter.dart';
 import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../services/nutrition_service.dart';
@@ -2540,7 +2539,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   obscureText: !_aiKeyVisible,
                                   textInputAction: TextInputAction.done,
                                   maxLength: 500,
-                                  inputFormatters: [WideDashFormatter()],
+                                  inputFormatters: const [],
                                   enableSuggestions: false,
                                   autocorrect: false,
                                   maxLines: 1,
@@ -2590,6 +2589,37 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   onChanged: (v) => _aiKey = v,
                                   onSubmitted: (v) =>
                                       SettingsService.saveAiKey(v),
+                                ),
+                              ),
+                            ),
+                            // Кнопка «курзина»: стереть сохранённый ключ ИИ.
+                            PressScale(
+                              child: TextButton.icon(
+                                onPressed: _aiKey.isNotEmpty
+                                    ? () async {
+                                        _aiKeyController.clear();
+                                        _aiKey = '';
+                                        await SettingsService.saveAiKey('');
+                                        if (mounted) setState(() {});
+                                      }
+                                    : null,
+                                icon: const Icon(
+                                  Icons.delete_sweep_outlined,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  Translations.t(
+                                    'aiClearKey',
+                                    context,
+                                    'Очистить ключ',
+                                  ),
+                                ),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: theme.colorScheme.error,
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
                             ),
