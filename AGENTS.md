@@ -4,6 +4,42 @@ then install over the existing Android device (keep user data):
 `& "$env:USERPROFILE\dev\android-sdk\platform-tools\adb.exe" install -r "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"`.
 flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\dev\flutter\bin\flutter.bat`, adb at `C:\Users\Larafut\dev\android-sdk\platform-tools\adb.exe` (see `android/local.properties`).
 
+## CI (GitHub Actions): грабли, на которые уже наступали
+
+Релизы собирает `.github/workflows/ship.yml` (push в `main`) и `release.yml`
+(по тегу `v*`). Оба падали по двум независимым причинам — не повторяй:
+
+1. **Память Gradle.** `android/gradle.properties` подогнан под домашнюю
+   машину (~8 ГБ RAM): `-Xmx1024m`, `workers.max=1`. На раннере этого мало —
+   `assembleRelease` умирает с `the JVM garbage collector is thrashing`.
+   Лечится шагом «Настройки Gradle для CI»: поднимает heap до `-Xmx4g`
+   **только в CI**, локальные настройки не трогает.
+2. **Пустые секреты подписи.** Если `KEYSTORE_BASE64` / `STORE_PASSWORD` /
+   `KEY_PASSWORD` / `KEY_ALIAS` не заданы, падает
+   `KeytoolException: Failed to read key  from store ".../keystore.jks":
+   Tag number over 30 is not supported` на `:app:packageRelease`. Обрати
+   внимание на пустое имя ключа — это признак пустого файла, а не битого
+   keystore. Шаг «Распаковать keystore» теперь проверяет вход и падает сразу
+   с внятным `::error::`.
+
+Секреты не заданы — сборка не подпишется, релиз не выйдет, автообновление в
+приложении (`lib/services/update_service.dart` читает `releases/latest`) не
+сработает. Проверить, что релиз реально есть:
+`curl -s .../repos/wxstdo-boop/Keramika/releases/latest` (пустой тег-лист =
+релизов нет).
+
+Keystore проекта: `keramika-release.jks`, alias `keramika`, сертификат
+`CN=Keramika` (PKCS12, несмотря на расширение `.jks`). В рабочем дереве его
+нет — он в `.gitignore`, лежит только локально у владельца.
+
+## Автообновление на телефоне
+
+`versionCode` в `pubspec.yaml` обязан быть строго выше установленного:
+Flutter при `--split-per-abi` прибавляет к нему индекс ABI (+2000 для
+arm64). Приложение сравнивает сначала `versionName` (ABI-независимо), потом
+`versionCode`. Скачанный APK сверяется по SHA-256 из `digest` релиза —
+если `digest` нет, обновление отменяется с `FormatException`.
+
 <!-- pane-agent-context:start -->
 ## Pane
 
