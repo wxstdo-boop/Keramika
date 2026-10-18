@@ -122,6 +122,12 @@ class _SectionPillState extends State<SectionPill> {
   /// пересекает границу раздела.
   int _dragNearest = -1;
 
+  /// У какого края вытянут камень при тяге за границу трека: -1 — левый
+  /// (edgePull < 0), 1 — правый. Определяется с гистерезисом (порог ±6 px
+  /// в [_dragUpdate]): без него лёгкое покачивание пальцем около края
+  /// перещёлкивало сторону на каждом кадре — камень «подёргивался».
+  int _edgeSide = 0;
+
   @override
   void dispose() {
     _edgeReleaseTimer?.cancel();
@@ -134,6 +140,7 @@ class _SectionPillState extends State<SectionPill> {
   void _dragStart(DragStartDetails details, int count) {
     if (count < 2) return;
     _dragging = true;
+    _edgeSide = 0;
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
@@ -163,7 +170,13 @@ class _SectionPillState extends State<SectionPill> {
     final x = details.localPosition.dx + _dragGrabOffset;
     final over = x < 0 ? x : (x > _trackWidth ? x - _trackWidth : 0.0);
     sectionDragEdgeStretch.value = (over / 100.0).clamp(-0.42, 0.42).toDouble();
+    // Гистерезис: сторона, у которой камень «сидит» за краем, выбирается
+    // один раз (порог ±6 px). Мгновенная смена стороны на пересечении нуля
+    // дёргала камень при покачивании пальцем у края.
     if (over != 0) {
+      if (_edgeSide != -1 && over < -6) _edgeSide = -1;
+      if (_edgeSide != 1 && over > 6) _edgeSide = 1;
+      if (_edgeSide == 0) _edgeSide = over < 0 ? -1 : 1;
       _edgeReleaseTimer?.cancel();
       _edgeAnchorPull = over;
     }
@@ -180,6 +193,7 @@ class _SectionPillState extends State<SectionPill> {
   void _dragEnd(int count) {
     if (!_dragging) return;
     _dragging = false;
+    _edgeSide = 0;
     sectionDragEdgeStretch.value = 0;
     _releaseEdgeStretch();
     final target = _dragPage.round().clamp(0, count - 1);
@@ -197,6 +211,7 @@ class _SectionPillState extends State<SectionPill> {
   void _dragCancel() {
     if (!_dragging) return;
     _dragging = false;
+    _edgeSide = 0;
     sectionDragEdgeStretch.value = 0;
     _releaseEdgeStretch();
     sectionDragPage.value = null;
@@ -265,9 +280,18 @@ class _SectionPillState extends State<SectionPill> {
                         // вытягивается и мягко закругляется. Никаких
                         // бликов и переливов — движение читается само,
                         // без световых наклеек поверх таблетки.
+                        //
+                        // ИСПРАВЛЕНИЕ ДЁРГАНЬЯ: во время тяги пальцем wave
+                        // замораживается на нуле. Раньше ширина камня
+                        // дышала (до +4%) на КАЖДОМ пересечении границы
+                        // раздела, и камень визуально «подёргивался» под
+                        // пальцем. Теперь дышит только камень в свободном
+                        // полёте (пружина); ведёмый пальцем — монолитен.
                         final transit = (p - p.roundToDouble()).abs();
                         final t2 = transit * 2.0; // 0..1 (0 — покой)
-                        final wave = 1.0 - (1.0 - t2) * (1.0 - t2);
+                        final wave = _dragging
+                            ? 0.0
+                            : 1.0 - (1.0 - t2) * (1.0 - t2);
                         return ValueListenableBuilder<double>(
                           valueListenable: sectionDragEdgeStretch,
                           builder: (context, edgePull, _) {
@@ -285,7 +309,7 @@ class _SectionPillState extends State<SectionPill> {
                                 Align(
                                   alignment: Alignment(
                                     edgeStretch > 0 && _dragging
-                                        ? (edgePull < 0 ? -1 : 1)
+                                        ? (_edgeSide == -1 ? -1 : 1)
                                         : indicatorAlignment,
                                     0,
                                   ),
@@ -308,9 +332,8 @@ class _SectionPillState extends State<SectionPill> {
                                           edgeStretch > 0 ||
                                               _edgeAnchorPull != 0
                                           ? ((edgeStretch > 0
-                                                        ? edgePull
-                                                        : _edgeAnchorPull) <
-                                                    0
+                                                        ? _edgeSide == -1
+                                                        : _edgeAnchorPull < 0)
                                                 ? Alignment.centerRight
                                                 : Alignment.centerLeft)
                                           : Alignment.center,

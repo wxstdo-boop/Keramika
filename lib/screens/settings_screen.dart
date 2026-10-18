@@ -1689,6 +1689,34 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () => _openLink('https://gitflic.ru/'),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.account_tree,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'GitFlic',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -2984,7 +3012,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     Navigator.of(context).push(
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 520),
-        reverseTransitionDuration: const Duration(milliseconds: 360),
+        reverseTransitionDuration: const Duration(milliseconds: 420),
         pageBuilder: (routeContext, animation, secondaryAnimation) {
           return StatefulBuilder(
             builder: (routeContext, setScreenState) {
@@ -3051,6 +3079,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       value: _perfectionism,
                       onChanged: savePerfectionism,
                       activeColor: const Color(0xFFB39DDB),
+                      // Крупнее и объёмнее — уголок разработчика.
+                      scale: 1.28,
                     ),
                     onTap: () => savePerfectionism(!_perfectionism),
                   ),
@@ -3071,6 +3101,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       value: _taskNotes,
                       onChanged: saveTaskNotes,
                       activeColor: const Color(0xFFD3A7FF),
+                      scale: 1.28,
                     ),
                     onTap: () => saveTaskNotes(!_taskNotes),
                   ),
@@ -3093,6 +3124,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       value: _berserk,
                       onChanged: saveBerserk,
                       activeColor: const Color(0xFFFF5265),
+                      scale: 1.28,
                     ),
                   ),
                 ],
@@ -3101,13 +3133,18 @@ class _SettingsScreenState extends State<SettingsScreen>
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Въезд — easeOutCubic, выезд (жест «назад»/свайп вправо) —
+          // easeInOutCubic: экран не «падает» мгновенно в начале отдачи
+          // (easeInCubic стартовал на нуле скорости и потом рванул), а
+          // уходит с той же скоростью, с которой читался въезд. Обратный
+          // переезд тоже подольше (420 мс).
           final entrance = CurvedAnimation(
             parent: animation,
             curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
+            reverseCurve: Curves.easeInOutCubic,
           );
           return FadeTransition(
-            opacity: animation,
+            opacity: Tween<double>(begin: 0, end: 1).animate(entrance),
             child: SlideTransition(
               position: Tween<Offset>(
                 begin: const Offset(0.16, 0),

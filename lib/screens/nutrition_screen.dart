@@ -39,6 +39,12 @@ class _NutritionScreenState extends State<NutritionScreen>
   final Map<String, DateTime> _addedAt = {};
   bool _loaded = false; // Первая загрузка завершена — кнопка не «мигает»
 
+  /// Приём пищи, чьё удаление подтверждено и уже идёт: карточка плавно
+  /// «растворяется» (opacity до 0.25 за 240 мс), пока жест дотягивает
+  /// её до края. Без фазы растворения после свайпа карточка исчезала
+  /// одним кадром — читалось как обрыв.
+  String? _pendingRemoveMealId;
+
   /// Поле, открытое под встроенной клавиатурой, и сама открыта ли панель.
   /// `_pad` переживает закрытие: за 260 мс сложения панели её содержимое
   /// обязано оставаться валидным, иначе на половине анимации контроллер
@@ -756,21 +762,45 @@ class _NutritionScreenState extends State<NutritionScreen>
           curve: Curves.easeOutCubic,
           builder: (context, v, _) => LayoutBuilder(
             builder: (context, box) => Stack(
+              clipBehavior: Clip.none,
               children: [
+                // Дорожка: чуть толще, с мягким стеклянным отливом и
+                // почти невидимой каймой — полосы выглядят как тонкие
+                // «керамические желобки», а не как плоские хворостинки.
                 Container(
-                  height: 6,
+                  height: 8,
                   decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(3),
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: cs.outline.withValues(alpha: 0.16),
+                      width: 0.8,
+                    ),
                   ),
                 ),
                 FractionallySizedBox(
                   widthFactor: v,
                   child: Container(
-                    height: 6,
+                    height: 8,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(4),
+                      // Налив: светлый блик слева → насыщенный цвет
+                      // справа, чуть глубже к концу — полоса читается
+                      // объёмной даже без тени.
+                      gradient: LinearGradient(
+                        colors: [
+                          Color.lerp(color, Colors.white, 0.28)!,
+                          color,
+                          Color.lerp(color, Colors.black, 0.10)!,
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.42),
+                          blurRadius: 7,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -859,12 +889,31 @@ class _NutritionScreenState extends State<NutritionScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(
-                  Icons.dialpad_rounded,
-                  size: 22,
-                  color: active
-                      ? cs.primary
-                      : cs.onSurfaceVariant.withValues(alpha: 0.6),
+                // Значок клавиатуры выделяется ПЛАВНО: кросс-фейд цвета
+                // плюс лёгкий «улёт» масштабом. Раньше цвет переключался
+                // мгновенно — щелчком, который выглядел как мигание.
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 320),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: Tween<double>(
+                        begin: 1.14,
+                        end: 1.0,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.dialpad_rounded,
+                    key: ValueKey('dialpad_active_$active'),
+                    size: 22,
+                    color: active
+                        ? cs.primary
+                        : cs.onSurfaceVariant.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),
@@ -1201,6 +1250,16 @@ class _NutritionScreenState extends State<NutritionScreen>
             ],
           ),
         );
+        if (ok == true) {
+          // Подтверждённое удаление: сначала короткая фаза растворения
+          // (240 мс, easeInOutCubic), пока жест дотягивает карточку до
+          // края, — исчезновение читается плавным «выцветанием», а не
+          // обрывом в один кадр.
+          _pendingRemoveMealId = meal.id;
+          if (mounted) setState(() {});
+          await Future<void>.delayed(const Duration(milliseconds: 240));
+          if (mounted) setState(() => _pendingRemoveMealId = null);
+        }
         return ok == true;
       },
       onDismissed: (dir) {
@@ -1218,14 +1277,20 @@ class _NutritionScreenState extends State<NutritionScreen>
         child: RepaintBoundary(
           child: TweenAnimationBuilder<double>(
             // Только новая запись анимируется 380 мс. У истории начальное и
-            // конечное значения равны, поэтому долгий ticker ей не нужен.
+            // конечное значения равны, поэтому долгий ticker ей не нужен —
+            // ИСКЛЮЧЕНИЕ: подтверждённое удаление (см. confirmDismiss):
+            // карточка плавно тонет на 240 мс, пока дотягивается до края.
             duration: isJustAdded
                 ? const Duration(milliseconds: 380)
+                : _pendingRemoveMealId == meal.id
+                ? const Duration(milliseconds: 240)
                 : Duration.zero,
             curve: Curves.easeOutCubic,
             tween: isJustAdded
                 ? Tween(begin: 0.0, end: 1.0)
-                : Tween(begin: 1.0, end: 1.0),
+                : Tween(begin: 1.0, end: _pendingRemoveMealId == meal.id
+                      ? 0.25
+                      : 1.0),
             // Высоту карточки здесь НЕ анимируем: её ведёт единственный
             // AnimatedSize над всем блоком истории. Две анимации высоты
             // одновременно (эта и AnimatedSize) гонялись друг за другом:
@@ -1234,7 +1299,15 @@ class _NutritionScreenState extends State<NutritionScreen>
             builder: (context, value, child) => Opacity(
               opacity: value.clamp(0.0, 1.0),
               child: Transform.translate(
-                offset: Offset(0, (1 - value) * 12),
+                // Подъём «снизу вверх» — только у добавленной записи;
+                // при растворении перед удалением карточка тонет, не
+                // уползая, чтобы не выглядеть вторым жестом.
+                offset: Offset(
+                  0,
+                  isJustAdded && _pendingRemoveMealId != meal.id
+                      ? (1 - value) * 12
+                      : 0,
+                ),
                 child: child,
               ),
             ),
