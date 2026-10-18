@@ -18,6 +18,7 @@ class SettingsService {
   static const _keyAutoExport = 'setting_auto_export';
   static const _keyAiGuide = 'setting_ai_guide';
   static const _keyAiKey = 'setting_ai_key';
+  static const _keyGitHubToken = 'setting_github_token';
   static const _keyAiTracking = 'setting_ai_tracking';
   static const _keyPerfectionism = 'perfectionism_mode';
   static const _keyBerserk = 'berserk_mode';
@@ -321,6 +322,17 @@ class SettingsService {
   static Future<void> saveAiKey(String value) async {
     final map = await _loadSettings();
     map[_keyAiKey] = value.trim();
+    await _saveSettings(map);
+  }
+
+  static Future<String> loadGitHubToken() async {
+    final map = await _loadSettings();
+    return (map[_keyGitHubToken] as String?) ?? '';
+  }
+
+  static Future<void> saveGitHubToken(String value) async {
+    final map = await _loadSettings();
+    map[_keyGitHubToken] = value.trim();
     await _saveSettings(map);
   }
 
