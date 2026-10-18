@@ -46,55 +46,66 @@ Widget devWavyTile(
   final theme = Theme.of(context);
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
-  return Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: <Color>[
-          accent.withValues(alpha: dark ? 0.60 : 0.42),
-          accent.withValues(alpha: dark ? 0.12 : 0.10),
-          cs.tertiary.withValues(alpha: dark ? 0.45 : 0.28),
-        ],
-        stops: const <double>[0, 0.55, 1],
-      ),
-      boxShadow: <BoxShadow>[
-        BoxShadow(
-          color: Colors.black.withValues(alpha: dark ? 0.34 : 0.14),
-          blurRadius: 16,
-          spreadRadius: -6,
-          offset: const Offset(0, 6),
+  // ПЕРЕФЕРИЙНАЯ ГРАНИЦА ПЕРЕРИСОВКИ: каждая плитка — собственный raster.
+  // Любые setState страницы (счётчики символов, фокус полей, входы
+  // StaggerIn) больше не перекрашивают все карточки целиком — тормоза
+  // «всё блестит, но подтормаживает» уходят, вид не тронут.
+  return RepaintBoundary(
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            accent.withValues(alpha: dark ? 0.60 : 0.42),
+            accent.withValues(alpha: dark ? 0.12 : 0.10),
+            cs.tertiary.withValues(alpha: dark ? 0.45 : 0.28),
+          ],
+          stops: const <double>[0, 0.55, 1],
         ),
-      ],
-    ),
-    padding: const EdgeInsets.all(1.3),
-    child: Stack(
-      children: [
-        ClipRRect(
-          borderRadius: const BorderRadius.all(Radius.circular(18.7)),
-          child: ColoredBox(
-            // Плотная подложка, чтобы градиент кольца не просвечивал
-            // сквозь карточку посередине.
-            color: cs.surface,
-            child: child,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: dark ? 0.34 : 0.14),
+            blurRadius: 16,
+            spreadRadius: -6,
+            offset: const Offset(0, 6),
           ),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: _SquigglyRingPainter(
-                color: accent.withValues(alpha: 0.60),
-                radius: 18.7,
-                amplitude: 1.6,
-                wavelength: 9,
-                inset: 1.1,
+        ],
+      ),
+      padding: const EdgeInsets.all(1.3),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(18.7)),
+            child: ColoredBox(
+              // Плотная подложка, чтобы градиент кольца не просвечивал
+              // сквозь карточку посередине.
+              color: cs.surface,
+              child: child,
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              // Змеёвая кайма рисуется раз-и-навсегда: своя граница не даёт
+              // растеризованному слою пересчитываться, когда в карточке
+              // анимируется контент.
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _SquigglyRingPainter(
+                    color: accent.withValues(alpha: 0.60),
+                    radius: 18.7,
+                    amplitude: 1.6,
+                    wavelength: 9,
+                    inset: 1.1,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 }
@@ -544,10 +555,11 @@ class _DeveloperCornerScreenState extends State<DeveloperCornerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: devCardDecoration(theme, widget.accent),
-                    child: Row(
+                  RepaintBoundary(
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: devCardDecoration(theme, widget.accent),
+                      child: Row(
                       children: [
                         Container(
                           width: 54,
@@ -585,6 +597,7 @@ class _DeveloperCornerScreenState extends State<DeveloperCornerScreen> {
                         ),
                       ],
                     ),
+                  ),
                   ),
                   const SizedBox(height: 28),
                   Row(
@@ -736,7 +749,8 @@ class _DeveloperPromptEditorState extends State<DeveloperPromptEditor> {
         ? Translations.t('devPromptUnsaved', context)
         : Translations.t('devPromptSaved', context);
 
-    return Container(
+    return RepaintBoundary(
+    child: Container(
       decoration: devCardDecoration(theme, accent),
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -833,12 +847,12 @@ class _DeveloperPromptEditorState extends State<DeveloperPromptEditor> {
           Align(
             alignment: Alignment.centerRight,
             child: PressScale(
-              // Плавное «вдавливание» — как у карточек и CTA-кнопок
-              // настроек. Дольни и мягкий возврат: зажатие тянется
-              // заметно дольше, отпускается ещё медленнее.
-              pressedScale: 0.945,
-              duration: const Duration(milliseconds: 340),
-              releaseDuration: const Duration(milliseconds: 560),
+              // Зажатие — долгое и бархатное: кнопка «тонет» неспешно
+              // (460 мс) и поднимается ещё медленнее (720 мс), возврат
+              // без отдачи.
+              pressedScale: 0.94,
+              duration: const Duration(milliseconds: 460),
+              releaseDuration: const Duration(milliseconds: 720),
               child: AnimatedOpacity(
                 // Пустое поле — кнопка мягко притухает: без текста её
                 // нажатие всё равно ничего не сохранит.
@@ -880,20 +894,29 @@ class _DeveloperPromptEditorState extends State<DeveloperPromptEditor> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Color.lerp(accent, Colors.white, 0.16)!,
+                          // Лучше читаемый объём: светлая «полированная»
+                          // верхушка, насыщенное ядро и глубокая нижняя
+                          // кромка — керамика, а не плоская заливка.
+                          Color.lerp(accent, Colors.white, 0.30)!,
                           accent,
-                          Color.lerp(accent, Colors.black, 0.12)!,
+                          Color.lerp(accent, Colors.black, 0.20)!,
                         ],
+                        stops: const [0.0, 0.55, 1.0],
                       ),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.40),
-                        width: 1.2,
+                        color: Colors.white.withValues(alpha: 0.48),
+                        width: 1.3,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: accent.withValues(alpha: 0.38),
-                          blurRadius: 14,
-                          offset: const Offset(0, 4),
+                          color: accent.withValues(alpha: 0.42),
+                          blurRadius: 16,
+                          offset: const Offset(0, 5),
+                        ),
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          blurRadius: 2,
+                          offset: const Offset(0, -1),
                         ),
                       ],
                     ),
@@ -953,6 +976,7 @@ class _DeveloperPromptEditorState extends State<DeveloperPromptEditor> {
           ),
         ],
       ),
+    ),
     );
   }
 }

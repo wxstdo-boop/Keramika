@@ -1102,11 +1102,18 @@ void main() async {
   // Автосохранение — загружаем данные ПЕРВЫМ ДЕЛОМ, потом стартуем таймер
   // только если пользователь включал autosave.
   try {
-    await HabitService().load();
-    await TaskService().load();
-    await AlarmService().load();
-    await RealityCheckService().load();
-    await TimerService().load();
+    // Пять сервисов читают РАЗНЫЕ JsonFile-файлы (у каждого свой per-key lock),
+    // поэтому их загрузка безопасна и быстрее когда идёт ПАРАЛЛЕЛЬНО: раньше
+    // они шли строго друг за другом, и время = сумма disk-I/O + AES-декода
+    // пяти файлов, что на бюджетном железе складывалось в заметную паузу до
+    // первого домашнего кадра. Теперь время = только самый долгий из них.
+    await Future.wait<void>([
+      HabitService().load(),
+      TaskService().load(),
+      AlarmService().load(),
+      RealityCheckService().load(),
+      TimerService().load(),
+    ]);
 
     // Дефолтные демо-записи убраны: пользователь добавляет привычки,
     // задачи и будильники сам. Чистим остатки старых демо-данных,

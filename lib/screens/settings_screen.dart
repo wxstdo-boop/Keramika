@@ -13,6 +13,8 @@ import '../utils/android_settings.dart';
 import '../services/pin_service.dart';
 import '../services/reality_check_service.dart';
 import '../widgets/canary_icon.dart';
+import '../widgets/ada_icon.dart';
+import '../widgets/settings_search_icon.dart';
 import '../widgets/press_scale.dart';
 import '../services/alarm_service.dart';
 import '../services/settings_service.dart';
@@ -1691,7 +1693,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 12),
               InkWell(
-                onTap: () => _openLink('https://gitflic.ru/'),
+                onTap: () => _openLink(
+                  'https://gitflic.ru/project/wetcorporation/keramika',
+                ),
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1847,13 +1851,16 @@ class _SettingsScreenState extends State<SettingsScreen>
               _CtaButton(
                 label: Translations.t('support', context, 'Support'),
                 icon: Icons.favorite,
-                // Оригинальный вид: розовый градиент + розовое свечение.
+                // «Кровавый» вид: топ-стоп тёплого ализарина, середина —
+                // насыщенный багровый, низ — почти вишнёвый, как Запекшаяся
+                // кровь. Свечение в тон середины: кнопка горит изнутри,
+                // а не светится розовым обертоном.
                 gradient: const [
-                  Color(0xFFFF8FB3),
-                  Color(0xFFFF4D7E),
-                  Color(0xFFE91E63),
+                  Color(0xFFFF5A66),
+                  Color(0xFFD90D28),
+                  Color(0xFF7E0B1B),
                 ],
-                glow: const Color(0xFFE91E63),
+                glow: const Color(0xFFC8102E),
                 onTap: _showSupportSheet,
               ),
             ],
@@ -2429,23 +2436,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFFFF8FB3), Color(0xFFE91E63)],
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.explore,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
+                  // Значок Ады: своя «искры-светлячок» вместо общей
+                  // иконки-компаса — плавная анимация при тапе, как у
+                  // канарейки в уголке разработчика, только другой персонаж.
+                  const AdaIcon(size: 34),
                   const SizedBox(width: 10),
                   Text(
                     Translations.t('aiGuide', context, 'AI guide'),
@@ -2893,6 +2887,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           // Задизайненный «Назад» (тултип), а не голый системный стрелочный —
           // как в остальных экранах.
           leading: const BackButtonTooltip(),
+          // Красивая плавная лупа поиска по настройкам: пока только
+          // анимируется при тапе, сам поиск подключим позже.
+          actions: const [SettingsSearchIcon(), SizedBox(width: 4)],
           centerTitle: true,
           backgroundColor: Colors.transparent, // Make AppBar transparent
           elevation: 0, // Remove shadow
@@ -3014,122 +3011,181 @@ class _SettingsScreenState extends State<SettingsScreen>
         transitionDuration: const Duration(milliseconds: 520),
         reverseTransitionDuration: const Duration(milliseconds: 420),
         pageBuilder: (routeContext, animation, secondaryAnimation) {
-          return StatefulBuilder(
-            builder: (routeContext, setScreenState) {
-              final cs = Theme.of(routeContext).colorScheme;
-              Future<void> savePerfectionism(bool value) async {
-                await SettingsService.savePerfectionism(value);
-                if (!mounted || !routeContext.mounted) return;
-                setState(() => _perfectionism = value);
-                setScreenState(() {});
-              }
+          // ЛОКАЛЬНОЕ состояние переключателей уголка: ValueNotifier'ы
+          // живут внутри роута, и стрелка рисует значение мгновенно.
+          // Раньше переключатель зависел от setState ВНЕШНЕГО экрана
+          // настроек — тот мог не отработать (скрытый под роутом/
+          // устаревший), и тап «уходил в пустоту»: после открытия уголка
+          // настройка переставала работать. Теперь UI-источник один —
+          // локальный, а наружное состояние и сервис обновляются следом.
+          final perfectionismFlag = ValueNotifier<bool>(_perfectionism);
+          final taskNotesFlag = ValueNotifier<bool>(_taskNotes);
+          final berserkFlag = ValueNotifier<bool>(_berserk);
+          final cs = Theme.of(routeContext).colorScheme;
 
-              Future<void> saveTaskNotes(bool value) async {
-                await SettingsService.saveTaskNotes(value);
-                if (!mounted || !routeContext.mounted) return;
-                setState(() => _taskNotes = value);
-                setScreenState(() {});
-              }
+          void syncOuterScreen() {
+            if (!mounted) return;
+            // БЕЗ setState: экран настроек лежит ПОД роутом уголка и не
+            // виден, а его перестройка — это тысячи виджетов на каждый
+            // тап переключателя. Раньше именно она и давала «дичайшие
+            // подтормаживания» уголка. Поля просто запоминаем — они
+            // прочитаются при следующем открытии уголка.
+            _perfectionism = perfectionismFlag.value;
+            _taskNotes = taskNotesFlag.value;
+            _berserk = berserkFlag.value;
+          }
 
-              Future<void> saveBerserk(bool value) async {
-                await SettingsService.saveBerserk(value);
-                if (!mounted || !routeContext.mounted) return;
-                setState(() => _berserk = value);
-                setScreenState(() {});
+          Future<void> savePerfectionism(bool value) async {
+            perfectionismFlag.value = value; // мгновенный отклик
+            syncOuterScreen();
+            try {
+              await SettingsService.savePerfectionism(value);
+            } catch (e) {
+              perfectionismFlag.value = !value; // откат при отказе сервиса
+              syncOuterScreen();
+              if (routeContext.mounted) {
+                showBeautifulSnackBar(routeContext, message: e.toString());
               }
+            }
+          }
 
-              return DeveloperCornerScreen(
-                title: _developerCornerTitle(routeContext),
-                controlsLabel: _developerControlsLabel(routeContext),
-                subtitle: Translations.t(
-                  'devToolsSubtitle',
-                  routeContext,
-                  'Hidden controls for tuning the Keramika experience.',
+          Future<void> saveTaskNotes(bool value) async {
+            taskNotesFlag.value = value;
+            syncOuterScreen();
+            try {
+              await SettingsService.saveTaskNotes(value);
+            } catch (e) {
+              taskNotesFlag.value = !value;
+              syncOuterScreen();
+              if (routeContext.mounted) {
+                showBeautifulSnackBar(routeContext, message: e.toString());
+              }
+            }
+          }
+
+          Future<void> saveBerserk(bool value) async {
+            berserkFlag.value = value;
+            syncOuterScreen();
+            try {
+              await SettingsService.saveBerserk(value);
+            } catch (e) {
+              berserkFlag.value = !value;
+              syncOuterScreen();
+              if (routeContext.mounted) {
+                showBeautifulSnackBar(routeContext, message: e.toString());
+              }
+            }
+          }
+
+          return DeveloperCornerScreen(
+            title: _developerCornerTitle(routeContext),
+            controlsLabel: _developerControlsLabel(routeContext),
+            subtitle: Translations.t(
+              'devToolsSubtitle',
+              routeContext,
+              'Hidden controls for tuning the Keramika experience.',
+            ),
+            disableLabel: Translations.t(
+              'devModeDisable',
+              routeContext,
+              'Turn off developer mode',
+            ),
+            developerPrompt: developerPrompt,
+            onSaveDeveloperPrompt: SettingsService.saveDeveloperPrompt,
+            accent: cs.primary,
+            onDisable: () async {
+              await SettingsService.saveDevMode(false);
+              if (!mounted || !routeContext.mounted) return;
+              setState(() => _devMode = false);
+              _perfController.reverse();
+              Navigator.of(routeContext).pop();
+            },
+            children: [
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                disableLabel: Translations.t(
-                  'devModeDisable',
-                  routeContext,
-                  'Turn off developer mode',
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                leading: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Color(0xFFB39DDB),
                 ),
-                developerPrompt: developerPrompt,
-                onSaveDeveloperPrompt: SettingsService.saveDeveloperPrompt,
-                accent: cs.primary,
-                onDisable: () async {
-                  await SettingsService.saveDevMode(false);
-                  if (!mounted || !routeContext.mounted) return;
-                  setState(() => _devMode = false);
-                  _perfController.reverse();
-                  Navigator.of(routeContext).pop();
-                },
-                children: [
-                  ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                    leading: const Icon(
-                      Icons.auto_awesome_rounded,
-                      color: Color(0xFFB39DDB),
-                    ),
-                    title: Text(Translations.t('perfectionism', routeContext)),
-                    subtitle: Text(
-                      Translations.t('perfectionismHint', routeContext),
-                    ),
-                    trailing: VolumetricSwitch(
-                      value: _perfectionism,
+                title: Text(Translations.t('perfectionism', routeContext)),
+                subtitle: Text(
+                  Translations.t('perfectionismHint', routeContext),
+                ),
+                // Горжусь мгновенной стрелкой: тап перевернёт
+                // ЛОКАЛЬНЫЙ флаг, а внешний экран догонит следом.
+                trailing: ValueListenableBuilder<bool>(
+                  valueListenable: perfectionismFlag,
+                  builder: (context, value, _) => RepaintBoundary(
+                    // Свой слой перерисовки: 720-мс анимация большого
+                    // пальца не перерастеризует плитку целиком (кольцо +
+                    // змейка + тени) каждый кадр — отсюда были тормоза.
+                    child: VolumetricSwitch(
+                      value: value,
                       onChanged: savePerfectionism,
                       activeColor: const Color(0xFFB39DDB),
                       // Крупнее и объёмнее — уголок разработчика.
                       scale: 1.28,
                     ),
-                    onTap: () => savePerfectionism(!_perfectionism),
                   ),
-                  ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                    leading: const Icon(
-                      Icons.lightbulb_outline_rounded,
-                      color: Color(0xFFD3A7FF),
-                    ),
-                    title: Text(Translations.t('taskNotesTitle', routeContext)),
-                    subtitle: Text(
-                      Translations.t('taskNotesSubtitle', routeContext),
-                    ),
-                    trailing: VolumetricSwitch(
-                      value: _taskNotes,
+                ),
+                onTap: () => savePerfectionism(!perfectionismFlag.value),
+              ),
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                leading: const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  color: Color(0xFFD3A7FF),
+                ),
+                title: Text(Translations.t('taskNotesTitle', routeContext)),
+                subtitle: Text(
+                  Translations.t('taskNotesSubtitle', routeContext),
+                ),
+                trailing: ValueListenableBuilder<bool>(
+                  valueListenable: taskNotesFlag,
+                  builder: (context, value, _) => RepaintBoundary(
+                    child: VolumetricSwitch(
+                      value: value,
                       onChanged: saveTaskNotes,
                       activeColor: const Color(0xFFD3A7FF),
                       scale: 1.28,
                     ),
-                    onTap: () => saveTaskNotes(!_taskNotes),
                   ),
-                  ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                    leading: const Icon(
-                      Icons.local_fire_department_rounded,
-                      color: Color(0xFFFF5265),
-                    ),
-                    title: Text(
-                      Translations.t('berserkCardTitle', routeContext),
-                    ),
-                    subtitle: Text(
-                      Translations.t('berserkCardSubtitle', routeContext),
-                    ),
-                    trailing: VolumetricSwitch(
-                      value: _berserk,
+                ),
+                onTap: () => saveTaskNotes(!taskNotesFlag.value),
+              ),
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                leading: const Icon(
+                  Icons.local_fire_department_rounded,
+                  color: Color(0xFFFF5265),
+                ),
+                title: Text(Translations.t('berserkCardTitle', routeContext)),
+                subtitle: Text(
+                  Translations.t('berserkCardSubtitle', routeContext),
+                ),
+                trailing: ValueListenableBuilder<bool>(
+                  valueListenable: berserkFlag,
+                  builder: (context, value, _) => RepaintBoundary(
+                    child: VolumetricSwitch(
+                      value: value,
                       onChanged: saveBerserk,
                       activeColor: const Color(0xFFFF5265),
                       scale: 1.28,
                     ),
                   ),
-                ],
-              );
-            },
+                ),
+                onTap: () => saveBerserk(!berserkFlag.value),
+              ),
+            ],
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -3268,10 +3324,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     await _runDiag(99999, alarmsText, body);
   }
 
-  String get _supportAuthorUrl =>
-      globalPrefs.getString('support_author_url') ??
-      'https://pay.cloudtips.ru/p/da0c7421';
-
   String get _boostyUrl =>
       globalPrefs.getString('boosty_url') ?? 'https://boosty.to/larafut';
 
@@ -3381,26 +3433,36 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const SizedBox(height: 18),
                 // Способы оплаты — большие кнопки-«таблетки» В ЦВЕТАХ ТЕМЫ
-                // (primary и tertiary) с уникальными значками: облако для
-                // CloudTips, ракета для Boosty.
+                // с уникальными значками: красная сумка у Ozon — плашка SOON
+                // сохранена, но зажимается ТАКЖЕ плавно, как Boosty (340 мс).
                 _SupportPill(
-                  label: 'CloudTips',
-                  icon: Icons.cloud_rounded,
-                  gradient: [
-                    Color.lerp(accent, Colors.white, 0.30)!,
-                    accent,
-                    Color.lerp(accent, Colors.black, 0.16)!,
+                  label: 'Ozon',
+                  icon: Icons.shopping_bag_rounded,
+                  badge: 'SOON',
+                  subtitle: Translations.t('supportOzonSubtitle', context),
+                  gradient: const [
+                    Color(0xFFFF5A6E),
+                    Color(0xFFE8263C),
+                    Color(0xFFB3152E),
                   ],
-                  glow: accent,
+                  glow: const Color(0xFFE8263C),
                   onTap: () {
-                    Navigator.of(ctx).pop();
-                    _openLink(_supportAuthorUrl);
+                    showBeautifulSnackBar(
+                      context,
+                      message: Translations.t(
+                        'supportSoonToast',
+                        context,
+                        'Ozon is coming soon. Stay tuned!',
+                      ),
+                      icon: Icons.hourglass_top_rounded,
+                    );
                   },
                 ),
                 const SizedBox(height: 10),
                 _SupportPill(
                   label: 'Boosty',
                   icon: Icons.rocket_launch_rounded,
+                  subtitle: Translations.t('supportBoostySubtitle', context),
                   gradient: [
                     Color.lerp(cs.tertiary, Colors.white, 0.30)!,
                     cs.tertiary,

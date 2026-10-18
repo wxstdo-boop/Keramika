@@ -201,7 +201,16 @@ class _PinShapePainter extends CustomPainter {
 class _IdBadgeCapsule extends StatelessWidget {
   final ThemeData theme;
   final VoidCallback onExit;
-  const _IdBadgeCapsule({required this.theme, required this.onExit});
+
+  /// Пока ПИН не набран до конца, «Выйти» работает. Как только ввод
+  /// завершён и пошла проверка/разблокировка — кнопка гаснет и перестаёт
+  /// ловить тапы: выйти «поверх» уже начавшегося unlock нельзя.
+  final bool exitEnabled;
+  const _IdBadgeCapsule({
+    required this.theme,
+    required this.onExit,
+    this.exitEnabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -234,12 +243,21 @@ class _IdBadgeCapsule extends StatelessWidget {
           glassGrad: glassGrad,
           textPrimary: textPrimary,
         ),
-        // Кнопка «Выйти» (правая часть) со стеклом + отдача
-        _ExitCapsuleButton(
-          isDark: isDark,
-          cs: cs,
-          glassGrad: glassGrad,
-          onExit: onExit,
+        // Кнопка «Выйти» (правая часть) со стеклом + отдача. На время
+        // проверки набранного ПИНа она мягко притухает и не принимает тапы.
+        IgnorePointer(
+          ignoring: !exitEnabled,
+          child: AnimatedOpacity(
+            opacity: exitEnabled ? 1.0 : 0.42,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: _ExitCapsuleButton(
+              isDark: isDark,
+              cs: cs,
+              glassGrad: glassGrad,
+              onExit: onExit,
+            ),
+          ),
         ),
       ],
     );

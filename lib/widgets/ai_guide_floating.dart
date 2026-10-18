@@ -13,7 +13,8 @@ class AiFloatingBubble extends StatefulWidget {
 class _AiFloatingBubbleState extends State<AiFloatingBubble>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   static const _historyKey = 'ai_chat_history';
-  static const double _expandedHeight = 240;
+  // Скупко ужали: 240 → 204 — ниже остаётся больше места под клавиатуру.
+  static const double _expandedHeight = 204;
   static const double _collapsedSize = 64;
 
   /// Ширина развёрнутого окошка: компактная, ближе к квадрату.
@@ -34,6 +35,11 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
   int _openedCount = 0;
   // Свёрнуто ли окошко в мелкий кружок-аватарку (тап по названию/аватарке).
   bool _collapsed = false;
+  // Накопленное движение пальца для сигнатуры «свайп вниз = закрыть».
+  // Счётчик живёт только в пределах одного жести шапки.
+  double _swipeDx = 0;
+  double _swipeDy = 0;
+  bool _swipedClosed = false;
   final _inputCtrl = WideDashController();
   final _scrollCtrl = ScrollController();
   // Плавное появление/исчезание окошка при переключении режима «в окне».
@@ -277,7 +283,8 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
   /// цветное свечение + глубокая тень — выглядит как плавающий пузырь.
   BoxDecoration _bubbleDecoration(ColorScheme cs, bool collapsed) {
     return BoxDecoration(
-      borderRadius: BorderRadius.circular(collapsed ? 32 : 24),
+      // Скруглённее: 24 → 28 — окошко читается мягче.
+      borderRadius: BorderRadius.circular(collapsed ? 32 : 28),
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -309,7 +316,7 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
       child: IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(collapsed ? 32 : 24),
+            borderRadius: BorderRadius.circular(collapsed ? 32 : 28),
             // Убираем тёмный фон с незакруглёнными углами: прозрачная
             // поверх градиентного пузыря, остаётся только драг-хендл.
             gradient: LinearGradient(
@@ -343,63 +350,108 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
           // пересоздаётся только Opacity/Scale (готовый слой двигается),
           // а не весь чат на каждый кадр. Раньше на Redmi Note 12 каждый
           // тик 260-мс анимации перестраивал весь ListView — тормозило.
-          child: AnimatedContainer(
-            // easeOutBack давал overshoot — окошко «перелетало» размер
-            // и дёргалось при разворачивании. Плавная easeOutCubic.
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeInOutCubic,
-            width: _collapsed ? _collapsedSize : w,
-            height: _collapsed ? _collapsedSize : _expandedHeight,
-            decoration: _bubbleDecoration(cs, _collapsed),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 380),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    // Меньше «сжатости» при разворачивании: чат больше не
-                    // вылезает из «сжатой» 0.9-копии, а мягко проявляется.
-                    child: ScaleTransition(
-                      scale: Tween(begin: 0.965, end: 1.0).animate(anim),
-                      child: child,
+          //
+          // RepaintBoundary: пузырь живёт отдельным слоем перерисовки —
+          // его драг/анимации не перекрашивают окна приложений под ним
+          // и наоборот; на слабых телефонах дёрганье устраняется.
+          child: RepaintBoundary(
+            child: AnimatedContainer(
+              // easeOutBack давал overshoot — окошко «перелетало» размер
+              // и дёргалось при разворачивании. Плавная easeOutCubic.
+              duration: const Duration(milliseconds: 420),
+              curve: Curves.easeInOutCubic,
+              width: _collapsed ? _collapsedSize : w,
+              height: _collapsed ? _collapsedSize : _expandedHeight,
+              decoration: _bubbleDecoration(cs, _collapsed),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 380),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    // Свой layout: уходящий слой остаётся позиционированным
+                    // УЖЕ, а не всплывает центром стека. Закрытие/скрутка
+                    // читаются как жалюзи одного окна, а не «новый белый
+                    // фон» из-под прозрачного пузыря.
+                    layoutBuilder: (currentChild, previousChildren) => Stack(
+                      fit: StackFit.expand,
+                      alignment: Alignment.center,
+                      children: <Widget>[
+                        ...previousChildren,
+                        ?currentChild,
+                      ],
                     ),
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      // Меньше «сжатости» при разворачивании: чат больше не
+                      // вылезает из «сжатой» 0.9-копии, а мягко проявляется.
+                      child: ScaleTransition(
+                        scale: Tween(begin: 0.965, end: 1.0).animate(anim),
+                        child: child,
+                      ),
+                    ),
+                    child: _collapsed
+                        ? _buildCollapsedCircle(
+                            cs,
+                            key: const ValueKey('circle'),
+                          )
+                        : _buildExpanded(
+                            cs,
+                            screen,
+                            key: const ValueKey('expanded'),
+                          ),
                   ),
-                  child: _collapsed
-                      ? _buildCollapsedCircle(cs, key: const ValueKey('circle'))
-                      : _buildExpanded(
-                          cs,
-                          screen,
-                          key: const ValueKey('expanded'),
-                        ),
-                ),
-                // Блик поверх любого состояния.
-                _glassHighlight(cs, _collapsed),
-              ],
+                  // Блик поверх любого состояния.
+                  _glassHighlight(cs, _collapsed),
+                ],
+              ),
             ),
           ),
           builder: (context, child) {
+            // Смена анимаций появления/исчезания: была голая пульсация
+            // (масштаб 0.85→1), теперь пузырь ПРИЛЕТАЕТ мягко справа:
+            // сдвиг + масштаб + фейд на easeOutCubic, исчезание — тем же
+            // ходом в обратную сторону.
             final t = Curves.easeOutCubic.transform(_ctrl.value);
             if (t <= 0.001) return const SizedBox.shrink();
             return ValueListenableBuilder<Offset>(
               valueListenable: _posNotifier,
-              builder: (context, pos, _) => Positioned(
-                left: pos.dx,
-                top: pos.dy,
-                child: IgnorePointer(
-                  ignoring: !aiFloating.value || t < 1.0,
-                  child: Opacity(
-                    opacity: t,
-                    child: Transform.scale(
-                      scale: 0.85 + 0.15 * t,
-                      child: child,
+              builder: (context, pos, _) {
+                // МЕСТО ПОД КЛАВИАТУРУ: в развёрнутом виде при открытой
+                // клавиатуре окошко поднимается НАД ней (как полный чат),
+                // а после закрытия клавиатуры возвращается к сохранённой
+                // позиции — сама позиция при этом не перезаписывается.
+                // Инсет приходит покадрово вместе с анимацией клавиатуры,
+                // поэтому подъём читается плавным.
+                final mq = MediaQuery.of(context);
+                var top = pos.dy;
+                if (!_collapsed) {
+                  final kb = mq.viewInsets.bottom;
+                  if (kb > 0) {
+                    final maxTop = mq.size.height - _expandedHeight - 8;
+                    if (top > maxTop) top = maxTop < 0 ? 0 : maxTop;
+                  }
+                }
+                return Positioned(
+                  left: pos.dx,
+                  top: top,
+                  child: IgnorePointer(
+                    ignoring: !aiFloating.value || t < 1.0,
+                    child: Opacity(
+                      opacity: t,
+                      child: Transform.translate(
+                        offset: Offset((1 - t) * 34, (1 - t) * -12),
+                        child: Transform.scale(
+                          scale: 0.9 + 0.1 * t,
+                          child: child,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         );
@@ -447,9 +499,31 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
       key: key,
       children: [
         // Шапка — перетаскивание + скрутить в кружок + развернуть + закрыть.
+        // Свайп ВНИЗ по шапке — окно само скручивается: тянешь окно вниз
+        // пальцем (оно реально едет за пальцем), и как только тяга вниз
+        // становится «главнее» горизонтальной — окно мягко сворачивается,
+        // продолжив движение, а не «закрывается новым белым фоном».
         GestureDetector(
-          onPanUpdate: (d) => _drag(d.delta, screen),
+          onPanStart: (_) {
+            _swipeDx = 0;
+            _swipeDy = 0;
+            _swipedClosed = false;
+          },
+          onPanUpdate: (d) {
+            _drag(d.delta, screen);
+            _swipeDx += d.delta.dx;
+            _swipeDy += d.delta.dy;
+            if (!_swipedClosed && _swipeDy > 84 && _swipeDy.abs() > _swipeDx.abs() * 1.4) {
+              _swipedClosed = true;
+              Haptics.light();
+              setState(() => _collapsed = true);
+            }
+          },
           onPanEnd: (_) => _savePos(screen),
+          onPanCancel: () {
+            _swipeDy = 0;
+            _swipeDx = 0;
+          },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             // Прозрачная шапка поверх градиентного пузыря — без «квадратной»
@@ -538,7 +612,10 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                 : ListView.builder(
                     controller: _scrollCtrl,
                     reverse: true,
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     itemCount: _messages.length + (_busy ? 1 : 0),
                     itemBuilder: (context, i) {
                       if (_busy && i == 0) {
@@ -567,9 +644,10 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
           ),
         ),
         const Divider(height: 1),
-        // Поле ввода + отправка.
+        // Поле ввода + отправка. Низ скупко ужат: меньше высоты — больше
+        // места под клавиатуру, поле всё так же читаемо.
         Container(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
           // Прозрачное поле ввода поверх градиентного пузыря — без «квадратной»
           // заливки, остаётся только драг-хендл.
           child: Row(
@@ -611,10 +689,10 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
-                            vertical: 8,
+                            vertical: 7,
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(18),
                             borderSide: BorderSide.none,
                           ),
                         ),
@@ -762,7 +840,7 @@ class _MiniBubble extends StatelessWidget {
     final Widget bubble = Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
+        margin: const EdgeInsets.symmetric(vertical: 2),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.55,
         ),

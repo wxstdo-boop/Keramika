@@ -34,11 +34,8 @@ void initOverlayChannel() {
 
 /// Размеры окна оверлея (dp). Окно почти квадратное — «не вдлину»:
 /// 320×360 (было 340×380, раньше 280×440 — вытянутое).
-// Пузырь компактный (40): не перекрывает контент под ним.
-// Чат-окно тоже чуть меньше — аккуратнее поверх чужого приложения.
+// Пузырь компактный (36): не перекрывает контент под ним.
 const double _bubbleSize = 36;
-const double _chatWidth = 292;
-const double _chatHeight = 330;
 
 /// Верхний пояс, в который окошко не заезжает (dp), если основное приложение
 /// не успело передать реальный.
@@ -197,6 +194,23 @@ class _OverlayChatState extends State<_OverlayChat>
   bool _busy = false;
   bool _typingFade = false;
   bool _collapsed = false; // Стартуем как ЧАТ.
+
+  /// Размеры экрана в dp (пишет основное приложение при показе оверлея).
+  double get _screenW =>
+      (globalPrefs.getDouble('ada_overlay_sw') ?? 400).clamp(280.0, 1200.0);
+  double get _screenH =>
+      (globalPrefs.getDouble('ada_overlay_sh') ?? 850).clamp(480.0, 2400.0);
+
+  /// Ширина панели — почти во весь экран; высота — 44% экрана, но не выше
+  /// 460 и не ниже 300. Такой «нижний лист» оставляет место клавиатуре и
+  /// не выглядит отдельным плавающим окном.
+  double get _chatW => (_screenW - 16).clamp(280.0, 560.0);
+  double get _chatH => (_screenH * 0.44).clamp(300.0, 460.0);
+
+  /// Текущий подъём над клавиатурой (dp): 0 — клавиатуры нет.
+  double _kbInset = 0;
+  Timer? _kbTimer;
+  double _lastKbInset = 0;
   bool _closing = false;
   bool _resizing = false;
   bool _inputFocused = false;
@@ -410,7 +424,7 @@ class _OverlayChatState extends State<_OverlayChat>
     final sw = globalPrefs.getDouble('ada_overlay_sw') ?? 400;
     final sh = globalPrefs.getDouble('ada_overlay_sh') ?? 850;
     final top = _topKeepout;
-    final bottom = sh - h - 36;
+    final bottom = sh - h - 12;
     return Offset(
       pos.dx.clamp(0.0, sw - w < 0 ? 0.0 : sw - w),
       pos.dy.clamp(top, bottom < top ? top : bottom),
@@ -422,11 +436,15 @@ class _OverlayChatState extends State<_OverlayChat>
   /// переводит их в пиксели, поэтому движение получается плавным, а не
   /// «ступеньками» по 1dp.
   void _sendPos() {
-    _pos = _clamped(
-      _pos,
-      _collapsed ? _bubbleSize : _chatWidth,
-      _collapsed ? _bubbleSize : _chatHeight,
-    );
+    // При открытой клавиатуре панель уже поднята и её фактическая высота
+    // меньше базовой — clamp считаем по ней, иначе _clamped вернул бы
+    // окно вниз, под клавиатуру.
+    final effectiveH = _collapsed
+        ? _bubbleSize
+        : (_kbInset > 0
+              ? (_screenH - _kbInset - _topKeepout - 16).clamp(200.0, _chatH)
+              : _chatH);
+    _pos = _clamped(_pos, _collapsed ? _bubbleSize : _chatW, effectiveH);
     // Не складываем MethodChannel-вызовы в очередь: если native ещё
     // применяет предыдущую позицию, оставляем только самую свежую.
     _pendingNativePosition = _pos;
@@ -513,6 +531,12 @@ class _OverlayChatState extends State<_OverlayChat>
     } catch (error, stackTrace) {
       _reportStorageFailure(error, stackTrace);
     }
+    // Чат всегда открывается нижней панелью, а не там, где его в прошлый
+    // раз бросили: это больше не свободно плавающее окно.
+    if (!_collapsed && mounted) {
+      _placeChatBottom();
+      _sendPos();
+    }
   }
 
   void _reportStorageFailure(Object error, StackTrace stackTrace) {
@@ -540,17 +564,17 @@ class _OverlayChatState extends State<_OverlayChat>
     final previousPosition = _pos;
     try {
       if (_collapsed) {
-        // Пузырь → чат: гасим пузырь, мгновенно ставим размер чата (в момент
-        // непрозрачности 0 — незаметно), выравниваем центр, проявляем.
+        // Пузырь → чат: гасим пузырь, ставим панель ПО НИЗУ ЭКРАНА
+        // (как нижний лист чата), проявляем. Ширина — почти вся.
         _stopDrift();
         await _contentCtrl.reverse();
         if (!mounted) return;
         setState(() => _collapsed = false);
-        _resizeKeepCenter(_bubbleSize, _bubbleSize, _chatWidth, _chatHeight);
+        _placeChatBottom();
         final resized =
             await FlutterOverlayWindow.resizeOverlay(
-              _chatWidth.round(),
-              _chatHeight.round(),
+              _chatW.round(),
+              _chatH.round(),
               false,
             ) ??
             false;
@@ -577,7 +601,11 @@ class _OverlayChatState extends State<_OverlayChat>
         await _contentCtrl.reverse();
         if (!mounted) return;
         setState(() => _collapsed = true);
-        _resizeKeepCenter(_chatWidth, _chatHeight, _bubbleSize, _bubbleSize);
+        // Пузырь ставим в правый нижний угол — на месте, где был низ
+        // панели: окно не «улетает» в центр экрана.
+        _kbInset = 0;
+        _lastKbInset = 0;
+        _pos = Offset(_screenW - _bubbleSize - 16, _screenH - _bubbleSize - 96);
         final resized =
             await FlutterOverlayWindow.resizeOverlay(
               _bubbleSize.round(),
@@ -616,12 +644,55 @@ class _OverlayChatState extends State<_OverlayChat>
     }
   }
 
-  /// Пересчитывает _pos так, чтобы ЦЕНТР окна не сдвинулся при смене
-  /// размеров (нативный ресайз идёт от верхнего левого угла).
-  void _resizeKeepCenter(double fromW, double fromH, double toW, double toH) {
-    final cx = _pos.dx + fromW / 2;
-    final cy = _pos.dy + fromH / 2;
-    _pos = Offset(cx - toW / 2, cy - toH / 2);
+  /// Ставит чат-панель по низу экрана: слева/справа по 8 dp, снизу —
+  /// отступ под навбар. Никакого «центра» и свободного полёта.
+  void _placeChatBottom() {
+    _kbInset = 0;
+    _lastKbInset = 0;
+    _pos = Offset((_screenW - _chatW) / 2, _screenH - _chatH - 16);
+  }
+
+  /// Клавиатура: панель ПОДНИМАЕТСЯ над ней, сохраняя высоту (пока хватает
+  /// места). Окно оверлея с ADJUST_NOTHING само не сжимается, поэтому
+  /// двигаем его вручную по фактическому IME-инсету.
+  void _applyKeyboardInset(double inset) {
+    if (_collapsed || _resizing || !mounted) return;
+    _kbInset = inset;
+    final maxH = (_screenH - inset - _topKeepout - 16).clamp(200.0, _chatH);
+    final h = maxH;
+    final y = (_screenH - inset - h - 8).clamp(
+      _topKeepout,
+      (_screenH - h - 8) < _topKeepout ? _topKeepout : _screenH - h - 8,
+    );
+    _pos = Offset((_screenW - _chatW) / 2, y);
+    // Размер меняем только при реальной нехватке места; иначе просто
+    // поднимаем окно — меньше native-ресайзов, меньше дёрганья.
+    if ((h - _chatH).abs() > 2) {
+      FlutterOverlayWindow.resizeOverlay(
+        _chatW.round(),
+        h.round(),
+        false,
+      ).catchError((_) => false);
+    }
+    _sendPos();
+    _persistPosition();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted || _collapsed || _resizing) return;
+    // MediaQuery у состояния ещё не «обрезана» (removeViewInsets стоит
+    // только на детях), поэтому инсет клавиатуры здесь настоящий.
+    final inset = MediaQuery.of(context).viewInsets.bottom;
+    if ((inset - _lastKbInset).abs() < 1) return;
+    _lastKbInset = inset;
+    _kbTimer?.cancel();
+    // Ждём финальные метрики: IME приходит покадрово, ресайз на каждом
+    // кадре — это дёрганье и очередь MethodChannel.
+    _kbTimer = Timer(const Duration(milliseconds: 90), () {
+      if (mounted) _applyKeyboardInset(inset);
+    });
   }
 
   void _startDrift() {
@@ -669,7 +740,7 @@ class _OverlayChatState extends State<_OverlayChat>
 
   Future<void> _clampToScreen() async {
     if (kIsWeb) return; // Оверлей невозможен на web
-    final clamped = _clamped(_pos, _chatWidth, _chatHeight);
+    final clamped = _clamped(_pos, _chatW, _chatH);
     _pos = clamped;
     try {
       await _overlayChannel.invokeMethod<void>('updateOverlayPosition', {
@@ -888,6 +959,7 @@ class _OverlayChatState extends State<_OverlayChat>
     WidgetsBinding.instance.removeObserver(this);
     _appearTimer?.cancel();
     _syncTimer?.cancel();
+    _kbTimer?.cancel();
     _stopDrift();
     _appearCtrl.dispose();
     _contentCtrl.dispose();
@@ -991,22 +1063,22 @@ class _OverlayChatState extends State<_OverlayChat>
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      // Чат двигается за шапку и фон (в ленте драг перехватывает
-      // скролл, чтобы сообщения можно было листать).
-      onPanStart: (_) => _startDrag(),
-      onPanEnd: (_) => _endDrag(),
-      onPanCancel: _endDrag,
-      onPanUpdate: _onDrag,
+      // Панель больше не таскается по экрану: она стоит снизу. Свайп вниз
+      // по пустой области/шапке сворачивает её в пузырь — привычный жест
+      // нижнего листа.
+      onVerticalDragEnd: (d) {
+        if ((d.primaryVelocity ?? 0) > 260) _toggleSize();
+      },
       child: ClipRRect(
         // Гарантированно скруглённые углы: ClipRRect клипает и фон, и
         // детей — никакого «прямоугольника» за панелью (некоторые
         // устройства рисовали подложку окна квадратной).
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(28),
         child: Container(
           margin: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             color: const Color(0xFF0A0A0C),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(26),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.12),
               width: 1,
@@ -1032,100 +1104,97 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Widget _buildHeader(ColorScheme cs) {
-    return GestureDetector(
-      onPanUpdate: _onDrag,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Ручка-таб сверху по центру — как у главного чата.
-          Container(
-            margin: const EdgeInsets.only(top: 4),
-            width: 32,
-            height: 3,
-            decoration: BoxDecoration(
-              color: cs.outlineVariant.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(2),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Ручка-таб сверху по центру — как у главного чата.
+        Container(
+          margin: const EdgeInsets.only(top: 4),
+          width: 32,
+          height: 3,
+          decoration: BoxDecoration(
+            color: cs.outlineVariant.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(2),
           ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: _cycleAvatar,
-                  child: _animatedAvatar(28, _avatarVariant),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _toggleSize,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Ада',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        // Текущий провайдер/модель (Kilo, OVHcloud, AI Horde).
-                        // переключается плавно при смене провайдера.
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 320),
-                          switchInCurve: Curves.easeOut,
-                          switchOutCurve: Curves.easeIn,
-                          transitionBuilder: (child, anim) =>
-                              FadeTransition(opacity: anim, child: child),
-                          child: ModelLabel(
-                            key: ValueKey(
-                              _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
-                            ),
-                            label: _modelLabel,
-                            details: AiGuideService.providerTrace.value.join(
-                              '\n',
-                            ),
-                            textStyle: TextStyle(
-                              fontSize: 10,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                GestureDetector(
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: _cycleAvatar,
+                child: _animatedAvatar(28, _avatarVariant),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _toggleSize,
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: Icon(
-                      Icons.minimize_rounded,
-                      color: cs.onSurfaceVariant,
-                      size: 20,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Ада',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      // Текущий провайдер/модель (Kilo, OVHcloud, AI Horde).
+                      // переключается плавно при смене провайдера.
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 320),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
+                        child: ModelLabel(
+                          key: ValueKey(
+                            _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
+                          ),
+                          label: _modelLabel,
+                          details: AiGuideService.providerTrace.value.join(
+                            '\n',
+                          ),
+                          textStyle: TextStyle(
+                            fontSize: 10,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _close,
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: Icon(
-                      Icons.close_rounded,
-                      color: cs.onSurfaceVariant,
-                      size: 20,
-                    ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleSize,
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.minimize_rounded,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
                   ),
                 ),
-              ],
-            ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _close,
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1197,155 +1266,156 @@ class _OverlayChatState extends State<_OverlayChat>
   Widget _buildInput(ColorScheme cs) {
     return RepaintBoundary(
       child: Container(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-      decoration: BoxDecoration(
-        // Полностью непрозрачный фон: полупрозрачный давал «белую полосу»
-        // под клавиатурой/внизу чата.
-        color: cs.surfaceContainerLowest,
-        border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.4)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                SmoothTyping(
-                  controller: _inputCtrl,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.3,
-                    // Окошко ВСЕГДА тёмное (ThemeData.dark): буквы светлые,
-                    // а не чёрные — фон поля тёмный.
-                    color: cs.onSurface,
-                  ),
-                  builder: (style) => TextField(
-                    style: style,
-                    magnifierConfiguration: TextMagnifierConfiguration.disabled,
-                    // Поле мини-окна не должно открывать выделение/тулбар:
-                    // long-press оставляем для обычного ввода, без полупрозрачного
-                    // selection overlay поверх оверлея.
-                    contextMenuBuilder: (_, _) => const SizedBox.shrink(),
-                    selectionControls: null,
-                    enableInteractiveSelection: false,
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+        decoration: BoxDecoration(
+          // Полностью непрозрачный фон: полупрозрачный давал «белую полосу»
+          // под клавиатурой/внизу чата.
+          color: cs.surfaceContainerLowest,
+          border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.4)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  SmoothTyping(
                     controller: _inputCtrl,
-                    focusNode: _inputFocus,
-                    minLines: 1,
-                    maxLines: 3,
-                    inputFormatters: [WideDashFormatter()],
-                    scrollPadding: EdgeInsets.zero,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                    onTap: () async {
-                      // Первый тап: окно становится фокусирующим, поле — фокусом.
-                      // Некоторые прошивки «съедают» первый requestFocus, пока
-                      // натив применяет флаг — пробуем до 6 раз, плюс прямой
-                      // показ IME, плюс страховка на следующий кадр.
-                      for (var i = 0; i < 6 && mounted; i++) {
-                        await _setFocusable(true);
-                        if (!mounted) return;
-                        _inputFocus.requestFocus();
-                        try {
-                          await SystemChannels.textInput.invokeMethod<void>(
-                            'TextInput.show',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.3,
+                      // Окошко ВСЕГДА тёмное (ThemeData.dark): буквы светлые,
+                      // а не чёрные — фон поля тёмный.
+                      color: cs.onSurface,
+                    ),
+                    builder: (style) => TextField(
+                      style: style,
+                      magnifierConfiguration:
+                          TextMagnifierConfiguration.disabled,
+                      // Поле мини-окна не должно открывать выделение/тулбар:
+                      // long-press оставляем для обычного ввода, без полупрозрачного
+                      // selection overlay поверх оверлея.
+                      contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                      selectionControls: null,
+                      enableInteractiveSelection: false,
+                      controller: _inputCtrl,
+                      focusNode: _inputFocus,
+                      minLines: 1,
+                      maxLines: 3,
+                      inputFormatters: [WideDashFormatter()],
+                      scrollPadding: EdgeInsets.zero,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      onTap: () async {
+                        // Первый тап: окно становится фокусирующим, поле — фокусом.
+                        // Некоторые прошивки «съедают» первый requestFocus, пока
+                        // натив применяет флаг — пробуем до 6 раз, плюс прямой
+                        // показ IME, плюс страховка на следующий кадр.
+                        for (var i = 0; i < 6 && mounted; i++) {
+                          await _setFocusable(true);
+                          if (!mounted) return;
+                          _inputFocus.requestFocus();
+                          try {
+                            await SystemChannels.textInput.invokeMethod<void>(
+                              'TextInput.show',
+                            );
+                          } catch (_) {}
+                          if (!mounted) return;
+                          if (_inputFocus.hasFocus) break;
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 110),
                           );
-                        } catch (_) {}
-                        if (!mounted) return;
-                        if (_inputFocus.hasFocus) break;
-                        await Future<void>.delayed(
-                          const Duration(milliseconds: 110),
-                        );
-                      }
-                      if (mounted && !_inputFocus.hasFocus) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            _inputFocus.requestFocus();
-                            try {
-                              SystemChannels.textInput.invokeMethod<void>(
-                                'TextInput.show',
-                              );
-                            } catch (_) {}
-                          }
-                        });
-                      }
-                    },
-                    cursorColor: cs.primary,
-                    // Каретка мигает плавно (fade), а не резко вкл/выкл.
-                    cursorOpacityAnimates: true,
-                    decoration: InputDecoration(
-                      counterText: '',
-                      isDense: true,
-                      filled: true,
-                      fillColor: cs.surfaceContainerHigh,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        }
+                        if (mounted && !_inputFocus.hasFocus) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              _inputFocus.requestFocus();
+                              try {
+                                SystemChannels.textInput.invokeMethod<void>(
+                                  'TextInput.show',
+                                );
+                              } catch (_) {}
+                            }
+                          });
+                        }
+                      },
+                      cursorColor: cs.primary,
+                      // Каретка мигает плавно (fade), а не резко вкл/выкл.
+                      cursorOpacityAnimates: true,
+                      decoration: InputDecoration(
+                        counterText: '',
+                        isDense: true,
+                        filled: true,
+                        fillColor: cs.surfaceContainerHigh,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                // Плавная подсказка: гаснет при вводе, мягко возвращается
-                // при очистке поля.
-                IgnorePointer(
-                  child: ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _inputCtrl,
-                    builder: (context, v, _) => AnimatedOpacity(
-                      opacity: v.text.isEmpty ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 11,
-                          vertical: 9,
-                        ),
-                        child: Text(
-                          Translations.t('aiInputHint', context, 'Message…'),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
+                  // Плавная подсказка: гаснет при вводе, мягко возвращается
+                  // при очистке поля.
+                  IgnorePointer(
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _inputCtrl,
+                      builder: (context, v, _) => AnimatedOpacity(
+                        opacity: v.text.isEmpty ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 11,
+                            vertical: 9,
+                          ),
+                          child: Text(
+                            Translations.t('aiInputHint', context, 'Message…'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 5),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            transitionBuilder: (child, anim) => ScaleTransition(
-              scale: anim,
-              child: FadeTransition(opacity: anim, child: child),
+            const SizedBox(width: 5),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: anim,
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: _busy
+                  ? const SizedBox(
+                      key: ValueKey('busy'),
+                      width: 34,
+                      height: 34,
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton.filled(
+                      key: const ValueKey('send'),
+                      onPressed: _send,
+                      icon: const Icon(Icons.arrow_upward_rounded, size: 17),
+                      style: IconButton.styleFrom(
+                        backgroundColor: cs.primary,
+                        foregroundColor: cs.onPrimary,
+                        minimumSize: const Size(34, 34),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
             ),
-            child: _busy
-                ? const SizedBox(
-                    key: ValueKey('busy'),
-                    width: 34,
-                    height: 34,
-                    child: Padding(
-                      padding: EdgeInsets.all(8),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : IconButton.filled(
-                    key: const ValueKey('send'),
-                    onPressed: _send,
-                    icon: const Icon(Icons.arrow_upward_rounded, size: 17),
-                    style: IconButton.styleFrom(
-                      backgroundColor: cs.primary,
-                      foregroundColor: cs.onPrimary,
-                      minimumSize: const Size(34, 34),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }

@@ -53,14 +53,12 @@ Future<bool> showAdaOverlay({
     }
     final sw = screenWidth ?? 400;
     final sh = screenHeight ?? 850;
-    // Стартовая позиция — ТА, где окно оставили (prefs), а не центр:
-    // иначе при каждом открытии окно сначала «вспыхивает» в центре,
-    // а потом перепрыгивает на сохранённое место.
-    final savedX = globalPrefs.getDouble('ada_overlay_x');
-    final savedY = globalPrefs.getDouble('ada_overlay_y');
-    final startPos = (savedX != null && savedY != null)
-        ? OverlayPosition(savedX, savedY)
-        : OverlayPosition((sw - 340) / 2, (sh - 380) / 2);
+    // Нижняя панель чата: почти вся ширина, меньше половины высоты.
+    // Стартуем сразу в ней (а не в центре экрана) — оверлей больше не
+    // «плавающее окно», а привычный нижний лист.
+    final startW = (sw - 16).clamp(280.0, 560.0);
+    final startH = (sh * 0.44).clamp(300.0, 460.0);
+    final startPos = OverlayPosition((sw - startW) / 2, sh - startH - 16);
     // 1. Команда «сбросься и покажись» прямо в живой движок оверлея.
     //    Движок КЭШИРУЕТСЯ между открытиями: его Dart-состояние живёт
     //    даже когда окна нет, и lifecycle-событие при переоткрытии
@@ -76,11 +74,10 @@ Future<bool> showAdaOverlay({
       }
     } catch (_) {}
     await FlutterOverlayWindow.showOverlay(
-      // Стартуем как полноценный мини-чат (340×380 dp — почти квадрат,
-      // «не вдлину»). alignment topLeft = абсолютные координаты.
-      // Стартовая позиция — центр экрана.
-      height: 380,
-      width: 340,
+      // Нижняя панель чата: ширина почти во весь экран, высота — меньше
+      // половины, чтобы над клавиатурой оставалось место.
+      height: startH.round(),
+      width: startW.round(),
       alignment: OverlayAlignment.topLeft,
       startPosition: startPos,
       // NOT_FOCUSABLE по дефолту — жест «назад» работает в основном

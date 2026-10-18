@@ -39,11 +39,12 @@ class _NutritionScreenState extends State<NutritionScreen>
   final Map<String, DateTime> _addedAt = {};
   bool _loaded = false; // Первая загрузка завершена — кнопка не «мигает»
 
-  /// Приём пищи, чьё удаление подтверждено и уже идёт: карточка плавно
-  /// «растворяется» (opacity до 0.25 за 240 мс), пока жест дотягивает
-  /// её до края. Без фазы растворения после свайпа карточка исчезала
-  /// одним кадром — читалось как обрыв.
-  String? _pendingRemoveMealId;
+  /// Приёмы пищи, чьё удаление подтверждено и уже «отыгрывается» locally:
+  /// строка внутри себя растворяется (240 мс) и схлопывается по высоте
+  /// (340 мс), и только после этого confirmDismiss возвращает true, и
+  /// модель теряет запись. Соседи подаются вверх непрерывно — собственных
+  /// прыжков ни у кого нет.
+  final Set<String> _removingMealIds = <String>{};
 
   /// Поле, открытое под встроенной клавиатурой, и сама открыта ли панель.
   /// `_pad` переживает закрытие: за 260 мс сложения панели её содержимое
@@ -348,15 +349,19 @@ class _NutritionScreenState extends State<NutritionScreen>
               ),
             ),
             const SizedBox(height: 16),
-            // AnimatedSize — ЕДИНСТВЕННЫЙ механизм, который меняет высоту
+            // AnimatedSize вЂ” Р•Р”РРќРЎРўР’Р•РќРќР«Р™ РјРµС…Р°РЅРёР·Рј, РєРѕС‚РѕСЂС‹Р№ РјРµРЅСЏРµС‚ РІС‹СЃРѕС‚Сѓ
             // блока истории. Так добавление приёма пищи, удаление и уход
             // заголовка «Сегодня» (вместе с последней записью дня) идут
             // одной плавной волной, а не двумя спорящими анимациями.
             _reveal(
               7,
               AnimatedSize(
-                duration: const Duration(milliseconds: 360),
-                curve: Curves.easeInOutCubic,
+                // Догонялка со скромным окном (240 мс): высоту блока ведут
+                // сами строки — вросло из нуля у нового приёма,
+                // схлопывание слота при удалении. AnimatedSize лишь
+                // подхватывает финальный ход, а не тянет высоту сам.
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
                 alignment: Alignment.topCenter,
                 clipBehavior: Clip.hardEdge,
                 child: AnimatedSwitcher(
@@ -367,7 +372,7 @@ class _NutritionScreenState extends State<NutritionScreen>
                       FadeTransition(opacity: animation, child: child),
                   // Свое расположение: уходящий ребёнок кладём Positioned.
                   // У обычного AnimatedSwitcher оба ребёнка лежат в Stack как
-                  // обычные дети — стек раздувается до МАКСИМАЛЬНОЙ высоты, и
+                  // РѕР±С‹С‡РЅС‹Рµ РґРµС‚Рё вЂ” СЃС‚РµРє СЂР°Р·РґСѓРІР°РµС‚СЃСЏ РґРѕ РњРђРљРЎРРњРђР›Р¬РќРћР™ РІС‹СЃРѕС‚С‹, Рё
                   // AnimatedSize над ним не видит промежуточных значений:
                   // высота прыгала к финальной, а текст «Пока нет приёмов пищи»
                   // дёргался вниз/вверх. Positioned не участвует в размере стека,
@@ -424,7 +429,7 @@ class _NutritionScreenState extends State<NutritionScreen>
   /// Красивая обводка-кольцо вокруг карточки: тонкий градиент от акцента к
   /// третичному цвету темы.
   ///
-  /// Именно кольцо, а не `BorderSide`: у рамки один цвет на все четыре
+  /// РРјРµРЅРЅРѕ РєРѕР»СЊС†Рѕ, Р° РЅРµ `BorderSide`: Сѓ СЂР°РјРєРё РѕРґРёРЅ С†РІРµС‚ РЅР° РІСЃРµ С‡РµС‚С‹СЂРµ
   /// стороны, и на большой карточке она читается как «наклейка». Градиент
   /// даёт мягкий перелив по краю, который не спорит с содержимым.
   /// Тень тоже здесь: две тени (своя у Card и у кольца) давали грязный
@@ -852,7 +857,7 @@ class _NutritionScreenState extends State<NutritionScreen>
     final cs = theme.colorScheme;
     final active = _padOpen && _pad == field;
     return SmoothTyping(
-      // Плавность цифр ВЕРНУЛИ: отключили только «призраков» (гаснущие копии
+      // РџР»Р°РІРЅРѕСЃС‚СЊ С†РёС„СЂ Р’Р•Р РќРЈР›Р: РѕС‚РєР»СЋС‡РёР»Рё С‚РѕР»СЊРєРѕ В«РїСЂРёР·СЂР°РєРѕРІВ» (РіР°СЃРЅСѓС‰РёРµ РєРѕРїРёРё
       // удалённых цифр). Заедание было именно на них — при зажатом бэкспейсе
       // значения летят ~20 раз в секунду, и на каждый кадр троился десяток
       // новых TextPainter-ов. Появление цифр по-прежнему плавное, а удаление
@@ -1048,7 +1053,7 @@ class _NutritionScreenState extends State<NutritionScreen>
       return accentColors[seed % accentColors.length];
     }
 
-    // История рендерится как обычная Column — экран скроллит единый
+    // РСЃС‚РѕСЂРёСЏ СЂРµРЅРґРµСЂРёС‚СЃСЏ РєР°Рє РѕР±С‹С‡РЅР°СЏ Column вЂ” СЌРєСЂР°РЅ СЃРєСЂРѕР»Р»РёС‚ РµРґРёРЅС‹Р№
     // внешний ListView (ленивость не нужна).
     final dayWidgets = <Widget>[];
     for (final day in sortedKeys) {
@@ -1102,14 +1107,14 @@ class _NutritionScreenState extends State<NutritionScreen>
     final water = meal.water;
     final subtitle = meal.isWaterOnly
         ? '$water ${Translations.t('mlShort', context, 'мл')} • $time'
-        : '${Translations.t('macroPSingle', context, 'Б')} ${macros.protein}'
-              ' · ${Translations.t('macroFSingle', context, 'Ж')} ${macros.fat}'
+        : '${Translations.t('macroPSingle', context, 'Р‘')} ${macros.protein}'
+              ' В· ${Translations.t('macroFSingle', context, 'Р–')} ${macros.fat}'
               ' · ${Translations.t('macroCSingle', context, 'У')} ${macros.carbs}'
               '${water > 0 ? ' · $water мл' : ''}'
               ' • ${meal.calories} ${Translations.t('kcalShort', context, 'ккал')}'
-              ' • $time';
+              ' вЂў $time';
     final isJustAdded = _addedAt.containsKey(meal.id);
-    // Зазор между приёмами пищи живёт ВНУТРИ Dismissible: `resizeDuration`
+    // Р—Р°Р·РѕСЂ РјРµР¶РґСѓ РїСЂРёС‘РјР°РјРё РїРёС‰Рё Р¶РёРІС‘С‚ Р’РќРЈРўР Р Dismissible: `resizeDuration`
     // анимирует только собственное дитя, и раньше на месте удалённой строки
     // оставались эти 10 px, которые снимались одним кадром после конца
     // сжатия — «следующий чуть дёргается вверх».
@@ -1127,72 +1132,85 @@ class _NutritionScreenState extends State<NutritionScreen>
       // только AnimatedSize — одна анимация высоты на экране.
       resizeDuration: null,
       direction: DismissDirection.horizontal,
-      background: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        decoration: BoxDecoration(
-          color: Colors.red.shade400,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.delete_outline, color: Colors.white, size: 22),
-            const SizedBox(width: 8),
-            Text(
-              Translations.deleteOf(context),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-      secondaryBackground: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 190),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(scale: animation, child: child),
-              ),
-              child: Text(
-                meal.pinned
-                    ? Translations.t('unpinMeal', context)
-                    : Translations.t('pinMeal', context),
-                key: ValueKey('pin_status_${meal.pinned}'),
+      // Красная подложка гаснет СРАЗУ, как только удаление подтверждено:
+      // Dismissible ещё держит строку на месте, пока идёт схлопывание, и
+      // раньше эта красная плашка «заедала» в конце на все 350 мс.
+      background: AnimatedOpacity(
+        opacity: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          decoration: BoxDecoration(
+            color: Colors.red.shade400,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.delete_outline, color: Colors.white, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                Translations.deleteOf(context),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 190),
-              transitionBuilder: (child, animation) => ScaleTransition(
-                scale: animation,
-                child: FadeTransition(opacity: animation, child: child),
+            ],
+          ),
+        ),
+      ),
+      secondaryBackground: AnimatedOpacity(
+        opacity: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 190),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(scale: animation, child: child),
+                ),
+                child: Text(
+                  meal.pinned
+                      ? Translations.t('unpinMeal', context)
+                      : Translations.t('pinMeal', context),
+                  key: ValueKey('pin_status_${meal.pinned}'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-              child: Icon(
-                meal.pinned ? Icons.push_pin_outlined : Icons.push_pin,
-                key: ValueKey('pin_icon_${meal.pinned}'),
-                color: Colors.white,
-                size: 22,
+              const SizedBox(width: 8),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 190),
+                transitionBuilder: (child, animation) => ScaleTransition(
+                  scale: animation,
+                  child: FadeTransition(opacity: animation, child: child),
+                ),
+                child: Icon(
+                  meal.pinned ? Icons.push_pin_outlined : Icons.push_pin,
+                  key: ValueKey('pin_icon_${meal.pinned}'),
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       // Перед удалением приёма пищи — мягкий диалог
@@ -1251,14 +1269,20 @@ class _NutritionScreenState extends State<NutritionScreen>
           ),
         );
         if (ok == true) {
-          // Подтверждённое удаление: сначала короткая фаза растворения
-          // (240 мс, easeInOutCubic), пока жест дотягивает карточку до
-          // края, — исчезновение читается плавным «выцветанием», а не
-          // обрывом в один кадр.
-          _pendingRemoveMealId = meal.id;
-          if (mounted) setState(() {});
-          await Future<void>.delayed(const Duration(milliseconds: 240));
-          if (mounted) setState(() => _pendingRemoveMealId = null);
+          // Подтверждённое удаление: строка САМА отыгрывает уход
+          // (растворение 240 мс + схлопывание высоты 340 мс — см.
+          // _removingMealIds в каркасе ребёнка), и только после этого
+          // Dismissible завершает жест. Пока фаза идёт, место под строкой
+          // освобождается непрерывно — соседи подаются вверх плавно.
+          if (mounted) setState(() => _removingMealIds.add(meal.id));
+          // 350 мс: к этому моменту схлопывание (340 мс) дошло до нуля,
+          // и слот уже пуст — красная подложка не простаивает ни кадра.
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          // НЕЧАЯННОЕ «ЗАЕДАНИЕ» В КОНЦЕ УБРАНО: раньше здесь снимали id из
+          // _removingMealIds перед возвратом true — end-обоих tween'ов
+          // возвращался в 1.0, и на один кадр строка вспыхивала на полную
+          // высоту перед размонтированием. Теперь id оставляем в наборе:
+          // строка уходит из дерева в onDismissed и набор просто не нужен.
         }
         return ok == true;
       },
@@ -1272,142 +1296,162 @@ class _NutritionScreenState extends State<NutritionScreen>
           _service.remove(meal.id);
         }
       },
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: RepaintBoundary(
+      child: RepaintBoundary(
+        // Вросло из нуля только у только что добавленной записи:
+        // соседи подаются вниз НЕПРЕРЫВНО (высота карточки растёт
+        // сама), а не прыжком при вставке готовой карточки.
+        child: _GrowIntoPlace(
+          active: isJustAdded,
           child: TweenAnimationBuilder<double>(
-            // Только новая запись анимируется 380 мс. У истории начальное и
-            // конечное значения равны, поэтому долгий ticker ей не нужен —
-            // ИСКЛЮЧЕНИЕ: подтверждённое удаление (см. confirmDismiss):
-            // карточка плавно тонет на 240 мс, пока дотягивается до края.
+            // Въезд (opacity + мягкий сдвиг) — только у новой записи.
             duration: isJustAdded
                 ? const Duration(milliseconds: 380)
-                : _pendingRemoveMealId == meal.id
-                ? const Duration(milliseconds: 240)
                 : Duration.zero,
             curve: Curves.easeOutCubic,
             tween: isJustAdded
                 ? Tween(begin: 0.0, end: 1.0)
-                : Tween(
-                    begin: 1.0,
-                    end: _pendingRemoveMealId == meal.id ? 0.25 : 1.0,
-                  ),
-            // Высоту карточки здесь НЕ анимируем: её ведёт единственный
-            // AnimatedSize над всем блоком истории. Две анимации высоты
-            // одновременно (эта и AnimatedSize) гонялись друг за другом:
-            // блок «догонял» раскрывающуюся карточку, и экран подрагивал.
-            // Остались проявление и мягкий подъём — они не влияют на layout.
+                : Tween(begin: 1.0, end: 1.0),
             builder: (context, value, child) => Opacity(
               opacity: value.clamp(0.0, 1.0),
               child: Transform.translate(
-                // Подъём «снизу вверх» — только у добавленной записи;
-                // при растворении перед удалением карточка тонет, не
-                // уползая, чтобы не выглядеть вторым жестом.
-                offset: Offset(
-                  0,
-                  isJustAdded && _pendingRemoveMealId != meal.id
-                      ? (1 - value) * 12
-                      : 0,
-                ),
+                offset: Offset(0, (1 - value) * 12),
                 child: child,
               ),
             ),
-            child: PressScale(
-              // Приём пищи «вдавливается» — уменьшается, а не растёт:
-              // раньше карточка на зажатии увеличивалась, и на плотном
-              // списке это читалось как «наезд» на соседей.
-              pressedScale: 0.982,
-              duration: const Duration(milliseconds: 240),
-              releaseDuration: const Duration(milliseconds: 340),
-              child: Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: accent.withValues(alpha: 0.3),
-                    width: 1,
+            child: TweenAnimationBuilder<double>(
+              // Фаза удаления: строка схлопывается по высоте КАК РАЗ
+              // здесь, внутри своего слота (340 мс), и место
+              // освобождается непрерывно. Начало ровно 1 → у истории
+              // анимации нет.
+              tween: Tween(
+                begin: 1.0,
+                end: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
+              ),
+              duration: const Duration(milliseconds: 340),
+              curve: Curves.easeInOutCubic,
+              builder: (context, shrink, child) => ClipRect(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: shrink.clamp(0.0, 1.0),
+                  // Нижний зазор теперь ВНУТРИ схлопывания: раньше он жил
+                  // снаружи, и после полного сжатия карточки на месте
+                  // слота оставалась 10-пиксельная красная полоса — то
+                  // самое «в конце удаления красная заедает».
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: child,
                   ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+              ),
+              child: TweenAnimationBuilder<double>(
+                // Растворение содержимого перед схлопыванием: читается
+                // как «выцветание», а не обрыв.
+                tween: Tween(
+                  begin: 1.0,
+                  end: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
+                ),
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeInOutCubic,
+                builder: (context, fade, child) =>
+                    Opacity(opacity: fade.clamp(0.0, 1.0), child: child),
+                child: PressScale(
+                  // Приём пищи «вдавливается» — уменьшается, а не растёт:
+                  // раньше карточка на зажатии увеличивалась, и на плотном
+                  // списке это читалось как «наезд» на соседей.
+                  pressedScale: 0.982,
+                  duration: const Duration(milliseconds: 240),
+                  releaseDuration: const Duration(milliseconds: 340),
+                  child: Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: accent.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
                     ),
-                    child: Icon(
-                      meal.isWaterOnly
-                          ? Icons.water_drop_outlined
-                          : meal.kind.icon,
-                      size: 22,
-                      color: accent,
-                    ),
-                  ),
-                  title: Row(
-                    children: [
-                      Expanded(
+                    clipBehavior: Clip.antiAlias,
+                    child: ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          meal.isWaterOnly
+                              ? Icons.water_drop_outlined
+                              : meal.kind.icon,
+                          size: 22,
+                          color: accent,
+                        ),
+                      ),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              meal.name.isEmpty
+                                  ? Translations.t('water', context, 'Вода')
+                                  : meal.name,
+                            ),
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 210),
+                            curve: Curves.easeOutCubic,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 190),
+                              switchInCurve: Curves.easeOutBack,
+                              switchOutCurve: Curves.easeInCubic,
+                              transitionBuilder: (child, animation) =>
+                                  ScaleTransition(
+                                    scale: animation,
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                  ),
+                              child: meal.pinned
+                                  ? Icon(
+                                      Icons.push_pin,
+                                      key: const ValueKey('meal_pinned'),
+                                      size: 16,
+                                      color: accent,
+                                    )
+                                  : const SizedBox(
+                                      key: ValueKey('meal_unpinned'),
+                                      width: 0,
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      subtitle: Text(subtitle),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                         child: Text(
-                          meal.name.isEmpty
-                              ? Translations.t('water', context, 'Вода')
-                              : meal.name,
+                          meal.isWaterOnly
+                              ? '$water ${Translations.t('mlShort', context, 'мл')}'
+                              : '${meal.calories}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: accent,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 210),
-                        curve: Curves.easeOutCubic,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 190),
-                          switchInCurve: Curves.easeOutBack,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) =>
-                              ScaleTransition(
-                                scale: animation,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
-                              ),
-                          child: meal.pinned
-                              ? Icon(
-                                  Icons.push_pin,
-                                  key: const ValueKey('meal_pinned'),
-                                  size: 16,
-                                  color: accent,
-                                )
-                              : const SizedBox(
-                                  key: ValueKey('meal_unpinned'),
-                                  width: 0,
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  subtitle: Text(subtitle),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      meal.isWaterOnly
-                          ? '$water ${Translations.t('mlShort', context, 'мл')}'
-                          : '${meal.calories}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: accent,
-                        fontSize: 12,
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
                       ),
                     ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 16,
                   ),
                 ),
               ),
@@ -1460,7 +1504,7 @@ class _NutritionScreenState extends State<NutritionScreen>
         'body': Translations.t(
           'tipWaitBody',
           context,
-          'Wait 10 minutes before giving in — in 70% of cases the craving passes.',
+          'Wait 10 minutes before giving in вЂ” in 70% of cases the craving passes.',
         ),
         'color': Colors.indigo,
       },
@@ -1728,7 +1772,7 @@ class _NutritionScreenState extends State<NutritionScreen>
         'body': Translations.t(
           'tipColdWaterBody',
           context,
-          'A glass of ice water instantly resets mind and body — the cold shock breaks the craving loop.',
+          'A glass of ice water instantly resets mind and body вЂ” the cold shock breaks the craving loop.',
         ),
         'color': Colors.cyan,
       },
@@ -1826,6 +1870,66 @@ class _EmptyMeals extends StatelessWidget {
     return SizedBox(
       height: 104,
       child: Center(child: Text(Translations.t('noMeals', context))),
+    );
+  }
+}
+
+/// Вросло из нуля: новую карточку приёма пищи первый кадр строит с
+/// высотой 0, затем она плавно «вырастает» (420 мс, easeOutCubic).
+/// Соседи подаются вниз НЕПРЕРЫВНО ростом высоты, а не прыжком при
+/// вставке готовой строки — прежний резкий сдвиг остальных плашек
+/// при добавлении лечится именно этим.
+class _GrowIntoPlace extends StatefulWidget {
+  const _GrowIntoPlace({required this.active, required this.child});
+
+  /// isActive-режим: только у только что добавленной записи.
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_GrowIntoPlace> createState() => _GrowIntoPlaceState();
+}
+
+class _GrowIntoPlaceState extends State<_GrowIntoPlace>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
+  late final Animation<double> _anim = CurvedAnimation(
+    parent: _ctrl,
+    curve: Curves.easeOutCubic,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) {
+      // Первый кадр рисуется с нулевой высотой (контроллер на нуле),
+      // затем рост уводит карточку и весь столбец плавно вниз.
+      _ctrl.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return widget.child;
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, child) => ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: _anim.value.clamp(0.0, 1.0),
+          child: child,
+        ),
+      ),
+      child: widget.child,
     );
   }
 }

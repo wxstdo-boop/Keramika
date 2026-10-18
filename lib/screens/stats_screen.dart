@@ -85,15 +85,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     final monthDays = _logSvc.lastDays(30);
 
     final bodyContent = SingleChildScrollView(
-      // Как на остальных экранах: свайп вверх/вниз работает всегда,
-      // даже когда контента мало (иначе жест «не ловился» и экран
-      // казался залипшим).
-      // Та же физика, что на экранах привычек/задач: AlwaysScrollable +
-      // Bouncing — свайп вверх/вниз работает всегда и с упругим
-      // «оттягиванием» на краях (раньше ClampingScrollPhysics не давал
-      // оттягивания, поэтому экран казался «залипшим»).
+      // Края клампятся (Clamping) БЕЗ резинового растяжения: стретч-эффект
+      // (StretchingOverscrollIndicator) убран полностью — свайп у края просто
+      // клампит, без «дёрнутого» подрагивания. AlwaysScrollable сверху —
+      // чтобы верхний край продолжал отдавать OverscrollNotification для
+      // RefreshIndicator (pull-to-refresh работает), а низ — просто упирается.
       physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
+        parent: ClampingScrollPhysics(),
       ),
       padding: EdgeInsets.fromLTRB(
         16,
@@ -109,46 +107,86 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
           const SizedBox(height: 16),
           _MonthChart(days: monthDays, glitch: _glitchCtrl, theme: theme),
           const SizedBox(height: 16),
-          // Daily Motivation Card
-          Card(
-            color: theme.colorScheme.secondaryContainer,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
+          // Daily Motivation Card — верхняя панель и сама цитата сидят на
+          // своих плашках «округлённый квадрат» (мягкий радиус 12, тонкая
+          // обводка): заголовок читается как панель, цитата — как вкладыш.
+          _ringedCard(
+            theme: theme,
+            accent: theme.colorScheme.secondary,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondaryContainer,
+                borderRadius: const BorderRadius.all(Radius.circular(18.7)),
+              ),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.format_quote,
-                        size: 24,
-                        color: theme.colorScheme.primary,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: theme.colorScheme.secondary.withValues(
+                        alpha: 0.10,
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        Translations.t('dailyMotivation', context),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.bold,
+                      border: Border.all(
+                        color: theme.colorScheme.secondary.withValues(
+                          alpha: 0.38,
                         ),
+                        width: 1.1,
                       ),
-                    ],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.format_quote,
+                          size: 22,
+                          color: theme.colorScheme.secondary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          Translations.t('dailyMotivation', context),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    // Кавычки убраны по дизайну: цитата читается как
-                    // обычный мотивационный текст, а не как «вложенная»
-                    // реплика. Визуальный акцент всё равно есть — это
-                    // иконка «format_quote» слева и курсив самого текста.
-                    motivationQuote.trim(),
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSecondaryContainer,
-                      fontStyle: FontStyle.italic,
-                      height: 1.4,
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
                     ),
-                    textAlign: TextAlign.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: theme.colorScheme.surface.withValues(alpha: 0.42),
+                      border: Border.all(
+                        color: theme.colorScheme.secondary.withValues(
+                          alpha: 0.24,
+                        ),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      // Кавычки убраны по дизайну: цитата читается как
+                      // обычный мотивационный текст, а не как «вложенная»
+                      // реплика. Визуальный акцент дают панель заголовка,
+                      // иконка «format_quote» и курсив самого текста.
+                      motivationQuote.trim(),
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSecondaryContainer,
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ],
               ),
@@ -163,6 +201,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
               Translations.t('rcStat', context),
               rcToday,
               rcTotal,
+              accent: theme.colorScheme.tertiary,
               glitch: _glitchCtrl,
             ),
             const SizedBox(height: 16),
@@ -174,6 +213,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
             Translations.habitsOf(context),
             habitsDone,
             habitsTotal,
+            accent: theme.colorScheme.primary,
             glitch: _glitchCtrl,
           ),
           const SizedBox(height: 16),
@@ -184,6 +224,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
             Translations.tasksOf(context),
             tasksDone,
             tasksTotal,
+            accent: theme.colorScheme.secondary,
             glitch: _glitchCtrl,
           ),
         ],
@@ -213,8 +254,11 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     ThemeData theme,
     double pct,
   ) {
-    return Card(
-      color: theme.colorScheme.primaryContainer,
+    return _ringedCard(
+      theme: theme,
+      accent: theme.colorScheme.primary,
+      child: Card(
+        color: theme.colorScheme.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -253,6 +297,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -263,11 +308,15 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     String label,
     int done,
     int total, {
+    required Color accent,
     required Animation<double> glitch,
   }) {
     final pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 0.0;
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return _ringedCard(
+      theme: theme,
+      accent: accent,
+      child: Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.7)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -275,7 +324,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
           children: [
             Row(
               children: [
-                Icon(icon, size: 24, color: theme.colorScheme.primary),
+                Icon(icon, size: 24, color: accent),
                 const SizedBox(width: 12),
                 Text(
                   label,
@@ -306,11 +355,35 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
               ],
             ),
             const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: pct,
-              minHeight: 12,
+            // Полоса-прогресс в тон кольцу: градиент идёт от акцента к
+            // третичному, но с тёмным краем — залитая «глубина» делает
+            // полосу контрастнее и читабельнее на любой теме (light и dark):
+            // налив темнее с каждой темой, дорожка — более тёмный контраст.
+            ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              child: Container(
+                height: 12,
+                color: theme.colorScheme.onSurface.withValues(
+                  alpha: theme.brightness == Brightness.dark ? 0.18 : 0.10,
+                ),
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: pct.clamp(0.0, 1.0),
+                  heightFactor: 1,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Color.lerp(accent, Colors.black, 0.18)!,
+                          accent,
+                          Color.lerp(theme.colorScheme.tertiary, Colors.black, 0.10)!,
+                        ],
+                        stops: const [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -322,8 +395,51 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
           ],
         ),
       ),
+      ),
     );
   }
+}
+
+/// Обводка-кольцо: тонкий градиент по краю (акцент → третичный) вместо
+/// плоской рамки — мягкий перелив по периметру, читается и на светлой, и
+/// на тёмной теме. Тень одна (у кольца), чтобы не было грязного двойного
+/// ореола. Внутренний радиус на толщину кольца меньше, иначе в стыке
+/// видна щель. Толщина кольца теперь тонкая (0.8): «обводка тоньше» —
+/// перелив стал деликатнее, без жирного края.
+Widget _ringedCard({
+  required ThemeData theme,
+  required Widget child,
+  required Color accent,
+  double radius = 20,
+}) {
+  const thickness = 0.8;
+  final cs = theme.colorScheme;
+  final dark = theme.brightness == Brightness.dark;
+  return Container(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(radius + thickness),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: <Color>[
+          accent.withValues(alpha: dark ? 0.55 : 0.38),
+          accent.withValues(alpha: dark ? 0.10 : 0.09),
+          cs.tertiary.withValues(alpha: dark ? 0.40 : 0.26),
+        ],
+        stops: const <double>[0, 0.55, 1],
+      ),
+      boxShadow: <BoxShadow>[
+        BoxShadow(
+          color: Colors.black.withValues(alpha: dark ? 0.30 : 0.06),
+          blurRadius: 14,
+          spreadRadius: -6,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    ),
+    padding: EdgeInsets.all(thickness),
+    child: child,
+  );
 }
 
 /// Число с постоянной «живой» анимацией: мягкий глитч (лёгкий сдвиг по X,
@@ -419,8 +535,11 @@ class _MonthChart extends StatelessWidget {
     final totalHabit = days.fold(0, (a, b) => a + b.habits);
     final totalTask = days.fold(0, (a, b) => a + b.tasks);
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return _ringedCard(
+      theme: theme,
+      accent: theme.colorScheme.primary,
+      child: Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.7)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
         child: Column(
@@ -478,6 +597,12 @@ class _MonthChart extends StatelessWidget {
                   final values = [
                     for (final d in days) (d.habits + d.tasks) / maxV,
                   ];
+                  // Каскадный рост: столбики слева направо чуть запаздывают —
+                  // площадка «прорастает» волной, а не одним комом.
+                  final grows = [
+                    for (var i = 0; i < days.length; i++)
+                      (grow * 1.22 - i * 0.0075).clamp(0.0, 1.0).toDouble(),
+                  ];
                   return Column(
                     children: [
                       SizedBox(
@@ -489,7 +614,7 @@ class _MonthChart extends StatelessWidget {
                               child: CustomPaint(
                                 painter: _ChartDecorPainter(
                                   values: values,
-                                  grow: grow,
+                                  grows: grows,
                                   gridColor: theme.colorScheme.onSurface
                                       .withValues(alpha: 0.055),
                                   lineColor: theme.colorScheme.primary,
@@ -510,7 +635,7 @@ class _MonthChart extends StatelessWidget {
                                         maxV,
                                         habitColor,
                                         taskColor,
-                                        grow,
+                                        grows[i],
                                       ),
                                     ),
                                 ],
@@ -573,6 +698,7 @@ class _MonthChart extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -718,13 +844,13 @@ class _MonthChart extends StatelessWidget {
 /// с центром в (i + 0.5) * cellW, по Y — от низа площадки вверх.
 class _ChartDecorPainter extends CustomPainter {
   final List<double> values; // нормированные суммы дня: 0..1
-  final double grow; // прогресс анимации входа 0..1
+  final List<double> grows; // пополосный прогресс роста (каскад) 0..1
   final Color gridColor;
   final Color lineColor;
 
   _ChartDecorPainter({
     required this.values,
-    required this.grow,
+    required this.grows,
     required this.gridColor,
     required this.lineColor,
   });
@@ -749,22 +875,33 @@ class _ChartDecorPainter extends CustomPainter {
       canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
     }
 
-    // Точки тренда: центр каждой колонки на высоте значения.
+    // Точки тренда: центр каждой колонки на высоте значения — растут тем
+    // же каскадом, что и столбики.
     final pts = <Offset>[];
     for (var i = 0; i < values.length; i++) {
-      final v = (values[i] * grow).clamp(0.0, 1.0);
+      final v = (values[i] * grows[i]).clamp(0.0, 1.0);
       pts.add(Offset((i + 0.5) * cellW, h * (1 - v)));
     }
     if (pts.length < 2) return;
 
-    // Плавная линия: квадратичные дуги через середины отрезков.
+    // Плавная линия: сплайн Кэтмулла-Рома (кубические через каждые две
+    // точки) — мягче квадратичных дуг, без изломов на пиках.
     final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (var i = 1; i < pts.length; i++) {
-      final prev = pts[i - 1];
-      final mid = Offset((prev.dx + pts[i].dx) / 2, (prev.dy + pts[i].dy) / 2);
-      path.quadraticBezierTo(prev.dx, prev.dy, mid.dx, mid.dy);
+    for (var i = 0; i < pts.length - 1; i++) {
+      final p0 = pts[i == 0 ? 0 : i - 1];
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      final p3 = pts[i + 2 < pts.length ? i + 2 : pts.length - 1];
+      final c1 = Offset(
+        p1.dx + (p2.dx - p0.dx) / 6,
+        p1.dy + (p2.dy - p0.dy) / 6,
+      );
+      final c2 = Offset(
+        p2.dx - (p3.dx - p1.dx) / 6,
+        p2.dy - (p3.dy - p1.dy) / 6,
+      );
+      path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
     }
-    path.lineTo(pts.last.dx, pts.last.dy);
 
     // Мягкая заливка под линией — от цвета линии до прозрачного.
     final area = Path.from(path)
@@ -807,7 +944,7 @@ class _ChartDecorPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ChartDecorPainter old) =>
       old.values != values ||
-      old.grow != grow ||
+      old.grows != grows ||
       old.gridColor != gridColor ||
       old.lineColor != lineColor;
 }
