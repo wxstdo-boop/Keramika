@@ -27,8 +27,20 @@ jobs:
           channel: stable
 
       - name: Восстановить keystore из секретов
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+          set -euo pipefail
+          # См. ship.yml: пустой секрет давал невнятное «Tag number over 30».
+          if [ -z "$KS_B64" ]; then
+            echo "::error::Секрет KEYSTORE_BASE64 пуст — подписать release-сборку нечем. Добавь секреты репозитория: KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS."
+            exit 1
+          fi
+          printf '%s' "$KS_B64" | base64 -d > android/app/keystore.jks
+          if [ ! -s android/app/keystore.jks ]; then
+            echo "::error::KEYSTORE_BASE64 не декодируется в непустой файл — проверь, что это base64 от .jks/.p12."
+            exit 1
+          fi
           cat > android/key.properties <<EOF
           storePassword=${{ secrets.STORE_PASSWORD }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
@@ -37,6 +49,16 @@ jobs:
           EOF
 
       - run: flutter pub get
+
+      - name: Настройки Gradle для CI
+        run: |
+          set -euo pipefail
+          # См. ship.yml: локальный heap 1 ГБ вызывает GC-троттлинг демона на
+          # раннере. Поднимаем память только для CI.
+          sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|' android/gradle.properties
+          sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' android/gradle.properties
+          sed -i 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
+          grep -E '^(org.gradle.jvmargs|org.gradle.workers.max|kotlin.daemon.jvmargs)=' android/gradle.properties
 
       - run: flutter build apk --release --split-per-abi
 
