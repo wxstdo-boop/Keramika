@@ -52,10 +52,19 @@ class UpdateService {
   static const String _lastCheckKey = 'update_last_check_ms';
 
   /// Проверяет последний релиз на GitHub. Возвращает [UpdateInfo], только
-  /// если версия в релизе строго новее [currentVersionCode].
+  /// если версия в релизе строго новее установленной.
+  ///
+  /// Сравниваем в первую очередь `versionName` (1.6.61 → 1.6.62), а
+  /// `versionCode` — только как арбитра при равных именах. Причина: Flutter
+  /// при `--split-per-abi` прибавляет к номеру из `pubspec.yaml` индекс ABI
+  /// (+2000 для arm64), поэтому «номер из тега» и «номер на телефоне» живут
+  /// в разных системах координат. Раньше сравнивались именно они, и релиз с
+  /// тегом `+45134` навсегда проигрывал установленному `47133` — обновление
+  /// молча не приходило. Имя версии от ABI не зависит.
   Future<UpdateInfo?> check({
     required String abi,
     required int currentVersionCode,
+    String currentVersionName = '',
   }) async {
     final uri = Uri.parse(
       'https://api.github.com/repos/$kUpdateRepoOwner/$kUpdateRepoName/releases/latest',
@@ -77,7 +86,15 @@ class UpdateService {
     final match = RegExp(r'v?(\d+(?:\.\d+)*)\+(\d+)').firstMatch(tag);
     if (match == null) return null;
     final versionCode = int.tryParse(match.group(2)!) ?? 0;
-    if (versionCode <= currentVersionCode) return null;
+    final versionName = match.group(1) ?? tag;
+    if (!isNewerVersion(
+      releaseName: versionName,
+      releaseCode: versionCode,
+      currentName: currentVersionName,
+      currentCode: currentVersionCode,
+    )) {
+      return null;
+    }
 
     final assets =
         (json['assets'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
@@ -105,12 +122,49 @@ class UpdateService {
 
     return UpdateInfo(
       versionCode: versionCode,
-      versionName: match.group(1) ?? tag,
+      versionName: versionName,
       downloadUrl: url,
       sha256: sha,
       size: (apk['size'] as num?)?.toInt() ?? 0,
       notes: (json['body'] as String?) ?? '',
     );
+  }
+
+  /// Релиз новее установленного?
+  ///
+  /// Основной сигнал — `versionName` (сравнение по числам, не по строкам:
+  /// «1.6.9» < «1.6.10»). Если имена совпали, решает `versionCode` — это
+  /// случай пересборки той же версии, где оба номера уже в одной системе
+  /// координат (одно и то же устройство, один и тот же ABI).
+  @visibleForTesting
+  static bool isNewerVersion({
+    required String releaseName,
+    required int releaseCode,
+    required String currentName,
+    required int currentCode,
+  }) {
+    if (currentName.trim().isEmpty) return releaseCode > currentCode;
+    final cmp = _compareVersionNames(releaseName, currentName);
+    if (cmp != 0) return cmp > 0;
+    return releaseCode > currentCode;
+  }
+
+  /// Поразрядное сравнение «1.6.10» и «1.6.9» → 1. Хвосты вроде «-beta»
+  /// отбрасываются: сравниваются только ведущие числа.
+  static int _compareVersionNames(String a, String b) {
+    List<int> parts(String v) => v
+        .split(RegExp(r'[.+-]'))
+        .map((s) => int.tryParse(s.trim()) ?? 0)
+        .toList(growable: false);
+    final pa = parts(a);
+    final pb = parts(b);
+    final len = pa.length > pb.length ? pa.length : pb.length;
+    for (var i = 0; i < len; i++) {
+      final va = i < pa.length ? pa[i] : 0;
+      final vb = i < pb.length ? pb[i] : 0;
+      if (va != vb) return va > vb ? 1 : -1;
+    }
+    return 0;
   }
 
   /// Скачивает APK во временный каталог. Возвращает путь к файлу или null.
@@ -169,7 +223,11 @@ class UpdateService {
       final info = await Installer.appInfo();
       if (info == null) return;
       final abi = await Installer.supportedAbi();
-      final update = await check(abi: abi, currentVersionCode: info.versionCode);
+      final update = await check(
+        abi: abi,
+        currentVersionCode: info.versionCode,
+        currentVersionName: info.versionName,
+      );
       // Метку пишем даже при отсутствии обновления — иначе долбим API зря.
       await globalPrefs.setInt(_lastCheckKey, now);
       pendingUpdate.value = update;
