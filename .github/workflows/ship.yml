@@ -1,0 +1,174 @@
+name: ship
+
+# Триггеры:
+#   1. Push в main (когда изменились lib/, android/, test/, ios/, web/, ship.yml
+#      сам). Автоматически поднимает patch-версию и публикует GitHub Release.
+#   2. Ручной запуск (workflow_dispatch) — выбор bump (patch/minor/none),
+#      заметки и dry_run.
+#
+# Защита от рекурсии:
+#   — paths-фильтр: триггер реагирует только на изменения в исходниках
+#     и на ship.yml сам (не на pubspec.yaml / pubspec.lock — они меняются
+#     в коммите «release: v…» и не должны перезапускать воркфлоу).
+#   — if: на job: пропускает, если коммит начинается с «release:»
+#     (это коммит, который сам ship делает для бампа версии).
+#
+# Результат: пуш кода → auto-release → UpdateService в приложении видит
+# releases/latest → показывает UpdatePill → пользователь обновляет.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Тип бампа версии'
+        type: choice
+        options:
+          - patch
+          - minor
+          - none
+        default: patch
+      notes:
+        description: 'Заметки к релизу (пусто = GitHub сгенерирует сам)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Только сборка, без коммита и релиза'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+        default: 'false'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'test/**'
+      - 'ios/**'
+      - 'web/**'
+      - '.github/workflows/ship.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ship
+  cancel-in-progress: false
+
+jobs:
+  ship:
+    # Пропускаем триггер на push, если коммит начинается с «release:»
+    # (это бамп, который сам ship сделал — не нужен рекурсивный запуск).
+    # Для workflow_dispatch (ручной) условие всегда true.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.head_commit.message, 'release:')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Бамп версии
+        id: ver
+        run: |
+          set -euo pipefail
+          CUR=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          NAME=${CUR%%+*}
+          CODE=${CUR##*+}
+          MAJOR=${NAME%%.*}
+          REST=${NAME#*.}
+          MINOR=${REST%%.*}
+          PATCH=${REST##*.}
+          # При push-триггере inputs.bump пуст — дефолт patch.
+          BUMP="${{ inputs.bump }}"
+          [ -z "$BUMP" ] && BUMP="patch"
+          case "$BUMP" in
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+            none)  ;;
+            *) echo "Неизвестный bump: $BUMP"; exit 1 ;;
+          esac
+          NAME="$MAJOR.$MINOR.$PATCH"
+          CODE=$((CODE + 1))
+          TAG="v${NAME}+${CODE}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Тег ${TAG} уже существует в истории — не буду переиспользовать"
+            exit 1
+          fi
+          sed -i "s/^version: .*/version: ${NAME}+${CODE}/" pubspec.yaml
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Собираем ${TAG}"
+
+      - run: flutter pub get --enforce-lockfile
+
+      - name: Анализ
+        run: flutter analyze
+
+      - name: Тесты
+        run: flutter test --concurrency=1
+
+      - name: Распаковать keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.STORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=keystore.jks
+          EOF
+
+      - name: Сборка APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: Переименовать APK
+        run: |
+          set -euo pipefail
+          cd build/app/outputs/flutter-apk
+          for f in *-release.apk; do
+            abi="${f%-release.apk}"
+            mv "$f" "Keramika-${{ steps.ver.outputs.name }}+${{ steps.ver.outputs.code }}-${abi}.apk"
+          done
+          ls -la
+
+      - name: Артефакт (dry_run)
+        if: ${{ inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Keramika-${{ steps.ver.outputs.tag }}
+          path: build/app/outputs/flutter-apk/*.apk
+
+      - name: Коммит версии
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          git config user.name "keramika-ship"
+          git config user.email "ship@users.noreply.github.com"
+          git add pubspec.yaml pubspec.lock
+          git commit -m "release: ${{ steps.ver.outputs.tag }}"
+          # Только main: бамп не задевает forge и другие ветки.
+          # Пуш в main не перезапустит воркфлоу, т.к. коммит "release: v…"
+          # не попадает в paths-фильтр (lib/, android/, test/ не изменены).
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Публикация релиза
+        if: ${{ inputs.dry_run != 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          body: ${{ inputs.notes }}
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/*.apk
