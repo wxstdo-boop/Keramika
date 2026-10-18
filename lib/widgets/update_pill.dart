@@ -58,6 +58,7 @@ class _UpdatePillState extends State<UpdatePill>
       final update = await UpdateService.instance.check(
         abi: abi,
         currentVersionCode: info.versionCode,
+        currentVersionName: info.versionName,
       );
       if (!mounted) return;
       if (update == null) {
