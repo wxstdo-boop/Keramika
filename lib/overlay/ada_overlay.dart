@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../l10n/locale_provider.dart';
 import '../l10n/translations.dart';
 import '../utils/markdown_text.dart';
+import '../utils/snackbar.dart';
 import '../services/ai_guide_service.dart';
 import '../services/json_file.dart';
 import '../services/prefs.dart';
@@ -21,7 +23,14 @@ import '../widgets/model_label.dart';
 import '../widgets/smooth_typing.dart';
 
 /// Канал системного оверлея.
-const MethodChannel _overlayChannel = MethodChannel('x-slayer/overlay');
+late final MethodChannel _overlayChannel;
+
+/// Инициализация канала: на web не используется (оверлей невозможен).
+void initOverlayChannel() {
+  if (!kIsWeb) {
+    _overlayChannel = const MethodChannel('x-slayer/overlay');
+  }
+}
 
 /// Размеры окна оверлея (dp). Окно почти квадратное — «не вдлину»:
 /// 320×360 (было 340×380, раньше 280×440 — вытянутое).
@@ -68,6 +77,7 @@ class _AdaOverlayAppState extends State<AdaOverlayApp> {
 
   Future<void> _init() async {
     await initPrefs();
+    await JsonFile.initialize();
     final lang = await SettingsService.resolveLanguageCode();
     if (!mounted) return;
     setState(() {
@@ -183,12 +193,14 @@ class _OverlayChatState extends State<_OverlayChat>
   final _inputFocus = FocusNode();
   final _scrollCtrl = ScrollController();
   final List<AiMessage> _messages = [];
+  String? _historySnapshot;
   bool _busy = false;
   bool _typingFade = false;
   bool _collapsed = false; // Стартуем как ЧАТ.
   bool _closing = false;
   bool _resizing = false;
   bool _inputFocused = false;
+  bool _storageErrorShown = false;
   String _modelLabel = '';
   int _avatarVariant = 0;
   // Сколько сообщений было при открытии: только новые анимируют вход,
@@ -217,11 +229,8 @@ class _OverlayChatState extends State<_OverlayChat>
   double _vy = 0.6;
   Offset _pos = Offset.zero;
 
-  // Сгладить первое поднятие клавиатуры: лента и без того изолирована
-  // от viewInsets (MediaQuery.removeViewInsets), поэтому тяжёлого
-  // пересборки нет; здесь же обеспечиваем мягкий старт — при появлении
-  // фокуса делаем jumpTo(0) БЕЗ анимации (иначе «первое поднятие»
-  // тормозило анимацией скролла вместе с выездом клавиатуры).
+  // Лента изолирована от viewInsets, а при получении фокуса сохраняет
+  // позицию чтения, чтобы не добавлять скачок к анимации клавиатуры.
   @override
   void initState() {
     super.initState();
@@ -318,15 +327,8 @@ class _OverlayChatState extends State<_OverlayChat>
       // NOT_FOCUSABLE — жест «назад» снова работает в основном приложении,
       // и следующий тап по полю снова включает IME с первого раза.
       if (!f) _setFocusable(false);
-      // Окно при фокусе НЕ поднимаем: оно живёт поверх клавиатуры, и
-      // пользователь сам двигает его куда. Просто прокручиваем ленту
-      // к последнему сообщению, чтобы оно не пряталось под полем.
-      if (f && _scrollCtrl.hasClients) {
-        final pos = _scrollCtrl.position;
-        if (pos.maxScrollExtent > 0 && pos.pixels < pos.maxScrollExtent - 16) {
-          _scrollCtrl.jumpTo(pos.maxScrollExtent);
-        }
-      }
+      // Не прыгаем к последнему сообщению при фокусе: скачок прокрутки
+      // совпадал с появлением IME и дёргал мини-окно.
     }
   }
 
@@ -334,6 +336,7 @@ class _OverlayChatState extends State<_OverlayChat>
   /// requestFocus сразу после смены флага «съедался», и клавиатура
   /// появлялась только со второго тапа.
   Future<void> _setFocusable(bool focus) async {
+    if (kIsWeb) return; // Оверлей невозможен на web
     try {
       await _overlayChannel.invokeMethod<void>('updateFlag', {
         'flag': focus ? 'focusPointer' : 'defaultFlag',
@@ -431,6 +434,7 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   void _flushNativePosition() async {
+    if (kIsWeb) return; // Оверлей невозможен на web
     if (_nativeMoveInFlight || _pendingNativePosition == null || !mounted) {
       return;
     }
@@ -489,6 +493,7 @@ class _OverlayChatState extends State<_OverlayChat>
     }
     try {
       final raw = await JsonFile.read(_historyKey);
+      _historySnapshot = raw;
       if (raw != null && raw.isNotEmpty) {
         final list = jsonDecode(raw) as List;
         final loaded = list
@@ -505,7 +510,27 @@ class _OverlayChatState extends State<_OverlayChat>
           _scrollToBottom(animate: false);
         }
       }
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _reportStorageFailure(error, stackTrace);
+    }
+  }
+
+  void _reportStorageFailure(Object error, StackTrace stackTrace) {
+    debugPrint('Ada overlay history operation failed: $error\n$stackTrace');
+    if (!mounted || _storageErrorShown) return;
+    _storageErrorShown = true;
+    showBeautifulSnackBar(
+      context,
+      message: Translations.t(
+        'dataStorageError',
+        context,
+        'Local data could not be read or saved. Existing files were not changed.',
+      ),
+      icon: Icons.warning_amber_rounded,
+      iconColor: Colors.redAccent,
+      duration: const Duration(seconds: 6),
+      groupKey: 'ada-history-storage',
+    );
   }
 
   Future<void> _toggleSize() async {
@@ -643,6 +668,7 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Future<void> _clampToScreen() async {
+    if (kIsWeb) return; // Оверлей невозможен на web
     final clamped = _clamped(_pos, _chatWidth, _chatHeight);
     _pos = clamped;
     try {
@@ -777,11 +803,17 @@ class _OverlayChatState extends State<_OverlayChat>
     try {
       var toSave = _messages;
       if (toSave.length > 1000) toSave = toSave.sublist(toSave.length - 1000);
-      await JsonFile.write(
+      final value = jsonEncode(toSave.map((m) => m.toJson()).toList());
+      final resolved = await JsonFile.writeWithSnapshot(
         _historyKey,
-        jsonEncode(toSave.map((m) => m.toJson()).toList()),
+        value,
+        _historySnapshot,
       );
-    } catch (_) {}
+      if (resolved == value) _historySnapshot = resolved;
+      _storageErrorShown = false;
+    } catch (error, stackTrace) {
+      _reportStorageFailure(error, stackTrace);
+    }
   }
 
   /// Тап по аватарке мини-окошка — тот же живой цикл, что в главном чате:
@@ -1039,7 +1071,7 @@ class _OverlayChatState extends State<_OverlayChat>
                             color: cs.onSurface,
                           ),
                         ),
-                        // Модель (ada-0.0.3 / Kilo · openrouter/free / LLM7 · fast)
+                        // Текущий провайдер/модель (Kilo, OVHcloud, AI Horde).
                         // переключается плавно при смене провайдера.
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 320),
@@ -1051,9 +1083,10 @@ class _OverlayChatState extends State<_OverlayChat>
                             key: ValueKey(
                               _modelLabel.isEmpty ? 'ada-0.0.3' : _modelLabel,
                             ),
-                            label: _modelLabel.isEmpty
-                                ? 'ada-0.0.3'
-                                : _modelLabel,
+                            label: _modelLabel,
+                            details: AiGuideService.providerTrace.value.join(
+                              '\n',
+                            ),
                             textStyle: TextStyle(
                               fontSize: 10,
                               color: cs.onSurfaceVariant,
@@ -1162,7 +1195,8 @@ class _OverlayChatState extends State<_OverlayChat>
   }
 
   Widget _buildInput(ColorScheme cs) {
-    return Container(
+    return RepaintBoundary(
+      child: Container(
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
       decoration: BoxDecoration(
         // Полностью непрозрачный фон: полупрозрачный давал «белую полосу»
@@ -1186,8 +1220,7 @@ class _OverlayChatState extends State<_OverlayChat>
                   ),
                   builder: (style) => TextField(
                     style: style,
-                    magnifierConfiguration:
-                        TextMagnifierConfiguration.disabled,
+                    magnifierConfiguration: TextMagnifierConfiguration.disabled,
                     // Поле мини-окна не должно открывать выделение/тулбар:
                     // long-press оставляем для обычного ввода, без полупрозрачного
                     // selection overlay поверх оверлея.
@@ -1312,6 +1345,7 @@ class _OverlayChatState extends State<_OverlayChat>
                   ),
           ),
         ],
+      ),
       ),
     );
   }

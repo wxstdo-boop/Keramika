@@ -13,12 +13,9 @@ import '../widgets/press_scale.dart';
 /// Применение пункта:
 /// - тап по пункту — применяется СРАЗУ (явное намерение), карусель плавно
 ///   подъезжает к нему;
-/// - свайп — применяется, когда карусель ДЕЙСТВИТЕЛЬНО встала:
-///   * ScrollEndNotification от баллистики «прилипания» (dragDetails == null)
-///     — карусель остановилась: применяем через 40 мс;
-///   * ScrollEndNotification от отпускания пальца (dragDetails != null) —
-///     дальше может поехать баллистика: применяем через 120 мс, НО любой
-///     новый скролл-тик отменяет это применение и ждёт финальной остановки.
+/// - свайп — применяется, когда карусель ДЕЙСТВИТЕЛЬНО встала. После
+///   отпускания ждём баллистику; любой новый скролл-тик отменяет применение
+///   и ждёт финальной остановки.
 ///   Так быстрый флип через несколько пунктов применяет только финальный,
 ///   а «доезжающая» карусель не применяет промежуточные.
 class SlidingPicker<T> extends StatefulWidget {
@@ -75,6 +72,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
   }
 
   int? _pendingSelect;
+  int? _lastAppliedIndex;
 
   // Когда список пунктов изменился в последний раз (категорию создали или
   // удалили). В этом окне таблетки карусели проявляются заново — смягчая
@@ -107,6 +105,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
   @override
   void initState() {
     super.initState();
+    _lastAppliedIndex = _selectedIndex;
     _ctrl.addListener(_maybeClearPending);
     // При открытии экрана карусель стартует на ВЫБРАННОМ пункте, а не на
     // первом — иначе обводка выбранного звука «сбрасывается» при перезаходе.
@@ -137,6 +136,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
     // Карусель плавно подъезжает к выбранному пункту уже ПОСЛЕ —
     // на отклик это не влияет.
     setState(() => _pendingSelect = i);
+    _lastAppliedIndex = i;
     widget.onChanged(item);
     if (_ctrl.hasClients) _animateTo(i);
   }
@@ -145,20 +145,19 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
   /// тап (или тап по другой таблетке) лишь меняет цель, поэтому быстрое
   /// «тапание туда-сюда» не выглядит медленным перекатыванием и не заедает.
   void _animateTo(int i) {
-    _spring.to(
-      i.toDouble(),
-      maxPage: (widget.items.length - 1).toDouble(),
-    );
+    _spring.to(i.toDouble(), maxPage: (widget.items.length - 1).toDouble());
   }
 
   /// Карусель закончила движение (отпускание пальца или конец баллистики).
   void _onScrollEnd({required bool ballisticEnd}) {
     _applyTimer?.cancel();
-    // Применяем мгновенно — без пауз: пользователь убрал палец (или
-    // баллистика встала), пункт уже по центру, и переключение не должно
-    // ощущаться «с задержкой». Тики новой баллистики всё равно отменят
-    // применение (см. _cancelPendingApply в ScrollUpdateNotification).
-    _applyTimer = Timer(Duration.zero, _applySettledPage);
+    // После отпускания можно ещё начаться баллистика. Даём ей стартовать,
+    // а каждый ScrollUpdate отменит это применение. На конце баллистики
+    // выбираем конечную страницу сразу.
+    _applyTimer = Timer(
+      ballisticEnd ? Duration.zero : const Duration(milliseconds: 150),
+      _applySettledPage,
+    );
   }
 
   /// Карусель снова движется — отменяем отложенное применение: промежуточные
@@ -175,24 +174,10 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
     final page = _ctrl.page;
     if (page == null) return;
     final j = page.round().clamp(0, widget.items.length - 1);
+    if (_lastAppliedIndex == j) return;
     final item = widget.items[j];
     if (item == widget.selected) return;
-    widget.onChanged(item);
-  }
-
-  /// Живое применение во время перетаскивания пальцем: пункт, к которому
-  /// карусель привязана прямо сейчас (центр), применяется сразу же —
-  /// список переключается без «задержки фона». Дедуп по widget.selected:
-  /// onChanged срабатывает только при реальной смене пункта.
-  void _applyLivePage() {
-    _applyTimer?.cancel();
-    _applyTimer = null;
-    if (!mounted || !_ctrl.hasClients) return;
-    final page = _ctrl.page;
-    if (page == null) return;
-    final j = page.round().clamp(0, widget.items.length - 1);
-    final item = widget.items[j];
-    if (item == widget.selected) return;
+    _lastAppliedIndex = j;
     widget.onChanged(item);
   }
 
@@ -205,6 +190,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
       _itemsChangedAt = DateTime.now();
     }
     final target = _selectedIndex;
+    if (oldWidget.selected != widget.selected) _lastAppliedIndex = target;
     final page = _ctrl.hasClients ? _ctrl.page : null;
     // Пока палец ведёт карусель — не дёргаем контроллер: применённый
     // (живой) пункт совпадёт с позицией карусели, когда палец отпустят.
@@ -248,24 +234,12 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
             if (_pendingSelect != null) setState(() => _pendingSelect = null);
           } else if (notification is ScrollUpdateNotification) {
             if (notification.dragDetails != null) {
-              // Палец ведёт карусель: применяем пункт, к которому она
-              // привязана ПРЯМО СЕЙЧАС (середина перехода) — список задач
-              // переключается сразу, без ожидания, пока карусель встанет.
-              // Дедуп в _applyLivePage не даёт спамить onChanged на каждый
-              // тик скролла — применяется только при смене пункта.
+              // Во время тяги позиция не является конечным выбором.
               _userDragging = true;
-              _applyLivePage();
             } else {
-              // Баллистика (флип): промежуточные пункты не применяем,
-              // НО финальный применяем СРАЗУ, как только карусель почти
-              // встала на него (близко к центру) — не ждём полной
-              // остановки, иначе переключение «ощущалось с задержкой»
-              // после быстрого свайпа.
+              // Баллистика ещё проходит промежуточные страницы. Ждём
+              // ScrollEnd, чтобы флип применил только конечный пункт.
               _cancelPendingApply();
-              final page = _ctrl.page;
-              if (page != null && (page - page.round()).abs() < 0.12) {
-                _applyLivePage();
-              }
             }
           } else if (notification is ScrollEndNotification) {
             _userDragging = false;
@@ -323,9 +297,14 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
                           // Проявляем заново только сразу после смены состава
                           // пунктов: таблетки, приехавшие во время обычного
                           // свайпа, появляются мгновенно, без лишнего мигания.
-                          animate: DateTime.now().difference(_itemsChangedAt) <
+                          animate:
+                              DateTime.now().difference(_itemsChangedAt) <
                               _revealWindow,
-                          child: widget.itemBuilder(context, item, liveSelected),
+                          child: widget.itemBuilder(
+                            context,
+                            item,
+                            liveSelected,
+                          ),
                         ),
                       ),
                     ),
@@ -339,4 +318,3 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
     );
   }
 }
-

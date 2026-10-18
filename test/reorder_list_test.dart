@@ -9,7 +9,9 @@ import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/models/habit.dart';
 import 'package:keramika/screens/habits_screen.dart';
 import 'package:keramika/services/habit_service.dart';
+import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/prefs.dart';
+import 'package:keramika/widgets/animated_strike_text.dart';
 
 /// Регрессионный тест: ReorderableListView падал с "Null check operator
 /// used on a null value" в release-режиме, если элемент внутри списка
@@ -22,6 +24,8 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
     tmpDir = await Directory.systemTemp.createTemp('keramika_reorder_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -36,6 +40,7 @@ void main() {
     // Сидирование выполняется в setUp — вне FakeAsync-зоны testWidgets,
     // иначе реальный файловый I/O сервисов зависнет навсегда.
     final svc = HabitService();
+    await svc.debugClear();
     await svc.load();
     await svc.add(
       Habit(
@@ -62,6 +67,12 @@ void main() {
         type: 'bad',
       ),
     );
+    expect(svc.habits.map((habit) => habit.name), [
+      'Пить воду',
+      'Зарядка',
+      'Не грызть ногти',
+    ]);
+    expect(await JsonFile.read('habits'), contains('Пить воду'));
   });
 
   tearDown(() async {
@@ -85,11 +96,31 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump(const Duration(seconds: 3));
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Пить воду'), findsOneWidget);
-    expect(find.text('Зарядка'), findsOneWidget);
-    expect(find.text('Не грызть ногти'), findsOneWidget);
+    expect(HabitService().habits, hasLength(3));
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is AnimatedStrikeText && widget.text == 'Пить воду',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is AnimatedStrikeText && widget.text == 'Зарядка',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is AnimatedStrikeText && widget.text == 'Не грызть ногти',
+      ),
+      findsOneWidget,
+    );
   });
 }

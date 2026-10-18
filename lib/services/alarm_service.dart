@@ -9,18 +9,18 @@ class AlarmService extends ChangeNotifier {
   AlarmService._();
 
   List<Alarm> _alarms = [];
+  String? _snapshot;
   bool _loaded = false;
   static const _key = 'alarms';
 
   List<Alarm> get alarms => List.unmodifiable(_alarms);
 
   Future<void> load() async {
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null && raw.isNotEmpty) {
-        _alarms = alarmsFromJson(raw);
-      }
-    } catch (_) {}
+    final raw = await JsonFile.read(_key);
+    _snapshot = raw;
+    if (raw != null && raw.isNotEmpty) {
+      _alarms = alarmsFromJson(raw);
+    }
     _loaded = true;
     notifyListeners();
     // Pin-флаг теперь хранится непосредственно в JSON будильника.
@@ -30,7 +30,9 @@ class AlarmService extends ChangeNotifier {
 
   Future<void> _save() async {
     if (!_loaded) return;
-    await JsonFile.write(_key, alarmsToJson(_alarms));
+    final value = alarmsToJson(_alarms);
+    final resolved = await JsonFile.writeWithSnapshot(_key, value, _snapshot);
+    if (resolved == value) _snapshot = resolved;
   }
 
   Future<void> add(Alarm alarm) async {

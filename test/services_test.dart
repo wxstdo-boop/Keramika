@@ -9,13 +9,16 @@ import 'package:keramika/main.dart' show buildBackupPayload;
 import 'package:keramika/models/habit.dart';
 import 'package:keramika/models/task.dart';
 import 'package:keramika/services/ai_guide_service.dart';
-import 'package:keramika/services/habit_service.dart';
 import 'package:keramika/services/json_file.dart';
+import 'package:keramika/services/habit_service.dart';
 import 'package:keramika/services/nutrition_service.dart';
 import 'package:keramika/services/new_year_event_service.dart';
 import 'package:keramika/services/reality_check_service.dart';
 import 'package:keramika/services/prefs.dart';
+import 'package:keramika/services/pin_service.dart';
+import 'package:keramika/services/settings_service.dart';
 import 'package:keramika/services/task_service.dart';
+import 'package:keramika/services/update_service.dart';
 
 /// Песочница для сервисов: реальный File IO во временную папку +
 /// мокнутый SharedPreferences. Каждый тест начинает с пустого хранилища.
@@ -26,6 +29,9 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
+    PinService.resetCacheForTesting();
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
     tmpDir = await Directory.systemTemp.createTemp('keramika_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -51,6 +57,10 @@ void main() {
   });
 
   Future<void> resetHabits() async {
+    // HabitService — синглтон: между тестами старые привычки остаются в
+    // памяти, и load() не перетирает их, если файл пуст. Без сброса
+    // habits.first указывал бы на привычку из предыдущего теста.
+    await HabitService().debugClear();
     await JsonFile.write('habits', jsonEncode(<Object>[]));
     await HabitService().load();
   }
@@ -67,10 +77,10 @@ void main() {
         expect(svc.habits.first.streak, 1);
         expect(svc.habits.first.doneToday, isTrue);
 
-        // Сняли отметку — doneToday сброшен, стрик цел.
+        // Сняли отметку — doneToday сброшен, стрик уменьшился на 1.
         await svc.toggle('h1');
         expect(svc.habits.first.doneToday, isFalse);
-        expect(svc.habits.first.streak, 1);
+        expect(svc.habits.first.streak, 0);
 
         // Вернули в тот же день — стрик не удвоился.
         await svc.toggle('h1');
@@ -79,7 +89,7 @@ void main() {
       },
     );
 
-    test('снятие отметки не убивает стрик', () async {
+    test('снятие отметки уменьшает стрик на 1', () async {
       await resetHabits();
       final svc = HabitService();
       await svc.add(Habit(id: 'h2', name: 'Read'));
@@ -87,7 +97,11 @@ void main() {
       await svc.toggle('h2'); // streak 1
       await svc.toggle('h2'); // сняли
       expect(svc.habits.first.doneToday, isFalse);
-      expect(svc.habits.first.streak, 1, reason: 'стрик сохраняется');
+      expect(
+        svc.habits.first.streak,
+        0,
+        reason: 'снятие откатывает сегодняшний день',
+      );
     });
 
     test('отметка на следующий день продлевает цепочку (стрик 2)', () async {
@@ -492,6 +506,15 @@ void main() {
       expect(svc.currentDay, 2);
     });
 
+    test('невалидная структура не превращается в пустой прогресс', () async {
+      final file = File('${tmpDir.path}/$eventFile.json');
+      await file.writeAsString('[]');
+      final svc = NewYearEventService();
+
+      await expectLater(svc.markToday(), throwsA(isA<TypeError>()));
+      expect(await JsonFile.read(eventFile), '[]');
+    });
+
     test('номер дня = сколько шапок собрано + 1, но не больше 12', () async {
       final svc = await freshEvent();
       final now = DateTime.now();
@@ -499,7 +522,11 @@ void main() {
         for (var i = 0; i < NewYearEventService.totalDays + 3; i++)
           '${now.year - 1}-12-${(i + 1).toString().padLeft(2, '0')}': true,
       };
-      await JsonFile.write(eventFile, jsonEncode(dates));
+      await JsonFile.writeWithSnapshot(
+        eventFile,
+        jsonEncode(dates),
+        await JsonFile.read(eventFile),
+      );
 
       expect(await svc.hatCount(), NewYearEventService.totalDays + 3);
       expect(svc.currentDay, NewYearEventService.totalDays);
@@ -563,7 +590,10 @@ void main() {
       await resetHabits();
       await JsonFile.write('nutrition_meals', jsonEncode(<Object>[]));
       await globalPrefs.setString('app_pin', '1234');
-      await globalPrefs.setString('setting_theme', 'rose');
+      await SettingsService.saveThemeMode('rose');
+      await SettingsService.saveDeveloperPrompt(
+        'Добавить премиальную анимацию',
+      );
 
       final payload = await buildBackupPayload();
 
@@ -578,15 +608,57 @@ void main() {
       ]) {
         expect(payload.containsKey(key), isTrue, reason: 'нет ключа $key');
       }
-      expect(payload['app_pin'], '1234');
+      expect(payload['app_pin'], isA<String>());
+      expect(payload['app_pin'], isNot('1234'));
       expect(payload['setting_theme'], 'rose');
+      expect(payload['developer_prompt'], 'Добавить премиальную анимацию');
+    });
+  });
+
+  group('PIN verifier', () {
+    test('legacy plaintext is migrated and can still be verified', () async {
+      await globalPrefs.setString('app_pin', '1234');
+
+      expect(await PinService.hasPin(), isTrue);
+      expect(globalPrefs.getString('app_pin'), '1234');
+      expect(await PinService.verifyPin('1234'), isTrue);
+      final stored = globalPrefs.getString('app_pin');
+      expect(stored, isNot('1234'));
+      expect(stored, contains('pbkdf2-sha256-v1'));
+      expect(await PinService.verifyPin('4321'), isFalse);
+    });
+
+    test(
+      'backup verifier can be imported without recovering the PIN',
+      () async {
+        await PinService.setPin('2468');
+        final exported = await PinService.exportVerifier();
+        expect(exported, isNotNull);
+        expect(exported, isNot(contains('2468')));
+
+        await PinService.removePin();
+        await PinService.importBackupValue(exported!);
+
+        expect(await PinService.verifyPin('2468'), isTrue);
+      },
+    );
+  });
+
+  group('Update digest validation', () {
+    test('requires exactly 64 hexadecimal SHA-256 characters', () {
+      expect(UpdateService.hasValidSha256('a' * 64), isTrue);
+      expect(UpdateService.hasValidSha256('A' * 64), isTrue);
+      expect(UpdateService.hasValidSha256('a' * 63), isFalse);
+      expect(UpdateService.hasValidSha256('a' * 65), isFalse);
+      expect(UpdateService.hasValidSha256('g' * 64), isFalse);
+      expect(UpdateService.hasValidSha256(''), isFalse);
     });
   });
 
   group('Ada undo', () {
     test('локальный парсер создаёт привычку, undo удаляет её', () async {
       await resetHabits();
-      AiGuideService.lastAction = null;
+      AiGuideService.resetUndoHistory();
 
       final reply = await AiGuideService.send(
         userText: 'создай привычку пить воду',
@@ -693,7 +765,7 @@ void main() {
       await TaskService().load();
       final svc = TaskService();
       await svc.add(Task(id: 't1', title: 'Купить молоко'));
-      AiGuideService.lastAction = null;
+      AiGuideService.resetUndoHistory();
 
       final reply = await AiGuideService.send(
         userText: 'удали задачу купить молоко',
@@ -713,6 +785,25 @@ void main() {
         isTrue,
         reason: 'удалённая задача должна восстановиться при отмене',
       );
+    });
+
+    test('ambiguous exact task names leave every task untouched', () async {
+      final duplicates = [
+        Task(id: 't1', title: 'Купить молоко'),
+        Task(id: 't2', title: 'Купить молоко'),
+      ];
+      await JsonFile.write(
+        'tasks',
+        jsonEncode(duplicates.map((task) => task.toJson()).toList()),
+      );
+      await TaskService().load();
+
+      await expectLater(
+        AiGuideService.deleteByTypeForTesting('task', 'купить молоко'),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(TaskService().tasks.map((task) => task.id).toSet(), {'t1', 't2'});
     });
   });
 }

@@ -93,6 +93,7 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
   Timer? _showTimer;
   Timer? _hideTimer;
   Timer? _backstop;
+  Timer? _routeMonitor;
   OverlayEntry? _entry;
   _TipShellState? _shell;
   bool _showing = false;
@@ -113,11 +114,23 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
 
   @override
   void dispose() {
-    // Владелец умирает (переход на другой экран, смена категории,
-    // перестроение ряда) — пузырь и все таймеры снимаем СРАЗУ: живой пузырь
-    // на общем оверлее перекрывал пузырь нового экземпляра с той же подписью,
-    // а «висящие» таймеры потом снова его показывали.
-    _forceHide();
+    _showTimer?.cancel();
+    _hideTimer?.cancel();
+    _backstop?.cancel();
+    _routeMonitor?.cancel();
+    _unregisterTip(widget.message, this);
+    final shell = _shell;
+    final entry = _entry;
+    _shell = null;
+    _entry = null;
+    _showing = false;
+    if (shell != null && shell.mounted) {
+      shell.detachAndFadeOut();
+    } else if (entry != null) {
+      try {
+        entry.remove();
+      } catch (_) {}
+    }
     super.dispose();
   }
 
@@ -129,6 +142,7 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
     _showTimer?.cancel();
     _hideTimer?.cancel();
     _backstop?.cancel();
+    _routeMonitor?.cancel();
     _showTimer = null;
     _hideTimer = null;
     _backstop = null;
@@ -257,12 +271,29 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
     _purgeForeignTips(widget.message, this);
     _entry = entry;
     overlay.insert(entry);
+    // A route can be covered without disposing its button. In that case its
+    // pointer-up and the usual hide timer may never arrive, so watch route
+    // visibility while this overlay is alive and fade it as soon as it is
+    // covered.
+    _routeMonitor?.cancel();
+    _routeMonitor = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted) return;
+      final activeRoute = ModalRoute.of(context);
+      if (activeRoute != null && !activeRoute.isCurrent) _hide();
+    });
     // Абсолютная страховка от «залипания»: даже если up/cancel потерялись
     // (смена экрана, системное окно) — подсказка уйдёт сама.
     _backstop?.cancel();
+    // A missing pointer-up (for example, opening another app while holding
+    // the control) must never leave an overlay or its registry entry alive.
+    // Keep this independent of pointer state and force-remove the entry if
+    // the normal fade path did not finish.
+    final backstopDelay = widget.showDuration + const Duration(seconds: 2);
     _backstop = Timer(
-      widget.showDuration + const Duration(milliseconds: 2500),
-      _hide,
+      backstopDelay < const Duration(seconds: 8)
+          ? const Duration(seconds: 8)
+          : backstopDelay,
+      _forceHide,
     );
     // Палец уже отпущен (этот показ догонял чужое гашение) — живём ровно
     // showDuration, а не до страховочного таймера.
@@ -273,6 +304,8 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
 
   void _hide() {
     if (!_showing) return;
+    _routeMonitor?.cancel();
+    _routeMonitor = null;
     _hideTimer?.cancel();
     _backstop?.cancel();
     final shell = _shell;
@@ -294,11 +327,15 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
     }
     _unregisterTip(widget.message, this);
     _backstop?.cancel();
+    _routeMonitor?.cancel();
+    _routeMonitor = null;
   }
 
   /// Пузырь снят с оверлея владельцем.
   void _dropExisting() {
     _backstop?.cancel();
+    _routeMonitor?.cancel();
+    _routeMonitor = null;
     _showing = false;
     _shell = null;
     final e = _entry;

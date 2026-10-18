@@ -301,6 +301,13 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                 decoration: BoxDecoration(
                   color: widget.theme.colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(18),
+                  // Полупрозрачная обводка: светлая «кайма» читается и на
+                  // светлой, и на тёмной теме, отделяет плашку от фона и
+                  // убирает ощущение «странной» размытой кромки.
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    width: 1.2,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: widget.theme.shadowColor.withValues(alpha: 0.18),

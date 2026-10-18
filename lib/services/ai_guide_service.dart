@@ -69,24 +69,24 @@ class AiUndoAction {
 
 /// «Ада» — искусственный проводник.
 ///
-/// Провайдеры по приоритету (по мощности):
-///  1. HuggingFace (встроенная Ада) — лимит 100 сообщений в день.
-///  2. Kilo Gateway — бесплатный без ключа (openrouter/free — лучшая
-///     доступная бесплатная модель; анонимно 200 запросов/час).
-///  3. LLM7 — анонимный бесплатный доступ (500k токенов/день).
-///  4. AI Horde — анонимный резерв без ключа.
-///  5. Pollinations — бесплатный фолбэк без ключа (2 запроса/мин).
-///  6. OVHcloud AI Endpoints — бесплатный резерв без ключа.
-///  7. Poolside (Laguna) — только если пользователь вставил свой ключ.
+/// Провайдеры: настроенные пользователем Poolside/Agnes/Zen, затем
+/// анонимные Kilo, OVHcloud, Murakumo и AI Horde как резервные варианты.
 ///
 /// Любая ошибка/таймаут пробрасывается наверх — UI показывает плавную
 /// плашку «ИИ на курорте, подожди немного».
 class AiGuideService {
   /// Последнее действие для кнопки «Отменить» (null — отменять нечего).
-  static AiUndoAction? lastAction;
+  static final List<AiUndoAction> _undoActions = [];
+  static AiUndoAction? get lastAction =>
+      _undoActions.isEmpty ? null : _undoActions.last;
 
-  /// OpenAI-совместимый эндпоинт Pollinations (работает: POST с model openai).
-  static const _pollinationsUrl = 'https://text.pollinations.ai/openai';
+  @visibleForTesting
+  static void resetUndoHistory() => _undoActions.clear();
+
+  static void _recordUndo(AiUndoAction action) {
+    _undoActions.add(action);
+    if (_undoActions.length > 50) _undoActions.removeAt(0);
+  }
 
   /// Суточный лимит бесплатных сообщений через встроенную HF-модель.
   static const int dailyHfLimit = 100;
@@ -123,24 +123,59 @@ class AiGuideService {
     Future<String> Function() fn,
     int seconds,
   ) async {
-    if (_onCooldown(name)) return null;
+    if (_onCooldown(name)) {
+      _recordProviderTrace(
+        '$name: \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d, \u0435\u0449\u0451 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442 \u043a\u0443\u043b\u0434\u0430\u0443\u043d',
+      );
+      return null;
+    }
     try {
       final result = await fn().timeout(Duration(seconds: seconds));
-      // Отказ безопасности — считаем провайдера неудачным и пробуем
-      // следующего, а не показываем «user safety» как ответ Ады.
       if (_isRefusal(result)) {
         _markCooldown(name);
+        _recordProviderTrace(
+          '$name: \u043e\u0442\u043a\u0430\u0437 \u0444\u0438\u043b\u044c\u0442\u0440\u0430 \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u0438',
+        );
         return null;
       }
+      if (result.trim().isEmpty) {
+        _markCooldown(name);
+        _recordProviderTrace(
+          '$name: \u043f\u0443\u0441\u0442\u043e\u0439 \u043e\u0442\u0432\u0435\u0442',
+        );
+        return null;
+      }
+      _recordProviderTrace(
+        '$name: \u043e\u0442\u0432\u0435\u0442 \u043f\u043e\u043b\u0443\u0447\u0435\u043d',
+      );
       return result;
-    } catch (_) {
+    } on TimeoutException {
       _markCooldown(name);
+      _recordProviderTrace('$name: \u0442\u0430\u0439\u043c\u0430\u0443\u0442');
+      return null;
+    } catch (error) {
+      _markCooldown(name);
+      _recordProviderTrace('$name: ${_providerFailureReason(error)}');
       return null;
     }
   }
 
-  /// Персона Ады. [withContext] — добавляет текущие данные пользователя,
-  /// чтобы Ада знала, сколько у него привычек/задач/будильников.
+  static String _providerFailureReason(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('429') || message.contains('rate-limited')) {
+      return '\u043b\u0438\u043c\u0438\u0442 \u0437\u0430\u043f\u0440\u043e\u0441\u043e\u0432';
+    }
+    if (message.contains('401') || message.contains('403')) {
+      return '\u043a\u043b\u044e\u0447 \u043e\u0442\u043a\u043b\u043e\u043d\u0451\u043d';
+    }
+    return '\u0441\u0435\u0442\u0435\u0432\u0430\u044f \u043e\u0448\u0438\u0431\u043a\u0430 \u0438\u043b\u0438 \u043e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u0432\u0435\u0442\u0430';
+  }
+
+  static void _recordProviderTrace(String entry) {
+    providerTrace.value = [...providerTrace.value, entry];
+    modelLabelTick.value++;
+  }
+
   static String systemPrompt(String languageCode, {bool withContext = false}) {
     // Жёсткая установка языка: даже если мелкие бесплатные модели
     // «уплывают» в английский, промпт требует русского всегда, когда
@@ -614,7 +649,7 @@ class AiGuideService {
             history,
             languageCode,
             // Не трогаем суточную квоту встроенной Ады: повтор идёт только
-            // по бесплатным резервам (Kilo/LLM7/Pollinations/Horde/OVH).
+            // по бесплатным резервам (Kilo/OVHcloud/AI Horde).
             useHf: false,
           ).timeout(const Duration(seconds: 20));
           if (retried.trim().isNotEmpty && !_isMostlyEnglish(retried)) {
@@ -1216,73 +1251,104 @@ class AiGuideService {
     String userText,
     List<AiMessage> history,
     String languageCode, {
-    // false оставлен для совместимости вызывающего кода.
     bool useHf = true,
   }) async {
-    final sw = Stopwatch()..start();
-    assert(sw.isRunning);
+    providerTrace.value = <String>[];
+    _lastModel = '';
+    modelLabelTick.value++;
 
-    // Перед каждым новым запросом забываем временные сетевые кулдауны:
-    // провайдер мог восстановиться, пока приложение было открыто.
-    _clearCooldowns();
-
-    // Ада — это Poolside: если ключ задан, отвечает она (метка ada-0.0.3
-    // с плашками PREMIUM и POOL). Без ключа — сразу бесплатные резервы.
     final poolsideKey = await SettingsService.loadAiKey();
     if (poolsideKey.isNotEmpty) {
       final answer = await _tryProvider(
-        'poolside',
+        'Poolside',
         () => _sendPoolside(userText, history, poolsideKey, languageCode),
         12,
       );
-      if (answer != null && answer.trim().isNotEmpty) {
-        _setModel('ada-0.0.3');
+      if (answer != null) {
+        _setModel('Poolside — свой ключ');
         return answer;
       }
+    } else {
+      _recordProviderTrace(
+        'Poolside: \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d, \u043a\u043b\u044e\u0447 \u043d\u0435 \u0437\u0430\u0434\u0430\u043d',
+      );
     }
 
-    // Резервы по ключам: Agnes → Zen (ключей обычно нет — пропускаем мгновенно).
     final agnesKey = await SettingsService.loadAgnesKey();
     if (agnesKey.isNotEmpty) {
       final answer = await _tryProvider(
-        'agnes',
+        'Agnes AI',
         () => _sendAgnes(userText, history, agnesKey, languageCode),
         8,
       );
-      if (answer != null && answer.trim().isNotEmpty) return answer;
+      if (answer != null) {
+        _setModel('Agnes AI');
+        return answer;
+      }
+    } else {
+      _recordProviderTrace(
+        'Agnes AI: \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d, \u043a\u043b\u044e\u0447 \u043d\u0435 \u0437\u0430\u0434\u0430\u043d',
+      );
     }
+
     final zenKey = await SettingsService.loadZenKey();
     if (zenKey.isNotEmpty) {
       final answer = await _tryProvider(
-        'zen',
+        'Zen',
         () => _sendZen(userText, history, zenKey, languageCode),
         8,
       );
-      if (answer != null && answer.trim().isNotEmpty) return answer;
+      if (answer != null) {
+        _setModel('Zen');
+        return answer;
+      }
+    } else {
+      _recordProviderTrace(
+        'Zen: \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d, \u043a\u043b\u044e\u0447 \u043d\u0435 \u0437\u0430\u0434\u0430\u043d',
+      );
     }
 
-    // Бесплатные резервы — ПАРАЛЛЕЛЬНО: Kilo + Pollinations + OVH стартуют
-    // одновременно, побеждает первый ответивший. Так суммарное время
-    // остаётся в пределах лимита и ответ приходит всегда.
-    final fallbacks = <Future<String?> Function()>[
-      () => _tryProvider('kilo', () => _sendKilo(userText, languageCode), 12),
-      () => _tryProvider(
-        'pollinations',
-        () => _sendPollinations(userText, languageCode),
-        12,
+    final providers = <(String, Future<String?> Function())>[
+      (
+        'Kilo',
+        () => _tryProvider('Kilo', () => _sendKilo(userText, languageCode), 6),
       ),
-      () =>
-          _tryProvider('ovh', () => _sendOvhcloud(userText, languageCode), 12),
+      (
+        'OVHcloud',
+        () => _tryProvider(
+          'OVHcloud',
+          () => _sendOvhcloud(userText, languageCode),
+          6,
+        ),
+      ),
+      (
+        'Murakumo',
+        () => _tryProvider(
+          'Murakumo',
+          () => _sendMurakumo(userText, languageCode),
+          4,
+        ),
+      ),
+      (
+        'AI Horde',
+        () => _tryProvider(
+          'AI Horde',
+          () => _sendHorde(userText, languageCode),
+          12,
+        ),
+      ),
     ];
-    final results = await Future.wait(fallbacks.map((fn) => fn()));
-    for (final answer in results) {
-      if (answer != null && answer.trim().isNotEmpty) return answer;
+    for (final (name, send) in providers) {
+      final answer = await send();
+      if (answer != null) {
+        _setModel(name);
+        _recordProviderTrace('Selected: $name');
+        return answer;
+      }
     }
-    throw Exception('Все провайдеры недоступны');
+    throw Exception('All configured AI providers failed');
   }
 
-  /// Отменяет последнее действие Ады: удаляет созданное или восстанавливает
-  /// удалённое. Возвращает текст-подтверждение.
   static Future<String> undoLastAction() async {
     final a = lastAction;
     if (a == null) return 'Нечего отменять';
@@ -1336,7 +1402,7 @@ class AiGuideService {
             break;
         }
       }
-      lastAction = null;
+      _undoActions.removeLast();
       return 'Отменено: ${a.label} ↩';
     } catch (e) {
       return 'Не получилось отменить: $e';
@@ -1359,10 +1425,12 @@ class AiGuideService {
   }
 
   static final ValueNotifier<int> modelLabelTick = ValueNotifier<int>(0);
+  static final ValueNotifier<List<String>> providerTrace = ValueNotifier(
+    <String>[],
+  );
   static void recordModelUsed(String label) => _setModel(label);
 
-  static Future<String> currentModelLabel() async =>
-      _lastModel.isEmpty ? 'ada-0.0.3' : _lastModel;
+  static Future<String> currentModelLabel() async => _lastModel;
 
   // ---- Ада-трекинг: утренний отчёт и вечерний разбор прямо в ЧАТ ----
 
@@ -1570,24 +1638,23 @@ class AiGuideService {
 
   /// Дописывает сообщения в файл истории чата (до 1000, как в UI).
   static Future<void> _appendToChatHistory(List<AiMessage> msgs) async {
-    try {
-      var list = <AiMessage>[];
-      final raw = await JsonFile.read(_chatHistoryKey);
-      if (raw != null && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is List) {
-          list = decoded
-              .map((e) => AiMessage.fromJson(e as Map<String, dynamic>))
-              .toList();
-        }
+    var list = <AiMessage>[];
+    final raw = await JsonFile.read(_chatHistoryKey);
+    if (raw != null && raw.isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        list = decoded
+            .map((e) => AiMessage.fromJson(e as Map<String, dynamic>))
+            .toList();
       }
-      list.addAll(msgs);
-      if (list.length > 1000) list = list.sublist(list.length - 1000);
-      await JsonFile.write(
-        _chatHistoryKey,
-        jsonEncode(list.map((m) => m.toJson()).toList()),
-      );
-    } catch (_) {}
+    }
+    list.addAll(msgs);
+    if (list.length > 1000) list = list.sublist(list.length - 1000);
+    await JsonFile.writeWithSnapshot(
+      _chatHistoryKey,
+      jsonEncode(list.map((m) => m.toJson()).toList()),
+      raw,
+    );
   }
 
   /// Текст утреннего отчёта: сначала живой тёплый текст от встроенного ИИ
@@ -2016,89 +2083,122 @@ class AiGuideService {
   /// Удаляет первый элемент по типу и подстроке названия.
   /// Запоминает удалённый объект в [AiGuideService.lastAction] —
   /// кнопка «Отменить» восстановит его.
+  static T _requireUniqueDeleteMatch<T>(Iterable<T> matches, String type) {
+    final found = matches.toList();
+    if (found.isEmpty) {
+      throw StateError('No exact $type name matched; nothing was deleted.');
+    }
+    if (found.length > 1) {
+      throw StateError('The $type name is ambiguous; nothing was deleted.');
+    }
+    return found.single;
+  }
+
   static Future<String> _deleteByType(String type, String name) async {
     switch (type) {
       case 'habit':
         await HabitService().load();
-        final h = HabitService().habits
-            .where((x) => x.name.toLowerCase().contains(name))
-            .firstOrNull;
-        if (h == null) throw Exception('Привычка «$name» не найдена');
-        lastAction = AiUndoAction(
-          type: 'habit',
-          wasCreate: false,
-          item: h,
-          label: 'Привычка «${h.name}»',
+        final h = _requireUniqueDeleteMatch(
+          HabitService().habits.where(
+            (x) => x.name.trim().toLowerCase() == name,
+          ),
+          'habit',
         );
         await HabitService().remove(h.id);
+        _recordUndo(
+          AiUndoAction(
+            type: 'habit',
+            wasCreate: false,
+            item: h,
+            label: 'Привычка «${h.name}»',
+          ),
+        );
         return 'привычка «${h.name}»';
       case 'task':
         await TaskService().load();
-        final t = TaskService().tasks
-            .where((x) => x.title.toLowerCase().contains(name))
-            .firstOrNull;
-        if (t == null) throw Exception('Задача «$name» не найдена');
-        lastAction = AiUndoAction(
-          type: 'task',
-          wasCreate: false,
-          item: t,
-          label: 'Задача «${t.title}»',
+        final t = _requireUniqueDeleteMatch(
+          TaskService().tasks.where(
+            (x) => x.title.trim().toLowerCase() == name,
+          ),
+          'task',
         );
         await TaskService().remove(t.id);
+        _recordUndo(
+          AiUndoAction(
+            type: 'task',
+            wasCreate: false,
+            item: t,
+            label: 'Задача «${t.title}»',
+          ),
+        );
         return 'задача «${t.title}»';
       case 'alarm':
         await AlarmService().load();
-        final a = AlarmService().alarms.where((x) {
-          final label = x.label.toLowerCase();
+        final matches = AlarmService().alarms.where((x) {
+          final label = x.label.trim().toLowerCase();
           final time =
               '${x.time.hour.toString().padLeft(2, '0')}:'
               '${x.time.minute.toString().padLeft(2, '0')}';
-          return label.contains(name) || time.contains(name);
-        }).firstOrNull;
-        if (a == null) throw Exception('Будильник «$name» не найден');
-        lastAction = AiUndoAction(
-          type: 'alarm',
-          wasCreate: false,
-          item: a,
-          label:
-              'Будильник ${a.time.hour.toString().padLeft(2, '0')}:'
-              '${a.time.minute.toString().padLeft(2, '0')}',
-        );
+          return label == name || time == name;
+        });
+        final a = _requireUniqueDeleteMatch(matches, 'alarm');
         await AlarmService().remove(a.id);
+        _recordUndo(
+          AiUndoAction(
+            type: 'alarm',
+            wasCreate: false,
+            item: a,
+            label:
+                'Будильник ${a.time.hour.toString().padLeft(2, '0')}:'
+                '${a.time.minute.toString().padLeft(2, '0')}',
+          ),
+        );
         return 'будильник ${a.time.hour.toString().padLeft(2, '0')}:'
             '${a.time.minute.toString().padLeft(2, '0')}';
       case 'reality_check':
         await RealityCheckService().load();
-        final r = RealityCheckService().checks
-            .where((x) => x.question.toLowerCase().contains(name))
-            .firstOrNull;
-        if (r == null) throw Exception('Проверка «$name» не найдена');
-        lastAction = AiUndoAction(
-          type: 'reality_check',
-          wasCreate: false,
-          item: r,
-          label: 'Проверка реальности «${r.question}»',
+        final r = _requireUniqueDeleteMatch(
+          RealityCheckService().checks.where(
+            (x) => x.question.trim().toLowerCase() == name,
+          ),
+          'reality_check',
         );
         await RealityCheckService().remove(r.id);
+        _recordUndo(
+          AiUndoAction(
+            type: 'reality_check',
+            wasCreate: false,
+            item: r,
+            label: 'Проверка реальности «${r.question}»',
+          ),
+        );
         return 'проверка реальности «${r.question}»';
       case 'meal':
         await NutritionService().load();
-        final m = NutritionService().meals
-            .where((x) => x.name.toLowerCase().contains(name))
-            .firstOrNull;
-        if (m == null) throw Exception('Блюдо «$name» не найдено');
-        lastAction = AiUndoAction(
-          type: 'meal',
-          wasCreate: false,
-          item: m,
-          label: 'Блюдо «${m.name}»',
+        final m = _requireUniqueDeleteMatch(
+          NutritionService().meals.where(
+            (x) => x.name.trim().toLowerCase() == name,
+          ),
+          'meal',
         );
         await NutritionService().remove(m.id);
+        _recordUndo(
+          AiUndoAction(
+            type: 'meal',
+            wasCreate: false,
+            item: m,
+            label: 'Блюдо «${m.name}»',
+          ),
+        );
         return 'блюдо «${m.name}»';
       default:
         throw Exception('Неизвестный тип $type');
     }
   }
+
+  @visibleForTesting
+  static Future<String> deleteByTypeForTesting(String type, String name) =>
+      _deleteByType(type, name);
 
   // ---- Локальный парсер команд (оффлайн, без сети и лимита) ----
 
@@ -2373,11 +2473,13 @@ class AiGuideService {
     final h = Habit(id: const Uuid().v4(), name: name, type: 'good');
     await HabitService().load();
     await HabitService().add(h);
-    lastAction = AiUndoAction(
-      type: 'habit',
-      wasCreate: true,
-      id: h.id,
-      label: 'Привычка «$name»',
+    _recordUndo(
+      AiUndoAction(
+        type: 'habit',
+        wasCreate: true,
+        id: h.id,
+        label: 'Привычка «$name»',
+      ),
     );
   }
 
@@ -2385,11 +2487,13 @@ class AiGuideService {
     final task = Task(id: const Uuid().v4(), title: title);
     await TaskService().load();
     await TaskService().add(task);
-    lastAction = AiUndoAction(
-      type: 'task',
-      wasCreate: true,
-      id: task.id,
-      label: 'Задача «$title»',
+    _recordUndo(
+      AiUndoAction(
+        type: 'task',
+        wasCreate: true,
+        id: task.id,
+        label: 'Задача «$title»',
+      ),
     );
   }
 
@@ -2408,11 +2512,13 @@ class AiGuideService {
     }
     final hh = hour.toString().padLeft(2, '0');
     final mm = minute.toString().padLeft(2, '0');
-    lastAction = AiUndoAction(
-      type: 'alarm',
-      wasCreate: true,
-      id: alarm.id,
-      label: 'Будильник на $hh:$mm',
+    _recordUndo(
+      AiUndoAction(
+        type: 'alarm',
+        wasCreate: true,
+        id: alarm.id,
+        label: 'Будильник на $hh:$mm',
+      ),
     );
   }
 
@@ -2420,11 +2526,13 @@ class AiGuideService {
     final check = RealityCheck(id: const Uuid().v4(), question: question);
     await RealityCheckService().load();
     await RealityCheckService().add(check);
-    lastAction = AiUndoAction(
-      type: 'reality_check',
-      wasCreate: true,
-      id: check.id,
-      label: 'Проверка реальности «$question»',
+    _recordUndo(
+      AiUndoAction(
+        type: 'reality_check',
+        wasCreate: true,
+        id: check.id,
+        label: 'Проверка реальности «$question»',
+      ),
     );
   }
 
@@ -2437,11 +2545,13 @@ class AiGuideService {
     );
     await NutritionService().load();
     await NutritionService().add(meal);
-    lastAction = AiUndoAction(
-      type: 'meal',
-      wasCreate: true,
-      id: meal.id,
-      label: 'Приём пищи «$name»',
+    _recordUndo(
+      AiUndoAction(
+        type: 'meal',
+        wasCreate: true,
+        id: meal.id,
+        label: 'Приём пищи «$name»',
+      ),
     );
   }
 
@@ -2498,11 +2608,13 @@ class AiGuideService {
         if (habit.name.isEmpty) throw Exception('Пустое название привычки');
         await HabitService().load();
         await HabitService().add(habit);
-        lastAction = AiUndoAction(
-          type: 'habit',
-          wasCreate: true,
-          id: habit.id,
-          label: 'Привычка «${habit.name}»',
+        _recordUndo(
+          AiUndoAction(
+            type: 'habit',
+            wasCreate: true,
+            id: habit.id,
+            label: 'Привычка «${habit.name}»',
+          ),
         );
         return 'Привычка «${habit.name}» создана';
       case 'create_task':
@@ -2515,11 +2627,13 @@ class AiGuideService {
         if (task.title.isEmpty) throw Exception('Пустое название задачи');
         await TaskService().load();
         await TaskService().add(task);
-        lastAction = AiUndoAction(
-          type: 'task',
-          wasCreate: true,
-          id: task.id,
-          label: 'Задача «${task.title}»',
+        _recordUndo(
+          AiUndoAction(
+            type: 'task',
+            wasCreate: true,
+            id: task.id,
+            label: 'Задача «${task.title}»',
+          ),
         );
         return 'Задача «${task.title}» создана';
       case 'create_alarm':
@@ -2546,11 +2660,13 @@ class AiGuideService {
         if (NotificationService().isInitialized) {
           await NotificationService().scheduleAlarm(alarm);
         }
-        lastAction = AiUndoAction(
-          type: 'alarm',
-          wasCreate: true,
-          id: alarm.id,
-          label: 'Будильник на $hour:$minute',
+        _recordUndo(
+          AiUndoAction(
+            type: 'alarm',
+            wasCreate: true,
+            id: alarm.id,
+            label: 'Будильник на $hour:$minute',
+          ),
         );
         final hh = alarm.time.hour.toString().padLeft(2, '0');
         final mm = alarm.time.minute.toString().padLeft(2, '0');
@@ -2565,11 +2681,13 @@ class AiGuideService {
         }
         await RealityCheckService().load();
         await RealityCheckService().add(check);
-        lastAction = AiUndoAction(
-          type: 'reality_check',
-          wasCreate: true,
-          id: check.id,
-          label: 'Проверка реальности «${check.question}»',
+        _recordUndo(
+          AiUndoAction(
+            type: 'reality_check',
+            wasCreate: true,
+            id: check.id,
+            label: 'Проверка реальности «${check.question}»',
+          ),
         );
         return 'Проверка реальности «${check.question}» создана';
       case 'create_meal':
@@ -2584,11 +2702,13 @@ class AiGuideService {
         );
         await NutritionService().load();
         await NutritionService().add(meal);
-        lastAction = AiUndoAction(
-          type: 'meal',
-          wasCreate: true,
-          id: meal.id,
-          label: 'Приём пищи «$name»',
+        _recordUndo(
+          AiUndoAction(
+            type: 'meal',
+            wasCreate: true,
+            id: meal.id,
+            label: 'Приём пищи «$name»',
+          ),
         );
         return 'Приём пищи «$name» (${meal.calories} ккал) записан';
       case 'delete_item':
@@ -2856,7 +2976,7 @@ class AiGuideService {
     return 'Готово! Я создала всё, что ты просил. Проверь разделы приложения.';
   }
 
-  // ---- Бесплатные фолбэки без ключа: Pollinations + AI Horde ----
+  // ---- Бесплатные фолбэки без ключа ----
 
   /// Промпт для бесплатных анонимных провайдеров: короткий текст + ЖЁСТКОЕ
   /// указание языка прямо в запросе (system-промпт до них не доезжает,
@@ -2922,58 +3042,73 @@ class AiGuideService {
     return null;
   }
 
-  /// Pollinations — анонимный, без ключа. POST /openai с GPT-OSS 20B
-  /// (openai-fast). Rate limit 2 запроса/мин для анонимных; при 402
-  /// сразу бросаем исключение, чтобы перейти к AI Horde.
-  static Future<String> _sendPollinations(
+  /// AI Horde — асинхронный распределённый text API. Анонимный ключ
+  /// разрешён, но имеет низкий приоритет; ждём ограниченное время, затем
+  /// передаём запрос пользователю следующего раза без зависания UI.
+  static const _hordeBaseUrl = 'https://aihorde.net/api/v2';
+
+  static Future<String> _sendHorde(
     String userText,
     String languageCode,
   ) async {
-    final prompt = _freePrompt(userText, languageCode);
-
-    // openai-fast — единственная анонимная модель (GPT-OSS 20B, OVH).
-    // openai — её алиас. mistral и другие удалены Pollinations.
-    for (final model in ['openai-fast', 'openai']) {
-      try {
-        final resp = await http
-            .post(
-              Uri.parse(_pollinationsUrl),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'model': model,
-                'messages': [
-                  {'role': 'user', 'content': prompt},
-                ],
-              }),
-            )
-            .timeout(const Duration(seconds: 10));
-        // 402 = rate limit (2/мин) или неоплаченный доступ — сразу
-        // выходим, чтобы не жечь бюджет на повторных попытках.
-        if (resp.statusCode == 402) {
-          throw Exception('Pollinations rate-limited (402)');
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': '0000000000',
+      'Client-Agent': 'Keramika:1.3.0:flutter',
+    };
+    final submitted = await http
+        .post(
+          Uri.parse('$_hordeBaseUrl/generate/text/async'),
+          headers: headers,
+          body: jsonEncode({
+            'prompt': _freePrompt(userText, languageCode),
+            'params': {
+              'max_length': 320,
+              'temperature': 0.7,
+              'top_p': 0.9,
+              'stop_sequence': ['</s>', '<|endoftext|>'],
+            },
+            'r2': false,
+            'dry_run': false,
+          }),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (submitted.statusCode != 200 && submitted.statusCode != 202) {
+      throw Exception('AI Horde submit ${submitted.statusCode}');
+    }
+    final submission = jsonDecode(submitted.body);
+    if (submission is! Map || submission['id'] is! String) {
+      throw Exception('AI Horde returned no request id');
+    }
+    final requestId = submission['id'] as String;
+    final deadline = DateTime.now().add(const Duration(seconds: 4));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      final response = await http
+          .get(
+            Uri.parse('$_hordeBaseUrl/generate/text/status/$requestId'),
+            headers: const {'Client-Agent': 'Keramika:1.3.0:flutter'},
+          )
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode != 200) {
+        throw Exception('AI Horde status ${response.statusCode}');
+      }
+      final status = jsonDecode(response.body);
+      if (status is! Map) throw Exception('AI Horde invalid status');
+      final generations = status['generations'];
+      if (generations is List && generations.isNotEmpty) {
+        final first = generations.first;
+        final text = first is Map ? first['text'] : null;
+        if (text is String && text.trim().isNotEmpty) {
+          _setModel('AI Horde · ${first['model'] ?? 'text'}');
+          return _cleanText(text);
         }
-        if (resp.statusCode == 200 &&
-            resp.body.trim().isNotEmpty &&
-            !resp.body.trimLeft().startsWith('<')) {
-          final text = _extractOpenAiText(resp.body);
-          if (text != null && text.trim().isNotEmpty) {
-            _setModel('Pollinations');
-            return _cleanText(text);
-          }
-          // Не JSON и не HTML — сырой текст.
-          if (!resp.body.trimLeft().startsWith('{')) {
-            _setModel('Pollinations');
-            return _cleanText(resp.body);
-          }
-        }
-      } catch (_) {
-        // Любая ошибка — сразу пробуем следующую модель, потом
-        // выходим на AI Horde (не ждём legacy GET, он deprecated).
-        rethrow;
+      }
+      if (status['faulted'] == true || status['is_possible'] == false) {
+        throw Exception('AI Horde generation unavailable');
       }
     }
-
-    throw Exception('Pollinations unavailable');
+    throw TimeoutException('AI Horde queue timeout');
   }
 
   /// OVHcloud AI Endpoints — бесплатный резерв без ключа (2 запроса/мин
@@ -2982,8 +3117,8 @@ class AiGuideService {
       'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions';
   static const _ovhModels = <String>[
     'Mistral-Nemo-Instruct-2407',
-    'Qwen2.5-32B-Instruct',
-    'Mistral-Small-3.1-24B-Instruct-2501',
+    'Mistral-Small-3.2-24B-Instruct-2506',
+    'Qwen3.5-397B-A17B',
   ];
 
   static Future<String> _sendOvhcloud(
@@ -3031,6 +3166,42 @@ class AiGuideService {
     throw Exception('OVHcloud unavailable');
   }
 
+  /// Murakumo — публичный OpenAI-совместимый endpoint без ключа.
+  /// Бесплатный маршрут имеет небольшой общий лимит на IP, поэтому
+  /// используется только после основных бесплатных провайдеров.
+  static const _murakumoUrl =
+      'https://api.murakumo.cloud/v1/chat/completions';
+
+  static Future<String> _sendMurakumo(
+    String userText,
+    String languageCode,
+  ) async {
+    final response = await http
+        .post(
+          Uri.parse(_murakumoUrl),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'model': 'murakumo/free',
+            'messages': [
+              {'role': 'user', 'content': _freePrompt(userText, languageCode)},
+            ],
+            'max_tokens': 512,
+            'temperature': 0.7,
+          }),
+        )
+        .timeout(const Duration(seconds: 4));
+    if (response.statusCode != 200 ||
+        response.body.trim().isEmpty ||
+        response.body.trimLeft().startsWith('<')) {
+      throw Exception('Murakumo HTTP ${response.statusCode}');
+    }
+    final text = _extractOpenAiText(response.body);
+    if (text == null || text.trim().isEmpty) {
+      throw Exception('Murakumo returned empty text');
+    }
+    return _cleanText(text);
+  }
+
   /// Kilo Gateway — бесплатные модели без ключа (openrouter/free — лучшая
   /// доступная бесплатная модель; анонимно до 200 запросов/час на IP).
   static const _kiloUrl = 'https://api.kilo.ai/api/gateway/chat/completions';
@@ -3070,7 +3241,7 @@ class AiGuideService {
           }
         }
       } catch (_) {
-        // Любая ошибка — пробуем следующую модель Kilo, потом LLM7.
+        // Любая ошибка — пробуем следующую модель Kilo, затем следующий провайдер.
         rethrow;
       }
     }

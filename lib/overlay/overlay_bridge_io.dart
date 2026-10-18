@@ -160,6 +160,22 @@ Future<bool> adaOverlayPermission() async {
   }
 }
 
+/// Только системное разрешение, без показа пузыря.
+Future<bool> requestAdaOverlayPermission() async {
+  if (!Platform.isAndroid) return false;
+  try {
+    if (!await FlutterOverlayWindow.isPermissionGranted()) {
+      systemUiActive = true;
+      await FlutterOverlayWindow.requestPermission();
+      systemUiActive = false;
+    }
+    return await FlutterOverlayWindow.isPermissionGranted();
+  } catch (_) {
+    systemUiActive = false;
+    return false;
+  }
+}
+
 /// Текущая позиция оверлея (dp). null, если оверлей не активен.
 Future<OverlayPosition?> adaOverlayPosition() async {
   if (!Platform.isAndroid) return null;

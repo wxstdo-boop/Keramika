@@ -35,6 +35,10 @@ class Translations {
           'This meal will be removed. This cannot be undone.',
       'deleteMealConfirm': 'Delete meal',
       'about': 'About',
+      'dataStorageError':
+          'Local data could not be read or saved. Existing files were not changed.',
+      'updateHashMissing':
+          'The release has no valid SHA-256 digest. Installation was cancelled.',
       'patchNotes': 'Patch notes',
       'soon': 'Soon',
       'noAlarms': 'No alarms yet',
@@ -336,7 +340,7 @@ class Translations {
           'Cannot open settings. Open the app settings → Notifications / Battery manually.',
       'welcomeTitle': 'Welcome to Keramika!',
       'welcomeBody':
-          'For reliable alarms, please:\n\n1. Disable battery optimization\n2. Enable notifications',
+          'Important: allow notifications and unrestricted background activity so alarms can ring on time. You can adjust these permissions now or later in Settings.',
       'welcomeGo': 'Go to settings',
       'welcomeSkip': 'Skip',
       'maxAlarms': 'Max 10 alarms',
@@ -431,9 +435,8 @@ class Translations {
       'aiGuideKey': 'Poolside key (optional)',
       'aiGuideKeyHint': 'Paste your Laguna API key',
       'aiGuideKeyNote':
-          'Ada uses built-in free models (100 messages for ADA; the rest — FreeLLMPool).',
-      'aiGuideKeyNoteProviders':
-          'FreeLLMpool, AI Horde, OVHCloud, Pollinations, LLM7 and Kilo',
+          'Free providers: Kilo, OVHcloud, Murakumo and AI Horde. Poolside key is optional.',
+      'aiGuideKeyNoteProviders': 'Kilo, OVHcloud, Murakumo and AI Horde',
       'aiGuideKeyNoteTail': '',
       'geminiKey': 'Gemini key (optional — the best, hottest Ada)',
       'geminiKeyHint': 'Paste your Google AI Studio key',
@@ -545,6 +548,24 @@ class Translations {
       'clearCacheDesc': 'Free up storage used by temporary files',
       'clearCacheDone': 'Cache cleared!',
       'devMode': 'Developer mode',
+      'devModePrompt': 'Enter the access code to continue',
+      'devModeInvalidCode': 'That code did not match. Try again.',
+      'devModeUnlock': 'Unlock',
+      'devToolsTitle': 'Developer tools',
+      'devToolsSubtitle': 'Hidden settings for fine-polishing the app.',
+      'devModeDisable': 'Turn off developer mode',
+      'devPromptTitle': 'What should change in the app?',
+      'devPromptDescription':
+          'Write down the improvements you want to make. This note is saved automatically and included in your backup.',
+      'devPromptHint':
+          'Describe the changes, behavior, or design you would like...',
+      'devPromptSaving': 'Saving…',
+      'devPromptSaved': 'Saved on this device',
+      'devPromptUnsaved': 'Changes not saved yet',
+      'devPromptSaveError': 'Could not save. Tap Save to try again.',
+      'devPromptSave': 'Save',
+      'showPassword': 'Show code',
+      'hidePassword': 'Hide code',
       'patchTodos':
           'Remaining to do — autosave, minor tweaks, screen stretch on swipe up',
       'changeSwipeUp': 'Swipe up on the home screen to refresh',
@@ -828,6 +849,10 @@ class Translations {
           'Этот приём пищи будет удалён. Действие нельзя отменить.',
       'deleteMealConfirm': 'Удалить приём пищи',
       'about': 'О приложении',
+      'dataStorageError':
+          'Не удалось прочитать или сохранить локальные данные. Исходные файлы не изменены.',
+      'updateHashMissing':
+          'У релиза нет корректного SHA-256. Установка отменена.',
       'patchNotes': 'Список изменений',
       'soon': 'Скоро',
       'noAlarms': 'Будильников пока нет',
@@ -1133,7 +1158,7 @@ class Translations {
           'Не удалось открыть настройки. Откройте настройки приложения → Уведомления / Батарея вручную.',
       'welcomeTitle': 'Добро пожаловать в Keramika!',
       'welcomeBody':
-          'Для надёжных будильников:\n\n1. Отключите оптимизацию батареи\n2. Включите уведомления',
+          'Важно для точной работы будильников: разрешите уведомления и работу приложения в фоне без ограничений. Настройки можно открыть сейчас или позже.',
       'welcomeGo': 'К настройкам',
       'welcomeSkip': 'Пропустить',
       'maxAlarms': 'Максимум 10 будильников',
@@ -1228,9 +1253,8 @@ class Translations {
       'aiGuideKey': 'Ключ Poolside (необязательно)',
       'aiGuideKeyHint': 'Вставь свой ключ Laguna',
       'aiGuideKeyNote':
-          'Ада использует встроенные бесплатные модели (100 сообщений на ADA, остальное — FreeLLMPool).',
-      'aiGuideKeyNoteProviders':
-          'FreeLLMpool, AI Horde, OVHCloud, Pollinations, LLM7 и Kilo',
+          'Бесплатные провайдеры: Kilo, OVHcloud, Murakumo и AI Horde. Ключ Poolside необязателен.',
+      'aiGuideKeyNoteProviders': 'Kilo, OVHcloud, Murakumo и AI Horde',
       'aiGuideKeyNoteTail': '',
       'geminiKey': 'Ключ Gemini (необязательно — самая живая и горячая Ада)',
       'geminiKeyHint': 'Вставь ключ из Google AI Studio',
@@ -1343,6 +1367,23 @@ class Translations {
       'clearCacheDesc': 'Освободить место, занятое временными файлами',
       'clearCacheDone': 'Кэш очищен!',
       'devMode': 'Режим разработчика',
+      'devModePrompt': 'Введите код доступа, чтобы продолжить',
+      'devModeInvalidCode': 'Код не подошёл. Попробуйте ещё раз.',
+      'devModeUnlock': 'Открыть',
+      'devToolsTitle': 'Инструменты разработчика',
+      'devToolsSubtitle': 'Скрытые настройки для тонкой полировки приложения.',
+      'devModeDisable': 'Выключить режим разработчика',
+      'devPromptTitle': 'Что нужно изменить в приложении?',
+      'devPromptDescription':
+          'Записывайте сюда пожелания и задачи для доработки. Текст сохраняется автоматически и попадает в резервную копию.',
+      'devPromptHint': 'Опишите нужные изменения, поведение или дизайн...',
+      'devPromptSaving': 'Сохраняем…',
+      'devPromptSaved': 'Сохранено на этом устройстве',
+      'devPromptUnsaved': 'Есть несохранённые изменения',
+      'devPromptSaveError': 'Не удалось сохранить. Нажмите «Сохранить».',
+      'devPromptSave': 'Сохранить',
+      'showPassword': 'Показать код',
+      'hidePassword': 'Скрыть код',
       'patchTodos':
           'Осталось сделать — автосохранение, мелкие доработки, натяжение экрана свайпом вверх',
       'changeSwipeUp': 'Свайп вверх на главном экране для обновления',
@@ -1633,6 +1674,10 @@ class Translations {
           'Ce repas sera supprimé. Cette action est irréversible.',
       'deleteMealConfirm': 'Supprimer le repas',
       'about': 'À propos',
+      'dataStorageError':
+          'Impossible de lire ou d’enregistrer les données locales. Les fichiers existants n’ont pas été modifiés.',
+      'updateHashMissing':
+          'La version ne fournit pas de SHA-256 valide. Installation annulée.',
       'patchNotes': 'Notes de mise à jour',
       'soon': 'Bientôt',
       'noAlarms': 'Aucune alarme pour l’instant',
@@ -1935,7 +1980,7 @@ class Translations {
           'Impossible d’ouvrir les paramètres. Ouvrez-les manuellement → Notifications / Batterie.',
       'welcomeTitle': 'Bienvenue dans Keramika !',
       'welcomeBody':
-          'Pour des alarmes fiables :\n\n1. Désactivez l’optimisation de la batterie\n2. Activez les notifications',
+          'Important pour la ponctualité des alarmes : autorisez les notifications et l’activité en arrière-plan sans restriction. Vous pourrez régler ces autorisations maintenant ou plus tard.',
       'welcomeGo': 'Aller aux paramètres',
       'welcomeSkip': 'Passer',
       'maxAlarms': 'Maximum 10 alarmes',
@@ -2033,9 +2078,8 @@ class Translations {
       'aiGuideKey': 'Clé Poolside (optionnelle)',
       'aiGuideKeyHint': 'Collez votre clé Laguna',
       'aiGuideKeyNote':
-          'Ada utilise des modèles gratuits intégrés (100 messages pour ADA, le reste — FreeLLMPool).',
-      'aiGuideKeyNoteProviders':
-          'FreeLLMpool, AI Horde, OVHCloud, Pollinations, LLM7 et Kilo',
+          'Fournisseurs gratuits : Kilo, OVHcloud, Murakumo et AI Horde. La clé Poolside est facultative.',
+      'aiGuideKeyNoteProviders': 'Kilo, OVHcloud, Murakumo et AI Horde',
       'aiGuideKeyNoteTail': '',
       'geminiKey':
           'Clé Gemini (optionnelle — l’Ada la plus vive et la plus chaude)',
@@ -2151,6 +2195,25 @@ class Translations {
       'clearCacheDesc': 'Libérer l’espace des fichiers temporaires',
       'clearCacheDone': 'Cache vidé !',
       'devMode': 'Mode développeur',
+      'devModePrompt': 'Saisissez le code d’accès pour continuer',
+      'devModeInvalidCode': 'Code incorrect. Veuillez réessayer.',
+      'devModeUnlock': 'Déverrouiller',
+      'devToolsTitle': 'Outils développeur',
+      'devToolsSubtitle': 'Options cachées pour polir finement l’application.',
+      'devModeDisable': 'Désactiver le mode développeur',
+      'devPromptTitle': 'Que faut-il changer dans l’application ?',
+      'devPromptDescription':
+          'Notez ici les améliorations souhaitées. Le texte est enregistré automatiquement et inclus dans la sauvegarde.',
+      'devPromptHint':
+          'Décrivez les changements, le comportement ou le design souhaité…',
+      'devPromptSaving': 'Enregistrement…',
+      'devPromptSaved': 'Enregistré sur cet appareil',
+      'devPromptUnsaved': 'Modifications non enregistrées',
+      'devPromptSaveError':
+          'Échec de l’enregistrement. Appuyez sur Enregistrer.',
+      'devPromptSave': 'Enregistrer',
+      'showPassword': 'Afficher le code',
+      'hidePassword': 'Masquer le code',
       'patchTodos':
           'À faire — sauvegarde automatique, petites améliorations, étirement de l\'écran en balayant vers le haut',
       'changeSwipeUp': 'Glissez vers le haut sur l\'accueil pour actualiser',

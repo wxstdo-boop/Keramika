@@ -117,15 +117,10 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     // событием скролла.
     if (_pillCtrl.positions.length != 1) return;
     final v = _pillCtrl.offset;
-    final vv = v < 0 ? 0.0 : v;
-    sectionOffsetByPage[widget.pillIndex] = vv;
-    // Пишем в общий sectionScrollOffset только активная вкладка:
-    // неактивные keep-alive экраны иначе сбрасывают его на свой офсет и
-    // таблетка вылазит на весь рост поверх прокрученного списка.
-    if (sectionCurrentIndex.value == widget.pillIndex &&
-        (target.value - vv).abs() > 0.5) {
-      target.value = vv;
-    }
+    // В общий офсет пишет [reportSectionPillOffset] и только когда раздел
+    // активен и карусель стоит ровно на нём: во время переезда высоту
+    // таблетки ведёт Home интерполяцией между соседними разделами.
+    reportSectionPillOffset(widget.pillIndex, v < 0 ? 0.0 : v);
   }
 
   /// Потянуть вниз — обновить: перечитываем данные с диска и заново

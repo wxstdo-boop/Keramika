@@ -2,27 +2,34 @@ import 'package:flutter/material.dart';
 
 /// Лейбл модели с бейджем PREMIUM у основной модели Ады.
 ///
-/// Обычные модели (Kilo · openrouter/free, LLM7 · fast и т.д.) показываются
+/// Имена текущих резервных провайдеров (Kilo, OVHcloud, AI Horde) показываются
 /// обычным текстом. У «ada-0.0.3» рядом выводится маленькая золотая плашка
 /// PREMIUM — чтобы было видно, что это основная, особенная модель.
 class ModelLabel extends StatelessWidget {
   final String label;
   final TextStyle? textStyle;
   final bool isAdaModel;
+  final String? details;
 
   const ModelLabel({
     super.key,
     required this.label,
     this.textStyle,
     this.isAdaModel = false,
+    this.details,
   });
+
+  Widget _withDetails(Widget child) =>
+      details == null || details!.isEmpty
+          ? child
+          : Tooltip(message: details!, child: child);
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final showBadge = isAdaModel || label.startsWith('ada-0.0.3');
     if (!showBadge) {
-      return Text(label, style: textStyle);
+      return _withDetails(Text(label, style: textStyle));
     }
 
     // Золотой градиент — читается и на светлой, и на тёмной теме.
@@ -33,7 +40,7 @@ class ModelLabel extends StatelessWidget {
     final poolGradient = const LinearGradient(
       colors: [Color(0xFF00B8A9), Color(0xFF2E6FDB)],
     );
-    return Row(
+    return _withDetails(Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(
@@ -85,6 +92,6 @@ class ModelLabel extends StatelessWidget {
           ),
         ),
       ],
-    );
+    ));
   }
 }

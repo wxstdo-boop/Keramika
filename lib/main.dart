@@ -13,6 +13,7 @@ import 'utils/android_settings.dart' show setSecureWindow;
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/wake_task_screen.dart';
+import 'screens/startup_recovery_screen.dart';
 import 'widgets/mutilated_overlay.dart';
 import 'widgets/metel_overlay.dart';
 import 'l10n/locale_provider.dart';
@@ -35,7 +36,13 @@ import 'services/json_file.dart';
 import 'services/migration.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-import 'overlay/ada_overlay.dart';
+import 'overlay/ada_overlay.dart'
+    show
+        initOverlayChannel,
+        syncOverlayAvatarFromHost,
+        syncOverlayModelFromHost,
+        resetOverlayFromHost,
+        AdaOverlayApp;
 import 'overlay/overlay_bridge.dart';
 import 'widgets/ada_avatars.dart';
 import 'widgets/ai_guide.dart';
@@ -53,6 +60,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 /// каждом build сбрасывал бы стек роутов.
 final JankRouteObserver _jankObserver = JankRouteObserver();
 Timer? _autoSaveTimer;
+bool _autoSaveFailureActive = false;
 // Флаг — WakeTaskScreen уже показан, не пушить второй при тапе
 // по уведомлению (onNewIntent → onNewAlarmPayload).
 bool _wakeScreenShowing = false;
@@ -71,6 +79,8 @@ String? _alarmBootPayload;
 /// Читает payload будильника из нативного intent. Возвращает null, если
 /// приложение открыто не будильником.
 Future<String?> _readAlarmBootPayload() async {
+  // Web не поддерживает MethodChannel — сразу возвращаем null
+  if (kIsWeb) return null;
   try {
     final p = await const MethodChannel(
       'com.wetidom.keramika/alarm_payload',
@@ -102,9 +112,43 @@ Future<void> _autoSaveTick() async {
       RealityCheckService().forceSave(),
       TimerService().forceSave(),
     ]);
-  } catch (_) {}
+    _autoSaveFailureActive = false;
+  } catch (error, stackTrace) {
+    if (!_autoSaveFailureActive) {
+      _autoSaveFailureActive = true;
+      _reportPersistenceFailure(error, stackTrace);
+    }
+  }
   // Увеличиваем интервал с 3 до 10 секунд, чтобы снизить нагрузку на диск.
   _autoSaveTimer = Timer(const Duration(seconds: 10), _autoSaveTick);
+}
+
+void _reportPersistenceFailure(Object error, StackTrace stackTrace) {
+  debugPrint('Local data operation failed: $error\n$stackTrace');
+
+  void show(BuildContext context) {
+    showBeautifulSnackBar(
+      context,
+      message: Translations.t(
+        'dataStorageError',
+        context,
+        'Local data could not be read or saved. Existing files were not changed.',
+      ),
+      icon: Icons.warning_amber_rounded,
+      iconColor: Colors.redAccent,
+      duration: const Duration(seconds: 6),
+    );
+  }
+
+  final context = navigatorKey.currentContext;
+  if (context != null && context.mounted) {
+    show(context);
+  } else {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final retryContext = navigatorKey.currentContext;
+      if (retryContext != null && retryContext.mounted) show(retryContext);
+    });
+  }
 }
 
 void stopAutoSave() {
@@ -114,23 +158,33 @@ void stopAutoSave() {
 
 Timer? _autoExportTimer;
 bool _isAutoExporting = false;
+bool _autoExportEnabled = false;
 // Время последнего автоэкспорта — чтобы не «забывать» час, пока приложение
 // было закрыто, и не делать лишние бэкапы при каждом запуске.
 const _lastAutoExportKey = 'last_auto_export_at';
 // Нативка слушает saveToDownloads на канале alarm_payload (MainActivity).
 // Раньше здесь был канал '.../backup' — вызов падал в MissingPluginException,
 // и бэкап молча писался в невидимую папку Android/data вместо Download.
-const _backupChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
+late final MethodChannel _backupChannel;
 // Канал сигналов жизненного цикла Activity → Dart: onUserLeaveHint —
 // пользователь реально покидает приложение (Home/«недавние»/другое
 // приложение), но НЕ при открытии шторки и системных диалогов.
-const _lifecycleChannel = MethodChannel('com.wetidom.keramika/lifecycle');
+late final MethodChannel _lifecycleChannel;
+
+/// Инициализация каналов: только для Android/iOS.
+void initChannels() {
+  if (kIsWeb) return;
+  _backupChannel = const MethodChannel('com.wetidom.keramika/alarm_payload');
+  _lifecycleChannel = const MethodChannel('com.wetidom.keramika/lifecycle');
+  _alarmPayloadChannel = const MethodChannel('com.wetidom.keramika/alarm_payload');
+}
 
 /// Включает автоэкспорт: разовый прогон (если нужно) + почасовой таймер.
 /// [silent] — true для фоновых прогонов (старт/возврат в приложение),
 /// чтобы не спамить снекбаром; ручное включение в настройках показывает
 /// подтверждение.
 void startAutoExport({bool runImmediately = true, bool silent = false}) {
+  _autoExportEnabled = true;
   _autoExportTimer?.cancel();
   _autoExportTimer = null;
   if (runImmediately) {
@@ -146,17 +200,20 @@ Future<void> _autoExportTick({bool silent = false}) async {
   try {
     debugPrint('[auto-export] tick start');
     final saved = await _performAutoExport(showSnack: !silent);
-    globalPrefs.setInt(
+    await globalPrefs.setInt(
       _lastAutoExportKey,
       DateTime.now().millisecondsSinceEpoch,
     );
     debugPrint('[auto-export] OK -> $saved');
   } catch (e, st) {
     debugPrint('[auto-export] FAILED: $e\n$st');
+  } finally {
+    _isAutoExporting = false;
+    _autoExportTimer?.cancel();
+    _autoExportTimer = _autoExportEnabled
+        ? Timer(const Duration(hours: 1), _autoExportTick)
+        : null;
   }
-  _isAutoExporting = false;
-  _autoExportTimer?.cancel();
-  _autoExportTimer = Timer(const Duration(hours: 1), _autoExportTick);
 }
 
 /// «Догоняющий» прогон: если автоэкспорт включён и с последнего бэкапа
@@ -166,7 +223,10 @@ Future<void> _autoExportTick({bool silent = false}) async {
 Future<void> maybeCatchUpAutoExport() async {
   final enabled = await SettingsService.loadAutoExport();
   debugPrint('[auto-export] catch-up: enabled=$enabled');
-  if (!enabled) return;
+  if (!enabled) {
+    stopAutoExport();
+    return;
+  }
   final last = globalPrefs.getInt(_lastAutoExportKey) ?? 0;
   final overdue =
       last == 0 ||
@@ -184,7 +244,7 @@ Future<void> maybeCatchUpAutoExport() async {
 }
 
 void stopAutoExport() {
-  _isAutoExporting = false;
+  _autoExportEnabled = false;
   _autoExportTimer?.cancel();
   _autoExportTimer = null;
 }
@@ -213,6 +273,10 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   out['reality_check_data'] = await readWithFallback('reality_check_data');
   out['nutrition_meals'] = await readWithFallback('nutrition_meals');
   out['ai_chat_history'] = await readWithFallback('ai_chat_history');
+  out['ai_pinned_messages'] = await readWithFallback('ai_pinned_messages');
+  out['ada_sync_state'] = await readWithFallback('ada_sync_state');
+  out['completion_log'] = await readWithFallback('completion_log');
+  out['ny_event_2027'] = await readWithFallback('ny_event_2027');
 
   // Old RC format: данные лежали в 'reality_checks' (имя списка) и в
   // отдельных prefs-ключах. Если нового файла нет — собираем пакет из старых.
@@ -237,50 +301,99 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   // под КЛЮЧАМИ, которые читает импорт в settings_screen.dart.
   // Это критично для кругового обмена: иначе пользователь, у которого
   // в билде нет 'app_settings.json', потеряет настройки при экспорте/импорте.
-  if (settingsRaw == null) {
-    // Строковые и булевы настройки читаем РАЗДЕЛЬНЫМИ геттерами:
-    // getBool() на строковом значении (например setting_theme='rose')
-    // бросает TypeError и роняет экспорт целиком.
-    const stringSettingKeys = {
-      'setting_theme',
-      'setting_locale',
-      'setting_font_family',
-    };
-    const boolSettingKeys = {
-      'setting_peach_dark',
-      'setting_experimental',
-      'setting_auto_save',
-      'setting_dev_mode',
-      'setting_auto_export',
-    };
-    for (final key in stringSettingKeys) {
-      final v = globalPrefs.getString(key);
-      if (v != null && v.isNotEmpty) out[key] = v;
+  final settings = <String, dynamic>{};
+  // Строковые и булевы настройки читаем РАЗДЕЛЬНЫМИ геттерами:
+  // getBool() на строковом значении (например setting_theme='rose')
+  // бросает TypeError и роняет экспорт целиком.
+  const stringSettingKeys = {
+    'setting_theme',
+    'setting_locale',
+    'setting_font_family',
+    'setting_ai_key',
+    'setting_agnes_key',
+    'setting_zen_key',
+    'setting_gemini_key',
+    'setting_modal_url',
+    'setting_modal_key',
+    'developer_prompt',
+  };
+  const boolSettingKeys = {
+    'setting_peach_dark',
+    'setting_experimental',
+    'setting_auto_save',
+    'setting_dev_mode',
+    'setting_auto_export',
+    'setting_ai_guide',
+    'setting_ai_tracking',
+    'perfectionism_mode',
+    'berserk_mode',
+    'task_quick_notes_mode',
+    'setting_ada_proactive',
+  };
+  for (final key in stringSettingKeys) {
+    final v = globalPrefs.getString(key);
+    if (v != null && v.isNotEmpty && !settings.containsKey(key)) {
+      settings[key] = v;
     }
-    for (final key in boolSettingKeys) {
-      final v = globalPrefs.getBool(key);
-      if (v != null) out[key] = v;
-    }
+  }
+  for (final key in boolSettingKeys) {
+    final v = globalPrefs.getBool(key);
+    if (v != null && !settings.containsKey(key)) settings[key] = v;
   }
 
   // Пробрасываем любые поля, которые уже были в файле app_settings.json.
   if (settingsRaw != null) {
-    final settings = jsonDecode(settingsRaw) as Map<String, dynamic>;
-    for (final entry in settings.entries) {
-      if (entry.value != null) out[entry.key] = entry.value;
-    }
+    settings.addAll(Map<String, dynamic>.from(jsonDecode(settingsRaw)));
+  }
+  out['app_settings'] = settings;
+  for (final entry in settings.entries) {
+    if (entry.value != null) out[entry.key] = entry.value;
   }
 
   for (final k in [
     'notifications_enabled',
     'notifications_fullscreen',
-    'welcome_shown',
     'popup_warning_shown',
-    'app_pin',
+    'ai_web_search',
+    'ai_liked_messages',
+    'ai_liked_patterns',
+    'ai_rewards_done',
+    'ai_tasks_done_total',
+    'ada_streak',
+    'ada_streak_last',
+    'ada_avatar_variant',
+    'ada_proactive_day',
+    'ada_track_morning',
+    'ada_track_evening',
+    'ai_floating',
+    'ai_bubble_fx',
+    'ai_bubble_fy',
+    'title_blurred',
+    'setting_screen_aware',
+    'nutrition_calorie_norm',
+    'ny_prize_2027',
   ]) {
     final v = globalPrefs.get(k);
     if (v != null) out[k] = v;
   }
+  for (final key in globalPrefs.getKeys()) {
+    if (key.startsWith('alarm_pin_') ||
+        key.startsWith('berserk_agi_') ||
+        const {
+          'deleted_alarm_sounds',
+          'reality_checks',
+          'rc_exact_times',
+        }.contains(key)) {
+      final value = globalPrefs.get(key);
+      if (value != null) out[key] = value;
+    }
+  }
+  final legacyChecksPerDay = globalPrefs.getInt('rc_checks_per_day');
+  if (legacyChecksPerDay != null) out['rc_checks_per_day'] = legacyChecksPerDay;
+  final legacyExactTimes = globalPrefs.getBool('rc_use_exact_times');
+  if (legacyExactTimes != null) out['rc_use_exact_times'] = legacyExactTimes;
+  final pinVerifier = await PinService.exportVerifier();
+  if (pinVerifier != null) out['app_pin'] = pinVerifier;
   return out;
 }
 
@@ -293,7 +406,7 @@ Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
     // This will be handled by the browser's download mechanism
     throw UnsupportedError('File operations not supported on web');
   }
-  if (Platform.isAndroid) {
+  if (Platform.isAndroid && !kIsWeb) {
     try {
       final path = await _backupChannel
           .invokeMethod<String>('saveToDownloads', {
@@ -368,9 +481,7 @@ Future<String> _performAutoExport({bool showSnack = false}) async {
 }
 
 String? _pendingAlarmPayload;
-const _alarmPayloadChannel = MethodChannel(
-  'com.wetidom.keramika/alarm_payload',
-);
+late final MethodChannel _alarmPayloadChannel;
 
 Future<void> _handleNotificationTap(String? payload) async {
   if (payload == null) return;
@@ -620,6 +731,8 @@ Future<void> _precacheLogo() async {
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Инициализируем канал (если Android/iOS)
+  if (!kIsWeb) initOverlayChannel();
   // Сигнал от главного приложения: «окно пересоздано — сбросься и
   // покажись». Это единственный надёжный канал между движками: lifecycle
   // при повторном открытии может не долететь, и окошко оставалось бы
@@ -700,6 +813,7 @@ Future<void> _predecodeSplashLogo() async {
 Future<_StartupState> _loadStartupState() async {
   // Инициализируем SharedPreferences ОДИН раз ДО всего.
   await initPrefs();
+  await JsonFile.initialize();
   // Режим плавающего окошка Ады переживает перезапуск приложения.
   // Окошко — внутренний пузырь (одинаково на web и Android): он рисуется
   aiFloating.value = globalPrefs.getBool('ai_floating') ?? false;
@@ -763,6 +877,96 @@ Future<_StartupState> _loadStartupState() async {
   );
 }
 
+Future<void> _restoreStartupBackup(Map<String, dynamic> backup) async {
+  await JsonFile.beginBackupRecovery();
+  // Keep any remaining legacy SharedPreferences data in the fresh encrypted
+  // store before applying the selected backup on top of it.
+  await migrateFromPrefs();
+
+  const fileKeys = {
+    'habits',
+    'tasks',
+    'task_categories',
+    'alarms',
+    'app_timers',
+    'reality_check_data',
+    'nutrition_meals',
+    'ai_chat_history',
+    'ai_pinned_messages',
+    'ada_sync_state',
+    'completion_log',
+    'ny_event_2027',
+  };
+  const settingsKeys = {
+    'setting_theme',
+    'setting_locale',
+    'setting_font_family',
+    'setting_peach_dark',
+    'setting_experimental',
+    'setting_auto_save',
+    'setting_dev_mode',
+    'developer_prompt',
+    'setting_auto_export',
+    'setting_ai_guide',
+    'setting_ai_key',
+    'setting_ada_proactive',
+    'setting_ai_tracking',
+    'setting_agnes_key',
+    'setting_zen_key',
+    'setting_gemini_key',
+    'setting_modal_url',
+    'setting_modal_key',
+    'perfectionism_mode',
+    'berserk_mode',
+    'task_quick_notes_mode',
+  };
+  final settings = backup['app_settings'] is Map
+      ? Map<String, dynamic>.from(backup['app_settings'] as Map)
+      : <String, dynamic>{};
+
+  for (final entry in backup.entries) {
+    final key = entry.key;
+    final value = entry.value;
+    if (value == null || key == 'app_settings') continue;
+    if (fileKeys.contains(key)) {
+      if (value is String) await JsonFile.write(key, value);
+    } else if (settingsKeys.contains(key)) {
+      settings[key] = value;
+    } else if (key == 'app_pin' && value is String) {
+      await PinService.importBackupValue(value);
+    } else if (value is String) {
+      await globalPrefs.setString(key, value);
+    } else if (value is bool) {
+      await globalPrefs.setBool(key, value);
+    } else if (value is int) {
+      await globalPrefs.setInt(key, value);
+    } else if (value is double) {
+      await globalPrefs.setDouble(key, value);
+    } else if (value is List && value.every((item) => item is String)) {
+      await globalPrefs.setStringList(key, value.cast<String>());
+    }
+  }
+
+  if (settings.isNotEmpty) {
+    await JsonFile.write('app_settings', jsonEncode(settings));
+  }
+  await globalPrefs.setBool('migrated_to_json_file_v1', true);
+  await JsonFile.completeBackupRecovery();
+
+  final startup = await _loadStartupState();
+  _alarmBootPayload = await _readAlarmBootPayload();
+  runApp(
+    KeramikaApp(
+      initialLocked: startup.hasPin,
+      initialTheme: startup.theme,
+      initialLanguageCode: startup.lang,
+      initialPeachDark: startup.peachDark,
+      initialFontFamily: startup.fontFamily,
+      alarmBootPayload: _alarmBootPayload,
+    ),
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
@@ -788,10 +992,50 @@ void main() async {
   // уведомления зависят от prefs, и этот порядок сохранён внутри
   // [_loadStartupState].
   late final _StartupState startup;
-  await Future.wait(<Future<void>>[
-    _predecodeSplashLogo(),
-    _loadStartupState().then((value) => startup = value),
-  ]);
+  try {
+    await Future.wait(<Future<void>>[
+      _predecodeSplashLogo(),
+      _loadStartupState().then((value) => startup = value),
+    ]);
+  } catch (error, stackTrace) {
+    debugPrint('Application startup failed: $error\n$stackTrace');
+    if (JsonFile.canRecoverFromBackup(error)) {
+      runApp(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: StartupRecoveryScreen(onRestore: _restoreStartupBackup),
+        ),
+      );
+      return;
+    }
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline, size: 48),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Keramika could not finish initializing.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text('$error', textAlign: TextAlign.center),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
   // Payload будильника читаем до первого кадра: от него зависит, что
   // станет домашним экраном (см. [_AlarmBootHost]).
   _alarmBootPayload = await _readAlarmBootPayload();
@@ -857,22 +1101,26 @@ void main() async {
 
   // Автосохранение — загружаем данные ПЕРВЫМ ДЕЛОМ, потом стартуем таймер
   // только если пользователь включал autosave.
-  await HabitService().load();
-  await TaskService().load();
-  await AlarmService().load();
-  await RealityCheckService().load();
-  await TimerService().load();
+  try {
+    await HabitService().load();
+    await TaskService().load();
+    await AlarmService().load();
+    await RealityCheckService().load();
+    await TimerService().load();
 
-  // Дефолтные демо-записи убраны: пользователь добавляет привычки,
-  // задачи и будильники сам. Чистим остатки старых демо-данных,
-  // которые могли сохраниться на диск из прошлых билдов.
-  await _removeLegacyDemoData();
-  final autoSaveOn = await SettingsService.loadAutoSave();
-  if (autoSaveOn) startAutoSave();
-  final autoExportOn = await SettingsService.loadAutoExport();
-  if (autoExportOn) {
-    // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
-    await maybeCatchUpAutoExport();
+    // Дефолтные демо-записи убраны: пользователь добавляет привычки,
+    // задачи и будильники сам. Чистим остатки старых демо-данных,
+    // которые могли сохраниться на диск из прошлых билдов.
+    await _removeLegacyDemoData();
+    final autoSaveOn = await SettingsService.loadAutoSave();
+    if (autoSaveOn) startAutoSave();
+    final autoExportOn = await SettingsService.loadAutoExport();
+    if (autoExportOn) {
+      // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
+      await maybeCatchUpAutoExport();
+    }
+  } catch (error, stackTrace) {
+    _reportPersistenceFailure(error, stackTrace);
   }
 
   // Флаг — уже обработали запуск от будильника, чтобы не открыть
@@ -889,18 +1137,20 @@ void main() async {
   }
 
   // Также проверяем payload из intent (для fullScreenIntent).
-  try {
-    final intentPayload = await _alarmPayloadChannel.invokeMethod<String>(
-      'getAlarmPayload',
-    );
-    if (!alarmHandled && intentPayload != null && intentPayload.isNotEmpty) {
-      _pendingAlarmPayload = intentPayload;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _handleNotificationTap(_pendingAlarmPayload);
-        _pendingAlarmPayload = null;
-      });
-    }
-  } catch (_) {}
+  if (!kIsWeb) {
+    try {
+      final intentPayload = await _alarmPayloadChannel.invokeMethod<String>(
+        'getAlarmPayload',
+      );
+      if (!alarmHandled && intentPayload != null && intentPayload.isNotEmpty) {
+        _pendingAlarmPayload = intentPayload;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleNotificationTap(_pendingAlarmPayload);
+          _pendingAlarmPayload = null;
+        });
+      }
+    } catch (_) {}
+  }
 
   // Слушаем новые payload'и когда приложение уже запущено (onNewIntent)
   // и сигнал о перезагрузке телефона (onBootCompleted).
@@ -1919,7 +2169,9 @@ class _AlarmBootHostState extends State<_AlarmBootHost> {
     super.initState();
     _wakeScreenShowing = true;
     final id = widget.payload.substring('alarm:'.length);
-    _alarmFuture = AlarmService().load().then((_) => AlarmService().getById(id));
+    _alarmFuture = AlarmService().load().then(
+      (_) => AlarmService().getById(id),
+    );
   }
 
   @override

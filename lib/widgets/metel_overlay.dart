@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
 /// «Метель» — подарочная тема 12-го дня ивента: северное сияние по снегу.
@@ -31,6 +32,7 @@ class _MetelAuroraState extends State<MetelAurora>
   late final AnimationController _ctrl;
   late final List<_Band> _bands;
   late final List<_Flake> _flakes;
+  final ValueNotifier<double> _phase = ValueNotifier<double>(0);
   final _ShaderCache _cache = _ShaderCache();
 
   @override
@@ -112,12 +114,19 @@ class _MetelAuroraState extends State<MetelAurora>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 12),
-    )..repeat();
+    )..addListener(_syncPhase);
+    _ctrl.repeat();
+  }
+
+  void _syncPhase() {
+    final phase = (_ctrl.value * 96).roundToDouble() / 96;
+    if (_phase.value != phase) _phase.value = phase;
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _phase.dispose();
     _cache.dispose();
     super.dispose();
   }
@@ -130,14 +139,14 @@ class _MetelAuroraState extends State<MetelAurora>
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (context, _) => CustomPaint(
-                  painter: _AuroraPainter(
-                    cache: _cache,
-                    flakes: _flakes,
-                    t: (_ctrl.value * 96).roundToDouble() / 96,
-                  ),
+              // Оставляем исходную фазовую сетку 1/96. Она уведомляет
+              // painter только при смене видимого кадра, без перестроения
+              // AnimatedBuilder на каждом display-vsync.
+              child: CustomPaint(
+                painter: _AuroraPainter(
+                  cache: _cache,
+                  flakes: _flakes,
+                  phase: _phase,
                 ),
               ),
             ),
@@ -277,17 +286,22 @@ class _ShaderCache {
 class _AuroraPainter extends CustomPainter {
   final _ShaderCache cache;
   final List<_Flake> flakes;
-  final double t;
+  final ValueListenable<double> phase;
 
-  _AuroraPainter({required this.cache, required this.flakes, required this.t});
+  _AuroraPainter({
+    required this.cache,
+    required this.flakes,
+    required this.phase,
+  }) : super(repaint: phase);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final t = phase.value;
     final bands = cache.bands;
     if (bands == null || size.isEmpty) return;
     final shaders = cache.forSize(size, bands);
     final paint = Paint()..isAntiAlias = true;
-    final phase = t * pi * 2;
+    final animationPhase = t * pi * 2;
     final w = size.width;
     final h = size.height;
 
@@ -295,10 +309,11 @@ class _AuroraPainter extends CustomPainter {
       final b = bands[i];
       // Дрейф: подсветки гуляют слабо, ленты — сильнее, и каждая со своей
       // фазой, иначе всё небо «дышит» одним горлом.
-      final sway = sin(phase + i * 1.9) * w * (b.curtain ? 0.045 : 0.02);
-      final swell = 1.0 + 0.10 * sin(phase * 0.5 + i * 2.3);
+      final sway =
+          sin(animationPhase + i * 1.9) * w * (b.curtain ? 0.045 : 0.02);
+      final swell = 1.0 + 0.10 * sin(animationPhase * 0.5 + i * 2.3);
       final cx = w / 2 + sway + (b.curtain ? (b.dx - 0.5) * w : 0);
-      final tilt = b.tilt * (1 + 0.35 * sin(phase * 0.5 + i * 1.3));
+      final tilt = b.tilt * (1 + 0.35 * sin(animationPhase * 0.5 + i * 1.3));
       // Шаг сегмента заметно меньше его высоты: соседние перекрываются ровно
       // настолько, чтобы в месте стыка сумма двух спадов давала ту же
       // плотность, что и в центре, — иначе лента распадается на отдельные
@@ -314,7 +329,7 @@ class _AuroraPainter extends CustomPainter {
         // настоящую авроральную занавесу.
         final along = ((b.segs - 1) / 2 - s) * step;
         final wave = b.curtain
-            ? sin(phase * 0.5 + i * 1.1 - s * 0.9) * w * 0.026
+            ? sin(animationPhase * 0.5 + i * 1.1 - s * 0.9) * w * 0.026
             : 0.0;
         // Плотность = alpha шейдера × breathe. Через color это не работает:
         // при заданном shader цвет краски игнорируется. modulate умножает
@@ -326,7 +341,7 @@ class _AuroraPainter extends CustomPainter {
               255,
               255,
               255,
-              0.72 + 0.28 * sin(phase + i * 1.9 + s * 0.7),
+              0.72 + 0.28 * sin(animationPhase + i * 1.9 + s * 0.7),
             ),
             BlendMode.modulate,
           );
@@ -356,8 +371,8 @@ class _AuroraPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     for (final f in flakes) {
       final fall = (f.dy + t * f.speed) % 1.0;
-      final gust = sin(phase * 0.5 + f.seed) * 0.014;
-      final sway = sin(phase + f.seed) * 0.004;
+      final gust = sin(animationPhase * 0.5 + f.seed) * 0.014;
+      final sway = sin(animationPhase + f.seed) * 0.004;
       final x = ((f.dx + fall * f.wind * 0.25 + gust + sway) % 1.0) * w;
       final y = fall * h;
       snow.color = const Color(0xFF5C7C8C).withValues(alpha: f.alpha);
@@ -376,5 +391,7 @@ class _AuroraPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AuroraPainter oldDelegate) =>
-      oldDelegate.t != t;
+      oldDelegate.cache != cache ||
+      oldDelegate.flakes != flakes ||
+      oldDelegate.phase != phase;
 }

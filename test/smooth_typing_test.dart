@@ -230,6 +230,86 @@ void main() {
     expect(overlay.bottom, closeTo(native.bottom, 1.5));
   });
 
+  testWidgets('многострочное поле с лимитом строк: текст не уезжает за поле', (
+    tester,
+  ) async {
+    // 8 строк в поле с maxLines: 5: поле прокручивает текст внутри себя.
+    // Слой обязан разложить ВЕСЬ текст и обрезать его границами поля — ровно
+    // так же, как это делает само поле (RenderEditable капает раскладку по
+    // строкам только при maxLines == 1).
+    //
+    // Как было: слой капнул раскладку по maxLines поля (5 строк), поэтому
+    // начиная с шестой строки набранное вообще не рисовалось («в поле
+    // пишется пустая строка»), а верхние строки при прокрутке уезжали за
+    // верхнюю границу поля (те самые «заезжает не внутри поля»).
+    const text = 'M\nM\nM\nMMMM\nMMMM\nMMMM\nMMMM\nMMMM';
+
+    Future<Rect?> shot({required bool enabled}) async {
+      final c = TextEditingController(text: text);
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(
+              child: RepaintBoundary(
+                key: const ValueKey('shot'),
+                child: Padding(
+                  // Рамка вокруг поля заметно шире строки: именно в неё
+                  // раньше «вытекал» уехавший за поле текст.
+                  padding: const EdgeInsets.all(40),
+                  child: SizedBox(
+                    width: 160,
+                    child: SmoothTyping(
+                      controller: c,
+                      enabled: enabled,
+                      color: Colors.black,
+                      builder: (style) => TextField(
+                        controller: c,
+                        style: style,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          isCollapsed: true,
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      // Ставим внутреннюю прокрутку поля в середину текста: так же, как
+      // поле оказывается после свайпа по тексту / набора за пятой строкой.
+      tester.state<ScrollableState>(find.byType(Scrollable)).position.jumpTo(48);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      return _bounds(tester);
+    }
+
+    final native = await shot(enabled: false);
+    final overlay = await shot(enabled: true);
+
+    expect(native, isNotNull, reason: 'нативное поле должно что-то нарисовать');
+    expect(overlay, isNotNull, reason: 'наш слой должен что-то нарисовать');
+    expect(
+      overlay!.top,
+      closeTo(native!.top, 1.5),
+      reason: 'строки не должны уезжать ВЫШЕ поля',
+    );
+    expect(
+      overlay.bottom,
+      closeTo(native.bottom, 1.5),
+      reason: 'нижние строки не должны пропадать',
+    );
+    expect(overlay.left, closeTo(native.left, 1.5));
+    expect(overlay.right, closeTo(native.right, 1.5));
+  });
+
   testWidgets('обёртка не сжимает поле: ширина как у родителя', (tester) async {
     final controller = TextEditingController();
     await tester.pumpWidget(

@@ -11,6 +11,7 @@ class TimerService extends ChangeNotifier {
   }
 
   List<AppTimer> _timers = [];
+  String? _snapshot;
   bool _loaded = false;
   static const _key = 'app_timers';
 
@@ -26,12 +27,11 @@ class TimerService extends ChangeNotifier {
       AppTimer.formatDuration(_remainingSeconds[id] ?? 0);
 
   Future<void> load() async {
-    try {
-      final raw = await JsonFile.read(_key);
-      if (raw != null && raw.isNotEmpty) {
-        _timers = appTimersFromJson(raw);
-      }
-    } catch (_) {}
+    final raw = await JsonFile.read(_key);
+    _snapshot = raw;
+    if (raw != null && raw.isNotEmpty) {
+      _timers = appTimersFromJson(raw);
+    }
     _loaded = true;
     for (final t in _timers) {
       _remainingSeconds.putIfAbsent(t.id, () => t.totalSeconds);
@@ -41,7 +41,9 @@ class TimerService extends ChangeNotifier {
 
   Future<void> _save() async {
     if (!_loaded) return;
-    await JsonFile.write(_key, appTimersToJson(_timers));
+    final value = appTimersToJson(_timers);
+    final resolved = await JsonFile.writeWithSnapshot(_key, value, _snapshot);
+    if (resolved == value) _snapshot = resolved;
   }
 
   Future<void> add(AppTimer timer) async {
