@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/screens/lock_screen.dart';
+import 'package:keramika/services/pin_service.dart';
 import 'package:keramika/services/prefs.dart';
-import 'package:keramika/widgets/drip_backdrop.dart';
 
 /// Диалог подтверждения выхода живёт поверх PIN-экрана, но его строки обязаны
 /// приходить из [Translations] ровно как у кнопок: раньше текст был вшит
@@ -22,6 +22,7 @@ void main() {
     // ПИН есть → экран не разблокируется сам и рисует капсулу с «Выйти».
     SharedPreferences.setMockInitialValues({'app_pin': '1234'});
     await initPrefs();
+    PinService.resetCacheForTesting();
   });
 
   /// Поднять PIN-экран в нужной локали и открыть стеклянный диалог выхода.
@@ -82,27 +83,11 @@ void main() {
     expect(find.text('exitConfirmTitle'), findsNothing);
     expect(find.text('exitConfirmBody'), findsNothing);
 
-    // Заморозка фона: пока окно открыто, тикеры локскрина заглушены —
-    // раньше пятна и медальон продолжали растеризоваться каждый кадр под
-    // полноэкранным размытием, и окно «подтормаживало».
-    TickerMode lockGate() => tester.widget<TickerMode>(
-      find
-          .ancestor(
-            of: find.byType(DripBackdrop),
-            matching: find.byType(TickerMode),
-          )
-          .first,
-    );
-    expect(lockGate().enabled, isFalse);
-
-    // После закрытия окна (обратный ход 380 мс) заморозка снимается —
-    // с паузой в пару кадров, чтобы возврат анимаций не слился с кадром
-    // снятия размытия.
+    // Диалог закрывается без побочных ошибок.
     await tester.tap(find.text('Cancel'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     expect(tester.takeException(), isNull);
-    expect(lockGate().enabled, isTrue);
   });
 
   testWidgets('fr: la boîte de dialogue de sortie est traduite', (

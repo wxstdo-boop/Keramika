@@ -63,5 +63,9 @@ android/.kotlin/
 /*.pid
 /*.jpeg
 /*.jpg
+
+# Отладочные скриншоты в корне (не для репозитория; уже отслеживаемые файлы не затрагивает).
+/keramika_shot*.png
+/screen_*.png
 tools/_*/
 $null

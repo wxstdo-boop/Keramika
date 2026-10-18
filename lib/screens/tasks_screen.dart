@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'dart:async';
 import '../services/haptics.dart';
@@ -65,11 +65,10 @@ class _TasksScreenState extends State<TasksScreen>
     begin: 0.35,
     end: 1.0,
   ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOut));
-  late final Animation<Offset> _revealSlide =
-      Tween<Offset>(
-        begin: const Offset(0, 0.02),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic));
+  late final Animation<Offset> _revealSlide = Tween<Offset>(
+    begin: const Offset(0, 0.02),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic));
   // Hide FAB row on scroll: smoothly slides down + fades when scrolled past
   // 8px; comes back when scrolled to top. Используем NotificationListener
   // (как на экране будильников), а НЕ ScrollController на внутреннем
@@ -113,15 +112,10 @@ class _TasksScreenState extends State<TasksScreen>
     if (target == null) return;
     if (_pillCtrl.positions.length != 1) return;
     final v = _pillCtrl.offset;
-    final vv = v < 0 ? 0.0 : v;
-    sectionOffsetByPage[widget.pillIndex] = vv;
-    // Пишем в общий sectionScrollOffset только активная вкладка:
-    // неактивные keep-alive экраны иначе сбрасывают его на свой офсет и
-    // таблетка вылазит на весь рост поверх прокрученного списка.
-    if (sectionCurrentIndex.value == widget.pillIndex &&
-        (target.value - vv).abs() > 0.5) {
-      target.value = vv;
-    }
+    // В общий офсет пишет [reportSectionPillOffset] и только когда раздел
+    // активен и карусель стоит ровно на нём: во время переезда высоту
+    // таблетки ведёт Home интерполяцией между соседними разделами.
+    reportSectionPillOffset(widget.pillIndex, v < 0 ? 0.0 : v);
   }
 
   @override
@@ -131,8 +125,8 @@ class _TasksScreenState extends State<TasksScreen>
     _pillCtrl.dispose();
     _fabVisible.dispose();
     _reveal.dispose();
-        WidgetsBinding.instance.removeObserver(this);
-super.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   /// Смена категории: сначала меняем фильтр, затем мягко проявляем новое
@@ -147,6 +141,7 @@ super.dispose();
     // просто вливается в текущую волну.
     if (!_reveal.isAnimating) _reveal.forward(from: 0);
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Возврат из фона: keep-alive восстановил позицию скролла, а общий
@@ -158,7 +153,6 @@ super.dispose();
       });
     }
   }
-
 
   void _addTask() async {
     Haptics.light();
@@ -349,17 +343,14 @@ super.dispose();
     final chips = <String>['', ..._service.categories];
     // Центрированная карусель категорий + корзина (удаление выбранной).
     // Без кнопки «управление» — добавление только в форме задачи.
-        // Блок категорий: верхний слот kSectionPillSlotHeight оставляем
-        // для таблетки разделов (как раньше делал padding списка) —
-        // карусель стоит ПОД таблеткой, а не налезает на неё.
-        return Column(
+    // Блок категорий: верхний слот kSectionPillSlotHeight оставляем
+    // для таблетки разделов (как раньше делал padding списка) —
+    // карусель стоит ПОД таблеткой, а не налезает на неё.
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
-          padding: EdgeInsets.only(
-            top: kSectionPillSlotHeight + 8,
-            bottom: 4,
-          ),
+          padding: EdgeInsets.only(top: kSectionPillSlotHeight + 8, bottom: 4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -553,92 +544,97 @@ super.dispose();
                 // Drag handle слева — ReorderableDragStartListener включает
                 // перетаскивание (как в привычках).
                 SizedBox(
-                width: 46,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Галка СВЕРХУ драг-хэндла (одна колонка 46px).
-                    Column(
+                  width: 46,
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // (scale 0.9) — «чуть выделяется», без мигания и
-                      // вспышек. Иконка меняется сразу (фон заливается
-                      // плавно AnimatedContainer'ом).
-                      Material(
-                        color: Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                        child: InkWell(
-                          onTap: () => _toggleTask(task),
-                          splashColor: theme.colorScheme.primary.withValues(alpha: 0.14),
-                          highlightColor: theme.colorScheme.primary.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(16),
-                          child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 260),
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: task.done
-                                ? theme.colorScheme.primary
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: task.done
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outline,
-                              width: 2,
-                            ),
-                          ),
-                          // Плавная смена значка: иконка задачи → галка с
-                          // лёгким «попом» (fade + scale), как в привычках.
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 280),
-                            switchInCurve: Curves.easeOutBack,
-                            switchOutCurve: Curves.easeInCubic,
-                            transitionBuilder: (child, animation) =>
-                                ScaleTransition(
-                                  scale: animation,
-                                  child: FadeTransition(
-                                    opacity: animation,
-                                    child: child,
+                      // Галка СВЕРХУ драг-хэндла (одна колонка 46px).
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // (scale 0.9) — «чуть выделяется», без мигания и
+                          // вспышек. Иконка меняется сразу (фон заливается
+                          // плавно AnimatedContainer'ом).
+                          Material(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                            child: InkWell(
+                              onTap: () => _toggleTask(task),
+                              splashColor: theme.colorScheme.primary.withValues(
+                                alpha: 0.14,
+                              ),
+                              highlightColor: theme.colorScheme.primary
+                                  .withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(16),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 260),
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: task.done
+                                      ? theme.colorScheme.primary
+                                      : Colors.transparent,
+                                  border: Border.all(
+                                    color: task.done
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.outline,
+                                    width: 2,
                                   ),
                                 ),
-                            child: task.done
-                                ? const Icon(
-                                    Icons.check,
-                                    key: ValueKey('task_done_check'),
-                                    size: 23,
-                                    color: Colors.white,
-                                  )
-                                : Icon(
-                                    task.icon,
-                                    key: const ValueKey('task_icon'),
-                                    size: 23,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
+                                // Плавная смена значка: иконка задачи → галка с
+                                // лёгким «попом» (fade + scale), как в привычках.
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 280),
+                                  switchInCurve: Curves.easeOutBack,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) =>
+                                      ScaleTransition(
+                                        scale: animation,
+                                        child: FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                      ),
+                                  child: task.done
+                                      ? const Icon(
+                                          Icons.check,
+                                          key: ValueKey('task_done_check'),
+                                          size: 23,
+                                          color: Colors.white,
+                                        )
+                                      : Icon(
+                                          task.icon,
+                                          key: const ValueKey('task_icon'),
+                                          size: 23,
+                                          color: theme
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Драг-хэндл — снизу.
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(
+                            Icons.drag_indicator,
+                            size: 24,
+                            color: Colors.grey,
                           ),
                         ),
                       ),
-                    ),
                     ],
                   ),
-                    const SizedBox(height: 6),
-                    // Драг-хэндл — снизу.
-                    ReorderableDragStartListener(
-                  index: index,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Icon(
-                      Icons.drag_indicator,
-                      size: 24,
-                      color: Colors.grey,
-                    ),
-                  ),
                 ),
-                  ],
-                ),
-              ),
                 // Основное содержимое
                 Expanded(
                   child: Padding(
@@ -672,8 +668,9 @@ super.dispose();
                                 // прозрачность едет вместе с линией.
                                 struckColor: theme.colorScheme.onSurfaceVariant
                                     .withValues(alpha: 0.42),
-                                strikeColor:
-                                    Colors.red.shade500.withValues(alpha: 0.9),
+                                strikeColor: Colors.red.shade500.withValues(
+                                  alpha: 0.9,
+                                ),
                                 // Полный текст без троеточия: заголовок
                                 // задачи всегда виден целиком, а не обрезан.
                                 maxLines: null,
@@ -805,43 +802,33 @@ super.dispose();
       1 => Translations.t('priorityMedium', context),
       _ => Translations.t('priorityLow', context),
     };
-    return TweenAnimationBuilder<double>(
-      key: ValueKey('priority_pill_$p'),
-      tween: Tween(begin: 1.0, end: 1.0),
-      duration: const Duration(milliseconds: 360),
-      curve: Curves.easeOutBack,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.scale(scale: 0.88 + 0.12 * t, child: child),
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(-0.5, -0.5),
-            radius: 1.15,
-            colors: [
-              color.withValues(alpha: 0.30),
-              color.withValues(alpha: 0.10),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withValues(alpha: 0.28), width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: const Alignment(-0.5, -0.5),
+          radius: 1.15,
+          colors: [
+            color.withValues(alpha: 0.30),
+            color.withValues(alpha: 0.10),
           ],
         ),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -860,62 +847,52 @@ super.dispose();
       const Color(0xFFFFB08A),
       0.4,
     )!;
-    return TweenAnimationBuilder<double>(
-      key: ValueKey('note_chip'),
-      tween: Tween(begin: 1.0, end: 1.0),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.scale(scale: 0.96 + 0.04 * t, child: child),
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              lavender.withValues(alpha: 0.22),
-              peach.withValues(alpha: 0.14),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: lavender.withValues(alpha: 0.35), width: 1),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 14,
-                color: lavender,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                sanitizeTextForWrap(note),
-                // ВЕСЬ текст заметки всегда виден: без maxLines длинная
-                // заметка (до 150 символов) переносится целиком, а карточка
-                // плавно растёт под неё. Раньше кап 3 строки резал текст
-                // многоточием — «видно не все 150 символов».
-                // NBSP/невидимые символы из копипасты вычищаем, иначе
-                // слова «слипаются» и длинное слово сползает на новую
-                // строку, хотя на текущей полно места.
-                maxLines: null,
-                softWrap: true,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  height: 1.35,
-                ),
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            lavender.withValues(alpha: 0.22),
+            peach.withValues(alpha: 0.14),
           ],
         ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: lavender.withValues(alpha: 0.35), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(
+              Icons.lightbulb_outline_rounded,
+              size: 14,
+              color: lavender,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              sanitizeTextForWrap(note),
+              // ВЕСЬ текст заметки всегда виден: без maxLines длинная
+              // заметка (до 150 символов) переносится целиком, а карточка
+              // плавно растёт под неё. Раньше кап 3 строки резал текст
+              // многоточием — «видно не все 150 символов».
+              // NBSP/невидимые символы из копипасты вычищаем, иначе
+              // слова «слипаются» и длинное слово сползает на новую
+              // строку, хотя на текущей полно места.
+              maxLines: null,
+              softWrap: true,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -164,7 +164,11 @@ void setAdaAvatarVariant(int index) {
 /// shared_preferences кэширует значение в памяти каждого движка, поэтому
 /// пишем состояние в ФАЙЛ (JsonFile читает с диска) — другой движок увидит
 /// изменение опросом, без хрупкого канала сообщений.
-Future<void> writeAdaSyncState({int? avatar, String? model}) async {
+Future<void> writeAdaSyncState({
+  int? avatar,
+  String? model,
+  int? historyRev,
+}) async {
   try {
     final raw = await JsonFile.read('ada_sync_state');
     final map = (raw != null && raw.isNotEmpty)
@@ -172,8 +176,9 @@ Future<void> writeAdaSyncState({int? avatar, String? model}) async {
         : <String, dynamic>{};
     if (avatar != null) map['avatar'] = avatar;
     if (model != null && model.isNotEmpty) map['model'] = model;
+    if (historyRev != null) map['historyRev'] = historyRev;
     map['ts'] = DateTime.now().millisecondsSinceEpoch;
-    await JsonFile.write('ada_sync_state', jsonEncode(map));
+    await JsonFile.writeWithSnapshot('ada_sync_state', jsonEncode(map), raw);
   } catch (_) {}
 }
 

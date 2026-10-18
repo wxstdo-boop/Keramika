@@ -114,10 +114,18 @@ class UpdateService {
   }
 
   /// Скачивает APK во временный каталог. Возвращает путь к файлу или null.
+  static bool hasValidSha256(String value) =>
+      RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
+
   Future<String?> download(
     UpdateInfo info, {
     ValueChanged<double>? onProgress,
   }) async {
+    if (!hasValidSha256(info.sha256)) {
+      throw const FormatException(
+        'Release digest is missing or invalid; update cancelled',
+      );
+    }
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/keramika-${info.versionName}.apk');
     if (await file.exists()) {

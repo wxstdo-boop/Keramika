@@ -48,6 +48,13 @@ class SmoothTyping extends StatefulWidget {
   /// Сколько живёт появление/исчезновение одной буквы.
   final Duration duration;
 
+  /// «Призраки» — гаснущие копии удалённых букв. Именно они и есть источник
+  /// заедания на быстром стирании: их десяток одновременно, и каждый кадр
+  /// пересобирал слой. Для полей, где значение летят ~20 раз в секунду
+  /// (зажатый бэкспейс на цифровой панели), отключай — появление букв
+  /// остаётся плавным, а удаление мгновенным и ровным.
+  final bool ghosts;
+
   /// Выключить эффект (например, для полей-паролей со «звёздочками»).
   final bool enabled;
 
@@ -62,6 +69,7 @@ class SmoothTyping extends StatefulWidget {
     this.style,
     this.color,
     this.duration = const Duration(milliseconds: 190),
+    this.ghosts = true,
     this.enabled = true,
   });
 
@@ -222,7 +230,7 @@ class _SmoothTypingState extends State<SmoothTyping>
 
     final now = _now;
 
-    if (animate && n > 0) {
+    if (animate && n > 0 && widget.ghosts) {
       // Позиции «призраков» берутся из рамок ПРОШЛОГО кадра. Если текст
       // успел измениться между кадром и этой правкой (быстрое удержание
       // «стереть» присылает несколько значений за кадр), рамки уже не
@@ -472,7 +480,13 @@ class _SmoothTypingPainter extends CustomPainter {
       textScaler: editable.textScaler,
       textWidthBasis: editable.textWidthBasis,
       textHeightBehavior: editable.textHeightBehavior,
-      maxLines: editable.maxLines,
+      // Кап по строкам — ТОЛЬКО для однострочного поля (как это делает
+      // само поле, см. RenderEditable._layoutText: `maxLines == 1 ? 1 : null`).
+      // Многострочное поле прокручивается и раскладывает ВЕСЬ текст: кап по
+      // `maxLines` обрезал раскладку слоя на видимых строках, и при прокрутке
+      // строки уезжали ЗА поле, а набранное после `maxLines`-й строки вообще
+      // не рисовалось — в поле оставалась пустая строка.
+      maxLines: editable.maxLines == 1 ? 1 : null,
     )..layout(minWidth: minWidth, maxWidth: maxWidth);
 
     // Внутренняя прокрутка поля: однострочные «уезжают» по горизонтали,

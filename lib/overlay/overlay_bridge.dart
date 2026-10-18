@@ -43,5 +43,9 @@ Future<void> syncOverlayState(Map<String, dynamic> data) =>
 /// Есть ли разрешение на системный оверлей.
 Future<bool> adaOverlayPermission() => bridge.adaOverlayPermission();
 
+/// Запрашивает «поверх других приложений», не открывая само окошко Ады.
+Future<bool> requestAdaOverlayPermission() =>
+    bridge.requestAdaOverlayPermission();
+
 /// Активен ли сейчас системный оверлей.
 Future<bool> isAdaOverlayActive() => bridge.isAdaOverlayActive();

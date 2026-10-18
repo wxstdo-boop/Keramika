@@ -30,6 +30,12 @@ class NormSheet extends StatefulWidget {
 class _NormSheetState extends State<NormSheet> {
   late double _draft = widget.service.norm.toDouble();
 
+  /// Идёт ли протяжка ползунка пальцем. Пока идёт — число докручивается
+  /// короткой волной (110 мс), иначе оно отстаёт от большого пальца на всю
+  /// длинную анимацию и читается как «залипшее». На отпускании/пресете/шаге
+  /// анимация снова длинная (340 мс) — значение красиво «доезжает».
+  bool _dragging = false;
+
   static const List<int> _presets = [1500, 2000, 2500, 3000];
 
   /// Шаг ползунка и кнопок: одно деление = 50 ккал.
@@ -43,7 +49,21 @@ class _NormSheetState extends State<NormSheet> {
       kMaxCalorieNorm.toDouble(),
     );
     if (next == _draft) return;
-    setState(() => _draft = next);
+    setState(() {
+      _draft = next;
+      // Дискретное изменение (кнопка/пресет) — всегда длинная докрутка.
+      _dragging = false;
+    });
+  }
+
+  void _onSlider(double value) {
+    setState(() {
+      _draft = value.clamp(
+        kMinCalorieNorm.toDouble(),
+        kMaxCalorieNorm.toDouble(),
+      );
+      _dragging = true;
+    });
   }
 
   void _stepBy(int delta) => _set((_draft + delta).roundToDouble());
@@ -139,12 +159,15 @@ class _NormSheetState extends State<NormSheet> {
                           TweenAnimationBuilder<double>(
                             // `end` меняется вместе с ползунком: барабан
                             // докручивается до нового значения, а не
-                            // переставляет цифры одним кадром. 340 мс вместо
-                            // 190: на быстрой прокрутке ползунка барабан
-                            // успевал «перещёлкнуть» полсотни значений —
-                            // теперь цифры именно перетекают.
+                            // переставляет цифры одним кадром. Пока палец
+                            // тянут ползунок — волна короткая (110 мс), иначе
+                            // число отстаёт от пальца; на отпускании и
+                            // дискретных шагах — длинная (340 мс), значение
+                            // красиво доезжает.
                             tween: Tween<double>(begin: _draft, end: _draft),
-                            duration: const Duration(milliseconds: 340),
+                            duration: Duration(
+                              milliseconds: _dragging ? 110 : 340,
+                            ),
                             curve: Curves.easeOutCubic,
                             builder: (context, shown, _) => RollingCounter(
                               value: shown,
@@ -201,8 +224,13 @@ class _NormSheetState extends State<NormSheet> {
                     divisions: (kMaxCalorieNorm - kMinCalorieNorm) ~/ _step,
                     label: '$_rounded',
                     semanticFormatterCallback: (v) => '${v.round()} $kcal',
-                    onChanged: _set,
-                    onChangeEnd: (_) => Haptics.select(),
+                    onChanged: _onSlider,
+                    onChangeEnd: (_) {
+                      // Палец отпущен: дальше значение «доезжает» длинной
+                      // волной, а не короткой волной протяжки.
+                      setState(() => _dragging = false);
+                      Haptics.select();
+                    },
                   ),
                 ),
                 Padding(

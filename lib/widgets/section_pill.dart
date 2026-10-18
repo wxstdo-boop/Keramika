@@ -1,11 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
-import 'smooth_tooltip.dart';
+import '../widgets/smooth_tooltip.dart';
 
 /// Занимаемая таблеткой высота (отступы 4 + капсула 54 + отступ 6).
 /// Таблетка лежит в Stack НАД PageView, поэтому каждый экран-раздел
@@ -60,6 +62,9 @@ final ValueNotifier<int> sectionTabTap = ValueNotifier<int>(0);
 /// связи, что уже используют [sectionCurrentIndex] и [sectionRailPage].
 final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 
+/// Signed elastic pull at the ends of the rail, in the range -1..1.
+final ValueNotifier<double> sectionDragEdgeStretch = ValueNotifier<double>(0);
+
 /// Значки разделов: у каждого своя геометрическая фигура.
 const List<IconData> sectionIcons = [
   Icons.alarm_outlined,
@@ -98,17 +103,20 @@ class SectionPill extends StatefulWidget {
 }
 
 class _SectionPillState extends State<SectionPill> {
-  int? _pressedIndex;
-
-  /// Ширина внутренней части капсулы: 304 минус набивка 4 слева и справа.
-  /// По ней считается, сколько пикселей приходится на один раздел.
-  static const double _innerWidth = 304 - 4 * 2;
+  /// Внутренняя ширина капсулы: 304 минус набивка 4 слева и справа. Ровно
+  /// столько же занимает жест-дорожка: она лежит в `Stack(StackFit.expand)`.
+  /// По этой ширине палец переводится в долю карусели — камень едет ровно
+  /// под пальцем.
+  static const double _trackWidth = 304 - 4 * 2;
 
   /// Идёт ли тяга пальцем по таблетке.
   bool _dragging = false;
+  double _edgeAnchorPull = 0;
+  Timer? _edgeReleaseTimer;
 
   /// Куда палец увёл камень (дробная страница).
   double _dragPage = 0;
+  double _dragGrabOffset = 0;
 
   /// Ближайший раздел на прошлом кадре — по нему звучит хаптик, когда палец
   /// пересекает границу раздела.
@@ -116,33 +124,51 @@ class _SectionPillState extends State<SectionPill> {
 
   @override
   void dispose() {
+    _edgeReleaseTimer?.cancel();
     // Экран мог закрыться прямо во время тяги — не оставляем Home с
     // висящей ненулевой страницей.
     if (_dragging) sectionDragPage.value = null;
     super.dispose();
   }
 
-  void _dragStart(int count) {
+  void _dragStart(DragStartDetails details, int count) {
     if (count < 2) return;
     _dragging = true;
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
+    // Keep the stone under the exact point where it was grabbed. Without
+    // this offset, the first pointer update snaps its centre to the finger.
+    final stoneCenter = _dragPage / (count - 1) * _trackWidth;
+    _dragGrabOffset = stoneCenter - details.localPosition.dx;
     _dragNearest = _dragPage.round();
-    // Пока палец ведёт камень, иконки не «вдавливаются»: нажатия нет.
-    setState(() => _pressedIndex = null);
     sectionDragPage.value = _dragPage;
   }
 
   void _dragUpdate(DragUpdateDetails details, int count) {
     if (!_dragging) return;
-    final slot = _innerWidth / count;
-    if (slot <= 0) return;
-    // Влево (delta < 0) — к следующему разделу.
-    _dragPage = (_dragPage - details.delta.dx / slot).clamp(
-      0.0,
-      (count - 1).toDouble(),
-    );
+    if (count < 2) return;
+    // ПОЗИЦИОННЫЙ скраббер, как выбор приоритета: доля прохода пальца по
+    // капсуле умножается на число промежутков (count-1) и сразу становится
+    // позицией камня. Камень едет РОВНО ПОД ПАЛЬЦЕМ.
+    //
+    // Почему не «дельта пикселей»: раньше палец делился на ширину слота
+    // таблетки (~74 px), а карусель ехала на `доля × ширину СТРАНИЦЫ`
+    // (~1080 px) — 74 px пальцем уносили контент на целый экран, и движение
+    // читалось рывком «не в ту сторону». Здесь жест и содержимое живут в
+    // одних долях.
+    //
+    // Побочный и приятный эффект: на раздел нужно ~296/(count-1) ≈ 99 px
+    // пальца вместо ~74 px — жест спокойнее, «медленнее».
+    final x = details.localPosition.dx + _dragGrabOffset;
+    final over = x < 0 ? x : (x > _trackWidth ? x - _trackWidth : 0.0);
+    sectionDragEdgeStretch.value = (over / 100.0).clamp(-0.42, 0.42).toDouble();
+    if (over != 0) {
+      _edgeReleaseTimer?.cancel();
+      _edgeAnchorPull = over;
+    }
+    final frac = (x / _trackWidth).clamp(0.0, 1.0);
+    _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
     final nearest = _dragPage.round();
     if (nearest != _dragNearest) {
       _dragNearest = nearest;
@@ -154,6 +180,8 @@ class _SectionPillState extends State<SectionPill> {
   void _dragEnd(int count) {
     if (!_dragging) return;
     _dragging = false;
+    sectionDragEdgeStretch.value = 0;
+    _releaseEdgeStretch();
     final target = _dragPage.round().clamp(0, count - 1);
     // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт
     // пружина Home, которая стартует с текущей страницы PageView.
@@ -169,6 +197,8 @@ class _SectionPillState extends State<SectionPill> {
   void _dragCancel() {
     if (!_dragging) return;
     _dragging = false;
+    sectionDragEdgeStretch.value = 0;
+    _releaseEdgeStretch();
     sectionDragPage.value = null;
     final count = sectionIconsFor(context).length;
     if (count > 1) {
@@ -176,6 +206,15 @@ class _SectionPillState extends State<SectionPill> {
       sectionCurrentIndex.value = target;
       sectionTabTap.value++;
     }
+  }
+
+  void _releaseEdgeStretch() {
+    if (_edgeAnchorPull == 0) return;
+    _edgeReleaseTimer?.cancel();
+    _edgeReleaseTimer = Timer(const Duration(milliseconds: 230), () {
+      if (!mounted) return;
+      setState(() => _edgeAnchorPull = 0);
+    });
   }
 
   @override
@@ -203,6 +242,7 @@ class _SectionPillState extends State<SectionPill> {
               Padding(
                 padding: const EdgeInsets.all(4),
                 child: ClipRRect(
+                  clipBehavior: Clip.none,
                   borderRadius: BorderRadius.circular(22),
                   child: ValueListenableBuilder<int>(
                     valueListenable: sectionCurrentIndex,
@@ -228,149 +268,178 @@ class _SectionPillState extends State<SectionPill> {
                         final transit = (p - p.roundToDouble()).abs();
                         final t2 = transit * 2.0; // 0..1 (0 — покой)
                         final wave = 1.0 - (1.0 - t2) * (1.0 - t2);
-                        final capStretch = 1.0 + 0.07 * wave;
-                        final capRadius = 22.0 + 3.0 * wave;
+                        return ValueListenableBuilder<double>(
+                          valueListenable: sectionDragEdgeStretch,
+                          builder: (context, edgePull, _) {
+                            final edgeStretch = edgePull.abs();
+                            final capStretch = 1.0 + 0.04 * wave;
+                            final capRadius = 22.0 + 2.0 * wave;
 
-                        return Stack(
-                          clipBehavior: Clip.hardEdge,
-                          fit: StackFit.expand,
-                          children: [
-                            // Позиция камня берётся прямо из page —
-                            // непрерывно, без AnimatedAlign-скачков: он
-                            // именно скользит, а не перескакивает.
-                            Align(
-                              alignment: Alignment(indicatorAlignment, 0),
-                              child: FractionallySizedBox(
-                                widthFactor: capStretch / count,
-                                heightFactor: 1,
-                                child: RepaintBoundary(
-                                  child: _GlassStone(
-                                    capRadius: capRadius,
-                                    primary: cs.primary,
-                                    deep: Color.lerp(
-                                      cs.primary,
-                                      cs.tertiary,
-                                      0.42,
-                                    )!,
-                                    dark: dark,
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              fit: StackFit.expand,
+                              children: [
+                                // Позиция камня берётся прямо из page —
+                                // непрерывно, без AnimatedAlign-скачков: он
+                                // именно скользит, а не перескакивает.
+                                Align(
+                                  alignment: Alignment(
+                                    edgeStretch > 0 && _dragging
+                                        ? (edgePull < 0 ? -1 : 1)
+                                        : indicatorAlignment,
+                                    0,
+                                  ),
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween<double>(
+                                      begin: 1,
+                                      end: 1 + 0.30 * edgeStretch,
+                                    ),
+                                    duration: _dragging
+                                        ? Duration.zero
+                                        : const Duration(milliseconds: 230),
+                                    curve: Curves.easeOutCubic,
+                                    builder: (context, scale, child) => Transform.scale(
+                                      // Keep the stone's inside edge anchored to
+                                      // the rail; only its outside edge stretches
+                                      // toward the screen edge. Scaling the full
+                                      // stone avoids the sideways snap caused by
+                                      // changing its fractional layout width.
+                                      alignment:
+                                          edgeStretch > 0 ||
+                                              _edgeAnchorPull != 0
+                                          ? ((edgeStretch > 0
+                                                        ? edgePull
+                                                        : _edgeAnchorPull) <
+                                                    0
+                                                ? Alignment.centerRight
+                                                : Alignment.centerLeft)
+                                          : Alignment.center,
+                                      scaleX: scale,
+                                      child: child,
+                                    ),
+                                    child: FractionallySizedBox(
+                                      widthFactor: capStretch / count,
+                                      heightFactor: 1,
+                                      child: RepaintBoundary(
+                                        child: _GlassStone(
+                                          capRadius: capRadius,
+                                          primary: cs.primary,
+                                          deep: Color.lerp(
+                                            cs.primary,
+                                            cs.tertiary,
+                                            0.42,
+                                          )!,
+                                          dark: dark,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            // Тяга пальцем: как в выборе приоритета — камень
-                            // едет за пальцем, а отпускание доводит его до
-                            // ближайшего раздела пружиной Home. Тап по иконке
-                            // при этом остаётся тапом: арбитр жестов отдаёт
-                            // победу перетаскиванию только после сдвига.
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onHorizontalDragStart: (_) => _dragStart(count),
-                              onHorizontalDragUpdate: (d) =>
-                                  _dragUpdate(d, count),
-                              onHorizontalDragEnd: (_) => _dragEnd(count),
-                              onHorizontalDragCancel: _dragCancel,
-                              child: Row(
-                                children: List.generate(count, (i) {
-                                  final label = i < labels.length
-                                      ? labels[i]
-                                      : '';
-                                  final proximity = (1.0 - (p - i).abs()).clamp(
-                                    0.0,
-                                    1.0,
-                                  );
-                                  final iconColor = Color.lerp(
-                                    cs.onSurfaceVariant,
-                                    cs.onPrimary,
-                                    proximity,
-                                  );
-                                  final isPressed = _pressedIndex == i;
-                                  final isSelected = selectedIndex == i;
-                                  final badgeT = proximity;
-                                  final restingScale = isSelected ? 1.05 : 1.0;
-                                  final pressedScale = isSelected ? 0.96 : 0.90;
-                                  return Expanded(
-                                    // Подсказка — НАД таблеткой (preferredAbove):
-                                    // иначе пузырь ложится на саму таблетку и
-                                    // прячется за пальцем.
-                                    child: SmoothTooltip(
-                                      message: label,
-                                      waitDuration: const Duration(
-                                        milliseconds: 350,
-                                      ),
-                                      preferredAbove: true,
-                                      child: Semantics(
-                                        button: true,
-                                        selected: isSelected,
-                                        label: label,
-                                        child: Material(
-                                          type: MaterialType.transparency,
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(
-                                              21.5,
-                                            ),
-                                            splashColor: Colors.transparent,
-                                            highlightColor: Colors.transparent,
-                                            // Переключение — ТОЛЬКО при ОТПУСКАНИИ пальца (onTap).
-                                            // Касание/свайп по таблетке не меняет активный раздел «на лету».
-                                            onTapDown: (_) {
-                                              setState(() => _pressedIndex = i);
-                                            },
-                                            onTapCancel: () {
-                                              if (mounted) {
-                                                setState(
-                                                  () => _pressedIndex = null,
-                                                );
-                                              }
-                                            },
-                                            onTap: () {
-                                              if (!mounted) return;
-                                              setState(
-                                                () => _pressedIndex = null,
-                                              );
-                                              Haptics.select();
-                                              sectionCurrentIndex.value = i;
-                                              sectionTabTap.value++;
-                                            },
-                                            child: Center(
-                                              child: AnimatedScale(
-                                                scale: isPressed
-                                                    ? pressedScale
-                                                    : restingScale,
-                                                duration: const Duration(
-                                                  milliseconds: 160,
-                                                ),
-                                                curve: Curves.easeOutCubic,
-                                                child: _GeoBadge(
-                                                  index: i,
-                                                  size: 31,
-                                                  // Невыбранная — заметный
-                                                  // фирменный оттенок (чтобы
-                                                  // фигуры читались), выбранная —
-                                                  // сочный градиентный «камень».
-                                                  color: Color.lerp(
-                                                    cs.primary.withValues(
-                                                      alpha: 0.3,
+                                // Тяга пальцем: как в выборе приоритета — камень
+                                // едет за пальцем, а отпускание доводит его до
+                                // ближайшего раздела пружиной Home. Тап по иконке
+                                // при этом остаётся тапом: арбитр жестов отдаёт
+                                // победу перетаскиванию при сдвиге, а при
+                                // отпускании без движения — тапу.
+                                //
+                                // DragStartBehavior.down — драг стартует СРАЗУ от
+                                // касания, без порога в 18 px. С ним «зажал и
+                                // повёл» отзывается сразу, как приоритет. Со
+                                // штатным .start жест не начинался, пока палец не
+                                // уезжал за slop, и на практике читалось как «не
+                                // работает вовсе».
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  dragStartBehavior: DragStartBehavior.down,
+                                  onHorizontalDragStart: (d) =>
+                                      _dragStart(d, count),
+                                  onHorizontalDragUpdate: (d) =>
+                                      _dragUpdate(d, count),
+                                  onHorizontalDragEnd: (_) => _dragEnd(count),
+                                  onHorizontalDragCancel: _dragCancel,
+                                  child: Row(
+                                    children: List.generate(count, (i) {
+                                      final label = i < labels.length
+                                          ? labels[i]
+                                          : '';
+                                      final proximity = (1.0 - (p - i).abs())
+                                          .clamp(0.0, 1.0);
+                                      final iconColor = Color.lerp(
+                                        cs.onSurfaceVariant,
+                                        cs.onPrimary,
+                                        proximity,
+                                      );
+                                      final isSelected = selectedIndex == i;
+                                      final badgeT = proximity;
+                                      return Expanded(
+                                        // Подсказка возвращена. Её long-press раньше
+                                        // крал протяжку: арбитр жестов ждал 350 мс,
+                                        // и тяга начиналась только после зависания
+                                        // («через жопу»). Теперь жест стартует сразу
+                                        // от касания (DragStartBehavior.down), а
+                                        // ожидание тултипа длиннее (500 мс) — на
+                                        // быстром «зажал и повёл» успевает выиграть
+                                        // протagonистка. Пока палец УДЕРЖИВАЕТСЬ без
+                                        // движения, тултип по-прежнему покажется.
+                                        child: SmoothTooltip(
+                                          message: label,
+                                          waitDuration: const Duration(
+                                            milliseconds: 500,
+                                          ),
+                                          preferredAbove: true,
+                                          child: Semantics(
+                                            button: true,
+                                            selected: isSelected,
+                                            label: label,
+                                            child: Material(
+                                              type: MaterialType.transparency,
+                                              child: InkWell(
+                                                borderRadius:
+                                                    BorderRadius.circular(21.5),
+                                                splashColor: Colors.transparent,
+                                                highlightColor:
+                                                    Colors.transparent,
+                                                // Переключение — ТОЛЬКО при ОТПУСКАНИИ пальца (onTap).
+                                                // Касание/свайп по таблетке не меняет активный раздел «на лету».
+                                                onTap: () {
+                                                  if (!mounted) return;
+                                                  Haptics.select();
+                                                  sectionCurrentIndex.value = i;
+                                                  sectionTabTap.value++;
+                                                },
+                                                child: Center(
+                                                  child: _GeoBadge(
+                                                    index: i,
+                                                    size: 31,
+                                                    // Невыбранная — заметный
+                                                    // фирменный оттенок (чтобы
+                                                    // фигуры читались), выбранная —
+                                                    // сочный градиентный «камень».
+                                                    color: Color.lerp(
+                                                      cs.primary.withValues(
+                                                        alpha: 0.3,
+                                                      ),
+                                                      cs.primary,
+                                                      badgeT,
+                                                    )!,
+                                                    child: Icon(
+                                                      icons[i],
+                                                      size: 17,
+                                                      color: iconColor,
                                                     ),
-                                                    cs.primary,
-                                                    badgeT,
-                                                  )!,
-                                                  child: Icon(
-                                                    icons[i],
-                                                    size: 17,
-                                                    color: iconColor,
                                                   ),
                                                 ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ),
-                            ),
-                          ],
+                                      );
+                                    }),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),

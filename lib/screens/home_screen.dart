@@ -3,7 +3,11 @@ import 'package:flutter/foundation.dart'
 import '../services/haptics.dart';
 import '../widgets/section_pill.dart';
 import '../widgets/animated_fab_row.dart'
-    show sectionOffsetByPage, sectionScrollOffset;
+    show
+        sectionOffsetByPage,
+        sectionPillSnapByPage,
+        sectionPillSnapTarget,
+        sectionScrollOffset;
 import '../widgets/press_scale.dart';
 import 'package:flutter/material.dart';
 import 'alarms_screen.dart';
@@ -44,6 +48,9 @@ class _HomeScreenState extends State<HomeScreen>
   late final ValueNotifier<double> _railPage = sectionRailPage;
   late final PageController _pageController;
   late final AnimationController _animCtrl;
+  late final AnimationController _pillSnapCtrl;
+  Animation<double>? _pillSnapAnimation;
+  bool _pillSnapActive = false;
   // Плавный перелёт разделов пружиной: повторный тап по другой вкладке лишь
   // МЕНЯЕТ ЦЕЛЬ, а движение продолжается с текущей скоростью. Было: каждый
   // тап заново запускал animateToPage, скорость обнулялась — при частых тапах
@@ -54,8 +61,8 @@ class _HomeScreenState extends State<HomeScreen>
     // Мягче и медленнее, чем карусель категорий: разделы большие, и
     // «камень» таблетки должен именно ПРОСКОЛЬЗИТЬ между вкладками
     // (≈440 мс, без отскока), а не перескочить.
-    stiffness: 170,
-    dampingRatio: 0.9,
+    stiffness: 200,
+    dampingRatio: 0.94,
   );
 
   /// Сколько сейчас разделов (нужно пружине, чтобы не уехать за край).
@@ -69,6 +76,11 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pillSnapCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 230),
+    );
+    sectionPillSnapTarget.addListener(_onPillSnapTarget);
     // Запускаемся в том разделе, где пользователь был в прошлый раз.
     final savedTab = (globalPrefs.getInt('last_home_tab') ?? 0).clamp(0, 3);
     _lastSettledPage = savedTab;
@@ -104,6 +116,24 @@ class _HomeScreenState extends State<HomeScreen>
     _showWelcomeOnce();
   }
 
+  void _onPillSnapTarget() {
+    final target = sectionPillSnapTarget.value;
+    if (target == null) {
+      _pillSnapCtrl.stop();
+      _pillSnapActive = false;
+      return;
+    }
+    sectionPillSnapByPage[_currentIndex.value] = target;
+    final current = _pillSnapActive && _pillSnapAnimation != null
+        ? _pillSnapAnimation!.value
+        : sectionScrollOffset.value.clamp(0.0, 64.0);
+    _pillSnapAnimation = Tween<double>(begin: current, end: target).animate(
+      CurvedAnimation(parent: _pillSnapCtrl, curve: Curves.easeInOutCubic),
+    );
+    _pillSnapActive = true;
+    _pillSnapCtrl.forward(from: 0);
+  }
+
   void _onRcChanged() {
     if (!mounted) return;
     setState(() {});
@@ -128,22 +158,25 @@ class _HomeScreenState extends State<HomeScreen>
     }
     _pageSpring.stop();
     final pos = _pageController.position;
-    final current = _pageController.page;
-    if (current == null || !current.isFinite) return;
     final perPage = pos.viewportDimension * _pageController.viewportFraction;
     if (perPage <= 0) return;
-    final delta = (page - current) * perPage;
-    if (delta.abs() < 0.01) return;
-    pos.jumpTo(pos.pixels + delta);
-    // Пустая «заявка на удержание»: заменяет баллистику страницы, которую
-    // та создала бы сама, иначе она подтягивала бы карусель к ближайшей
-    // странице прямо под пальцем.
-    pos.hold(() {});
+    // АБСОЛЮТНАЯ установка позиции: дробная страница таблетки ставится
+    // ровно на соответствующее смещение PageController. jumpTo синхронно
+    // останавливает предыдущую прокрутку, поэтому дополнительный hold на
+    // каждом pointer event только сбрасывал ScrollPosition и давал мелкую
+    // дрожь под пальцем.
+    final target = (page * perPage).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    pos.jumpTo(target);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    sectionPillSnapTarget.removeListener(_onPillSnapTarget);
+    _pillSnapCtrl.dispose();
     RealityCheckService().removeListener(_onRcChanged);
     sectionTabTap.removeListener(_onSectionTabTap);
     sectionDragPage.removeListener(_onSectionDragPage);
@@ -192,6 +225,14 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(
+            color: Theme.of(ctx).colorScheme.primary.withValues(alpha: 0.35),
+            width: 1.2,
+          ),
+        ),
+        elevation: 18,
         icon: Icon(
           Icons.notifications_active_outlined,
           size: 48,
@@ -238,6 +279,14 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(
+            color: Colors.orange.withValues(alpha: 0.42),
+            width: 1.2,
+          ),
+        ),
+        elevation: 18,
         icon: const Icon(Icons.warning_amber, size: 48, color: Colors.orange),
         title: Text(Translations.t('popupWarningTitle', context)),
         content: Text(Translations.t('popupWarningBody', context)),
@@ -300,10 +349,44 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     final page = _pageController.page;
-    if (page != null &&
-        page.isFinite &&
-        (_railPage.value - page).abs() > 0.001) {
+    if (page == null || !page.isFinite) return;
+    if ((page - page.roundToDouble()).abs() > 0.002 &&
+        sectionPillSnapTarget.value != null) {
+      // Свайп/доводка между страницами отменяет snap прежнего списка;
+      // высота таблетки снова интерполируется по реальной странице.
+      sectionPillSnapTarget.value = null;
+    }
+    if ((_railPage.value - page).abs() > 0.001) {
       _railPage.value = page;
+    }
+    _applyRailPillOffset(page);
+  }
+
+  /// Высота/сворачивание таблетки для ДРОБНОЙ страницы карусели.
+  ///
+  /// Пока разделы едут (свайп, пружина тапа, тяга камня), высота таблетки —
+  /// линейная интерполяция между сохранёнными высотами соседних разделов:
+  /// таблетка складывается и возвращается РОВНО настолько, насколько разделы
+  /// уже подвинулись, и переезд читается одним движением.
+  ///
+  /// Раньше офсет жёстко переставлялся на высоту целевого раздела: при
+  /// пересечении половины пути (переход активности) или на отпускании. Из-за
+  /// этого таблетка «висела» высотой уехавшего раздела и скачком мигала на
+  /// финише переезда.
+  ///
+  /// Когда карусель стоит ровно на разделе, интерполяция даёт ровно его
+  /// высоту — то же значение, что пишет прокрутка самого раздела.
+  void _applyRailPillOffset(double page) {
+    final lastPage = _pagesCount > 0 ? _pagesCount - 1 : 0;
+    final p = page.clamp(0.0, lastPage.toDouble());
+    final from = p.floor();
+    final to = from < lastPage ? from + 1 : from;
+    final t = (p - from).clamp(0.0, 1.0);
+    final a = sectionPillSnapByPage[from] ?? sectionOffsetByPage[from] ?? 0.0;
+    final b = sectionPillSnapByPage[to] ?? sectionOffsetByPage[to] ?? a;
+    final value = a + (b - a) * t;
+    if ((sectionScrollOffset.value - value).abs() > 0.5) {
+      sectionScrollOffset.value = value;
     }
   }
 
@@ -330,13 +413,21 @@ class _HomeScreenState extends State<HomeScreen>
       final page = _pageController.page;
       if (page != null && page.isFinite) {
         final settled = page.round();
-        if (settled != _lastSettledPage) {
+        // Офсет таблетки и сохранённая вкладка — ТОЛЬКО когда карусель
+        // реально доехала. Посреди баллистики высоту ведёт интерполяция
+        // (_applyRailPillOffset), и жёсткая запись здесь давала скачок
+        // ровно в момент отпускания пальца.
+        final landed = (page - settled).abs() < 0.02;
+        if (settled != _lastSettledPage && landed) {
           _lastSettledPage = settled;
           // Не 0: вкладка keepAlive, её список остался прокрученным, и
           // события скролла от неё не придут. Возвращаем планшетке её
           // сохранённую высоту — иначе она налезала на контент до
           // первого скролла.
-          sectionScrollOffset.value = sectionOffsetByPage[settled] ?? 0;
+          sectionScrollOffset.value =
+              sectionPillSnapByPage[settled] ??
+              sectionOffsetByPage[settled] ??
+              0;
           // Пишем в SharedPreferences только на settled странице
           // (не на каждом пересечении границ PageView — так было 3
           // async platform channel calls на один дальний перелёт).
@@ -352,16 +443,22 @@ class _HomeScreenState extends State<HomeScreen>
         ? (_pageController.page ?? _currentIndex.value.toDouble())
         : _currentIndex.value.toDouble();
     final distance = (index - fromPage).abs();
-    if (distance < 0.01) return;
+    if (distance < 0.01) {
+      // При отпускании таблетки у самого края округлённая цель иногда
+      // отличалась от PageView на доли страницы. Ранний return оставлял
+      // последнюю вкладку недоведённой; пусть пружина точно защёлкнет цель.
+      _pageSpring.to(index.toDouble(), maxPage: (_pagesCount - 1).toDouble());
+      return;
+    }
     Haptics.select();
     // Индикатор не перескакивает к цели: он продолжает следовать page
     // напрямую, пока PageView доезжает до выбранного раздела.
     // Отменяем незавершённый переход перед новым: иначе несколько быстрых
     // тапов складывали очереди animateToPage и таблетка дёргалась.
-    // Таблетка сразу показывает сохранённую высоту ЦЕЛЕВОГО раздела: он
-    // keepAlive и мог остаться прокрученным. Ставим 0 нельзя — до приезда
-    // событий скролла планшетка налезала на уже прокрученный контент.
-    sectionScrollOffset.value = sectionOffsetByPage[index] ?? 0;
+    // Высоту таблетки ЗДЕСЬ не переставляем: во время полёта её ведёт
+    // интерполяция по дробной странице (_applyRailPillOffset) — таблетка
+    // сворачивается/возвращается синхронно с разделами, а не мигает
+    // скачком на старте.
     // Мягкий перелёт пружиной. При частых тапах по двум вкладкам пружина не
     // «перезапускается с нуля» (как делал animateToPage), а плавно доворачивает
     // с уже набранной скоростью — без заеданий и «езды по чуть-чуть».
@@ -599,8 +696,12 @@ class _HomeScreenState extends State<HomeScreen>
                         // (68) — всего 10 px. Заголовок секции успевал въехать
                         // прямо на ещё полную таблетку. При f = 1 - off/64 клиренс
                         // 58·f ≤ 68 - off держится на всём прокрутке.
-                        child: ValueListenableBuilder<double>(
-                          valueListenable: sectionScrollOffset,
+                        child: ListenableBuilder(
+                          listenable: Listenable.merge([
+                            sectionScrollOffset,
+                            sectionPillSnapTarget,
+                            _pillSnapCtrl,
+                          ]),
                           // САМА таблетка передаётся через `child:` и
                           // пересобирается ОДИН РАЗ: builder вызывается на
                           // каждый кадр скролла, и без этого под каждый кадр
@@ -622,7 +723,11 @@ class _HomeScreenState extends State<HomeScreen>
                           // HomeScreen слушает этот сервис (_onRcChanged), так
                           // что при выключении РП таблетка пересобирается.
                           child: RepaintBoundary(child: SectionPill()),
-                          builder: (context, off, pill) {
+                          builder: (context, pill) {
+                            final off = _pillSnapActive
+                                ? (_pillSnapAnimation?.value ??
+                                      sectionScrollOffset.value)
+                                : sectionScrollOffset.value;
                             final tEased = (1.0 - off / kSectionPillSlotHeight)
                                 .clamp(0.0, 1.0);
                             if (tEased <= 0.01) return const SizedBox.shrink();

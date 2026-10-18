@@ -20,4 +20,6 @@ Future<void> syncOverlayState(Map<String, dynamic> data) async {}
 
 Future<bool> adaOverlayPermission() async => false;
 
+Future<bool> requestAdaOverlayPermission() async => false;
+
 Future<bool> isAdaOverlayActive() async => false;

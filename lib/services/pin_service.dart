@@ -1,38 +1,84 @@
+import 'dart:convert';
+import 'dart:isolate';
+import 'dart:math';
+
+import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'prefs.dart';
 
 class PinService {
   static const _key = 'app_pin';
-
-  /// Синхронный кэш наличия PIN.
-  ///
-  /// Нужен для «мгновенной» тёмной плашки при сворачивании приложения:
-  /// системный снапшот «недавних» снимается через мгновение после onPause,
-  /// и асинхронный `getString` (платформенный канал) просто не успевает —
-  /// в «недавних» оказывается настоящее содержимое. Кэш обновляется при
-  /// установке/удалении PIN и при старте приложения.
+  static const _format = 'pbkdf2-sha256-v1';
+  static const _iterations = 210000;
+  static const _minimumIterations = 100000;
+  static const _maximumIterations = 1000000;
+  static final _random = Random.secure();
   static bool? _hasPinCache;
 
   static bool hasPinSync() => _hasPinCache ?? false;
 
-  static Future<void> refreshCache() async {
-    final pin = globalPrefs.getString(_key);
-    _hasPinCache = pin != null && pin.isNotEmpty;
-  }
+  @visibleForTesting
+  static void resetCacheForTesting() => _hasPinCache = null;
 
-  static Future<String?> getPin() async {
-    return globalPrefs.getString(_key);
+  static Future<void> refreshCache() async {
+    final stored = globalPrefs.getString(_key);
+    _hasPinCache = stored != null && stored.isNotEmpty;
   }
 
   static Future<bool> hasPin() async {
-    final pin = await getPin();
-    final has = pin != null && pin.isNotEmpty;
+    final stored = globalPrefs.getString(_key);
+    final has = stored != null && stored.isNotEmpty;
     _hasPinCache = has;
+    // Presence checks run during app startup. Defer legacy plaintext
+    // migration until verifyPin accepts it, so KDF work never delays the
+    // first lock-screen frame.
     return has;
   }
 
+  static Future<String?> exportVerifier() async {
+    final stored = globalPrefs.getString(_key);
+    if (stored == null || stored.isEmpty) return null;
+    if (_decodeVerifier(stored) != null) return stored;
+    _throwIfCorruptVerifier(stored);
+    await setPin(stored);
+    return globalPrefs.getString(_key);
+  }
+
+  static Future<void> importBackupValue(String value) async {
+    final verifier = _decodeVerifier(value);
+    if (verifier == null) {
+      _throwIfCorruptVerifier(value);
+      await setPin(value);
+      return;
+    }
+    if (!await globalPrefs.setString(_key, value)) {
+      throw StateError('Could not restore the PIN verifier');
+    }
+    _hasPinCache = true;
+  }
+
   static Future<void> setPin(String pin) async {
-    await globalPrefs.setString(_key, pin);
-    _hasPinCache = pin.isNotEmpty;
+    if (pin.isEmpty) {
+      await removePin();
+      return;
+    }
+
+    final salt = List<int>.generate(16, (_) => _random.nextInt(256));
+    // PBKDF2 deliberately takes time, so keep its CPU work off the UI isolate.
+    final derivedBytes = await Isolate.run(
+      () => _derivePinHash(utf8.encode(pin), salt, _iterations),
+    );
+    final verifier = jsonEncode({
+      'format': _format,
+      'iterations': _iterations,
+      'salt': base64Encode(salt),
+      'hash': base64Encode(derivedBytes),
+    });
+    if (!await globalPrefs.setString(_key, verifier)) {
+      throw StateError('Could not save the PIN verifier');
+    }
+    _hasPinCache = true;
   }
 
   static Future<void> removePin() async {
@@ -41,7 +87,84 @@ class PinService {
   }
 
   static Future<bool> verifyPin(String pin) async {
-    final stored = await getPin();
-    return stored == pin;
+    final stored = globalPrefs.getString(_key);
+    if (stored == null || stored.isEmpty) return false;
+    final verifier = _decodeVerifier(stored);
+    if (verifier == null) {
+      _throwIfCorruptVerifier(stored);
+      if (!_constantTimeEquals(utf8.encode(stored), utf8.encode(pin))) {
+        return false;
+      }
+      await setPin(pin);
+      return true;
+    }
+
+    final salt = base64Decode(verifier['salt'] as String);
+    final expected = base64Decode(verifier['hash'] as String);
+    final iterations = verifier['iterations'] as int;
+    final actual = await Isolate.run(
+      () => _derivePinHash(utf8.encode(pin), salt, iterations),
+    );
+    return _constantTimeEquals(actual, expected);
   }
+
+  static Map<String, dynamic>? _decodeVerifier(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map<String, dynamic> && decoded['format'] == _format) {
+        final salt = base64Decode(decoded['salt'] as String);
+        final hash = base64Decode(decoded['hash'] as String);
+        final iterations = decoded['iterations'] as int;
+        if (salt.length == 16 &&
+            hash.length == 32 &&
+            iterations >= _minimumIterations &&
+            iterations <= _maximumIterations) {
+          return decoded;
+        }
+      }
+    } on FormatException {
+      return null;
+    } on TypeError {
+      return null;
+    }
+    return null;
+  }
+
+  static bool _isVerifierEnvelope(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      return decoded is Map<String, dynamic> && decoded['format'] == _format;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  static void _throwIfCorruptVerifier(String value) {
+    if (_isVerifierEnvelope(value)) {
+      throw const FormatException('The stored PIN verifier is invalid');
+    }
+  }
+
+  static bool _constantTimeEquals(List<int> left, List<int> right) {
+    if (left.length != right.length) return false;
+    var difference = 0;
+    for (var i = 0; i < left.length; i++) {
+      difference |= left[i] ^ right[i];
+    }
+    return difference == 0;
+  }
+}
+
+Future<List<int>> _derivePinHash(
+  List<int> pin,
+  List<int> salt,
+  int iterations,
+) async {
+  final kdf = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: iterations,
+    bits: 256,
+  );
+  final key = await kdf.deriveKey(secretKey: SecretKey(pin), nonce: salt);
+  return key.extractBytes();
 }

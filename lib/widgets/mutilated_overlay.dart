@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
 /// Лёгкие, еле заметные «кровавые пятна» поверх фона темы MUTILATED.
@@ -23,6 +24,7 @@ class _MutilatedSplatterState extends State<MutilatedSplatter>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final List<_Splatter> _spots;
+  final ValueNotifier<double> _phase = ValueNotifier<double>(0);
   final _ShaderCache _cache = _ShaderCache();
 
   @override
@@ -42,12 +44,19 @@ class _MutilatedSplatterState extends State<MutilatedSplatter>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 12),
-    )..repeat();
+    )..addListener(_syncPhase);
+    _ctrl.repeat();
+  }
+
+  void _syncPhase() {
+    final phase = (_ctrl.value * 96).roundToDouble() / 96;
+    if (_phase.value != phase) _phase.value = phase;
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _phase.dispose();
     _cache.dispose();
     super.dispose();
   }
@@ -64,26 +73,12 @@ class _MutilatedSplatterState extends State<MutilatedSplatter>
             // ними, — то есть за каждый кадр заново растеризуется весь экран.
             // Порядок отрисовки и картинка не меняются вообще.
             child: RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (context, _) {
-                  // КОРОТКАЯ фаза: кадр берётся с шагом 1/96 цикла, то есть
-                  // 8 видимых изменений в секунду вместо 60. `shouldRepaint`
-                  // на неизменённой фазе отдаёт false, и Skia переиспользует
-                  // готовый слой вместо новой растеризации 9 радиальных
-                  // градиентов на весь экран 1080×2400.
-                  //
-                  // Почему это вообще нужно: цикл — 12 секунд, то есть за
-                  // кадр смещение пятна = 4px·2π/720 ≈ 0.035px. При шаге 1/96
-                  // ≈ 0.26px глаз разницы не видит вовсе, а работы на
-                  // fill-rate Adreno 610 становится в 7.5 раза меньше.
-                  return CustomPaint(
-                    painter: _SplatterPainter(
-                      cache: _cache,
-                      t: (_ctrl.value * 96).roundToDouble() / 96,
-                    ),
-                  );
-                },
+              // Фаза обновляется только при переходе к следующему из тех
+              // же 96 кадров. Painter слушает её напрямую: видимые кадры и
+              // тайминг прежние, а дерево и delegate больше не создаются
+              // на каждом тике контроллера.
+              child: CustomPaint(
+                painter: _SplatterPainter(cache: _cache, phase: _phase),
               ),
             ),
           ),
@@ -157,11 +152,13 @@ class _ShaderCache {
 
 class _SplatterPainter extends CustomPainter {
   final _ShaderCache cache;
-  final double t;
-  _SplatterPainter({required this.cache, required this.t});
+  final ValueListenable<double> phase;
+  _SplatterPainter({required this.cache, required this.phase})
+    : super(repaint: phase);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final t = phase.value;
     final spots = cache.spots;
     if (spots == null || spots.isEmpty) return;
     final shaders = cache.forSize(size, spots);
@@ -177,5 +174,5 @@ class _SplatterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SplatterPainter oldDelegate) =>
-      oldDelegate.t != t;
+      oldDelegate.cache != cache || oldDelegate.phase != phase;
 }

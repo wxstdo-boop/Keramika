@@ -793,28 +793,30 @@ class MainActivity : FlutterActivity() {
                         result.error("BAD_ARGS", "path is required", null)
                         return@setMethodCallHandler
                     }
+                    if (expected.isNullOrEmpty() || !expected.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+                        result.error("BAD_HASH", "A valid SHA-256 digest is required", null)
+                        return@setMethodCallHandler
+                    }
                     try {
                         val file = File(path)
                         if (!file.exists()) {
                             result.error("NO_FILE", path, null)
                             return@setMethodCallHandler
                         }
-                        if (!expected.isNullOrEmpty()) {
-                            val md = MessageDigest.getInstance("SHA-256")
-                            file.inputStream().use { input ->
-                                val buf = ByteArray(64 * 1024)
-                                var n = input.read(buf)
-                                while (n > 0) {
-                                    md.update(buf, 0, n)
-                                    n = input.read(buf)
-                                }
+                        val md = MessageDigest.getInstance("SHA-256")
+                        file.inputStream().use { input ->
+                            val buf = ByteArray(64 * 1024)
+                            var n = input.read(buf)
+                            while (n > 0) {
+                                md.update(buf, 0, n)
+                                n = input.read(buf)
                             }
-                            val actual = md.digest()
-                                .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
-                            if (!actual.equals(expected, ignoreCase = true)) {
-                                result.error("HASH_MISMATCH", actual, null)
-                                return@setMethodCallHandler
-                            }
+                        }
+                        val actual = md.digest()
+                            .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+                        if (!actual.equals(expected, ignoreCase = true)) {
+                            result.error("HASH_MISMATCH", actual, null)
+                            return@setMethodCallHandler
                         }
                         val uri = FileProvider.getUriForFile(
                             this,
