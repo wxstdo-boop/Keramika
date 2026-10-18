@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- По умолчанию весь нешифрованный трафик (HTTP) запрещён. Ада,
+         обновления и все провайдеры ИИ работают только по HTTPS. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.github.com</domain>
+        <domain includeSubdomains="true">github.com</domain>
+    </domain-config>
+</network-security-config>
