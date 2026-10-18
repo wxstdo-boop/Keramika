@@ -17,8 +17,16 @@ class _FakeGitHub {
   final bool push;
   final String requireToken = 'ghp_valid';
   final List<http.Request> requests = [];
-  final Map<String, String> files = {'lib/main.dart': 'void main() {}'};
+
+  /// Содержимое по ветке. `main` — база, `forge/...` — рабочая ветка: агент
+  /// пишет туда, и читать обязан оттуда же.
+  final Map<String, Map<String, String>> branchFiles = {
+    'main': {'lib/main.dart': 'void main() {}'},
+  };
   final Map<String, String> commits = {};
+
+  Map<String, String> files(String branch) =>
+      branchFiles.putIfAbsent(branch, () => Map.of(branchFiles['main']!));
 
   MockClient get client => MockClient((request) async {
     requests.add(request);
@@ -45,14 +53,19 @@ class _FakeGitHub {
         'object': {'sha': 'base-sha'},
       });
     }
+    // Создание рабочей ветки: она получает копию файлов базы.
     if (path == '/repos/wxstdo-boop/Keramika/git/refs' &&
         request.method == 'POST') {
-      return _json({'ref': 'refs/heads/forge/x'}, 201);
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      final ref = (payload['ref'] as String).replaceFirst('refs/heads/', '');
+      files(ref);
+      return _json({'ref': payload['ref']}, 201);
     }
     if (path.startsWith('/repos/wxstdo-boop/Keramika/contents/')) {
       final file = path.replaceFirst('/repos/wxstdo-boop/Keramika/contents/', '');
+      final branch = request.url.queryParameters['ref'] ?? 'main';
       if (request.method == 'GET') {
-        final content = files[file];
+        final content = files(branch)[file];
         if (content == null) return _json({'message': 'Not Found'}, 404);
         return _json({
           'path': file,
@@ -62,7 +75,8 @@ class _FakeGitHub {
       }
       if (request.method == 'PUT') {
         final payload = jsonDecode(request.body) as Map<String, dynamic>;
-        files[file] = utf8.decode(
+        final target = (payload['branch'] as String?) ?? 'main';
+        files(target)[file] = utf8.decode(
           base64.decode(payload['content'] as String),
         );
         commits[file] = payload['message'] as String;
@@ -215,7 +229,14 @@ void main() {
         sha: 'sha-lib/main.dart',
         token: 'ghp_valid',
       );
-      expect(fake.files['lib/main.dart'], 'void main() => runApp();');
+      // Ветка генерируется в рантайме — ищем её по факту записи.
+      final writtenBranch = fake.branchFiles.keys.firstWhere(
+        (b) => b != 'main',
+      );
+      expect(
+        fake.branchFiles[writtenBranch]!['lib/main.dart'],
+        'void main() => runApp();',
+      );
       final put = fake.requests.lastWhere((r) => r.method == 'PUT');
       final payload = jsonDecode(put.body) as Map<String, dynamic>;
       expect(payload['sha'], 'sha-lib/main.dart');
@@ -267,10 +288,58 @@ void main() {
       expect(result.pullRequestUrl, contains('/pull/1'));
       expect(result.branch, startsWith('forge/'));
       expect(steps.map((s) => s.tool), ['read_file', 'write_file']);
-      expect(fake.files['lib/main.dart'], contains('KeramikaApp'));
+      expect(
+        fake.branchFiles.values.any(
+          (f) => (f['lib/main.dart'] ?? '').contains('KeramikaApp'),
+        ),
+        isTrue,
+      );
       // Модель получила содержимое реального файла, а не пустую строку.
       expect(
         chat.seenMessages[1].any((m) => '${m['content']}'.contains('void main()')),
+        isTrue,
+      );
+    });
+
+    test('правки читаются из рабочей ветки, а не из main', () async {
+      // Раньше чтения внутри прогона шли без ref, то есть в основную ветку.
+      // На втором файле агент видел СВОЮ ЖЕ правку как отсутствующую и
+      // перезаписывал её исходной версией.
+      final fake = _FakeGitHub();
+      final chat = _ScriptedChat([
+        _call('write_file', {
+          'path': 'lib/main.dart',
+          'content': 'void main() => runApp(ForgeApp());',
+        }),
+        _call('read_file', {'path': 'lib/main.dart'}),
+        _call('finish', {'summary': 'готово'}),
+      ]);
+      final agent = ForgeAgent(
+        service: await _serviceWithToken(fake.client),
+        chat: chat,
+        owner: 'wxstdo-boop',
+        repo: 'Keramika',
+      );
+
+      await agent.run(task: 'поправь точку входа', baseBranch: 'main');
+
+      // Чтение после записи обязано вернуть версию агента.
+      final readResult = chat.seenMessages
+          .expand((m) => m)
+          .where((m) => m['role'] == 'tool')
+          .map((m) => '${m['content']}')
+          .toList();
+      expect(
+        readResult.any((c) => c.contains('ForgeApp')),
+        isTrue,
+        reason: 'агент должен читать свою ветку, а не main',
+      );
+      // И запросы чтения обязаны нести ref рабочей ветки.
+      final contentsGets = fake.requests.where(
+        (r) => r.method == 'GET' && r.url.path.contains('/contents/'),
+      );
+      expect(
+        contentsGets.every((r) => r.url.queryParameters['ref'] != null),
         isTrue,
       );
     });

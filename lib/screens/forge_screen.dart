@@ -8,9 +8,12 @@ import '../services/forge_agent.dart';
 import '../services/forge_service.dart';
 import '../services/haptics.dart';
 import '../services/settings_service.dart';
+import '../utils/context_menu.dart';
 import '../utils/snackbar.dart';
 import '../widgets/canary_icon.dart';
 import '../widgets/press_scale.dart';
+import '../widgets/smooth_char_counter.dart';
+import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import '../widgets/stagger_in.dart';
 import 'developer_corner_screen.dart';
@@ -46,7 +49,6 @@ class _ForgeScreenState extends State<ForgeScreen> {
   final TextEditingController _tokenController = TextEditingController();
   final TextEditingController _taskController = TextEditingController();
 
-  bool _tokenVisible = false;
   bool _loadingToken = true;
   bool _checking = false;
   bool _running = false;
@@ -80,7 +82,6 @@ class _ForgeScreenState extends State<ForgeScreen> {
       _loadingToken = false;
       if (saved != null) {
         _tokenController.text = saved;
-        _tokenVisible = false;
       }
     });
     if (saved != null) unawaited(_checkToken(silent: true));
@@ -400,28 +401,43 @@ class _ForgeScreenState extends State<ForgeScreen> {
             ),
           ),
           const SizedBox(height: 10),
+          // Токен показываем точками и БЕЗ «глазка»: раскрывать секрет на
+          // экране незачем, а подтверждение всё равно приходит логином ниже.
+          // Оформление — как у остальных полей приложения (плотное, радиус
+          // 14, минимальное меню, без лупы).
           TextField(
             controller: _tokenController,
-            obscureText: !_tokenVisible,
+            obscureText: true,
+            obscuringCharacter: '•',
             autocorrect: false,
             enableSuggestions: false,
             maxLines: 1,
+            textInputAction: TextInputAction.done,
+            cursorOpacityAnimates: true,
+            magnifierConfiguration: TextMagnifierConfiguration.disabled,
+            contextMenuBuilder: minimalContextMenuBuilder,
             decoration: InputDecoration(
               isDense: true,
+              counterText: '',
               hintText: 'ghp_… / github_pat_…',
+              filled: true,
+              fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 14,
+                horizontal: 14,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
-              suffixIcon: IconButton(
-                tooltip: _tokenVisible
-                    ? Translations.t('hidePassword', context, 'Скрыть')
-                    : Translations.t('showPassword', context, 'Показать'),
-                icon: Icon(
-                  _tokenVisible
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.65),
                 ),
-                onPressed: () => setState(() => _tokenVisible = !_tokenVisible),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: accent, width: 1.6),
               ),
             ),
           ),
@@ -448,10 +464,23 @@ class _ForgeScreenState extends State<ForgeScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              IconButton(
-                tooltip: Translations.t('forgeTokenForget', context),
-                onPressed: _loadingToken ? null : _forgetToken,
-                icon: Icon(Icons.delete_outline_rounded, color: cs.error),
+              // Зажатие «тонет» неспешно и поднимается ещё медленнее —
+              // как у кнопки сохранения в уголке: резкий щелчок значка
+              // читался как отсутствие отдачи.
+              PressScale(
+                pressedScale: 0.94,
+                duration: const Duration(milliseconds: 460),
+                releaseDuration: const Duration(milliseconds: 720),
+                child: IconButton(
+                  tooltip: Translations.t('forgeTokenForget', context),
+                  onPressed: _loadingToken
+                      ? null
+                      : () {
+                          Haptics.light();
+                          unawaited(_forgetToken());
+                        },
+                  icon: Icon(Icons.delete_outline_rounded, color: cs.error),
+                ),
               ),
             ],
           ),
@@ -503,16 +532,44 @@ class _ForgeScreenState extends State<ForgeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
+          // Поле — в том же обёрточном стиле, что и остальные поля ввода
+          // приложения: SmoothTyping плавно проявляет буквы, курсор
+          // анимированный, лупа и лишнее меню отключены.
+          SmoothTyping(
             controller: _taskController,
-            minLines: 3,
-            maxLines: 8,
-            maxLength: 4000,
-            enabled: !_running,
-            decoration: InputDecoration(
-              hintText: Translations.t('forgeTaskHint', context),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+            builder: (typingStyle) => TextField(
+              controller: _taskController,
+              style: typingStyle,
+              minLines: 3,
+              maxLines: 8,
+              maxLength: 4000,
+              enabled: !_running,
+              textCapitalization: TextCapitalization.sentences,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              cursorOpacityAnimates: true,
+              magnifierConfiguration: TextMagnifierConfiguration.disabled,
+              contextMenuBuilder: minimalContextMenuBuilder,
+              buildCounter: smoothCharCounterBuilder,
+              decoration: InputDecoration(
+                hintText: Translations.t('forgeTaskHint', context),
+                alignLabelWithHint: true,
+                filled: true,
+                fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                contentPadding: const EdgeInsets.all(16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: cs.outlineVariant.withValues(alpha: 0.65),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: accent, width: 1.6),
+                ),
               ),
             ),
           ),

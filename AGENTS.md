@@ -96,6 +96,39 @@ arm64). Приложение сравнивает сначала `versionName` (
 `versionCode`. Скачанный APK сверяется по SHA-256 из `digest` релиза —
 если `digest` нет, обновление отменяется с `FormatException`.
 
+## Кузница (Forge) — ИИ-агент внутри приложения
+
+Раздел «Кузница» (`lib/screens/forge_screen.dart`) правит этот же репозиторий
+из телефона: `lib/services/forge_service.dart` — GitHub-API и хранение токена,
+`lib/services/forge_agent.dart` — цикл агента (ветка → чтение → запись → PR).
+
+- Токен GitHub и ключ ИИ — разные вещи. Токен лежит в `flutter_secure_storage`
+  (Keystore телефона); модель работает на ключе ИИ из настроек
+  (`SettingsService.loadAiKey()`), это Poolside/Laguna либо OpenRouter при
+  ключе `sk-or-…`. Без ключа ИИ агент не запускается — экран так и пишет.
+- **Инвариант ветки.** Агент работает в ветке `forge/{slug}-{epoch}`. Все
+  чтения ВНУТРИ прогона обязаны идти с `ref: branch` — иначе `read_file`
+  возвращает версию из `main`, и на втором файле агент затирает собственные
+  правки исходным кодом. Регресс-тест: «правки читаются из рабочей ветки».
+- Файлы секретов и подписи (`isBlockedPath`) агенту закрыты; проверка стоит
+  до сетевого вызова.
+- Поля экрана намеренно в общем стиле приложения: `SmoothTyping`, радиус 14/16,
+  `minimalContextMenuBuilder`, `TextMagnifierConfiguration.disabled`,
+  `smoothCharCounterBuilder`. У поля токена нет «глазка» — секрет показывается
+  только точками.
+
+Проверка агента:
+
+- Юнит-цикл на фейковом GitHub (`test/forge_service_test.dart`), включая
+  инвариант ветки. Фейк держит содержимое по веткам, как настоящий GitHub.
+- Экран (`test/forge_screen_test.dart`): токен скрыт, глазка нет, значок
+  удаления на месте, поле задачи печатается.
+- Живой прогон (`test/live_forge_test.dart`) — РУЧНОЙ: создаёт настоящую ветку
+  и PR, поэтому в CI пропускается. Запуск:
+  `FORGE_LIVE=1 GITHUB_TOKEN=<token> flutter test test/live_forge_test.dart`.
+  Прогон сам закрывает PR и удаляет ветку. Токен нужен с правом `Contents` и
+  `Pull requests: read and write`.
+
 <!-- pane-agent-context:start -->
 ## Pane
 

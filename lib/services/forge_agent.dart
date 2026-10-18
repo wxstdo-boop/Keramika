@@ -301,14 +301,19 @@ class ForgeAgent {
     switch (call.name) {
       case 'list_dir':
         final path = _str(call.arguments['path']) ?? '';
-        final entries = await service.listDirectory(owner, repo, path);
+        final entries = await service.listDirectory(
+          owner,
+          repo,
+          path,
+          ref: branch,
+        );
         if (entries.isEmpty) return 'Каталог пуст или не найден';
         return entries
             .map((e) => e.isDir ? '${e.path}/' : e.path)
             .join('\n');
       case 'read_file':
         final path = _requirePath(call);
-        final file = await service.readFile(owner, repo, path);
+        final file = await service.readFile(owner, repo, path, ref: branch);
         if (file == null) return 'Файл не найден: $path';
         return file.content;
       case 'write_file':
@@ -317,7 +322,7 @@ class ForgeAgent {
         if (content == null) {
           throw ForgeException(400, 'write_file без content');
         }
-        final existing = await service.readFile(owner, repo, path);
+        final existing = await service.readFile(owner, repo, path, ref: branch);
         await service.writeFile(
           owner,
           repo,
