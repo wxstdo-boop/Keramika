@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:keramika/l10n/locale_provider.dart';
+import 'package:keramika/l10n/translations.dart';
 import 'package:keramika/screens/forge_screen.dart';
 import 'package:keramika/services/forge_agent.dart';
 import 'package:keramika/services/forge_chat_store.dart';
@@ -82,6 +83,32 @@ Widget _wrap(Widget child) => LocaleProvider(
   locale: const Locale('ru'),
   child: MaterialApp(home: child),
 );
+
+/// Хранилище, которое «сломано»: так ведёт себя Keystore после смены
+/// подписи или переустановки — запись осталась, а ключ шифрования потерян,
+/// и чтение падает с исключением.
+class _BrokenStore implements ForgeTokenStore {
+  _BrokenStore({this.failRead = true, this.failWrite = false});
+
+  final bool failRead;
+  final bool failWrite;
+  String? _value;
+
+  @override
+  Future<String?> read() async {
+    if (failRead) throw Exception('Keystore: ключ шифрования не найден');
+    return _value;
+  }
+
+  @override
+  Future<void> write(String value) async {
+    if (failWrite) throw Exception('Keystore: запись отклонена');
+    _value = value;
+  }
+
+  @override
+  Future<void> delete() async => _value = null;
+}
 
 /// Модель-скрипт: отвечает по заранее заданному сценарию. Настоящий
 /// провайдер — внешний сервис, в тесте ему не место.
@@ -358,6 +385,138 @@ void main() {
     // Анимация букв не должна «заедать»: после прокачки кадров текст на месте.
     await tester.pump(const Duration(milliseconds: 400));
     expect(task.controller?.text, 'поправь кнопку');
+  });
+
+  testWidgets('сбой чтения хранилища не блокирует кнопку сохранения', (
+    tester,
+  ) async {
+    // Жалоба: «вставил токен, а кнопка не активируется». Причина — флаг
+    // загрузки снимался только при успешном чтении: одно исключение из
+    // Keystore оставляло экран навсегда в состоянии «идёт загрузка».
+    final service = ForgeService(
+      client: _okClient(),
+      store: _BrokenStore(failRead: true),
+    );
+    await tester.pumpWidget(
+      _wrap(
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'ghp_typed_token');
+    await tester.pump();
+
+    final button = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.verified_user_outlined),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(
+      button.onPressed,
+      isNotNull,
+      reason: 'кнопка обязана ожить даже после сбоя хранилища',
+    );
+  });
+
+  testWidgets('токен сохраняется в хранилище по нажатию кнопки', (
+    tester,
+  ) async {
+    final store = InMemoryForgeTokenStore();
+    final service = ForgeService(client: _okClient(), store: store);
+    await tester.pumpWidget(
+      _wrap(
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'ghp_typed_token');
+    await tester.pump();
+
+    final finder = find.ancestor(
+      of: find.byIcon(Icons.verified_user_outlined),
+      matching: find.byType(FilledButton),
+    );
+    await tester.runAsync(() async {
+      tester.widget<FilledButton>(finder).onPressed!.call();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+
+    // Кнопка действительно кладёт токен в хранилище — иначе «вставил, а он
+    // не сохранился» повторялось бы после каждого перезапуска.
+    expect(await store.read(), 'ghp_typed_token');
+  });
+
+  testWidgets('сбой сети не мешает сохранить токен', (tester) async {
+    // Сеть отвалилась — проверка не прошла, но введённый токен обязан
+    // остаться в хранилище: иначе после перезапуска поле снова пустое.
+    final store = InMemoryForgeTokenStore();
+    final service = ForgeService(
+      client: MockClient((_) async => throw const SocketException('нет сети')),
+      store: store,
+    );
+    await tester.pumpWidget(
+      _wrap(
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'ghp_typed_token');
+    await tester.pump();
+
+    final finder = find.ancestor(
+      of: find.byIcon(Icons.verified_user_outlined),
+      matching: find.byType(FilledButton),
+    );
+    await tester.runAsync(() async {
+      tester.widget<FilledButton>(finder).onPressed!.call();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+
+    expect(await store.read(), 'ghp_typed_token');
+    // И кнопка снова активна — проверку можно повторить.
+    expect(tester.widget<FilledButton>(finder).onPressed, isNotNull);
+  });
+
+  testWidgets('сбой записи в хранилище показывается пользователю', (
+    tester,
+  ) async {
+    // Молча «сохранить» при недоступном Keystore нельзя: пользователь решит,
+    // что токен записан, и будет ждать, почему агент не работает.
+    final service = ForgeService(
+      client: _okClient(),
+      store: _BrokenStore(failRead: false, failWrite: true),
+    );
+    await tester.pumpWidget(
+      _wrap(
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'ghp_typed_token');
+    await tester.pump();
+
+    final finder = find.ancestor(
+      of: find.byIcon(Icons.verified_user_outlined),
+      matching: find.byType(FilledButton),
+    );
+    await tester.runAsync(() async {
+      tester.widget<FilledButton>(finder).onPressed!.call();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(Translations.t('forgeTokenSaveFailed', tester.element(
+        find.byType(ForgeScreen),
+      ))),
+      findsOneWidget,
+    );
   });
 
   testWidgets('без сохранённого токена поле пустое', (tester) async {
