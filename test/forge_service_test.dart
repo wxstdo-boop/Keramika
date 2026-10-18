@@ -258,6 +258,82 @@ void main() {
     });
   });
 
+  group('FreePoolForgeChat', () {
+    test('падающий провайдер пропускается, работает следующий', () async {
+      // Kilo отдаёт 429 — пул обязан перейти к Murakumo и не упасть.
+      final hits = <String>[];
+      final client = MockClient((request) async {
+        final host = request.url.host;
+        hits.add(host);
+        if (host.contains('kilo')) {
+          return http.Response('{"error":"rate limited"}', 429);
+        }
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': null,
+                  'tool_calls': [
+                    {
+                      'id': 'call_1',
+                      'function': {
+                        'name': 'write_file',
+                        'arguments': jsonEncode({
+                          'path': 'a.txt',
+                          'content': 'x',
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      String? used;
+      final chat = FreePoolForgeChat(
+        client: client,
+        onProvider: (name) => used = name,
+      );
+      final reply = await chat.complete([
+        {'role': 'user', 'content': 'сделай'},
+      ], []);
+
+      expect(used, 'Murakumo');
+      expect(reply.toolCalls, hasLength(1));
+      expect(reply.toolCalls.first.name, 'write_file');
+      expect(reply.toolCalls.first.arguments['path'], 'a.txt');
+      // Kilo пробовали дважды (обе модели) и только потом ушли дальше.
+      expect(hits.where((h) => h.contains('kilo')).length, 2);
+      expect(hits.last, contains('murakumo'));
+    });
+
+    test('когда все провайдеры недоступны — понятная ошибка', () async {
+      final client = MockClient(
+        (request) async => http.Response('<html>down</html>', 503),
+      );
+      final chat = FreePoolForgeChat(client: client);
+
+      await expectLater(
+        chat.complete([
+          {'role': 'user', 'content': 'сделай'},
+        ], []),
+        throwsA(
+          isA<ForgeException>().having(
+            (e) => e.message,
+            'message',
+            contains('недоступны'),
+          ),
+        ),
+      );
+    });
+  });
+
   group('ForgeAgent', () {
     test('полный цикл: читает файл, пишет правку, открывает PR', () async {
       final fake = _FakeGitHub();

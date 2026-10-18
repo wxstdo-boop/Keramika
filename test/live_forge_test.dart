@@ -34,6 +34,82 @@ class _ScriptedChat implements ForgeChat {
 }
 
 void main() {
+  // Второй живой прогон: агент ведут НАСТОЯЩИЕ бесплатные провайдеры
+  // (FreePoolForgeChat), без скрипта и без ключа. Это проверка того, что
+  // «Кузница» действительно работает «из коробки».
+  test('LIVE: бесплатный провайдер сам ведёт агента до PR', () async {
+    final token = Platform.environment['GITHUB_TOKEN'];
+    expect(token, isNotNull, reason: 'нужен GITHUB_TOKEN');
+    const owner = 'wxstdo-boop';
+    const repo = 'Keramika';
+
+    final service = ForgeService(store: InMemoryForgeTokenStore());
+    await service.saveToken(token!);
+
+    final agent = ForgeAgent(
+      service: service,
+      chat: FreePoolForgeChat(
+        onProvider: (name) => print('LIVE-FREE: провайдер=$name'),
+      ),
+      owner: owner,
+      repo: repo,
+    );
+
+    final result = await agent.run(
+      task:
+          'Создай файл FORGE_FREE_CHECK.md с заголовком «Проверка бесплатного '
+          'провайдера» и одной строкой текста. Ничего другого не меняй.',
+      baseBranch: 'main',
+      onStep: (s) => print('LIVE-FREE шаг: ${s.tool} — ${s.detail}'),
+    );
+
+    print('LIVE-FREE: ветка=${result.branch}');
+    print('LIVE-FREE: файлов=${result.filesChanged}');
+    print('LIVE-FREE: PR=${result.pullRequestUrl}');
+
+    expect(result.filesChanged, greaterThanOrEqualTo(1));
+    expect(result.pullRequestUrl, isNotNull);
+
+    final fromBranch = await service.readFile(
+      owner,
+      repo,
+      'FORGE_FREE_CHECK.md',
+      ref: result.branch,
+    );
+    print('LIVE-FREE: файл в ветке=${fromBranch != null}');
+    expect(fromBranch, isNotNull);
+
+    final fromMain = await service.readFile(
+      owner,
+      repo,
+      'FORGE_FREE_CHECK.md',
+      ref: 'main',
+    );
+    expect(fromMain, isNull, reason: 'main не должен быть тронут');
+
+    final prNumber = RegExp(
+      r'/pull/(\d+)',
+    ).firstMatch(result.pullRequestUrl!)![1];
+    await http.patch(
+      Uri.parse('https://api.github.com/repos/$owner/$repo/pulls/$prNumber'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/vnd.github+json',
+      },
+      body: jsonEncode({'state': 'closed'}),
+    );
+    final del = await http.delete(
+      Uri.parse(
+        'https://api.github.com/repos/$owner/$repo/git/refs/heads/${result.branch}',
+      ),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    print('LIVE-FREE: cleanup PR=closed, ветка удалена (${del.statusCode})');
+    expect(del.statusCode, 204);
+  },
+      timeout: const Timeout(Duration(minutes: 8)),
+      skip: Platform.environment['FORGE_LIVE'] != '1');
+
   test('LIVE: агент правит репозиторий и открывает PR', () async {
     final token = Platform.environment['GITHUB_TOKEN'];
     expect(token, isNotNull, reason: 'нужен GITHUB_TOKEN');
