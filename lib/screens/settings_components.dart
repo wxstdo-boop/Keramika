@@ -431,26 +431,32 @@ class _CtaButtonState extends State<_CtaButton> {
             ),
             const SizedBox(width: 11),
             Flexible(
-              child: Text(
-                widget.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16.5,
-                  letterSpacing: 1.0,
-                  shadows: [
-                    // Тёмная подложка под текстом + едва заметный
-                    // кровавый ободок — буквы «стоят» на кнопке и
-                    // сливаются с багровым градиентом.
-                    Shadow(
-                      color: Color(0x59000000),
-                      blurRadius: 5,
-                      offset: Offset(0, 2),
-                    ),
-                    Shadow(color: Color(0x665C0014), blurRadius: 10),
-                  ],
+              // Длинные подписи («Угостить автора», «Offrir un café») не
+              // влезали в кнопку и обрезались многоточием — выглядело как
+              // обрубок. Даём тексту ужаться на узких экранах вместо обрезки.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16.5,
+                    letterSpacing: 0.4,
+                    shadows: [
+                      // Тёмная подложка под текстом + едва заметный
+                      // кровавый ободок — буквы «стоят» на кнопке и
+                      // сливаются с багровым градиентом.
+                      Shadow(
+                        color: Color(0x59000000),
+                        blurRadius: 5,
+                        offset: Offset(0, 2),
+                      ),
+                      Shadow(color: Color(0x665C0014), blurRadius: 10),
+                    ],
+                  ),
                 ),
               ),
             ),

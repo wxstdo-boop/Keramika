@@ -38,6 +38,8 @@ import '../widgets/smooth_keyboard_body.dart';
 import '../widgets/update_pill.dart';
 import 'lock_screen.dart';
 import 'developer_corner_screen.dart';
+import '../services/update_service.dart';
+import 'forge_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
 import 'changelog_screen.dart';
@@ -3184,6 +3186,37 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 ),
                 onTap: () => saveBerserk(!berserkFlag.value),
+              ),
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                leading: const Icon(
+                  Icons.hardware_rounded,
+                  color: Color(0xFF8D6E63),
+                ),
+                title: Text(Translations.t('forgeTitle', routeContext, 'Кузница')),
+                subtitle: Text(
+                  Translations.t('forgeSubtitle', routeContext),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  // Экран Кузницы открывается поверх уголка: закрыл — вернулся
+                  // туда же, без пересборки всего стека настроек.
+                  Navigator.of(routeContext).push(
+                    MaterialPageRoute<void>(
+                      // Владелец и репозиторий — те же, что у автообновления:
+                      // одна константа на оба места, чтобы не разъехались.
+                      builder: (_) => const ForgeScreen(
+                        owner: kUpdateRepoOwner,
+                        repo: kUpdateRepoName,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           );

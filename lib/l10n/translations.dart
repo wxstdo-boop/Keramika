@@ -565,6 +565,35 @@ class Translations {
       'devPromptUnsaved': 'Changes not saved yet',
       'devPromptSaveError': 'Could not save. Tap Save to try again.',
       'devPromptSave': 'Save',
+      'forgeTitle': 'Forge',
+      'forgeSubtitle':
+          'Your workshop: paste a GitHub token, describe a task, and an AI agent edits the code in a branch and opens a pull request.',
+      'forgeTokenSection': 'GITHUB ACCESS',
+      'forgeTokenHint':
+          'Fine-grained token with Contents and Pull requests: read and write on this repository. Stored in the phone Keystore, never sent anywhere except GitHub.',
+      'forgeTokenCheck': 'Check and save',
+      'forgeTokenForget': 'Forget token',
+      'forgeTokenOk': 'Token works',
+      'forgeTokenInvalid': 'GitHub rejected the token',
+      'forgeTokenReadOnly':
+          'Token has no write access to this repository — the agent cannot commit',
+      'forgeTokenEmpty': 'Paste a token first',
+      'forgeTokenForgotten': 'Token removed from this device',
+      'forgeTaskSection': 'TASK',
+      'forgeTaskHint':
+          'Describe what to change, e.g. “make the support button text shorter”',
+      'forgeRun': 'Send to the forge',
+      'forgeWorking': 'Working…',
+      'forgeThinking': 'Agent is thinking…',
+      'forgeTaskEmpty': 'Describe the task first',
+      'forgeNeedAiKey':
+          'Add an AI key in Settings first — the agent runs on it',
+      'forgeLogSection': 'AGENT LOG',
+      'forgeDone': 'Pull request opened',
+      'forgeBranch': 'Branch',
+      'forgeFiles': 'files changed',
+      'forgeSafetyNote':
+          'The agent works in a separate branch and opens a pull request — main is never touched, so nothing breaks silently.',
       'showPassword': 'Show code',
       'hidePassword': 'Hide code',
       'patchTodos':
@@ -600,7 +629,7 @@ class Translations {
       'supportSoonToast': 'Ozon support is on its way — coming very soon!',
       'supportOzonSubtitle': 'Soon — support with a purchase',
       'supportBoostySubtitle': 'One-time donation or subscription',
-      'support': 'Buy a coffee',
+      'support': 'Buy me a coffee',
       'rcNotificationTitle': 'Reality Check',
       'appMisasoc': 'Misasoc',
       'appAtaraxy': 'Ataraxy',
@@ -1387,6 +1416,35 @@ class Translations {
       'devPromptUnsaved': 'Есть несохранённые изменения',
       'devPromptSaveError': 'Не удалось сохранить. Нажмите «Сохранить».',
       'devPromptSave': 'Сохранить',
+      'forgeTitle': 'Кузница',
+      'forgeSubtitle':
+          'Твоя мастерская: вставь токен GitHub, опиши задачу — ИИ-агент сам правит код в отдельной ветке и открывает pull request.',
+      'forgeTokenSection': 'ДОСТУП К GITHUB',
+      'forgeTokenHint':
+          'Fine-grained токен с правами Contents и Pull requests: read and write на этот репозиторий. Хранится в Keystore телефона и никуда, кроме GitHub, не уходит.',
+      'forgeTokenCheck': 'Проверить и сохранить',
+      'forgeTokenForget': 'Забыть токен',
+      'forgeTokenOk': 'Токен рабочий',
+      'forgeTokenInvalid': 'GitHub отклонил токен',
+      'forgeTokenReadOnly':
+          'У токена нет права записи в этот репозиторий — агент не сможет коммитить',
+      'forgeTokenEmpty': 'Сначала вставь токен',
+      'forgeTokenForgotten': 'Токен удалён с устройства',
+      'forgeTaskSection': 'ЗАДАЧА',
+      'forgeTaskHint':
+          'Опиши, что изменить, например: «сделай текст кнопки поддержки короче»',
+      'forgeRun': 'Отправить в Кузницу',
+      'forgeWorking': 'Работаю…',
+      'forgeThinking': 'Агент думает…',
+      'forgeTaskEmpty': 'Сначала опиши задачу',
+      'forgeNeedAiKey':
+          'Сначала добавь ключ ИИ в настройках — агент работает на нём',
+      'forgeLogSection': 'ЖУРНАЛ АГЕНТА',
+      'forgeDone': 'Pull request открыт',
+      'forgeBranch': 'Ветка',
+      'forgeFiles': 'файлов изменено',
+      'forgeSafetyNote':
+          'Агент работает в отдельной ветке и открывает pull request — основная ветка не трогается, сломать приложение молча не получится.',
       'showPassword': 'Показать код',
       'hidePassword': 'Скрыть код',
       'patchTodos':
@@ -1424,7 +1482,7 @@ class Translations {
       'supportSoonToast': 'Оплата через Ozon уже на подходе — совсем скоро!',
       'supportOzonSubtitle': 'Скоро — поддержка покупкой',
       'supportBoostySubtitle': 'Разовый донат или подписка',
-      'support': 'Угостить автора',
+      'support': 'Угостить кофе',
       'rcNotificationTitle': 'Проверка реальности',
       'appMisasoc': 'Misasoc',
       'appAtaraxy': 'Ataraxy',
@@ -2221,6 +2279,35 @@ class Translations {
       'devPromptSaveError':
           'Échec de l’enregistrement. Appuyez sur Enregistrer.',
       'devPromptSave': 'Enregistrer',
+      'forgeTitle': 'Forge',
+      'forgeSubtitle':
+          'Ton atelier : colle un jeton GitHub, décris une tâche, et un agent IA modifie le code dans une branche puis ouvre une pull request.',
+      'forgeTokenSection': 'ACCÈS GITHUB',
+      'forgeTokenHint':
+          'Jeton fine-grained avec Contents et Pull requests : read and write sur ce dépôt. Stocké dans le Keystore du téléphone, envoyé nulle part sauf à GitHub.',
+      'forgeTokenCheck': 'Vérifier et enregistrer',
+      'forgeTokenForget': 'Oublier le jeton',
+      'forgeTokenOk': 'Jeton valide',
+      'forgeTokenInvalid': 'GitHub a rejeté le jeton',
+      'forgeTokenReadOnly':
+          'Le jeton n’a pas le droit d’écriture sur ce dépôt — l’agent ne peut pas committer',
+      'forgeTokenEmpty': 'Colle d’abord un jeton',
+      'forgeTokenForgotten': 'Jeton supprimé de l’appareil',
+      'forgeTaskSection': 'TÂCHE',
+      'forgeTaskHint':
+          'Décris ce qu’il faut changer, par ex. « raccourcis le texte du bouton de soutien »',
+      'forgeRun': 'Envoyer à la Forge',
+      'forgeWorking': 'En cours…',
+      'forgeThinking': 'L’agent réfléchit…',
+      'forgeTaskEmpty': 'Décris d’abord la tâche',
+      'forgeNeedAiKey':
+          'Ajoute d’abord une clé IA dans les réglages — l’agent fonctionne avec',
+      'forgeLogSection': 'JOURNAL DE L’AGENT',
+      'forgeDone': 'Pull request ouverte',
+      'forgeBranch': 'Branche',
+      'forgeFiles': 'fichiers modifiés',
+      'forgeSafetyNote':
+          'L’agent travaille dans une branche séparée et ouvre une pull request — la branche principale n’est jamais touchée.',
       'showPassword': 'Afficher le code',
       'hidePassword': 'Masquer le code',
       'patchTodos':
