@@ -58,6 +58,79 @@ class ForgeRunResult {
   final int filesChanged;
 }
 
+/// Реплика в чате «Кузницы». Хранит не только текст, но и шаги агента с
+/// ссылкой на PR — по ним видно, что именно он сделал в проекте.
+class ForgeChatMessage {
+  const ForgeChatMessage({
+    required this.isUser,
+    required this.text,
+    this.steps = const [],
+    this.pullRequestUrl,
+    this.branch,
+    this.ts,
+  });
+
+  final bool isUser;
+  final String text;
+  final List<ForgeStep> steps;
+  final String? pullRequestUrl;
+  final String? branch;
+  final int? ts;
+
+  Map<String, dynamic> toJson() => {
+    'isUser': isUser,
+    'text': text,
+    'ts': ts,
+    'branch': branch,
+    'pullRequestUrl': pullRequestUrl,
+    'steps': [
+      for (final step in steps)
+        {'tool': step.tool, 'detail': step.detail, 'ok': step.ok},
+    ],
+  };
+
+  factory ForgeChatMessage.fromJson(Map<String, dynamic> json) {
+    final rawSteps = json['steps'];
+    return ForgeChatMessage(
+      isUser: json['isUser'] == true,
+      text: json['text'] as String? ?? '',
+      ts: (json['ts'] as num?)?.toInt(),
+      branch: json['branch'] as String?,
+      pullRequestUrl: json['pullRequestUrl'] as String?,
+      steps: rawSteps is List
+          ? [
+              for (final item in rawSteps)
+                if (item is Map)
+                  ForgeStep(
+                    tool: item['tool'] as String? ?? '',
+                    detail: item['detail'] as String? ?? '',
+                    ok: item['ok'] != false,
+                  ),
+            ]
+          : const [],
+    );
+  }
+}
+
+/// Итог одного хода диалога: ответ модели плюс след в проекте.
+class ForgeTurnResult {
+  const ForgeTurnResult({
+    required this.text,
+    this.branch,
+    this.pullRequestUrl,
+    this.filesChanged = 0,
+    this.steps = const [],
+  });
+
+  final String text;
+  final String? branch;
+  final String? pullRequestUrl;
+  final int filesChanged;
+  final List<ForgeStep> steps;
+
+  bool get madeChanges => filesChanged > 0;
+}
+
 /// ИИ-агент «Кузницы»: правит репозиторий настоящими коммитами.
 ///
 /// Работает в отдельной ветке от базовой и открывает pull request — прямая
@@ -69,12 +142,21 @@ class ForgeAgent {
     required this.chat,
     required this.owner,
     required this.repo,
+    this.baseBranch = 'main',
   });
 
   final ForgeService service;
   final ForgeChat chat;
   final String owner;
   final String repo;
+
+  /// Ветка, от которой агент отвечает. Обычно основная.
+  final String baseBranch;
+
+  /// Рабочая ветка текущего диалога. Создаётся ЛЕНИВО — при первой правке,
+  /// а не при первом вопросе: на вопрос «как устроен этот файл» ветка и PR
+  /// не нужны, и создавать их было бы мусором в репозитории.
+  String? _branch;
 
   /// Потолок шагов: каждая итерация — это сетевой запрос к модели и к
   /// GitHub, а платим за это лимитами. Двенадцати хватает на «прочитал три
@@ -125,6 +207,24 @@ class ForgeAgent {
     {
       'type': 'function',
       'function': {
+        'name': 'search_code',
+        'description':
+            'Найти файлы по тексту или имени. Быстрее, чем обходить каталоги.',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'query': {
+              'type': 'string',
+              'description': 'Что искать, например class ForgeAgent.',
+            },
+          },
+          'required': ['query'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': {
         'name': 'read_file',
         'description': 'Прочитать файл из репозитория.',
         'parameters': {
@@ -162,6 +262,24 @@ class ForgeAgent {
     {
       'type': 'function',
       'function': {
+        'name': 'delete_file',
+        'description': 'Удалить файл в рабочей ветке.',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'path': {'type': 'string', 'description': 'Путь файла.'},
+            'message': {
+              'type': 'string',
+              'description': 'Короткое сообщение коммита.',
+            },
+          },
+          'required': ['path'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': {
         'name': 'finish',
         'description':
             'Закончить работу и открыть pull request. Вызывай, когда правки готовы.',
@@ -183,43 +301,51 @@ class ForgeAgent {
     },
   ];
 
-  /// Прогон задачи. Возвращает результат либо бросает [ForgeException].
-  Future<ForgeRunResult> run({
+  /// Один ход диалога: ответ на реплику и, если попросили, правки проекта.
+  ///
+  /// Работает как настоящий чат: `history` — предыдущие реплики, `task` —
+  /// новая. Модель может просто ответить текстом (тогда ветка и PR не
+  /// создаются), а может править файлы — тогда агент заводит рабочую ветку,
+  /// коммитит и открывает pull request.
+  Future<ForgeTurnResult> respond({
+    required List<ForgeChatMessage> history,
     required String task,
-    required String baseBranch,
+    String baseBranch = 'main',
     String languageCode = 'ru',
     void Function(ForgeStep step)? onStep,
   }) async {
-    final branch = 'forge/${_slug(task)}-${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
-    await service.createBranch(
-      owner,
-      repo,
-      name: branch,
-      from: baseBranch,
-    );
-
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt(languageCode)},
+      for (final m in history)
+        if (m.text.trim().isNotEmpty)
+          {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
       {'role': 'user', 'content': task},
     ];
     final tools = _tools();
+    final steps = <ForgeStep>[];
     var writes = 0;
-    final changed = <String>{};
+    // Правки хода: записанные и удалённые файлы. Удаление — такая же правка,
+    // как запись: без него PR не открывался бы на чистом удалении.
+    final written = <String>{};
+    final deleted = <String>{};
+    String? lastText;
 
     for (var step = 0; step < maxSteps; step++) {
       final reply = await chat.complete(messages, tools);
+      if (reply.text != null && reply.text!.trim().isNotEmpty) {
+        lastText = reply.text;
+      }
+
       if (reply.toolCalls.isEmpty) {
-        // Модель ответила текстом, не позвав инструменты: если правки уже
-        // есть — доводим до PR, иначе это пустой прогон.
-        if (changed.isEmpty) {
-          throw ForgeException(500, reply.text ?? 'Агент ничего не изменил');
-        }
-        return _openPr(
-          branch: branch,
+        // Модель ответила текстом. Без правок это обычный ответ в чате —
+        // никаких веток и PR. С правками — доводим работу до PR.
+        return _conclude(
+          branch: _branch,
           base: baseBranch,
           task: task,
-          summary: reply.text ?? 'Правки от Кузницы',
-          files: changed,
+          text: reply.text ?? lastText ?? '',
+          files: _netChanged(written, deleted),
+          steps: steps,
         );
       }
 
@@ -241,17 +367,15 @@ class ForgeAgent {
 
       for (final call in reply.toolCalls) {
         if (call.name == 'finish') {
-          final summary = _str(call.arguments['summary']) ?? 'Правки от Кузницы';
-          if (changed.isEmpty) {
-            throw ForgeException(500, 'Агент завершил работу без правок');
-          }
-          return _openPr(
-            branch: branch,
+          final summary = _str(call.arguments['summary']) ?? lastText ?? '';
+          return _conclude(
+            branch: _branch,
             base: baseBranch,
             task: task,
+            text: summary.isEmpty ? (lastText ?? 'Готово') : summary,
             title: _str(call.arguments['title']),
-            summary: summary,
-            files: changed,
+            files: _netChanged(written, deleted),
+            steps: steps,
           );
         }
 
@@ -260,30 +384,41 @@ class ForgeAgent {
         // Предохранитель, а не подсказка модели: если она упорно пишет
         // сверх лимита, прогон останавливаем — иначе один запуск может
         // переписать весь проект.
-        if (call.name == 'write_file' && writes >= maxWrites) {
+        if (_isWrite(call.name) && writes >= maxWrites) {
           throw ForgeException(
             429,
-            'Достигнут предел правок ($maxWrites) за прогон',
+            'Достигнут предел правок ($maxWrites) за один ход',
           );
         }
         try {
+          // Ветку заводим ТОЛЬКО под правку. Вопрос по коду читает базовую
+          // ветку и не оставляет после себя ни ветки, ни PR.
+          final branch = _isWrite(call.name)
+              ? await _ensureBranch(task, baseBranch)
+              : (_branch ?? baseBranch);
           result = await _execute(call, branch);
-          if (call.name == 'write_file') {
+          if (_isWrite(call.name)) {
             writes++;
             final p = _str(call.arguments['path']);
-            if (p != null) changed.add(p);
+            if (p != null) {
+              if (call.name == 'delete_file') {
+                deleted.add(p);
+              } else {
+                written.add(p);
+              }
+            }
           }
         } on ForgeException catch (e) {
           ok = false;
           result = 'Ошибка: ${e.message}';
         }
-        onStep?.call(
-          ForgeStep(
-            tool: call.name,
-            detail: _str(call.arguments['path']) ?? result,
-            ok: ok,
-          ),
+        final step_ = ForgeStep(
+          tool: call.name,
+          detail: _str(call.arguments['path']) ?? result,
+          ok: ok,
         );
+        steps.add(step_);
+        onStep?.call(step_);
         messages.add({
           'role': 'tool',
           'tool_call_id': call.id,
@@ -294,6 +429,87 @@ class ForgeAgent {
     throw ForgeException(
       500,
       'Агент не уложился в $maxSteps шагов — задача слишком большая',
+    );
+  }
+
+  /// Прогон одиночной задачи (совместимость и «сделай и открой PR»).
+  /// Без правок — ошибка: этот вход просили именно изменить проект.
+  Future<ForgeRunResult> run({
+    required String task,
+    required String baseBranch,
+    String languageCode = 'ru',
+    void Function(ForgeStep step)? onStep,
+  }) async {
+    final turn = await respond(
+      history: const [],
+      task: task,
+      baseBranch: baseBranch,
+      languageCode: languageCode,
+      onStep: onStep,
+    );
+    if (!turn.madeChanges) {
+      throw ForgeException(500, turn.text.isEmpty ? 'Агент ничего не изменил' : turn.text);
+    }
+    return ForgeRunResult(
+      branch: turn.branch ?? '',
+      summary: turn.text,
+      pullRequestUrl: turn.pullRequestUrl,
+      filesChanged: turn.filesChanged,
+    );
+  }
+
+  static bool _isWrite(String tool) =>
+      tool == 'write_file' || tool == 'delete_file';
+
+  /// Итоговый набор изменённых файлов. Файл, записанный и затем удалённый в
+  /// одном ходе, к результату не относится — его из набора убираем.
+  static Set<String> _netChanged(Set<String> written, Set<String> deleted) =>
+      {...written.difference(deleted), ...deleted.difference(written)};
+
+  /// Рабочая ветка диалога: создаётся при первой правке и дальше живёт до
+  /// конца сессии — так правки одного диалога ложатся в один PR.
+  Future<String> _ensureBranch(String task, String base) async {
+    final existing = _branch;
+    if (existing != null) return existing;
+    final name =
+        'forge/${_slug(task)}-${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
+    await service.createBranch(owner, repo, name: name, from: base);
+    _branch = name;
+    return name;
+  }
+
+  /// Завершение хода: с правками — PR, без правок — просто ответ в чате.
+  Future<ForgeTurnResult> _conclude({
+    required String? branch,
+    required String base,
+    required String task,
+    required String text,
+    required Set<String> files,
+    required List<ForgeStep> steps,
+    String? title,
+  }) async {
+    if (files.isEmpty || branch == null) {
+      return ForgeTurnResult(text: text, steps: steps);
+    }
+    final url = await service.openPullRequest(
+      owner,
+      repo,
+      title: title ?? _prTitle(task),
+      body:
+          '$text\n\n'
+          '---\n'
+          'Задача: $task\n\n'
+          'Изменённые файлы: ${files.join(', ')}\n\n'
+          '_Изменения внесены ИИ-агентом «Кузница» из приложения Keramika._',
+      head: branch,
+      base: base,
+    );
+    return ForgeTurnResult(
+      text: text,
+      branch: branch,
+      pullRequestUrl: url.isEmpty ? null : url,
+      filesChanged: files.length,
+      steps: steps,
     );
   }
 
@@ -311,6 +527,14 @@ class ForgeAgent {
         return entries
             .map((e) => e.isDir ? '${e.path}/' : e.path)
             .join('\n');
+      case 'search_code':
+        final query = _str(call.arguments['query'])?.trim() ?? '';
+        if (query.isEmpty) {
+          throw ForgeException(400, 'search_code без query');
+        }
+        final hits = await service.searchCode(owner, repo, query);
+        if (hits.isEmpty) return 'Ничего не найдено по запросу: $query';
+        return hits.join('\n');
       case 'read_file':
         final path = _requirePath(call);
         final file = await service.readFile(owner, repo, path, ref: branch);
@@ -333,6 +557,16 @@ class ForgeAgent {
           sha: existing?.sha,
         );
         return 'Записано: $path';
+      case 'delete_file':
+        final path = _requirePath(call);
+        await service.deleteFile(
+          owner,
+          repo,
+          path,
+          message: _str(call.arguments['message']) ?? 'Кузница: удаление $path',
+          branch: branch,
+        );
+        return 'Удалено: $path';
       default:
         return 'Неизвестный инструмент: ${call.name}';
     }
@@ -349,43 +583,23 @@ class ForgeAgent {
     return path;
   }
 
-  Future<ForgeRunResult> _openPr({
-    required String branch,
-    required String base,
-    required String task,
-    required String summary,
-    required Set<String> files,
-    String? title,
-  }) async {
-    final url = await service.openPullRequest(
-      owner,
-      repo,
-      title: title ?? _prTitle(task),
-      body:
-          '$summary\n\n'
-          '---\n'
-          'Задача: $task\n\n'
-          'Изменённые файлы: ${files.join(', ')}\n\n'
-          '_Изменения внесены ИИ-агентом «Кузница» из приложения Keramika._',
-      head: branch,
-      base: base,
-    );
-    return ForgeRunResult(
-      branch: branch,
-      summary: summary,
-      pullRequestUrl: url.isEmpty ? null : url,
-      filesChanged: files.length,
-    );
-  }
-
   String _systemPrompt(String languageCode) =>
-      'Ты — «Кузница», агент-программист внутри приложения Keramika '
-      '(Flutter/Dart, репозиторий $owner/$repo). '
-      'Ты правишь код настоящими коммитами в отдельной ветке, затем открываешь pull request. '
-      'Работай по шагам: сначала list_dir/read_file, чтобы увидеть реальный код, '
-      'затем write_file с ПОЛНЫМ содержимым файла, затем finish. '
-      'Не выдумывай код, которого не видел. Не трогай секреты и файлы подписи. '
-      'Держись стиля проекта: комментарии по-русски, без лишних слов. '
+      'Ты — «Кузница», ИИ-агент-программист внутри приложения Keramika '
+      '(Flutter/Dart, репозиторий $owner/$repo). Ты ведёшь ЖИВОЙ ДИАЛОГ с '
+      'разработчиком и по его просьбе правишь код настоящими коммитами в '
+      'отдельной ветке, затем открываешь pull request.\n'
+      'Как вести себя:\n'
+      '— На вопрос о коде отвечай текстом, опираясь на реальные файлы: '
+      'сначала list_dir/read_file, потом ответ. Для ответа НЕ вызывай '
+      'finish и не правь файлы — ветка и PR на вопросы не создаются.\n'
+      '— Когда просят что-то изменить: прочитай нужные файлы, вызови '
+      'write_file с ПОЛНЫМ содержимым файла (не фрагмент), при необходимости '
+      'delete_file, и заверши вызовом finish с кратким summary.\n'
+      '— Помни предыдущие реплики диалога и продолжай начатую работу, не '
+      'начиная всё заново.\n'
+      'Не выдумывай код, которого не видел. Не трогай секреты и файлы '
+      'подписи. Держись стиля проекта: комментарии по-русски, без лишних '
+      'слов. Пиши по делу и коротко.\n'
       'Отвечай на языке: ${languageCode == 'ru' ? 'русском' : languageCode}.';
 
   String _prTitle(String task) {

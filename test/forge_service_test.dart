@@ -24,6 +24,7 @@ class _FakeGitHub {
     'main': {'lib/main.dart': 'void main() {}'},
   };
   final Map<String, String> commits = {};
+  final List<String> deleted = [];
 
   Map<String, String> files(String branch) =>
       branchFiles.putIfAbsent(branch, () => Map.of(branchFiles['main']!));
@@ -82,6 +83,25 @@ class _FakeGitHub {
         commits[file] = payload['message'] as String;
         return _json({'content': {'path': file}}, 201);
       }
+      if (request.method == 'DELETE') {
+        final payload = jsonDecode(request.body) as Map<String, dynamic>;
+        final target = (payload['branch'] as String?) ?? 'main';
+        files(target).remove(file);
+        deleted.add(file);
+        return _json({'commit': {'sha': 'del-sha'}}, 200);
+      }
+    }
+    if (path == '/search/code' && request.method == 'GET') {
+      final q = request.url.queryParameters['q'] ?? '';
+      final hits = [
+        for (final entry in files('main').keys)
+          if (entry.contains(q.split(' ').first)) entry,
+      ];
+      return _json({
+        'items': [
+          for (final hit in hits) {'path': hit},
+        ],
+      });
     }
     if (path == '/repos/wxstdo-boop/Keramika/pulls' &&
         request.method == 'POST') {
@@ -255,6 +275,58 @@ void main() {
       );
       expect(branch.name, 'forge/test');
       expect(branch.sha, 'base-sha');
+    });
+
+    test('deleteFile сначала читает sha, потом удаляет', () async {
+      final fake = _FakeGitHub();
+      final service = ForgeService(client: fake.client);
+      await service.deleteFile(
+        'wxstdo-boop',
+        'Keramika',
+        'lib/main.dart',
+        message: 'Кузница: удаление',
+        branch: 'forge/test',
+        token: 'ghp_valid',
+      );
+      expect(fake.deleted, ['lib/main.dart']);
+      // GitHub отвечает 409, если удалять без sha: значит чтение было.
+      final del = fake.requests.lastWhere((r) => r.method == 'DELETE');
+      final payload = jsonDecode(del.body) as Map<String, dynamic>;
+      expect(payload['sha'], 'sha-lib/main.dart');
+    });
+
+    test('deleteFile на несуществующем файле говорит об этом', () async {
+      final fake = _FakeGitHub();
+      final service = ForgeService(client: fake.client);
+      // Молча «успешно удалить» отсутствующий файл нельзя: агент решит, что
+      // всё сделано, и не заметит опечатку в пути.
+      await expectLater(
+        service.deleteFile(
+          'wxstdo-boop',
+          'Keramika',
+          'lib/nope.dart',
+          message: 'Кузница: удаление',
+          branch: 'main',
+          token: 'ghp_valid',
+        ),
+        throwsA(isA<ForgeException>()),
+      );
+      expect(fake.requests.where((r) => r.method == 'DELETE'), isEmpty);
+    });
+
+    test('searchCode возвращает пути найденных файлов', () async {
+      final fake = _FakeGitHub();
+      final service = ForgeService(client: fake.client);
+      final hits = await service.searchCode(
+        'wxstdo-boop',
+        'Keramika',
+        'main',
+        token: 'ghp_valid',
+      );
+      expect(hits, ['lib/main.dart']);
+      final req = fake.requests.last;
+      // Поиск ограничен репозиторием — иначе GitHub ищет по всему аккаунту.
+      expect(req.url.queryParameters['q'], 'main repo:wxstdo-boop/Keramika');
     });
   });
 
@@ -471,6 +543,134 @@ void main() {
         agent.run(task: 'выйди наружу', baseBranch: 'main'),
         throwsA(isA<ForgeException>()),
       );
+    });
+
+    test('ответ на вопрос не создаёт ветку и PR', () async {
+      final fake = _FakeGitHub();
+      final chat = _ScriptedChat([
+        ForgeChatReply(text: 'Точка входа — lib/main.dart.'),
+      ]);
+      final agent = ForgeAgent(
+        service: await _serviceWithToken(fake.client),
+        chat: chat,
+        owner: 'wxstdo-boop',
+        repo: 'Keramika',
+      );
+      final turn = await agent.respond(
+        history: const [],
+        task: 'где точка входа?',
+        baseBranch: 'main',
+      );
+      expect(turn.text, 'Точка входа — lib/main.dart.');
+      expect(turn.madeChanges, isFalse);
+      expect(turn.branch, isNull);
+      expect(turn.pullRequestUrl, isNull);
+      // Вопрос — не повод заводить ветку и открывать PR.
+      expect(
+        fake.requests.where((r) => r.method == 'POST' && r.url.path.endsWith('/git/refs')),
+        isEmpty,
+      );
+      expect(
+        fake.requests.where((r) => r.url.path.endsWith('/pulls')),
+        isEmpty,
+      );
+    });
+
+    test('ответ видит историю диалога', () async {
+      final chat = _ScriptedChat([const ForgeChatReply(text: 'Да, помню.')]);
+      final agent = ForgeAgent(
+        service: await _serviceWithToken(_FakeGitHub().client),
+        chat: chat,
+        owner: 'wxstdo-boop',
+        repo: 'Keramika',
+      );
+      await agent.respond(
+        history: const [
+          ForgeChatMessage(isUser: true, text: 'меня зовут Ваня', ts: 1),
+          ForgeChatMessage(isUser: false, text: 'Привет, Ваня!', ts: 2),
+        ],
+        task: 'как меня зовут?',
+        baseBranch: 'main',
+      );
+      final sent = chat.seenMessages.single;
+      final roles = sent.map((m) => m['role']).toList();
+      expect(roles.first, 'system');
+      // Прошлые реплики уходят в модель: без них это не диалог.
+      expect(roles, containsAllInOrder(['user', 'assistant', 'user']));
+      expect(sent.any((m) => m['content'] == 'меня зовут Ваня'), isTrue);
+    });
+
+    test('правка после вопроса идёт в ту же ветку', () async {
+      // Агент один на диалог: вторая правка не должна заводить вторую ветку,
+      // иначе один разговор расползётся по нескольким PR.
+      final fake = _FakeGitHub();
+      final service = await _serviceWithToken(fake.client);
+      final agent = ForgeAgent(
+        service: service,
+        chat: _ScriptedChat([
+          const ForgeChatReply(text: 'Понял, сейчас поправлю.'),
+          _call('write_file', {'path': 'lib/a.dart', 'content': '// a'}),
+          _call('finish', {'summary': 'Готово'}),
+        ]),
+        owner: 'wxstdo-boop',
+        repo: 'Keramika',
+      );
+      await agent.respond(
+        history: const [],
+        task: 'расскажи о проекте',
+        baseBranch: 'main',
+      );
+      final turn = await agent.respond(
+        history: const [],
+        task: 'добавь a.dart',
+        baseBranch: 'main',
+      );
+      expect(turn.madeChanges, isTrue);
+      final branches = fake.requests
+          .where((r) => r.method == 'POST' && r.url.path.endsWith('/git/refs'))
+          .toList();
+      expect(branches, hasLength(1));
+    });
+
+    test('search_code отдаёт пути найденных файлов', () async {
+      final fake = _FakeGitHub();
+      final agent = ForgeAgent(
+        service: await _serviceWithToken(fake.client),
+        chat: _ScriptedChat([
+          _call('search_code', {'query': 'main'}),
+          _call('finish', {'summary': 'нашёл'}),
+        ]),
+        owner: 'wxstdo-boop',
+        repo: 'Keramika',
+      );
+      final turn = await agent.respond(
+        history: const [],
+        task: 'найди main',
+        baseBranch: 'main',
+      );
+      expect(turn.steps.first.tool, 'search_code');
+      expect(turn.madeChanges, isFalse);
+    });
+
+    test('delete_file удаляет файл в рабочей ветке', () async {
+      final fake = _FakeGitHub();
+      final agent = ForgeAgent(
+        service: await _serviceWithToken(fake.client),
+        chat: _ScriptedChat([
+          _call('delete_file', {'path': 'lib/main.dart'}),
+          _call('finish', {'summary': 'удалил'}),
+        ]),
+        owner: 'wxstdo-boop',
+        repo: 'Keramika',
+      );
+      final turn = await agent.respond(
+        history: const [],
+        task: 'удали main.dart',
+        baseBranch: 'main',
+      );
+      expect(fake.deleted, ['lib/main.dart']);
+      expect(turn.madeChanges, isTrue);
+      expect(turn.pullRequestUrl, isNotNull);
     });
 
     test('прогон без правок не открывает пустой PR', () async {

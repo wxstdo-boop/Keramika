@@ -1,13 +1,17 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/screens/forge_screen.dart';
 import 'package:keramika/services/forge_agent.dart';
+import 'package:keramika/services/forge_chat_store.dart';
 import 'package:keramika/services/forge_service.dart';
+import 'package:keramika/services/json_file.dart';
 
 /// Жалоба: «вставленный токен не сохраняется». Проверяем именно это —
 /// токен, положенный в хранилище, при новом открытии экрана подставляется
@@ -79,43 +83,126 @@ Widget _wrap(Widget child) => LocaleProvider(
   child: MaterialApp(home: child),
 );
 
-/// Модель-скрипт: один вызов инструмента и завершение. Настоящий провайдер
-/// — внешний сервис, в тесте ему не место.
+/// Модель-скрипт: отвечает по заранее заданному сценарию. Настоящий
+/// провайдер — внешний сервис, в тесте ему не место.
 class _ScriptedChat implements ForgeChat {
-  _ScriptedChat();
+  _ScriptedChat(this.replies);
+
+  /// Сценарий: список ответов по порядку. Каждый следующий вызов берёт
+  /// следующий ответ, последний повторяется.
+  final List<ForgeChatReply> replies;
+  final List<List<Map<String, dynamic>>> seen = [];
+  int _i = 0;
 
   @override
   Future<ForgeChatReply> complete(
     List<Map<String, dynamic>> messages,
     List<Map<String, dynamic>> tools,
   ) async {
-    if (messages.any((m) => m['role'] == 'tool')) {
-      return const ForgeChatReply(
-        toolCalls: [
-          ForgeToolCall(
-            id: 'c2',
-            name: 'finish',
-            arguments: {'summary': 'Готово'},
-          ),
-        ],
-      );
-    }
-    return const ForgeChatReply(
-      toolCalls: [
-        ForgeToolCall(
-          id: 'c1',
-          name: 'write_file',
-          arguments: {'path': 'a.txt', 'content': 'x'},
-        ),
-      ],
-    );
+    seen.add(messages.map(Map<String, dynamic>.from).toList());
+    final reply = replies[_i < replies.length ? _i : replies.length - 1];
+    _i++;
+    return reply;
   }
 }
 
+/// Ответ-правка: пишет файл. Затем [finish] завершает ход и открывает PR.
+ForgeChatReply _write(String path) => ForgeChatReply(
+  toolCalls: [
+    ForgeToolCall(
+      id: 'w1',
+      name: 'write_file',
+      arguments: {'path': path, 'content': 'x'},
+    ),
+  ],
+);
+
+const _finish = ForgeChatReply(
+  toolCalls: [
+    ForgeToolCall(id: 'f1', name: 'finish', arguments: {'summary': 'Готово'}),
+  ],
+);
+
+/// Текст пузыря чата. Реплики рисуются через SelectableText, поэтому
+/// обычный find.text их не находит — ищем по обоим типам.
+Finder _chatText(String value) => find.byWidgetPredicate(
+  (w) => w is Text
+      ? (w.data ?? w.textSpan?.toPlainText() ?? '') == value
+      : w is SelectableText
+      ? (w.data ?? '') == value
+      : false,
+);
+
+Finder _chatTextContaining(String part) => find.byWidgetPredicate(
+  (w) => w is Text
+      ? (w.data ?? w.textSpan?.toPlainText() ?? '').contains(part)
+      : w is SelectableText
+      ? (w.data ?? '').contains(part)
+      : false,
+);
+
+/// Развернуть поверхность теста: история чата уезжает вниз, и без высокого
+/// экрана ListView просто не строит пузыри — их не найти в дереве.
+void _tallSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1200, 3600);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
+/// Нажать «Отправить» и дождаться конца хода. Чтение своего ключа ИИ —
+/// настоящий доступ к хранилищу, и поддельные часы теста его не двигают,
+/// поэтому ход прогоняем в «живом» времени.
+Future<void> _sendAndSettle(WidgetTester tester) async {
+  final sendButton = tester.widget<FilledButton>(
+    find.widgetWithText(FilledButton, 'Отправить'),
+  );
+  await tester.runAsync(() async {
+    sendButton.onPressed!();
+    // Ход целиком идёт в «живом» времени (чтение ключа, шаги агента), а
+    // поддельные часы теста его не двигают. Даём ему завершиться.
+    await Future<void>.delayed(const Duration(seconds: 2));
+    // Мигающий курсор живёт настоящим таймером: снимаем фокус ещё здесь,
+    // иначе таймер сработает после конца теста, когда виджета уже нет.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  });
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  late Directory tmpDir;
+
+  setUp(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
+    tmpDir = await Directory.systemTemp.createTemp('keramika_forge_chat');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async {
+            if (call.method == 'getApplicationDocumentsDirectory') {
+              return tmpDir.path;
+            }
+            return null;
+          },
+        );
+  });
+
+  tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+    try {
+      await tmpDir.delete(recursive: true);
+    } catch (_) {}
+  });
   testWidgets('агент запускается без ключа ИИ — на бесплатном пуле', (
     tester,
   ) async {
+    _tallSurface(tester);
     // Ключ ИИ в настройках не задан: раньше экран показывал «добавь ключ».
     // Экран высокий — разворачиваем поверхность, чтобы карточка результата
     // была видна без прокрутки.
@@ -133,30 +220,79 @@ void main() {
           owner: 'wxstdo-boop',
           repo: 'Keramika',
           service: service,
-          chatFactory: (apiKey) => _ScriptedChat(),
+          chatFactory: (apiKey) => _ScriptedChat([_write('a.txt'), _finish]),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).at(1), 'создай a.txt');
-    final sendButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Отправить'),
+    await _sendAndSettle(tester);
+
+    // Ход дошёл до PR: значит ключ ИИ не потребовался.
+    expect(_chatTextContaining('pull/1'), findsOneWidget);
+    expect(_chatTextContaining('ключ ИИ'), findsNothing);
+    // Вопрос пользователя остался в истории чата.
+    expect(_chatText('создай a.txt'), findsOneWidget);
+  });
+
+  testWidgets('вопрос без правок не создаёт ветку и PR', (tester) async {
+    _tallSurface(tester);
+    // Раньше любой запуск сразу заводил ветку и требовал finish. Теперь
+    // на вопрос агент просто отвечает текстом.
+    final store = InMemoryForgeTokenStore();
+    await store.write('ghp_saved_token');
+    final service = ForgeService(client: _okClient(), store: store);
+
+    await tester.pumpWidget(
+      _wrap(
+        ForgeScreen(
+          owner: 'wxstdo-boop',
+          repo: 'Keramika',
+          service: service,
+          chatFactory: (apiKey) => _ScriptedChat([
+            const ForgeChatReply(text: 'Точка входа в lib/main.dart.'),
+          ]),
+        ),
+      ),
     );
-    // Чтение своего ключа — настоящий доступ к хранилищу, и поддельные часы
-    // его не двигают: прогон запускаем в «живом» времени.
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).at(1), 'где точка входа?');
+    await _sendAndSettle(tester);
+
+    expect(_chatText('Точка входа в lib/main.dart.'), findsOneWidget);
+    expect(_chatTextContaining('pull/'), findsNothing);
+  });
+
+  testWidgets('история чата восстанавливается из хранилища', (tester) async {
+    // Разговор хранится в зашифрованном файле: здесь он уже записан, а
+    // экран должен его показать. Чтение файла — настоящий ввод-вывод,
+    // поэтому открытие идёт в «живом» времени.
+    _tallSurface(tester);
     await tester.runAsync(() async {
-      sendButton.onPressed!();
-      for (var i = 0; i < 100; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-        if (tester.any(find.textContaining('pull/1'))) break;
-      }
+      await ForgeChatStore.save(const [
+        ForgeChatMessage(isUser: true, text: 'привет', ts: 1),
+        ForgeChatMessage(isUser: false, text: 'Отвечаю из истории.', ts: 2),
+      ]);
+    });
+
+    final store = InMemoryForgeTokenStore();
+    await store.write('ghp_saved_token');
+    final service = ForgeService(client: _okClient(), store: store);
+
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        _wrap(
+          ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await tester.pumpAndSettle();
 
-    // Прогон дошёл до PR: значит ключ ИИ не потребовался.
-    expect(find.textContaining('pull/1'), findsOneWidget);
-    expect(find.textContaining('ключ ИИ'), findsNothing);
+    expect(_chatText('привет'), findsOneWidget);
+    expect(_chatText('Отвечаю из истории.'), findsOneWidget);
   });
 
   testWidgets('сохранённый токен подставляется при открытии экрана', (

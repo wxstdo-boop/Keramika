@@ -246,6 +246,53 @@ class ForgeService {
     );
   }
 
+  /// Поиск по коду репозитория. Без него агент вынужден перебирать каталоги
+  /// вслепую, а на большом проекте это выжигает шаги и лимиты.
+  Future<List<String>> searchCode(
+    String owner,
+    String repo,
+    String query, {
+    String? token,
+  }) async {
+    final t = token ?? await loadToken();
+    final body = await _get(
+      '/search/code?q=${Uri.encodeQueryComponent('$query repo:$owner/$repo')}',
+      token: t,
+    );
+    if (body is! Map<String, dynamic>) return const [];
+    final items = body['items'];
+    if (items is! List) return const [];
+    return [
+      for (final item in items)
+        if (item is Map<String, dynamic> && item['path'] is String)
+          item['path'] as String,
+    ];
+  }
+
+  /// Удаление файла в ветке. GitHub требует `sha` удаляемого файла, поэтому
+  /// сначала читаем его — иначе отвечает 409.
+  Future<void> deleteFile(
+    String owner,
+    String repo,
+    String path, {
+    required String message,
+    required String branch,
+    String? token,
+  }) async {
+    final t = token ?? await loadToken();
+    final clean = path.replaceAll(RegExp(r'^/+'), '');
+    final existing = await readFile(owner, repo, clean, ref: branch, token: t);
+    if (existing == null) {
+      throw ForgeException(404, 'Файл не найден: $clean');
+    }
+    await _send(
+      'DELETE',
+      '/repos/$owner/$repo/contents/$clean',
+      token: t,
+      payload: {'message': message, 'sha': existing.sha, 'branch': branch},
+    );
+  }
+
   Future<ForgeBranch> branchHead(
     String owner,
     String repo,

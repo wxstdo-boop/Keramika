@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/locale_provider.dart';
 import '../l10n/translations.dart';
 import '../services/forge_agent.dart';
+import '../services/forge_chat_store.dart';
 import '../services/forge_service.dart';
 import '../services/haptics.dart';
 import '../services/settings_service.dart';
@@ -15,7 +16,6 @@ import '../widgets/press_scale.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
-import '../widgets/stagger_in.dart';
 import 'developer_corner_screen.dart';
 
 /// «Кузница» — мастерская внутри уголка разработчика: вставляешь токен
@@ -52,7 +52,8 @@ class ForgeScreen extends StatefulWidget {
 class _ForgeScreenState extends State<ForgeScreen> {
   late final ForgeService _service = widget.service ?? ForgeService();
   final TextEditingController _tokenController = TextEditingController();
-  final TextEditingController _taskController = TextEditingController();
+  final TextEditingController _inputController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   bool _loadingToken = true;
   bool _checking = false;
@@ -61,21 +62,41 @@ class _ForgeScreenState extends State<ForgeScreen> {
   String? _tokenError;
   String _baseBranch = 'main';
 
-  final List<ForgeStep> _log = <ForgeStep>[];
-  ForgeRunResult? _result;
+  /// Разговор с агентом. Живёт между запусками приложения.
+  final List<ForgeChatMessage> _messages = <ForgeChatMessage>[];
+
+  /// Шаги текущего хода: показываются в «живом» пузыре, пока агент думает.
+  final List<ForgeStep> _liveSteps = <ForgeStep>[];
+
+  /// Имя бесплатного провайдера, который отвечает сейчас.
+  String? _activeProvider;
+
   String? _runError;
+
+  /// Агент один на экран: он держит рабочую ветку диалога, поэтому правки
+  /// нескольких ходов ложатся в один pull request.
+  ForgeAgent? _agent;
 
   @override
   void initState() {
     super.initState();
     unawaited(_restoreToken());
+    unawaited(_restoreChat());
   }
 
   @override
   void dispose() {
     _tokenController.dispose();
-    _taskController.dispose();
+    _inputController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _restoreChat() async {
+    final saved = await ForgeChatStore.load();
+    if (!mounted || saved.isEmpty) return;
+    setState(() => _messages.addAll(saved));
+    _scrollToEnd();
   }
 
   /// Токен поднимаем из защищённого хранилища при входе в экран — раньше
@@ -175,9 +196,27 @@ class _ForgeScreenState extends State<ForgeScreen> {
     );
   }
 
-  Future<void> _run() async {
-    final task = _taskController.text.trim();
-    if (task.isEmpty) {
+  Future<void> _clearChat() async {
+    setState(() {
+      _messages.clear();
+      _liveSteps.clear();
+      _runError = null;
+      _agent = null; // новая сессия — новая рабочая ветка
+    });
+    await ForgeChatStore.clear();
+    if (!mounted) return;
+    showBeautifulSnackBar(
+      context,
+      message: Translations.t('forgeChatCleared', context),
+      icon: Icons.cleaning_services_rounded,
+    );
+  }
+
+  /// Отправка реплики: обычный ход диалога. Агент сам решает, ответить
+  /// текстом или править файлы — правки заканчиваются pull request'ом.
+  Future<void> _send() async {
+    final text = _inputController.text.trim();
+    if (text.isEmpty) {
       showBeautifulSnackBar(
         context,
         message: Translations.t('forgeTaskEmpty', context),
@@ -209,12 +248,23 @@ class _ForgeScreenState extends State<ForgeScreen> {
     }
     if (!mounted) return;
 
+    final history = List<ForgeChatMessage>.from(_messages);
+    _inputController.clear();
     setState(() {
       _running = true;
       _runError = null;
-      _result = null;
-      _log.clear();
+      _liveSteps.clear();
+      _activeProvider = null;
+      _messages.add(
+        ForgeChatMessage(
+          isUser: true,
+          text: text,
+          ts: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
     });
+    _scrollToEnd();
+
     try {
       // Пул — единственный путь: «Кузница» работает и без ключа. Свой ключ
       // ИИ, если задан, просто пробуется первым, а при отказе пул
@@ -227,45 +277,80 @@ class _ForgeScreenState extends State<ForgeScreen> {
             onProvider: (name) {
               if (providerLogged || !mounted) return;
               providerLogged = true;
-              setState(
-                () => _log.add(ForgeStep(tool: name, detail: providerNote)),
-              );
+              setState(() {
+                _activeProvider = name;
+                _liveSteps.add(ForgeStep(tool: name, detail: providerNote));
+              });
             },
           );
-      final agent = ForgeAgent(
-        service: _service,
-        chat: chat,
-        owner: widget.owner,
-        repo: widget.repo,
-      );
-      final result = await agent.run(
-        task: task,
+      final agent =
+          _agent ??
+          ForgeAgent(
+            service: _service,
+            chat: chat,
+            owner: widget.owner,
+            repo: widget.repo,
+            baseBranch: _baseBranch,
+          );
+      _agent = agent;
+
+      final turn = await agent.respond(
+        history: history,
+        task: text,
         baseBranch: _baseBranch,
         languageCode: languageCode,
         onStep: (step) {
           if (!mounted) return;
-          setState(() => _log.add(step));
+          setState(() => _liveSteps.add(step));
+          _scrollToEnd();
         },
       );
       if (!mounted) return;
       setState(() {
         _running = false;
-        _result = result;
+        _messages.add(
+          ForgeChatMessage(
+            isUser: false,
+            text: turn.text.isEmpty
+                ? Translations.t('forgeDone', context)
+                : turn.text,
+            steps: turn.steps,
+            pullRequestUrl: turn.pullRequestUrl,
+            branch: turn.branch,
+            ts: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+        _liveSteps.clear();
       });
-      Haptics.heavy();
+      await ForgeChatStore.save(_messages);
+      if (turn.madeChanges) Haptics.heavy();
+      _scrollToEnd();
     } on ForgeException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _running = false;
-        _runError = e.message;
-      });
+      _failRun(e.message);
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _running = false;
-        _runError = e.toString();
-      });
+      _failRun(e.toString());
     }
+  }
+
+  void _failRun(String message) {
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _runError = message;
+      _liveSteps.clear();
+    });
+    _scrollToEnd();
+  }
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -279,60 +364,65 @@ class _ForgeScreenState extends State<ForgeScreen> {
         title: Text(Translations.t('forgeTitle', context, 'Кузница')),
         centerTitle: true,
         backgroundColor: Colors.transparent,
+        actions: [
+          if (_messages.isNotEmpty)
+            IconButton(
+              tooltip: Translations.t('forgeClearChat', context),
+              onPressed: _running ? null : () => unawaited(_clearChat()),
+              icon: const Icon(Icons.cleaning_services_rounded),
+            ),
+        ],
       ),
       body: SafeArea(
         top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(
           children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 700),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _hero(theme, accent),
-                    const SizedBox(height: 22),
-                    _sectionLabel(
-                      theme,
-                      accent,
-                      Icons.key_rounded,
-                      Translations.t('forgeTokenSection', context),
-                    ),
-                    const SizedBox(height: 8),
-                    _tokenCard(theme, cs, accent),
-                    const SizedBox(height: 22),
-                    _sectionLabel(
-                      theme,
-                      accent,
-                      Icons.auto_fix_high_rounded,
-                      Translations.t('forgeTaskSection', context),
-                    ),
-                    const SizedBox(height: 8),
-                    _taskCard(theme, cs, accent),
-                    if (_log.isNotEmpty || _running) ...[
-                      const SizedBox(height: 22),
-                      _sectionLabel(
-                        theme,
-                        accent,
-                        Icons.terminal_rounded,
-                        Translations.t('forgeLogSection', context),
+            Expanded(
+              child: ListView(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 700),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _hero(theme, accent),
+                          const SizedBox(height: 22),
+                          _sectionLabel(
+                            theme,
+                            accent,
+                            Icons.key_rounded,
+                            Translations.t('forgeTokenSection', context),
+                          ),
+                          const SizedBox(height: 8),
+                          _tokenCard(theme, cs, accent),
+                          const SizedBox(height: 22),
+                          _sectionLabel(
+                            theme,
+                            accent,
+                            Icons.forum_rounded,
+                            Translations.t('forgeChatSection', context),
+                          ),
+                          const SizedBox(height: 8),
+                          if (_messages.isEmpty && !_running)
+                            _emptyChat(theme, cs),
+                          for (final message in _messages)
+                            _bubble(theme, cs, accent, message),
+                          if (_running) _runningBubble(theme, cs, accent),
+                          if (_runError != null) ...[
+                            const SizedBox(height: 12),
+                            _errorCard(theme, cs),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      _logCard(theme, cs),
-                    ],
-                    if (_result != null) ...[
-                      const SizedBox(height: 18),
-                      _resultCard(theme, cs),
-                    ],
-                    if (_runError != null) ...[
-                      const SizedBox(height: 18),
-                      _errorCard(theme, cs),
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            _inputBar(theme, cs, accent),
           ],
         ),
       ),
@@ -544,200 +634,282 @@ class _ForgeScreenState extends State<ForgeScreen> {
     );
   }
 
-  Widget _taskCard(ThemeData theme, ColorScheme cs, Color accent) {
+  Widget _emptyChat(ThemeData theme, ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: devCardDecoration(theme, accent),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Поле — в том же обёрточном стиле, что и остальные поля ввода
-          // приложения: SmoothTyping плавно проявляет буквы, курсор
-          // анимированный, лупа и лишнее меню отключены.
-          SmoothTyping(
-            controller: _taskController,
-            builder: (typingStyle) => TextField(
-              controller: _taskController,
-              style: typingStyle,
-              minLines: 3,
-              maxLines: 8,
-              maxLength: 4000,
-              enabled: !_running,
-              textCapitalization: TextCapitalization.sentences,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              cursorOpacityAnimates: true,
-              magnifierConfiguration: TextMagnifierConfiguration.disabled,
-              contextMenuBuilder: minimalContextMenuBuilder,
-              buildCounter: smoothCharCounterBuilder,
-              decoration: InputDecoration(
-                hintText: Translations.t('forgeTaskHint', context),
-                alignLabelWithHint: true,
-                filled: true,
-                fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-                contentPadding: const EdgeInsets.all(16),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(
-                    color: cs.outlineVariant.withValues(alpha: 0.65),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: accent, width: 1.6),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          PressScale(
-            child: FilledButton.icon(
-              onPressed: _running ? null : _run,
-              icon: _running
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.hardware_rounded, size: 18),
-              label: Text(
-                _running
-                    ? Translations.t('forgeWorking', context)
-                    : Translations.t('forgeRun', context),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            Translations.t('forgeSafetyNote', context),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _logCard(ThemeData theme, ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          for (var i = 0; i < _log.length; i++)
-            StaggerIn(
-              index: i,
-              step: const Duration(milliseconds: 45),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      _log[i].ok
-                          ? Icons.check_circle_outline
-                          : Icons.error_outline,
-                      size: 15,
-                      color: _log[i].ok ? cs.primary : cs.error,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${_log[i].tool}: ${_log[i].detail}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+          Icon(Icons.tips_and_updates_outlined, size: 18, color: cs.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              Translations.t('forgeChatEmpty', context),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                height: 1.35,
               ),
             ),
-          if (_running)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    Translations.t('forgeThinking', context),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _resultCard(ThemeData theme, ColorScheme cs) {
-    final result = _result!;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.merge_type_rounded,
-                size: 18,
-                color: Colors.green,
+  /// Пузырь реплики: вопрос справа, ответ агента слева. В ответе видны шаги
+  /// работы и ссылка на pull request — так видно, что именно агент сделал.
+  Widget _bubble(
+    ThemeData theme,
+    ColorScheme cs,
+    Color accent,
+    ForgeChatMessage message,
+  ) {
+    final isUser = message.isUser;
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 560),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isUser
+              ? accent.withValues(alpha: 0.14)
+              : cs.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isUser
+                ? accent.withValues(alpha: 0.35)
+                : cs.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isUser) ...[
+              Row(
+                children: [
+                  Icon(Icons.smart_toy_outlined, size: 15, color: accent),
+                  const SizedBox(width: 7),
+                  Text(
+                    Translations.t('forgeTitle', context, 'Кузница'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: accent,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  Translations.t('forgeDone', context),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+              const SizedBox(height: 6),
+            ],
+            SelectableText(
+              message.text,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+            ),
+            if (message.steps.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _stepsList(theme, cs, message.steps),
+            ],
+            if (message.pullRequestUrl != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.merge_type_rounded,
+                    size: 16,
+                    color: Colors.green,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SelectableText(
+                      message.pullRequestUrl!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.primary,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (message.branch != null && message.steps.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${Translations.t('forgeBranch', context)}: ${message.branch}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Пузырь «агент работает»: шаги появляются по мере выполнения.
+  Widget _runningBubble(ThemeData theme, ColorScheme cs, Color accent) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 560),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _activeProvider == null
+                        ? Translations.t('forgeThinking', context)
+                        : '${Translations.t('forgeThinking', context)} · '
+                              '$_activeProvider',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_liveSteps.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _stepsList(theme, cs, _liveSteps),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stepsList(ThemeData theme, ColorScheme cs, List<ForgeStep> steps) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final step in steps)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  step.ok ? Icons.check_circle_outline : Icons.error_outline,
+                  size: 14,
+                  color: step.ok ? cs.primary : cs.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${step.tool}: ${step.detail}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Поле ввода закреплено снизу: в чате оно должно быть под рукой, а не
+  /// уезжать вверх вместе с длинной историей.
+  Widget _inputBar(ThemeData theme, ColorScheme cs, Color accent) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(
+          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        ),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Поле — в том же обёрточном стиле, что и остальные поля ввода
+              // приложения: SmoothTyping плавно проявляет буквы, курсор
+              // анимированный, лупа и лишнее меню отключены.
+              SmoothTyping(
+                controller: _inputController,
+                builder: (typingStyle) => TextField(
+                  controller: _inputController,
+                  style: typingStyle,
+                  minLines: 1,
+                  maxLines: 6,
+                  maxLength: 4000,
+                  enabled: !_running,
+                  textCapitalization: TextCapitalization.sentences,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  cursorOpacityAnimates: true,
+                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                  contextMenuBuilder: minimalContextMenuBuilder,
+                  buildCounter: smoothCharCounterBuilder,
+                  decoration: InputDecoration(
+                    hintText: Translations.t('forgeTaskHint', context),
+                    alignLabelWithHint: true,
+                    filled: true,
+                    fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                    contentPadding: const EdgeInsets.all(16),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.65),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: accent, width: 1.6),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              PressScale(
+                child: FilledButton.icon(
+                  onPressed: _running ? null : _send,
+                  icon: _running
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded, size: 18),
+                  label: Text(
+                    _running
+                        ? Translations.t('forgeWorking', context)
+                        : Translations.t('forgeRun', context),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(result.summary, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 8),
-          Text(
-            '${Translations.t('forgeBranch', context)}: ${result.branch} · '
-            '${result.filesChanged} '
-            '${Translations.t('forgeFiles', context)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-          if (result.pullRequestUrl != null) ...[
-            const SizedBox(height: 10),
-            SelectableText(
-              result.pullRequestUrl!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.primary,
-                decoration: TextDecoration.underline,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
