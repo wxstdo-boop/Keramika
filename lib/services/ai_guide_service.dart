@@ -129,6 +129,10 @@ class AiGuideService {
       );
       return null;
     }
+    // Живая метка «кто сейчас отвечает»: пока идёт запрос, в плашке
+    // модели видно имя активного провайдера — раньше лейбл молчал
+    // до(/если) успеха, и казалось, что Ада зависла.
+    _setModel('$name — отвечает…');
     try {
       final result = await fn().timeout(Duration(seconds: seconds));
       if (_isRefusal(result)) {
@@ -1346,6 +1350,35 @@ class AiGuideService {
         return answer;
       }
     }
+    // Второй заход: по одному повтору самых дешёвых резервов БЕЗ учёта
+    // кулдаунов. Много «отказов» — разовые сетевые сбои; раньше после
+    // первой неудачи всё падало мгновенной ошибкой, и «Ада не всегда
+    // отвечала». Дешёвые хосты получают ещё один шанс.
+    _cooldownUntil.remove('Kilo');
+    final retryKilo = await _tryProvider(
+      'Kilo',
+      () => _sendKilo(userText, languageCode),
+      8,
+    );
+    if (retryKilo != null) {
+      _setModel('Kilo');
+      _recordProviderTrace('Selected: Kilo (повтор)');
+      return retryKilo;
+    }
+    _cooldownUntil.remove('OVHcloud');
+    final retryOvh = await _tryProvider(
+      'OVHcloud',
+      () => _sendOvhcloud(userText, languageCode),
+      8,
+    );
+    if (retryOvh != null) {
+      _setModel('OVHcloud');
+      _recordProviderTrace('Selected: OVHcloud (повтор)');
+      return retryOvh;
+    }
+    // Полностью высохшая цепочка: сбрасываем кулдауны, чтобы СЛЕДУЮЩЕЕ
+    // сообщение снова пошло по всей цепочке, а не упало в 0 секунд.
+    _cooldownUntil.clear();
     throw Exception('All configured AI providers failed');
   }
 
@@ -3047,10 +3080,7 @@ class AiGuideService {
   /// передаём запрос пользователю следующего раза без зависания UI.
   static const _hordeBaseUrl = 'https://aihorde.net/api/v2';
 
-  static Future<String> _sendHorde(
-    String userText,
-    String languageCode,
-  ) async {
+  static Future<String> _sendHorde(String userText, String languageCode) async {
     const headers = {
       'Content-Type': 'application/json',
       'apikey': '0000000000',
@@ -3169,8 +3199,7 @@ class AiGuideService {
   /// Murakumo — публичный OpenAI-совместимый endpoint без ключа.
   /// Бесплатный маршрут имеет небольшой общий лимит на IP, поэтому
   /// используется только после основных бесплатных провайдеров.
-  static const _murakumoUrl =
-      'https://api.murakumo.cloud/v1/chat/completions';
+  static const _murakumoUrl = 'https://api.murakumo.cloud/v1/chat/completions';
 
   static Future<String> _sendMurakumo(
     String userText,

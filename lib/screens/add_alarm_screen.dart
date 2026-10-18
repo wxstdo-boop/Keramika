@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip, BackButtonTooltip;
+import '../services/haptics.dart';
 import 'package:uuid/uuid.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
@@ -156,7 +157,8 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
       if (name == 'Custom') {
         // Свой файл — только если он реально читается. Без проверки
         // DeviceFileSource кидал бы исключение и тест проигрывал тишину.
-        final fallback = _builtinSource('Default') ?? AssetSource('sounds/default.wav');
+        final fallback =
+            _builtinSource('Default') ?? AssetSource('sounds/default.wav');
         if (_customSoundPath != null) {
           try {
             final f = File(_customSoundPath!);
@@ -291,7 +293,9 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
       final directory = await getApplicationDocumentsDirectory();
       final soundsDir = Directory('${directory.path}/sounds');
       await soundsDir.create(recursive: true);
-      final ext = picked.extension?.isNotEmpty == true ? picked.extension! : 'wav';
+      final ext = picked.extension?.isNotEmpty == true
+          ? picked.extension!
+          : 'wav';
       final newPath =
           '${soundsDir.path}/custom_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await File(srcPath).copy(newPath);
@@ -886,74 +890,69 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                 ),
                             child: Row(
                               key: ValueKey(
-                                '$_soundName|${_customSoundPath != null}|${_playingSound == _soundName}',
+                                // Состояние «играет» больше не входит в ключ:
+                                // раньше каждый тап play/stop пересоздавал
+                                // весь ряд и он мигал. Теперь меняется только
+                                // значок внутри капсулы.
+                                '$_soundName|${_customSoundPath != null}',
                               ),
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 250),
-                                  transitionBuilder: (child, animation) =>
-                                      FadeTransition(
-                                        opacity: animation,
-                                        child: ScaleTransition(
-                                          scale: Tween<double>(
-                                            begin: 0.75,
-                                            end: 1.0,
-                                          ).animate(animation),
-                                          child: child,
+                                // Красные кнопки-капсулы действий звука:
+                                // прослушать / загрузить свой / переименовать.
+                                // Были «голые» IconButton — stray-tap не ловился,
+                                // поверхность не было, выглядели случано.
+                                _SoundActionChip(
+                                  tooltip: Translations.soundOf(context),
+                                  glowing: _playingSound == _soundName,
+                                  onPressed: () => _previewSound(_soundName),
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 250),
+                                    switchInCurve: Curves.easeOutCubic,
+                                    switchOutCurve: Curves.easeInCubic,
+                                    transitionBuilder: (child, animation) =>
+                                        FadeTransition(
+                                          opacity: animation,
+                                          child: ScaleTransition(
+                                            scale: Tween<double>(
+                                              begin: 0.75,
+                                              end: 1.0,
+                                            ).animate(animation),
+                                            child: child,
+                                          ),
                                         ),
-                                      ),
-                                  child: SmoothTooltip(
-                                    message: Translations.soundOf(context),
-                                    preferredAbove: true,
-                                    child: IconButton(
+                                    child: Icon(
+                                      _playingSound == _soundName
+                                          ? Icons.stop_rounded
+                                          : Icons.play_arrow_rounded,
                                       key: ValueKey(
                                         _playingSound == _soundName,
                                       ),
-                                      icon: Icon(
-                                        _playingSound == _soundName
-                                            ? Icons.stop_circle
-                                            : Icons.play_circle_outline,
-                                        color: Colors.pink[300],
-                                        size: 30,
-                                      ),
-                                      onPressed: () =>
-                                          _previewSound(_soundName),
                                     ),
                                   ),
                                 ),
                                 if (_soundName == 'Custom')
-                                  SmoothTooltip(
-                                    message: Translations.t(
+                                  _SoundActionChip(
+                                    tooltip: Translations.t(
                                       'customSound',
                                       context,
                                     ),
-                                    preferredAbove: true,
-                                    child: IconButton(
-                                      icon: Icon(
-                                        Icons.upload_file,
-                                        color: Colors.pink[300],
-                                        size: 26,
-                                      ),
-                                      onPressed: _pickCustomSound,
+                                    onPressed: _pickCustomSound,
+                                    child: const Icon(
+                                      Icons.upload_file_rounded,
                                     ),
                                   ),
                                 if (_soundName == 'Custom' &&
                                     _customSoundPath != null)
-                                  SmoothTooltip(
-                                    message: Translations.t(
+                                  _SoundActionChip(
+                                    tooltip: Translations.t(
                                       'renameSound',
                                       context,
                                       'Rename',
                                     ),
-                                    preferredAbove: true,
-                                    child: IconButton(
-                                      icon: Icon(
-                                        Icons.drive_file_rename_outline,
-                                        color: Colors.pink[300],
-                                        size: 24,
-                                      ),
-                                      onPressed: _renameCustomSound,
+                                    onPressed: _renameCustomSound,
+                                    child: const Icon(
+                                      Icons.drive_file_rename_outline,
                                     ),
                                   ),
                               ],
@@ -1045,6 +1044,104 @@ class _AlarmDayChip extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Красная капсула-действие в секции звука будильника.
+///
+/// Была штатная IconButton: без поверхности, с резким сплэшем и без
+/// отдачи. Теперь — фирменная капсула с Blutod-красной кромкой приложения
+/// (как у CTA поддержки): мягкое зажатие (220 мс, easeOutCubic), лёгкий
+/// тап-хаптик и подсветка-свечение, пока звук проигрывается.
+class _SoundActionChip extends StatefulWidget {
+  final String tooltip;
+  final Widget child;
+  final VoidCallback onPressed;
+
+  /// Звук сейчас играет — кромка и подложка подсвечиваются ярче.
+  final bool glowing;
+
+  const _SoundActionChip({
+    required this.tooltip,
+    required this.child,
+    required this.onPressed,
+    this.glowing = false,
+  });
+
+  @override
+  State<_SoundActionChip> createState() => _SoundActionChipState();
+}
+
+class _SoundActionChipState extends State<_SoundActionChip> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Фирменный кровавый красный: в тёмной теме приподнимаем, чтобы
+    // кромка не тонула в тёмном фоне.
+    final red = dark ? const Color(0xFFFF7B86) : const Color(0xFFC8102E);
+    return SmoothTooltip(
+      message: widget.tooltip,
+      preferredAbove: true,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) {
+          Haptics.light();
+          if (!mounted) return;
+          setState(() => _pressed = true);
+        },
+        onPointerUp: (_) {
+          if (!mounted) return;
+          setState(() => _pressed = false);
+        },
+        onPointerCancel: (_) {
+          if (!mounted) return;
+          setState(() => _pressed = false);
+        },
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: AnimatedScale(
+            // Мягче и медленнее: 300 мс вместо 220 — капсула «тонет»
+            // под пальцем без щелчка и так же плавно поднимается.
+            scale: _pressed ? 0.9 : 1.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 340),
+              curve: Curves.easeOutCubic,
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: red.withValues(
+                  alpha: (widget.glowing || _pressed) ? 0.16 : 0.10,
+                ),
+                border: Border.all(
+                  color: red.withValues(alpha: widget.glowing ? 0.55 : 0.32),
+                  width: 1.2,
+                ),
+                boxShadow: widget.glowing
+                    ? [
+                        BoxShadow(
+                          color: red.withValues(alpha: 0.28),
+                          blurRadius: 12,
+                          spreadRadius: -2,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: IconTheme(
+                data: IconThemeData(color: red, size: 24),
+                child: widget.child,
+              ),
             ),
           ),
         ),

@@ -195,6 +195,10 @@ class _LockScreenState extends State<LockScreen>
   }
 
   Future<void> _openExitDialog() async {
+    // Как только ПИН набран до конца и уходит в проверку/разблокировку
+    // (`_resolving`), «Выйти» больше не работает: unlock уже начался, и
+    // диалог выхода поверх дома или повторный выход не должны всплывать.
+    if (_resolving || _initializing) return;
     await _showExitDialog(context, _glassLoop);
   }
 
@@ -290,6 +294,7 @@ class _LockScreenState extends State<LockScreen>
                           child: _IdBadgeCapsule(
                             theme: theme,
                             onExit: _openExitDialog,
+                            exitEnabled: !_resolving && !_initializing,
                           ),
                         ),
                         const Spacer(flex: 2),

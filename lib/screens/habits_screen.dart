@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math';
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
@@ -195,7 +195,10 @@ class HabitsScreen extends StatefulWidget {
 }
 
 class _HabitsScreenState extends State<HabitsScreen>
-    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
+    with
+        WidgetsBindingObserver,
+        AutomaticKeepAliveClientMixin,
+        TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
   final _service = HabitService();
@@ -217,9 +220,11 @@ class _HabitsScreenState extends State<HabitsScreen>
     duration: const Duration(milliseconds: 220),
     value: 1,
   );
+
   /// Направление сдвига при появлении: +1 — список «поднимается» (закреп),
   /// -1 — «опускается» (откреп).
   double _pinDir = 1;
+
   /// Идёт анимация закрепа/открепа — второй тап не принимаем.
   bool _pinBusy = false;
 
@@ -452,9 +457,11 @@ class _HabitsScreenState extends State<HabitsScreen>
     SettingsService.perfectionismEnabled.removeListener(
       _onPerfectionismChanged,
     );
-        WidgetsBinding.instance.removeObserver(this);
-super.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _dragProxyY.dispose();
+    super.dispose();
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Возврат из фона: keep-alive восстановил позицию скролла, а общий
@@ -467,7 +474,6 @@ super.dispose();
     }
   }
 
-
   void _showPerfFullScreen(String body, String title, Color color) {
     if (_perfScreenOpened) return;
     _perfScreenOpened = true;
@@ -479,37 +485,178 @@ super.dispose();
             transitionDuration: const Duration(milliseconds: 280),
             reverseTransitionDuration: const Duration(milliseconds: 220),
             pageBuilder: (context, animation, secondaryAnimation) => Scaffold(
-              appBar: AppBar(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                title: Text(title),
-                // Задизайненный «Назад» (тултип) — белым под цветную подложку.
-                leading: const BackButtonTooltip(),
-                centerTitle: true,
-              ),
-              body: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      color.withValues(alpha: 0.3),
-                      color.withValues(alpha: 0.05),
-                    ],
-                  ),
-                ),
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    body,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      height: 1.6,
-                      color: theme.colorScheme.onSurface,
-                      fontWeight: FontWeight.w500,
+              backgroundColor: theme.colorScheme.surface,
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          color.withValues(alpha: 0.3),
+                          color.withValues(alpha: 0.05),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                  // Летящая стая за плашкой — «как в уголке разработчика»:
+                  // птицы спокойно скользят слева направо, машут вразнобой
+                  // и мягко подпрыгивают на восходящих потоках. Клик не
+                  // перехватывают, на производительность не давят: один
+                  // репейт-контроллер под своим RepaintBoundary.
+                  const Positioned.fill(
+                    child: IgnorePointer(child: _PerfBirdFlock()),
+                  ),
+                  Column(
+                    children: [
+                      // Верхняя панель — отдельная «плавающая» карточка:
+                      // скруглена со ВСЕХ сторон (26), с мягкой светлой
+                      // кромкой и тенью в цвет плашки. Раньше это была
+                      // полоса, приклеенная к верху, с прямыми верхними
+                      // углами — на фоне летящих птиц она выглядела чужой.
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(26),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color.lerp(color, Colors.black, 0.12)!,
+                              color,
+                              Color.lerp(color, Colors.white, 0.10)!,
+                            ],
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: color.withValues(alpha: 0.35),
+                              blurRadius: 22,
+                              spreadRadius: -4,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.fromLTRB(2, 4, 6, 12),
+                        child: SafeArea(
+                          bottom: false,
+                          child: SizedBox(
+                            height: 44,
+                            child: Row(
+                              children: [
+                                // Белый «Назад» на цветной шапке: стрелка
+                                // перекрашена через IconTheme, тултип —
+                                // штатный SmoothTooltip.
+                                IconTheme.merge(
+                                  data: const IconThemeData(
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                  child: const BackButtonTooltip(),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                ),
+                                // Симметрия к кнопке «Назад» — заголовок
+                                // остаётся ровно по центру шапки.
+                                const SizedBox(width: 48),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                18,
+                                20,
+                                24,
+                              ),
+                              decoration: BoxDecoration(
+                                // Цитата на своей плашке «округлённый квадрат»:
+                                // стеклянный вкладыш цвета темы + рама цвета
+                                // плашки + мягкая тень в тон акцента.
+                                borderRadius: BorderRadius.circular(18),
+                                color: theme.colorScheme.surface.withValues(
+                                  alpha: 0.66,
+                                ),
+                                border: Border.all(
+                                  color: color.withValues(alpha: 0.5),
+                                  width: 1.3,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.28),
+                                    blurRadius: 26,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Верхняя панель плашки: мини-«квадратик» с
+                                  // иконкой цитаты — задаёт ритм и перекликается
+                                  // с обводкой карточки.
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 7,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      color: color.withValues(alpha: 0.16),
+                                      border: Border.all(
+                                        color: color.withValues(alpha: 0.45),
+                                        width: 1.1,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.format_quote,
+                                      size: 18,
+                                      color: color,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    body,
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          height: 1.6,
+                                          color: theme.colorScheme.onSurface,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
             transitionsBuilder:
@@ -603,7 +750,9 @@ super.dispose();
                               child: _buildBody(context, theme, habits),
                             )
                           : Padding(
-                              padding: const EdgeInsets.only(top: kSectionPillSlotHeight),
+                              padding: const EdgeInsets.only(
+                                top: kSectionPillSlotHeight,
+                              ),
                               child: _buildEmpty(context, theme),
                             ),
                     ),
@@ -725,7 +874,11 @@ super.dispose();
     final pinned = habits.where((h) => h.pinned).toList();
     final unpinned = habits.where((h) => !h.pinned).toList();
 
-    Widget zoneList(List<Habit> list, {required int base, required String idPrefix}) {
+    Widget zoneList(
+      List<Habit> list, {
+      required int base,
+      required String idPrefix,
+    }) {
       if (list.isEmpty) return const SizedBox.shrink();
       return ReorderableListView.builder(
         shrinkWrap: true,
@@ -761,8 +914,7 @@ super.dispose();
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         zoneList(pinned, base: 0, idPrefix: 'item_habit_pinned'),
-        if (pinned.isNotEmpty && unpinned.isNotEmpty)
-          const SizedBox(height: 8),
+        if (pinned.isNotEmpty && unpinned.isNotEmpty) const SizedBox(height: 8),
         zoneList(unpinned, base: pinned.length, idPrefix: 'item_habit'),
       ],
     );
@@ -807,7 +959,7 @@ super.dispose();
     String keyName,
     Color tint,
   ) {
-    return Padding(
+    final row = Padding(
       // Выравнивание с карточками: их отступ теперь в padding списка (12).
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Row(
@@ -824,6 +976,37 @@ super.dispose();
           Expanded(child: Divider(color: tint.withValues(alpha: 0.4))),
         ],
       ),
+    );
+    // Плавное «расступание»: пока перетаскиваемая карточка проходит сквозь
+    // заголовок, текст мягко уходит в прозрачность — карточка проходит
+    // «сквозь» него, а не резко вытесняет. Вне драга (proxyY == null)
+    // заголовок полностью непрозрачен.
+    return ValueListenableBuilder<double?>(
+      valueListenable: _dragProxyY,
+      child: row,
+      builder: (context, proxyY, child) {
+        double opacity = 1.0;
+        if (proxyY != null) {
+          final box = context.findRenderObject() as RenderBox?;
+          if (box != null && box.attached && box.hasSize) {
+            final top = box.localToGlobal(Offset.zero).dy;
+            // Центр карточки-прокси: её верх плюс ~60 (высота карточки).
+            final proxyCenter = proxyY + 60;
+            final dist = ((top + box.size.height / 2) - proxyCenter).abs();
+            // Вплотную — почти прозрачно; дальше ~150 px — нормально.
+            final proximity = (1 - (dist - 30) / 120)
+                .clamp(0.0, 1.0)
+                .toDouble();
+            opacity = 1.0 - 0.82 * proximity;
+          }
+        }
+        return AnimatedOpacity(
+          opacity: opacity,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          child: child,
+        );
+      },
     );
   }
 
@@ -842,8 +1025,9 @@ super.dispose();
     // незакреплённую нельзя перетащить в pinned-зону.
     final pinnedHabits = habits.where((h) => h.pinned).toList();
     final unpinnedHabits = habits.where((h) => !h.pinned).toList();
-    final pBase =
-        pinnedHabits.isNotEmpty ? sorted.indexOf(pinnedHabits.first) : 0;
+    final pBase = pinnedHabits.isNotEmpty
+        ? sorted.indexOf(pinnedHabits.first)
+        : 0;
     final uBase = unpinnedHabits.isNotEmpty
         ? sorted.indexOf(unpinnedHabits.first)
         : 0;
@@ -869,7 +1053,7 @@ super.dispose();
           _service.reorder(oldGlobal, newGlobal);
         },
         proxyDecorator: (child, index, animation) =>
-            buildDragProxy(child, theme, animation),
+            buildDragProxy(child, theme, animation, trackY: _dragProxyY),
         itemBuilder: (context, i) => RepaintBoundary(
           key: ValueKey('${prefix}_${list[i].id}'),
           child: _buildHabitCard(
@@ -892,6 +1076,10 @@ super.dispose();
       ],
     );
   }
+
+  /// Глобальная Y-позиция drag-прокси (null — драга нет): заголовки секций
+  /// мягко «расступаются», пока карточка проходит сквозь них.
+  final ValueNotifier<double?> _dragProxyY = ValueNotifier<double?>(null);
 
   DateTime? _lastHabitTap;
 
@@ -978,106 +1166,103 @@ super.dispose();
                     // Галка СВЕРХУ драг-хэндла (одна колонка 46px): текст
                     // получает всю оставшуюся ширину и умещается целиком.
                     Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.zero,
-                      // (scale 0.9) — «чуть выделяется», без мигания.
-                      // Защита от двойного срабатывания — в _tapHabitOnce.
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _tapHabitOnce(habit),
-                        // Чистая тематическая обводка большого значка
-                        // (без IconRing — он сдвигал layout). Кольцо на
-                        // самом кружке, без внешнего зазора.
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 260),
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: habit.doneToday
-                                ? theme.colorScheme.primary
-                                : Colors.transparent,
-                            // Красивая обводка: выбранная — primary (яркая),
-                            // не выбранная — тематический outline (мягкий).
-                            border: Border.all(
-                              color: habit.doneToday
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outline,
-                              width: 2,
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.zero,
+                          // (scale 0.9) — «чуть выделяется», без мигания.
+                          // Защита от двойного срабатывания — в _tapHabitOnce.
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => _tapHabitOnce(habit),
+                            // Чистая тематическая обводка большого значка
+                            // (без IconRing — он сдвигал layout). Кольцо на
+                            // самом кружке, без внешнего зазора.
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 260),
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: habit.doneToday
+                                    ? theme.colorScheme.primary
+                                    : Colors.transparent,
+                                // Красивая обводка: выбранная — primary (яркая),
+                                // не выбранная — тематический outline (мягкий).
+                                border: Border.all(
+                                  color: habit.doneToday
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outline,
+                                  width: 2,
+                                ),
+                              ),
+                              // Плавная смена значка: привычка → галка с лёгким
+                              // «попом» (fade + scale), а не резкий щелчок.
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 280),
+                                switchInCurve: Curves.easeOutBack,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: (child, animation) =>
+                                    ScaleTransition(
+                                      scale: animation,
+                                      child: FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      ),
+                                    ),
+                                child: habit.doneToday
+                                    ? const Icon(
+                                        Icons.check,
+                                        key: ValueKey('habit_done_check'),
+                                        size: 23,
+                                        color: Colors.white,
+                                      )
+                                    : Icon(
+                                        habit.icon,
+                                        key: const ValueKey('habit_icon'),
+                                        size: 23,
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                              ),
                             ),
                           ),
-                          // Плавная смена значка: привычка → галка с лёгким
-                          // «попом» (fade + scale), а не резкий щелчок.
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 280),
-                            switchInCurve: Curves.easeOutBack,
-                            switchOutCurve: Curves.easeInCubic,
-                            transitionBuilder: (child, animation) =>
-                                ScaleTransition(
-                                  scale: animation,
-                                  child: FadeTransition(
-                                    opacity: animation,
-                                    child: child,
-                                  ),
-                                ),
-                            child: habit.doneToday
-                                ? const Icon(
-                                    Icons.check,
-                                    key: ValueKey('habit_done_check'),
-                                    size: 23,
-                                    color: Colors.white,
-                                  )
-                                : Icon(
-                                    habit.icon,
-                                    key: const ValueKey('habit_icon'),
-                                    size: 23,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
                     const SizedBox(height: 6),
                     // Драг-хэндл / пин — снизу.
                     AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: animation, child: child),
-                  ),
-                  child: habit.pinned
-                      ? const Padding(
-                          key: ValueKey('pin'),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 4,
-                          ),
-                          child: Icon(
-                            Icons.push_pin,
-                            size: 24,
-                            color: Colors.grey,
-                          ),
-                        )
-                      : _HabitDragHandle(
-                          index: dragIndex,
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 4,
+                      duration: const Duration(milliseconds: 280),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(scale: animation, child: child),
+                      ),
+                      child: habit.pinned
+                          ? const Padding(
+                              key: ValueKey('pin'),
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(
+                                Icons.push_pin,
+                                size: 24,
+                                color: Colors.grey,
+                              ),
+                            )
+                          : _HabitDragHandle(
+                              index: dragIndex,
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4),
+                                child: Icon(
+                                  Icons.drag_indicator,
+                                  size: 24,
+                                  color: Colors.grey,
+                                ),
+                              ),
                             ),
-                            child: Icon(
-                              Icons.drag_indicator,
-                              size: 24,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                ),
+                    ),
                   ],
                 ),
               ),
@@ -1132,8 +1317,9 @@ super.dispose();
                                 // прозрачность едет вместе с линией.
                                 struckColor: theme.colorScheme.onSurfaceVariant
                                     .withValues(alpha: 0.42),
-                                strikeColor:
-                                    Colors.red.shade500.withValues(alpha: 0.9),
+                                strikeColor: Colors.red.shade500.withValues(
+                                  alpha: 0.9,
+                                ),
                                 // Полный текст без троеточия: имя привычки
                                 // всегда видно целиком (как в задачах), а не
                                 // «скукожено» до двух строк. Действия справа
@@ -1187,8 +1373,8 @@ super.dispose();
                                     icon: Icons.keyboard_arrow_down,
                                     rotation:
                                         (_expandedNotes[habit.id] ?? false)
-                                            ? 3.14159 // пи — стрелка вверх
-                                            : 0,
+                                        ? 3.14159 // пи — стрелка вверх
+                                        : 0,
                                     color: (_expandedNotes[habit.id] ?? false)
                                         ? theme.colorScheme.primary
                                         : theme.colorScheme.onSurfaceVariant,
@@ -1329,9 +1515,7 @@ super.dispose();
                                                   context,
                                                   'Сегодня очищено',
                                                 ),
-                                                style: theme
-                                                    .textTheme
-                                                    .bodySmall
+                                                style: theme.textTheme.bodySmall
                                                     ?.copyWith(
                                                       color: const Color(
                                                         0xFFFFEEF0,
@@ -1393,73 +1577,64 @@ super.dispose();
                             // — всегда; статус — только у полезной привычки
                             // (у вредной статус не рисуется).
                             child: Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: 6,
-                                    bottom: 4,
-                                  ),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: theme
-                                          .colorScheme
-                                          .surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (habit.type == 'good' &&
-                                    habit.status.isNotEmpty) ...[
-                                          Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Icon(
-                                                Icons.lightbulb,
-                                                size: 16,
-                                                color:
-                                                    theme.colorScheme.primary,
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Expanded(
-                                                child: Text(
-                                                  habit.status,
-                                                  style: theme
-                                                      .textTheme
-                                                      .bodyMedium
-                                                      ?.copyWith(
-                                                        color: theme
-                                                            .colorScheme
-                                                            .onSurface,
-                                                        height: 1.5,
-                                                      ),
-                                                  softWrap: true,
-                                                ),
-                                              ),
-                                            ],
+                              padding: const EdgeInsets.only(top: 6, bottom: 4),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (habit.type == 'good' &&
+                                        habit.status.isNotEmpty) ...[
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(
+                                            Icons.lightbulb,
+                                            size: 16,
+                                            color: theme.colorScheme.primary,
                                           ),
-                                          if (habit.notes.isNotEmpty)
-                                            const SizedBox(height: 8),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              habit.status,
+                                              style: theme.textTheme.bodyMedium
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurface,
+                                                    height: 1.5,
+                                                  ),
+                                              softWrap: true,
+                                            ),
+                                          ),
                                         ],
-                                        if (habit.notes.isNotEmpty)
-                                          Text(
-                                            habit.notes,
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurface,
-                                                  height: 1.5,
-                                                ),
-                                            softWrap: true,
-                                          ),
-                                      ],
-                                    ),
-                                  ),
+                                      ),
+                                      if (habit.notes.isNotEmpty)
+                                        const SizedBox(height: 8),
+                                    ],
+                                    if (habit.notes.isNotEmpty)
+                                      Text(
+                                        habit.notes,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color:
+                                                  theme.colorScheme.onSurface,
+                                              height: 1.5,
+                                            ),
+                                        softWrap: true,
+                                      ),
+                                  ],
                                 ),
                               ),
+                            ),
+                          ),
                         _daysRow(habit, theme, context),
                       ],
                     ),
@@ -1666,130 +1841,193 @@ super.dispose();
     final seed = _perfSeed();
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome,
-                  size: 15,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  Translations.t('perfectionism', context),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
+      // Полоса перфекционизма — своя «сцена»: мягкая подложка цвета темы,
+      // скруглённые углы и летящая стая НА ФОНЕ (как канарейка в уголке
+      // разработчика). Птицы живут под содержимым, клики не ловят.
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      theme.colorScheme.primary.withValues(alpha: 0.075),
+                      theme.colorScheme.tertiary.withValues(alpha: 0.045),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Смена подборки (раз в час) — мягким кросс-фейдом: старые
-          // карточки растворяются, новые так же плавно приходят на их место.
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 700),
-            switchInCurve: Curves.easeInOutCubic,
-            switchOutCurve: Curves.easeInOutCubic,
-            layoutBuilder: (current, previous) => Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                ...previous,
-                ?current,
-              ],
-            ),
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.06, 0),
-                  end: Offset.zero,
-                ).animate(anim),
-                child: child,
               ),
             ),
-            child: SizedBox(
-              key: ValueKey('perf_strip_$seed'),
-              height: 118,
-              child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: plaques.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, i) {
-                final p = plaques[i];
-                return SmoothHover(
-                  hoverScale: 1.025,
-                  duration: const Duration(milliseconds: 280),
-                  pressAlignment: Alignment.center,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      splashFactory: InkRipple.splashFactory,
-                      onTap: () => _showPerfFullScreen(
-                        Translations.t(p.bodyKey, context),
-                        Translations.t(p.titleKey, context),
-                        p.color,
+            Positioned.fill(
+              child: IgnorePointer(
+                // Стая тикает только когда раздел привычек реально на
+                // экране: на других вкладках PageView держит страницу
+                // живой, и вечный repeat() жег кадры впустую.
+                child: ValueListenableBuilder<int>(
+                  valueListenable: sectionCurrentIndex,
+                  builder: (context, idx, _) =>
+                      _PerfBirdFlock(active: idx == 1),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 15,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          Translations.t('perfectionism', context),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Смена подборки (раз в час) — мягким кросс-фейдом: старые
+                  // карточки растворяются, новые так же плавно приходят на их место.
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 700),
+                    switchInCurve: Curves.easeInOutCubic,
+                    switchOutCurve: Curves.easeInOutCubic,
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [...previous, ?current],
+                    ),
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.06, 0),
+                          end: Offset.zero,
+                        ).animate(anim),
+                        child: child,
                       ),
-                      child: Container(
-                        width: 160,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              p.color.withValues(alpha: 0.22),
-                              p.color.withValues(alpha: 0.06),
-                            ],
-                          ),
-                          border: Border.all(
-                            color: p.color.withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(p.icon, size: 22, color: p.color),
-                            const SizedBox(height: 8),
-                            Text(
-                              Translations.t(p.titleKey, context),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: theme.colorScheme.onSurface,
+                    ),
+                    child: SizedBox(
+                      key: ValueKey('perf_strip_$seed'),
+                      height: 118,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        itemCount: plaques.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 10),
+                        itemBuilder: (context, i) {
+                          final p = plaques[i];
+                          return SmoothHover(
+                            hoverScale: 1.025,
+                            duration: const Duration(milliseconds: 280),
+                            pressAlignment: Alignment.center,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(18),
+                                splashFactory: InkRipple.splashFactory,
+                                onTap: () => _showPerfFullScreen(
+                                  Translations.t(p.bodyKey, context),
+                                  Translations.t(p.titleKey, context),
+                                  p.color,
+                                ),
+                                child: Container(
+                                  width: 160,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        p.color.withValues(alpha: 0.22),
+                                        p.color.withValues(alpha: 0.06),
+                                      ],
+                                    ),
+                                    border: Border.all(
+                                      color: p.color.withValues(alpha: 0.4),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(7),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          color: p.color.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          border: Border.all(
+                                            color: p.color.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                            width: 1.1,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          p.icon,
+                                          size: 20,
+                                          color: p.color,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        Translations.t(p.titleKey, context),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color:
+                                                  theme.colorScheme.onSurface,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        Translations.t(p.shortKey, context),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              height: 1.2,
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              Translations.t(p.shortKey, context),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                height: 1.2,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ),
                   ),
-                );
-              },
+                ],
+              ),
             ),
-          ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1880,9 +2118,7 @@ class _BloodSpeckPainter extends CustomPainter {
       final r = size.height * s[2];
       final density = s[3];
       final dryPaint = Paint()
-        ..color = _dry.withValues(
-          alpha: (isDark ? 0.52 : 0.34) * density,
-        );
+        ..color = _dry.withValues(alpha: (isDark ? 0.52 : 0.34) * density);
       // Основное пятнышко.
       canvas.drawCircle(center, r, dryPaint);
       // Мазок рядом — пятно получается неровным, «живым».
@@ -1890,18 +2126,14 @@ class _BloodSpeckPainter extends CustomPainter {
         center + Offset(r * 1.6, r * 0.5),
         r * 0.52,
         Paint()
-          ..color = _dry.withValues(
-            alpha: (isDark ? 0.40 : 0.24) * density,
-          ),
+          ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.24) * density),
       );
       // Влажный блик — чуть светлее заливки.
       canvas.drawCircle(
         center - Offset(r * 0.35, r * 0.4),
         r * 0.32,
         Paint()
-          ..color = _wet.withValues(
-            alpha: (isDark ? 0.22 : 0.14) * density,
-          ),
+          ..color = _wet.withValues(alpha: (isDark ? 0.22 : 0.14) * density),
       );
     }
   }
@@ -1911,4 +2143,209 @@ class _BloodSpeckPainter extends CustomPainter {
       oldDelegate.isDark != isDark;
 }
 
+/// Летящая стая для фуллскрина таблички перфекционизма.
+///
+/// Птицы — лёгкие росчерки: точка-тельце и две дуги-крыла, взмах по
+/// синусу, у каждой свой темп, высота и фаза. Один репейт-контроллер
+/// на цикл в 11 секунд, стая живёт под RepaintBoundary — остальной
+/// экран не перерисовывается. Раскладка детерминирована (фиксированные
+/// параметры), поэтому между открытиями стая не «перепрыгивает».
+class _PerfBirdFlock extends StatefulWidget {
+  /// Тикать ли стаю. На невидимой вкладке контроллер стоит — иначе
+  /// постоянный repeat() держит кадры и греет телефон.
+  final bool active;
+  const _PerfBirdFlock({this.active = true});
 
+  @override
+  State<_PerfBirdFlock> createState() => _PerfBirdFlockState();
+}
+
+class _PerfBirdFlockState extends State<_PerfBirdFlock>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 11000),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _ctrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PerfBirdFlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active == oldWidget.active) return;
+    if (widget.active) {
+      _ctrl.repeat();
+    } else {
+      _ctrl.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // В светлом фоне — приглушённый цвет чернил, в тёмном — белёсые
+    // птицы: в обоих темах стая читается, но не кричит.
+    final ink = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.24);
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, _) => CustomPaint(
+          size: Size.infinite,
+          painter: _BirdFlockPainter(t: _ctrl.value, color: ink),
+        ),
+      ),
+    );
+  }
+}
+
+/// Параметры одной птицы стаи: старт по горизонтали, высота, темп
+/// дрейфа (доля ширины за цикл), амплитуда/частота покачивания,
+/// масштаб размаха, частота взмаха и фазовый сдвиг — всё константой,
+/// без Random: раскладка стабильна между запусками.
+class _FlockBird {
+  final double x0;
+  final double y0;
+  final double drift;
+  final double bobAmp;
+  final double bobHz;
+  final double scale;
+  final double flapHz;
+  final double phase;
+
+  const _FlockBird({
+    required this.x0,
+    required this.y0,
+    required this.drift,
+    required this.bobAmp,
+    required this.bobHz,
+    required this.scale,
+    required this.flapHz,
+    required this.phase,
+  });
+}
+
+class _BirdFlockPainter extends CustomPainter {
+  final double t;
+  final Color color;
+
+  const _BirdFlockPainter({required this.t, required this.color});
+
+  static const _birds = <_FlockBird>[
+    _FlockBird(
+      x0: 0.02,
+      y0: 0.30,
+      drift: 0.12,
+      bobAmp: 0.018,
+      bobHz: 0.30,
+      scale: 1.00,
+      flapHz: 1.9,
+      phase: 0.0,
+    ),
+    _FlockBird(
+      x0: 0.30,
+      y0: 0.17,
+      drift: 0.15,
+      bobAmp: 0.026,
+      bobHz: 0.22,
+      scale: 0.76,
+      flapHz: 2.4,
+      phase: 2.1,
+    ),
+    _FlockBird(
+      x0: 0.55,
+      y0: 0.25,
+      drift: 0.13,
+      bobAmp: 0.022,
+      bobHz: 0.27,
+      scale: 0.90,
+      flapHz: 2.1,
+      phase: 4.2,
+    ),
+    _FlockBird(
+      x0: 0.74,
+      y0: 0.12,
+      drift: 0.11,
+      bobAmp: 0.020,
+      bobHz: 0.19,
+      scale: 0.64,
+      flapHz: 2.7,
+      phase: 1.1,
+    ),
+    _FlockBird(
+      x0: 0.16,
+      y0: 0.38,
+      drift: 0.16,
+      bobAmp: 0.030,
+      bobHz: 0.24,
+      scale: 0.84,
+      flapHz: 2.2,
+      phase: 5.3,
+    ),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    for (final bird in _birds) {
+      // Горизонталь: дрейф с заворотом за край (чуть за границу, чтобы
+      // появление/исчезание не секало глаз).
+      final fx = ((bird.x0 + t * bird.drift) % 1.3) - 0.15;
+      final px = fx * size.width;
+      // Вертикаль: базовая высота + покачивание на «потоках».
+      final fy =
+          bird.y0 +
+          bird.bobAmp * sin(2 * pi * (t * bird.bobHz + bird.phase * 0.31));
+      final py = fy * size.height;
+
+      final span = size.width * 0.020 * bird.scale;
+      final lift = sin(2 * pi * (t * bird.flapHz + bird.phase * 1.7));
+
+      paint.strokeWidth = (span * 0.18).clamp(1.4, 2.2);
+
+      final path = Path()
+        // Левое крыло: от тела нарисованной дугой к концу.
+        ..moveTo(px, py)
+        ..quadraticBezierTo(
+          px - span * 0.45,
+          py - lift * span * 0.45 - span * 0.18,
+          px - span,
+          py - lift * span * 0.75 - span * 0.28,
+        )
+        // Правое крыло — зеркально.
+        ..moveTo(px, py)
+        ..quadraticBezierTo(
+          px + span * 0.45,
+          py - lift * span * 0.45 - span * 0.18,
+          px + span,
+          py - lift * span * 0.75 - span * 0.28,
+        );
+      canvas.drawPath(path, paint);
+
+      // Тельце: маленькая капля под центром взмаха.
+      canvas.drawCircle(
+        Offset(px, py + span * 0.06),
+        span * 0.11,
+        Paint()..color = color,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BirdFlockPainter oldDelegate) =>
+      oldDelegate.t != t || oldDelegate.color != color;
+}

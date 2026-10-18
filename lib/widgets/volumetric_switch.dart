@@ -41,8 +41,10 @@ class VolumetricSwitch extends StatelessWidget {
               onChanged!(!value);
             },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
+        // Переключение цвета трека — медленное и тягучее (420 мс,
+        // easeInOutCubic): свет «разгорается», а не щёлкает.
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOutCubic,
         width: 52 * k,
         height: 30 * k,
         padding: EdgeInsets.all(3 * k),
@@ -58,17 +60,41 @@ class VolumetricSwitch extends StatelessWidget {
           boxShadow: [
             if (value)
               BoxShadow(
-                color: active.withValues(alpha: 0.35 * k),
-                blurRadius: 8 * k,
+                color: active.withValues(alpha: 0.5 * k),
+                blurRadius: 12 * k,
                 offset: Offset(0, 2 * k),
               ),
           ],
         ),
         child: Stack(
           children: [
+            // Стеклянный отлив поверх трека: подсветка сверху → тень
+            // снизу — корпус читается выпуклым («объёмным») в любом
+            // состоянии, а не плоской колбасой.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(15 * k),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: value ? 0.34 : 0.20),
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.black.withValues(alpha: 0.07),
+                      ],
+                      stops: const [0.0, 0.55, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             // Шайба-«клавиша» с пружинным ходом.
             AnimatedAlign(
-              duration: const Duration(milliseconds: 280),
+              // Ход шайбы — дольше и «жирнее» прежнего: пружина доводит
+              // клавишу с лёгким перебором на 460 мс.
+              duration: const Duration(milliseconds: 460),
               curve: Curves.easeOutBack,
               alignment: value ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
@@ -83,9 +109,9 @@ class VolumetricSwitch extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.28),
-                      blurRadius: 4 * k,
-                      offset: Offset(0, 1.5 * k),
+                      color: Colors.black.withValues(alpha: 0.34),
+                      blurRadius: 6 * k,
+                      offset: Offset(0, 2 * k),
                     ),
                   ],
                   border: Border.all(
@@ -95,7 +121,10 @@ class VolumetricSwitch extends StatelessWidget {
                 ),
                 child: Center(
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                    // Ядро на шайбе надувается медленнее (320 мс) — в такт
+                    // ходу самой клавиши.
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutBack,
                     width: (value ? 9 : 8) * k,
                     height: (value ? 9 : 8) * k,
                     decoration: BoxDecoration(

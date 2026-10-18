@@ -276,6 +276,7 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
   @override
   Widget build(BuildContext context) {
     final hasAction = _onAction != null && _actionLabel != null;
+    final dark = widget.theme.brightness == Brightness.dark;
     return IgnorePointer(
       ignoring: !hasAction,
       child: AnimatedBuilder(
@@ -293,20 +294,30 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
             padding: const EdgeInsets.only(bottom: 48, left: 16, right: 16),
             child: Material(
               color: Colors.transparent,
+              // Обводка-кольцо как в разделе «Питание»: тонкий градиентный
+              // край (акцент → третичный) вместо плоской белой каймы —
+              // мягкий перелив по периметру, читается и на светлой, и на
+              // тёмной теме. Кольцо — внешний контейнер с padding 1.3
+              // (тонина каймы, как в питании), тень только у него.
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
+                padding: const EdgeInsets.all(1.3),
                 decoration: BoxDecoration(
-                  color: widget.theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(18),
-                  // Полупрозрачная обводка: светлая «кайма» читается и на
-                  // светлой, и на тёмной теме, отделяет плашку от фона и
-                  // убирает ощущение «странной» размытой кромки.
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.45),
-                    width: 1.2,
+                  borderRadius: BorderRadius.circular(19.3),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      widget.theme.colorScheme.primary.withValues(
+                        alpha: dark ? 0.60 : 0.45,
+                      ),
+                      widget.theme.colorScheme.primary.withValues(
+                        alpha: dark ? 0.12 : 0.10,
+                      ),
+                      widget.theme.colorScheme.tertiary.withValues(
+                        alpha: dark ? 0.48 : 0.30,
+                      ),
+                    ],
+                    stops: const <double>[0, 0.55, 1],
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -316,7 +327,16 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                     ),
                   ],
                 ),
-                child: Row(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
                   children: [
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 280),
@@ -392,6 +412,7 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                       ),
                     ],
                   ],
+                ),
                 ),
               ),
             ),

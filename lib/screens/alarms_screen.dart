@@ -1056,14 +1056,13 @@ class _TimerPulseState extends State<_TimerPulse>
   }
 }
 
-/// Плавное «подсвечивание и обратное затухание» времени будильника при его
-/// включении/выключении.
+/// Время будильника — спокойный текст без вспышки.
 ///
-/// Подсвека — ТОЛЬКО цвет и свечение: время разгоняется в primary с мягким
-/// ореолом и так же плавно гаснет. Никакого масштаба — Transform.scale на
-/// тексте даёт мыло и дёрганый «прыжок» строчки, из-за чего анимация и
-/// выглядела «тупой».
-class _AlarmTimeHighlight extends StatefulWidget {
+/// Раньше при включении/выключении время «выдыхало» цветной ореол
+/// (1.25 с свечения и разгон в primary) — читалось как межсекундное
+/// мигание и дёргало глаз. Подсветку убрали полностью: цвет строки
+/// меняется штатной перестройкой карточки, без собственных анимаций.
+class _AlarmTimeHighlight extends StatelessWidget {
   final String label;
   final bool enabled;
   final ThemeData theme;
@@ -1075,108 +1074,14 @@ class _AlarmTimeHighlight extends StatefulWidget {
   });
 
   @override
-  State<_AlarmTimeHighlight> createState() => _AlarmTimeHighlightState();
-}
-
-class _AlarmTimeHighlightState extends State<_AlarmTimeHighlight>
-    with SingleTickerProviderStateMixin {
-  static const _kPulse = Duration(milliseconds: 1250);
-
-  /// Доля времени подъёма: 26% — вспышка, 74% — остывание.
-  static const _kRise = 0.26;
-
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: _kPulse,
-  );
-
-  /// Цвет, ОТ которого идёт текущий переход. Берётся НЕ «прошлая цель», а
-  /// фактически показанный в момент тапа цвет: при повторном переключении
-  /// посреди вспышки инициализация целью сбрасывала base назад, и текст
-  /// дергался по цвету.
-  Color? _fromColor;
-
-  /// Фактически отрисованный базовый цвет последнего кадра.
-  Color? _lastBase;
-
-  /// Последнее виденное значение enabled — сравнение с ним и есть триггер.
-  late bool _shown;
-
-  @override
-  void initState() {
-    super.initState();
-    _shown = widget.enabled;
-  }
-
-  @override
-  void didUpdateWidget(covariant _AlarmTimeHighlight oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.enabled != _shown) {
-      _fromColor = _lastBase;
-      _shown = widget.enabled;
-      _ctrl.forward(from: 0.0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // AnimatedBuilder, а не чтение _ctrl.value прямо в build: без слушателя
-    // контроллер крутился молча, и вспышка дорисовывалась только на следующем
-    // случайном перестроении списка. Из-за этого подсветка простреливала на
-    // соседнюю карточку: та доигрывала остаток своей прошлой вспышки.
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) => _timeText(_ctrl.value),
-    );
-  }
-
-  Widget _timeText(double v) {
-    final cs = widget.theme.colorScheme;
-    // Подъём — easeOutSine, спад — тоже синусоидальный, но по другой ветке:
-    // у обеих производная на пике и в конце равна нулю, поэтому вспышка
-    // «вдыхает и выдыхает». Cubic-вариант давал ощутимый толчок на пике и
-    // обрыв в конце — это и читалось как «неплавно».
-    final pulse = v < _kRise
-        ? Curves.easeOutSine.transform(v / _kRise)
-        : 1.0 - Curves.easeInOutSine.transform((v - _kRise) / (1 - _kRise));
-    // Выключение подсвечивается вполовину слабее включения: «погасло», а не
-    // «вспыхнуло и пропало».
-    final amp = _shown ? 1.0 : 0.5;
-    // Основной цвет времени доезжает до нового состояния за первые полпути и
-    // уже не дёргается на хвосте вспышки.
-    final settle = Curves.easeInOutCubic.transform((v / 0.5).clamp(0.0, 1.0));
-    final target = _shownToColor(_shown, cs);
-    final base = Color.lerp(_fromColor ?? target, target, settle)!;
-    _lastBase = base;
-    final glow = pulse * pulse * amp;
-    // Орал разрастается, пока гаснет: пятно света на стекле ведёт себя так же.
-    final bloom = Curves.easeOutCubic.transform(v);
+    final cs = theme.colorScheme;
     return Text(
-      widget.label,
-      style: widget.theme.textTheme.headlineSmall?.copyWith(
-        color: Color.lerp(base, cs.primary, 0.85 * pulse * amp),
-        shadows: pulse < 0.01
-            ? null
-            : [
-                Shadow(
-                  color: cs.primary.withValues(alpha: 0.55 * glow),
-                  blurRadius: 8 + 10 * bloom,
-                ),
-                Shadow(
-                  color: cs.primary.withValues(alpha: 0.26 * glow),
-                  blurRadius: 20 + 30 * bloom,
-                ),
-              ],
+      label,
+      style: theme.textTheme.headlineSmall?.copyWith(
+        color: enabled ? cs.onSurface : cs.onSurfaceVariant,
       ),
     );
   }
-
-  static Color _shownToColor(bool enabled, ColorScheme cs) =>
-      enabled ? cs.onSurface : cs.onSurfaceVariant;
 }
+

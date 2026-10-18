@@ -174,13 +174,20 @@ class _RealityCheckToggleCard extends StatelessWidget {
 /// кнопок одинаковое: мягкое вдавливание по высоте + схлопывание тени.
 /// Кнопка-«таблетка» способа оплаты в окне поддержки: градиентная широкая
 /// строка с иконкой в кружке, названием и стрелкой. Используется внутри
-/// bottom sheet (CloudTips / Boosty и др.).
+/// bottom sheet (Ozon / Boosty и др.). Все таблетки зажимаются одинаково
+/// плавно (340 мс); справа вместо стрелки у «скоро»-способов — плашка
+/// [badge].
 class _SupportPill extends StatefulWidget {
   final String label;
   final IconData icon;
   final List<Color> gradient;
   final Color glow;
   final VoidCallback onTap;
+  final String? badge;
+
+  /// Вторая строка: чем именно помогает этот способ. Без неё названия
+  /// «Ozon» и «Boosty» выглядели ребусом — человек не понимал, что жмёт.
+  final String? subtitle;
 
   const _SupportPill({
     required this.label,
@@ -188,6 +195,8 @@ class _SupportPill extends StatefulWidget {
     required this.gradient,
     required this.glow,
     required this.onTap,
+    this.badge,
+    this.subtitle,
   });
 
   @override
@@ -210,19 +219,18 @@ class _SupportPillState extends State<_SupportPill> {
         : const Color(0xDE000000);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        _setPressed(true);
-        Haptics.medium();
-      },
+      onTapDown: (_) => _setPressed(true),
       onTapUp: (_) {
         _setPressed(false);
         widget.onTap();
       },
       onTapCancel: () => _setPressed(false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
-        height: _pressed ? 58 : 64,
+        // «Бусти» зажимается дольше и мягче (340 мс вместо 170): кнопка
+        // успевает «просесть» под пальцем и так же плавно вернуться.
+        duration: const Duration(milliseconds: 340),
+        curve: Curves.easeInOutCubic,
+        height: _pressed ? 60 : 64,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
@@ -254,23 +262,84 @@ class _SupportPillState extends State<_SupportPill> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                widget.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  letterSpacing: 0.4,
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      letterSpacing: 0.4,
+                      height: 1.15,
+                    ),
+                  ),
+                  if (widget.subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.subtitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: fg.withValues(alpha: 0.78),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11.5,
+                        letterSpacing: 0.1,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: fg.withValues(alpha: 0.7),
-              size: 26,
-            ),
+            if (widget.badge != null)
+              // Плашка «скоро»: светлый стеклянный прямоугольник с
+              // градиентом и мягким свечением, заменяет стрелку у способа,
+              // который ещё не запущен.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(9),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      fg.withValues(alpha: 0.30),
+                      fg.withValues(alpha: 0.14),
+                    ],
+                  ),
+                  border: Border.all(color: fg.withValues(alpha: 0.55)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: fg.withValues(alpha: 0.22),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  widget.badge!,
+                  style: TextStyle(
+                    color: fg,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    letterSpacing: 2.2,
+                  ),
+                ),
+              )
+            else
+              Icon(
+                Icons.chevron_right_rounded,
+                color: fg.withValues(alpha: 0.7),
+                size: 26,
+              ),
           ],
         ),
       ),
@@ -319,16 +388,18 @@ class _CtaButtonState extends State<_CtaButton> {
       },
       onTapCancel: () => _setPressed(false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
+        // Зажатие визителлы — медленное и мягкое: кнопка «тонет» заметно
+        // дольше (340 мс вместо 170) и без резкого отдачи-скачка.
+        duration: const Duration(milliseconds: 340),
+        curve: Curves.easeInOutCubic,
         width: double.infinity,
-        height: _pressed ? 50 : 54,
+        height: _pressed ? 51 : 54,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
               color: widget.glow.withValues(alpha: _pressed ? 0.22 : 0.38),
-              blurRadius: _pressed ? 6 : 14,
+              blurRadius: _pressed ? 5 : 14,
               offset: Offset(0, _pressed ? 1 : 4),
             ),
           ],
@@ -366,15 +437,19 @@ class _CtaButtonState extends State<_CtaButton> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
-                  letterSpacing: 0.6,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16.5,
+                  letterSpacing: 1.0,
                   shadows: [
+                    // Тёмная подложка под текстом + едва заметный
+                    // кровавый ободок — буквы «стоят» на кнопке и
+                    // сливаются с багровым градиентом.
                     Shadow(
-                      color: Color(0x33000000),
-                      blurRadius: 2,
-                      offset: Offset(0, 1),
+                      color: Color(0x59000000),
+                      blurRadius: 5,
+                      offset: Offset(0, 2),
                     ),
+                    Shadow(color: Color(0x665C0014), blurRadius: 10),
                   ],
                 ),
               ),

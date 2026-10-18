@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'smooth_hover.dart';
 import 'stagger_in.dart';
 
@@ -19,6 +20,11 @@ Widget buildDragProxy(
   ThemeData theme,
   Animation<double> animation, {
   double borderRadius = 20,
+  // Если задан — прокси репортит свою глобальную Y-координату на каждом
+  // кадре движения и сбрасывает её в null при размонтировании (конец
+  // драга, включая отмену). Экран использует это, чтобы заголовки секций
+  // мягко «расступались», когда карточка проходит сквозь них.
+  ValueNotifier<double?>? trackY,
 }) {
   // Перетаскиваемый элемент монтируется в оверлее ЗАНОВО (новые State),
   // поэтому каскадная входная анимация (StaggerIn) проигрывалась бы ещё
@@ -32,7 +38,7 @@ Widget buildDragProxy(
     StaggerIn.suppressEntrance = false;
     SmoothHover.dragProxyCount.value--;
   });
-  return AnimatedBuilder(
+  final proxy = AnimatedBuilder(
     animation: animation,
     builder: (context, _) {
       final raw = animation.value;
@@ -66,4 +72,57 @@ Widget buildDragProxy(
       );
     },
   );
+  if (trackY == null) return proxy;
+  return _ProxyPositionReporter(notifier: trackY, child: proxy);
+}
+
+/// Отслеживает глобальную позицию drag-прокси: репортит верхнюю
+/// Y-координату в [notifier] на каждом кадре движения и сбрасывает её
+/// в null при снятии прокси — драг кончился (drop ИЛИ отмена).
+class _ProxyPositionReporter extends SingleChildRenderObjectWidget {
+  final ValueNotifier<double?> notifier;
+
+  const _ProxyPositionReporter({
+    required this.notifier,
+    required Widget child,
+  }) : super(child: child);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderProxyPositionReporter(notifier);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderProxyPositionReporter renderObject,
+  ) {
+    renderObject.notifier = notifier;
+  }
+}
+
+class _RenderProxyPositionReporter extends RenderProxyBox {
+  ValueNotifier<double?> notifier;
+  double? _lastY;
+
+  _RenderProxyPositionReporter(this.notifier);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    final y = localToGlobal(Offset.zero).dy;
+    if (y == _lastY) return;
+    _lastY = y;
+    // Уведомляем вне фазы paint (post-frame): слушатели делают setState,
+    // а во время перерисовки это было бы нарушением.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (notifier.value != y) notifier.value = y;
+    });
+  }
+
+  @override
+  void detach() {
+    // Прокси снят — драг закончился. Возвращаем заголовки.
+    if (notifier.value != null) notifier.value = null;
+    super.detach();
+  }
 }
