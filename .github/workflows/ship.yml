@@ -130,6 +130,19 @@ jobs:
           storeFile=keystore.jks
           EOF
 
+      - name: Настройки Gradle для CI
+        run: |
+          set -euo pipefail
+          # android/gradle.properties подогнан под домашнюю машину (~8 ГБ RAM,
+          # heap 1 ГБ) — на раннере этого мало: R8/dexing вызывают GC-троттлинг,
+          # и Gradle убивает демон («the JVM garbage collector is thrashing»).
+          # На раннере 16 ГБ / 4 ядра, поэтому поднимаем память только здесь,
+          # не трогая локальные настройки разработчика.
+          sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|' android/gradle.properties
+          sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' android/gradle.properties
+          sed -i 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
+          grep -E '^(org.gradle.jvmargs|org.gradle.workers.max|kotlin.daemon.jvmargs)=' android/gradle.properties
+
       - name: Сборка APK
         run: flutter build apk --release --split-per-abi
 
