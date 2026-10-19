@@ -44,6 +44,39 @@ Route<T> slideUpRoute<T>(Widget page) {
   );
 }
 
+/// Сколько длится закрытие [lockRoute] (обратная анимация).
+const Duration lockRouteReverseDuration = Duration(milliseconds: 340);
+
+/// Переход к PIN-экрану и обратно — СИММЕТРИЧНЫЙ кросс-фейд.
+///
+/// Раньше блокировка «въезжала» снизу ([slideUpRoute]): домашний экран
+/// уезжал вверх, а на разблокировке (в сплэш) шёл уже другой переход —
+/// вход и выход выглядели как два разных жеста, и «замок» читался рывком.
+/// Здесь одна и та же мягкая проявка в обе стороны (время вперёд = время
+/// назад) плюс едва заметный масштаб: экран будто наплывает на место, без
+/// движения вверх-вниз. Без blur/saveLayer — дёшево для слабого GPU.
+Route<T> lockRoute<T>(Widget page) {
+  return PageRouteBuilder<T>(
+    settings: RouteSettings(name: page.runtimeType.toString()),
+    transitionDuration: lockRouteReverseDuration,
+    reverseTransitionDuration: lockRouteReverseDuration,
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeInOutCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.985, end: 1.0).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 /// Плавный переход снизу вверх для диалогов.
 Route<T> fadeRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
