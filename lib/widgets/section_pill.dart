@@ -102,7 +102,8 @@ class SectionPill extends StatefulWidget {
   State<SectionPill> createState() => _SectionPillState();
 }
 
-class _SectionPillState extends State<SectionPill> {
+class _SectionPillState extends State<SectionPill>
+    with TickerProviderStateMixin {
   /// Внутренняя ширина капсулы: 304 минус набивка 4 слева и справа. Ровно
   /// столько же занимает жест-дорожка: она лежит в `Stack(StackFit.expand)`.
   /// По этой ширине палец переводится в долю карусели — камень едет ровно
@@ -118,6 +119,12 @@ class _SectionPillState extends State<SectionPill> {
   double _dragPage = 0;
   double _dragGrabOffset = 0;
 
+  /// Сглаженная цель dragged-позиции (от dedos) — следует за пальцем с
+  /// инерцией, чтобы рывки тача не уходили в скролл 1:1.
+  double _dragTarget = 0;
+  double _dragFollow = 0;
+  late final Ticker _dragFollowTicker = createTicker(_tickDragFollow);
+
   /// Ближайший раздел на прошлом кадре — по нему звучит хаптик, когда палец
   /// пересекает границу раздела.
   int _dragNearest = -1;
@@ -128,9 +135,14 @@ class _SectionPillState extends State<SectionPill> {
   /// перещёлкивало сторону на каждом кадре — камень «подёргивался».
   int _edgeSide = 0;
 
+  /// Сглаженное значение оттяжки за край — не прыгает мгновенно при
+  /// покачивании пальца у границы, а уходит и возвращается плавно.
+  double _edgePullSmooth = 0;
+
   @override
   void dispose() {
     _edgeReleaseTimer?.cancel();
+    _dragFollowTicker.dispose();
     // Экран мог закрыться прямо во время тяги — не оставляем Home с
     // висящей ненулевой страницей.
     if (_dragging) sectionDragPage.value = null;
@@ -141,9 +153,13 @@ class _SectionPillState extends State<SectionPill> {
     if (count < 2) return;
     _dragging = true;
     _edgeSide = 0;
+    _edgePullSmooth = 0;
+    _dragFollowTicker.stop();
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
+    _dragTarget = _dragPage;
+    _dragFollow = _dragPage;
     // Камень занимает 1/count дорожки и стоит НЕ по центру слота, а с
     // отступами по краям: его центр при page=0 равен halfStone, при
     // page=last — trackWidth-halfStone. Раньше здесь брали
@@ -159,6 +175,32 @@ class _SectionPillState extends State<SectionPill> {
     _dragGrabOffset = stoneCenter - details.localPosition.dx;
     _dragNearest = _dragPage.round();
     sectionDragPage.value = _dragPage;
+    if (!_dragFollowTicker.isActive) _dragFollowTicker.start();
+  }
+
+  /// Сглаживает dragged-позицию и оттяжку за край: камень следует за пальцем
+  /// с инерцией, а не повторяет каждый микро-рывок тача.
+  void _tickDragFollow(Duration elapsed) {
+    if (!_dragging) {
+      _dragFollowTicker.stop();
+      return;
+    }
+    // Экспоненциальное сглаживание: к(target) догоняем одинаково на любом fps.
+    const k = 0.42; // доля дистанции за кадр — медленнее, чем 1:1
+    _dragFollow = _dragFollow + (_dragTarget - _dragFollow) * k;
+    if ((_dragTarget - _dragFollow).abs() < 0.001) _dragFollow = _dragTarget;
+    sectionDragPage.value = _dragFollow;
+
+    // Сглаживаем оттяжку за край — уходит и возвращается плавно, без рывка
+    // при покачивании пальца у границы трека.
+    if (_edgeAnchorPull != 0) {
+      final targetPull = _edgeAnchorPull;
+      _edgePullSmooth = _edgePullSmooth + (targetPull - _edgePullSmooth) * 0.35;
+      if ((targetPull - _edgePullSmooth).abs() < 0.5) _edgePullSmooth = targetPull;
+    } else {
+      _edgePullSmooth = _edgePullSmooth * 0.7;
+      if (_edgePullSmooth.abs() < 0.5) _edgePullSmooth = 0;
+    }
   }
 
   void _dragUpdate(DragUpdateDetails details, int count) {
@@ -193,17 +235,18 @@ class _SectionPillState extends State<SectionPill> {
       _edgeAnchorPull = over;
     }
     _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
+    _dragTarget = _dragPage;
     final nearest = _dragPage.round();
     if (nearest != _dragNearest) {
       _dragNearest = nearest;
       Haptics.light();
     }
-    sectionDragPage.value = _dragPage;
   }
 
   void _dragEnd(int count) {
     if (!_dragging) return;
     _dragging = false;
+    _dragFollowTicker.stop();
     _edgeSide = 0;
     sectionDragEdgeStretch.value = 0;
     _releaseEdgeStretch();
@@ -222,6 +265,7 @@ class _SectionPillState extends State<SectionPill> {
   void _dragCancel() {
     if (!_dragging) return;
     _dragging = false;
+    _dragFollowTicker.stop();
     _edgeSide = 0;
     sectionDragEdgeStretch.value = 0;
     _releaseEdgeStretch();
@@ -235,7 +279,7 @@ class _SectionPillState extends State<SectionPill> {
   }
 
   void _releaseEdgeStretch() {
-    if (_edgeAnchorPull == 0) return;
+    if (_edgeAnchorPull == 0 && _edgePullSmooth.abs() < 0.5) return;
     _edgeReleaseTimer?.cancel();
     _edgeReleaseTimer = Timer(const Duration(milliseconds: 230), () {
       if (!mounted) return;
@@ -369,8 +413,13 @@ class _SectionPillState extends State<SectionPill> {
             // именно скользит, а не перескакивает.
             Align(
               alignment: Alignment(
-                edgeStretch > 0 && _dragging
-                    ? (_edgeSide == -1 ? -1 : 1)
+                // Плавное выезжание за край вместо жесткого скачка на
+                // противоположный угол: когда камень за границей трека,
+                // его Alignment смещается пропорционально сглаженной
+                // оттяжке `_edgePullSmooth`, а не рывком на ±1.
+                _dragging && edgeStretch > 0
+                    ? indicatorAlignment +
+                        (_edgePullSmooth / 110.0).clamp(-1.0, 1.0) * 0.35
                     : indicatorAlignment,
                 0,
               ),
@@ -393,12 +442,14 @@ class _SectionPillState extends State<SectionPill> {
                   // toward the screen edge. Scaling the full
                   // stone avoids the sideways snap caused by
                   // changing its fractional layout width.
-                  alignment: edgeStretch > 0 || _edgeAnchorPull != 0
-                      ? ((edgeStretch > 0
-                                ? _edgeSide == -1
-                                : _edgeAnchorPull < 0)
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft)
+                  alignment: edgeStretch > 0 || _edgePullSmooth.abs() > 0.5
+                      ? Alignment.lerp(
+                          Alignment.center,
+                          _edgePullSmooth < 0
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          (_edgePullSmooth.abs() / 110.0).clamp(0.0, 1.0),
+                        )
                       : Alignment.center,
                   scaleX: scale,
                   child: child,
