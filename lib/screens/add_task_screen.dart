@@ -14,8 +14,8 @@ import '../utils/wide_dash_formatter.dart';
 import '../utils/wide_dash_controller.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
-import '../widgets/item_reveal.dart';
 import '../widgets/category_chip.dart';
+import '../widgets/drag_proxy.dart';
 import '../utils/snackbar.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/priority_selector.dart';
@@ -248,6 +248,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         ),
       ),
     );
+  }
+
+  /// Drag-прокси для чипа категории: подъём, свечение и обводка-«кольцо»,
+  /// чтобы палец не терял чип из вида во время перетаскивания.
+  Widget _categoryDragProxy(
+    Widget child,
+    ThemeData theme,
+    Animation<double> animation,
+  ) {
+    return buildDragProxy(child, theme, animation, borderRadius: 999);
   }
 
   void _save() {
@@ -584,19 +594,60 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         listenable: _taskSvc,
                         builder: (ctx, _) {
                           final cats = <String>['', ..._taskSvc.categories];
-                          // Создание, удаление и переименование категорий —
-                          // плавно: новый чип РАЗВОРАЧИВАЕТСЯ на своём месте,
-                          // удалённый тает «призраком», а соседи мягко
-                          // съезжаются, без рывка строки.
-                          return ChipsReveal(
-                            items: cats,
+                          final showTrailing =
+                              _taskSvc.categories.length <
+                              _taskSvc.maxCategories;
+                          // Категории можно перетаскивать друг за друга
+                          // (кроме «Без категории» — она всегда первой).
+                          // Порядок сохраняется в TaskService и
+                          // автоматически подтягивается в фильтр задач
+                          // на главном экране.
+                          return SizedBox(
                             height: 44,
-                            itemBuilder: _categoryChip,
-                            trailing:
-                                _taskSvc.categories.length <
-                                    _taskSvc.maxCategories
-                                ? _newCategoryChip(ctx)
-                                : null,
+                            child: ReorderableListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: cats.length + (showTrailing ? 1 : 0),
+                              onReorderItem: (oldIndex, newIndex) {
+                                // 'Без категории' (индекс 0) и кнопка
+                                // «+ Новая категория» (последняя) — не
+                                // перемещаются.
+                                if (oldIndex == 0 || newIndex == 0) return;
+                                if (showTrailing &&
+                                    (oldIndex == cats.length ||
+                                        newIndex == cats.length)) return;
+                                // cats[0] — это '' (Без категории), поэтому
+                                // индексы реальных категорий на единицу меньше.
+                                _taskSvc.reorderCategories(
+                                  oldIndex - 1,
+                                  newIndex - 1,
+                                );
+                              },
+                              buildDefaultDragHandles: false,
+                              proxyDecorator: (child, index, animation) =>
+                                  _categoryDragProxy(child, theme, animation),
+                              itemBuilder: (context, i) {
+                                if (showTrailing && i == cats.length) {
+                                  return Padding(
+                                    key: const ValueKey('cat_trailing'),
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: _newCategoryChip(context),
+                                  );
+                                }
+                                final name = cats[i];
+                                final isUncategorized = name.isEmpty;
+                                final child = _categoryChip(context, name);
+                                return Padding(
+                                  key: ValueKey('cat_$name'),
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: isUncategorized
+                                      ? child
+                                      : ReorderableDragStartListener(
+                                          index: i,
+                                          child: child,
+                                        ),
+                                );
+                              },
+                            ),
                           );
                         },
                       ),
