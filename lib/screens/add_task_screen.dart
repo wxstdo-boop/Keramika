@@ -614,7 +614,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 if (oldIndex == 0 || newIndex == 0) return;
                                 if (showTrailing &&
                                     (oldIndex == cats.length ||
-                                        newIndex == cats.length)) return;
+                                        newIndex == cats.length)) {
+                                  return;
+                                }
                                 // cats[0] — это '' (Без категории), поэтому
                                 // индексы реальных категорий на единицу меньше.
                                 _taskSvc.reorderCategories(
