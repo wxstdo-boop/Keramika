@@ -165,6 +165,18 @@ class TaskService extends ChangeNotifier {
     await _save();
   }
 
+  /// Перестановка категорий местами (драг-アンド-дроп в окне добавления).
+  /// Индексы относятся к `_categories` без учета псевдо-категории «Без категории»
+  /// (пустая строка), которая в UI добавляется спереди и не перемещается.
+  Future<void> reorderCategories(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _categories.length) return;
+    if (newIndex < 0 || newIndex > _categories.length) return;
+    final item = _categories.removeAt(oldIndex);
+    _categories.insert(newIndex, item);
+    notifyListeners();
+    await _saveCategories();
+  }
+
   Future<void> forceSave() async {
     await _save();
   }
