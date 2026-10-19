@@ -112,12 +112,13 @@ class _PrioritySelectorState extends State<PrioritySelector>
 
   /// «Резинка»: до края — 1:1, за краем — всё туже. Таблетка чуть заезжает
   /// за границу дорожки (это и просили «для красоты»), но не улетает.
+  /// Симметрична: одинаковое overshoot в обе стороны от [-1, 1].
   static double _rubber(double v) {
     if (v > 1) {
       return 1 + _overshoot * (1 - math.exp(-(v - 1) * 1.6));
     }
     if (v < -1) {
-      return -1 - _overshoot * (1 - math.exp((-v - 1) * 1.6));
+      return -1 - _overshoot * (1 - math.exp(-((-v) - 1) * 1.6));
     }
     return v;
   }
