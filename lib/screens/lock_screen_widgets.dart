@@ -251,11 +251,16 @@ class _IdBadgeCapsule extends StatelessWidget {
             opacity: exitEnabled ? 1.0 : 0.42,
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            child: _ExitCapsuleButton(
-              isDark: isDark,
-              cs: cs,
-              glassGrad: glassGrad,
-              onExit: onExit,
+            child: AnimatedScale(
+              scale: exitEnabled ? 1.0 : 0.96,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: _ExitCapsuleButton(
+                isDark: isDark,
+                cs: cs,
+                glassGrad: glassGrad,
+                onExit: onExit,
+              ),
             ),
           ),
         ),
