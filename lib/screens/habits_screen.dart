@@ -1367,10 +1367,27 @@ class _HabitsScreenState extends State<HabitsScreen>
                                   // угол. Center тянется на всю высоту блока
                                   // (её задаёт IntrinsicHeight выше).
                                   child: Center(
-                                    child: Icon(
-                                      Icons.notifications_active_outlined,
-                                      size: 17,
-                                      color: theme.colorScheme.primary,
+                                    // Кружок в тон соседних кнопок (карандаш и
+                                    // раскрытие): та же полупрозрачная
+                                    // подложка primaryContainer 0.18, поэтому
+                                    // колокольчик читается частью кластера, а
+                                    // не «голым» значком на карточке. Размер
+                                    // 26 = 18 (иконка) + 4+4 (отступы), как у
+                                    // _compactIconButton.
+                                    child: Container(
+                                      key: const ValueKey('remind_all_chip'),
+                                      width: 26,
+                                      height: 26,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: theme.colorScheme.primaryContainer
+                                            .withValues(alpha: 0.18),
+                                      ),
+                                      child: Icon(
+                                        Icons.notifications_active_outlined,
+                                        size: 17,
+                                        color: theme.colorScheme.primary,
+                                      ),
                                     ),
                                   ),
                                 ),
