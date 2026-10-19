@@ -402,16 +402,26 @@ class _OrganicFabState extends State<OrganicFab>
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Сама кнопка — обычная FAB «как в будильниках». Долгое зажатие
-            // (BERSERK) вешаем на неё же, как это сделано на будильниках.
-            PressScale(
-              child: GestureDetector(
-                onLongPress: widget.onLongPress,
-                child: FloatingActionButton(
-                  // Округлый квадрат — ровно как FAB в будильниках (дефолтная
-                  // форма M3). Кругом быть НЕ должно.
-                  onPressed: widget.onTap,
-                  child: const Icon(Icons.add),
+            // Сама кнопка — обычная FAB «как в будильниках» с полупрозрачной
+            // обводкой почти чёрной (как у снекбаров, только тоньше и чище).
+            // Долгое зажатие (BERSERK) вешаем на неё же.
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.28),
+                  width: 1.0,
+                ),
+              ),
+              child: PressScale(
+                child: GestureDetector(
+                  onLongPress: widget.onLongPress,
+                  child: FloatingActionButton(
+                    // Округлый квадрат — ровно как FAB в будильниках (дефолтная
+                    // форма M3). Кругом быть НЕ должно.
+                    onPressed: widget.onTap,
+                    child: const Icon(Icons.add),
+                  ),
                 ),
               ),
             ),
