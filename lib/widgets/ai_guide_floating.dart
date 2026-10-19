@@ -43,10 +43,12 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
   final _inputCtrl = WideDashController();
   final _scrollCtrl = ScrollController();
   // Плавное появление/исчезание окошка при переключении режима «в окне».
+  // Всегда стартуем с 0 — если включено из prefs, анимируем к 1.0 медленно
+  // (очень плавно, без рывка после сплэша).
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 260),
-    value: aiFloating.value ? 1.0 : 0.0,
+    duration: const Duration(milliseconds: 1200),
+    value: 0.0,
   );
   // Троеточие «Ада печатает…» в мини-окошке (repeat пока busy).
   late final AnimationController _dotsCtrlMini = AnimationController(
@@ -60,6 +62,13 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
     WidgetsBinding.instance.addObserver(this);
     _loadHistory();
     aiFloating.addListener(_onFloatChanged);
+    // Первый запуск: если режим «в окне» включён из prefs, плюсик с Адой
+    // проявляется очень медленно и плавно (не вспыхивает сразу после сплэша).
+    if (aiFloating.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ctrl.animateTo(1.0, curve: Curves.easeOutCubic);
+      });
+    }
   }
 
   @override
