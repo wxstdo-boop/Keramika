@@ -511,32 +511,45 @@ class _HabitsScreenState extends State<HabitsScreen>
                   ),
                   Column(
                     children: [
-                      // Верхняя панель — отдельная «плавающая» карточка:
-                      // скруглена со ВСЕХ сторон (26), с мягкой светлой
-                      // кромкой и тенью в цвет плашки. Раньше это была
-                      // полоса, приклеенная к верху, с прямыми верхними
-                      // углами — на фоне летящих птиц она выглядела чужой.
+                      // Верхняя панель — во ВСЮ ширину (бока «допилены»):
+                      // раньше карточка с отступами 12 слева и справа не
+                      // доставала до краёв, и по бокам оставались щели, через
+                      // которые проглядывали птицы — шапка выглядела
+                      // обрубленной. Теперь она перекрывает всё, скруглены
+                      // только нижние углы, а фон — ПОЛУПРОЗРАЧНОЕ стекло:
+                      // стая мягко проходит под шапкой, а не за ней.
                       Container(
-                        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        key: const ValueKey('perf_top_bar'),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(26),
+                          borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(24),
+                          ),
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color.lerp(color, Colors.black, 0.12)!,
-                              color,
-                              Color.lerp(color, Colors.white, 0.10)!,
+                              Color.lerp(
+                                color,
+                                Colors.black,
+                                0.12,
+                              )!.withValues(alpha: 0.88),
+                              color.withValues(alpha: 0.80),
+                              Color.lerp(
+                                color,
+                                Colors.white,
+                                0.10,
+                              )!.withValues(alpha: 0.74),
                             ],
                           ),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            width: 1,
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.22),
+                            ),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: color.withValues(alpha: 0.35),
-                              blurRadius: 22,
+                              color: color.withValues(alpha: 0.30),
+                              blurRadius: 20,
                               spreadRadius: -4,
                               offset: const Offset(0, 8),
                             ),
@@ -1293,105 +1306,123 @@ class _HabitsScreenState extends State<HabitsScreen>
                         // текст выглядел скукоженным. Сверху текст и значки
                         // сажаются на одну линию, и текст дотягивается до
                         // правого края.
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              // Плавное зачёркивание: линия «рисуется» по
-                              // тексту при отметке и «стирается» при снятии
-                              // (см. AnimatedStrikeText).
-                              child: AnimatedStrikeText(
-                                text: habit.name,
-                                style: theme.textTheme.titleMedium!.copyWith(
-                                  fontSize: 22.5,
-                                  height: 1.3,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                                // Тот же масштаб шрифта, что рендерит текст:
-                                // иначе линии зачёркивания при системном
-                                // масштабе ≠ 1.0 не совпадают со строками.
-                                textScaler: MediaQuery.textScalerOf(context),
-                                struck: habit.doneToday,
-                                // Текст в отмеченном состоянии — заметно
-                                // полупрозрачный (а не просто другой оттенок):
-                                // прозрачность едет вместе с линией.
-                                struckColor: theme.colorScheme.onSurfaceVariant
-                                    .withValues(alpha: 0.42),
-                                strikeColor: Colors.red.shade500.withValues(
-                                  alpha: 0.9,
-                                ),
-                                // Полный текст без троеточия: имя привычки
-                                // всегда видно целиком (как в задачах), а не
-                                // «скукожено» до двух строк. Действия справа
-                                // (колокольчик/раскрытие/карандаш) стоят в своей
-                                // зоне, а текст расширяется на всю оставшуюся
-                                // ширину через Expanded — и не налезает на них.
-                                maxLines: null,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            // Текст напоминания в списке НЕ показываем — только
-                            // колокольчик времени ниже. Сам текст живёт в
-                            // редактировании привычки и в самом уведомлении.
-                            // Быстрое напоминание: маленький колокольчик в
-                            // цвет темы, если у привычки задано «Вспомнить
-                            // всё». Плотно прижат к кнопке разворота заметки.
-                            if (habit.reminderTime != null)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: Icon(
-                                  Icons.notifications_active_outlined,
-                                  size: 17,
-                                  color: theme.colorScheme.primary,
+                        // IntrinsicHeight — чтобы значок «Вспомнить всё»
+                        // мог встать по ЦЕНТРУ высоты блока действий. Высота
+                        // блока разная (одна кнопка или две), поэтому жёсткий
+                        // отступ не подошёл бы: при одном карандаше значок
+                        // уезжал бы вниз.
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                // Плавное зачёркивание: линия «рисуется» по
+                                // тексту при отметке и «стирается» при снятии
+                                // (см. AnimatedStrikeText).
+                                child: AnimatedStrikeText(
+                                  text: habit.name,
+                                  style: theme.textTheme.titleMedium!.copyWith(
+                                    fontSize: 22.5,
+                                    height: 1.3,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  // Тот же масштаб шрифта, что рендерит текст:
+                                  // иначе линии зачёркивания при системном
+                                  // масштабе ≠ 1.0 не совпадают со строками.
+                                  textScaler: MediaQuery.textScalerOf(context),
+                                  struck: habit.doneToday,
+                                  // Текст в отмеченном состоянии — заметно
+                                  // полупрозрачный (а не просто другой оттенок):
+                                  // прозрачность едет вместе с линией.
+                                  struckColor: theme
+                                      .colorScheme
+                                      .onSurfaceVariant
+                                      .withValues(alpha: 0.42),
+                                  strikeColor: Colors.red.shade500.withValues(
+                                    alpha: 0.9,
+                                  ),
+                                  // Полный текст без троеточия: имя привычки
+                                  // всегда видно целиком (как в задачах), а не
+                                  // «скукожено» до двух строк. Действия справа
+                                  // (колокольчик/раскрытие/карандаш) стоят в своей
+                                  // зоне, а текст расширяется на всю оставшуюся
+                                  // ширину через Expanded — и не налезает на них.
+                                  maxLines: null,
                                 ),
                               ),
-                            // Значок закрепления справа убран: пин и так виден
-                            // слева (drag-handle превращается в пин у
-                            // закреплённой привычки) — дублировать не нужно.
-                            //
-                            // Действия идут ВЕРТИКАЛЬНО (раскрытие СВЕРХУ,
-                            // карандаш ПОД ним), а не в ряд. Раньше ряд из двух
-                            // кнопок съедал ~54 px по ширине, и имя привычки
-                            // «скукоживалось», не доходя до правого края —
-                            // хотя место справа было. Теперь блок действий
-                            // шириной в одну кнопку, и текст занимает почти
-                            // всю ширину карточки.
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                // Кнопка раскрытия есть только если реально
-                                // есть что показывать: заметки — всегда;
-                                // статус — только у полезной привычки (у
-                                // вредной статус не отображается, поэтому и
-                                // кнопки нет).
-                                if (habit.notes.isNotEmpty ||
-                                    (habit.type == 'good' &&
-                                        habit.status.isNotEmpty))
-                                  _compactIconButton(
-                                    cornerRipple: true,
-                                    icon: Icons.keyboard_arrow_down,
-                                    rotation:
-                                        (_expandedNotes[habit.id] ?? false)
-                                        ? 3.14159 // пи — стрелка вверх
-                                        : 0,
-                                    color: (_expandedNotes[habit.id] ?? false)
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.onSurfaceVariant,
-                                    onPressed: () => setState(
-                                      () => _expandedNotes[habit.id] =
-                                          !(_expandedNotes[habit.id] ?? false),
+                              const SizedBox(width: 6),
+                              // Текст напоминания в списке НЕ показываем — только
+                              // колокольчик времени ниже. Сам текст живёт в
+                              // редактировании привычки и в самом уведомлении.
+                              // Быстрое напоминание: маленький колокольчик в
+                              // цвет темы, если у привычки задано «Вспомнить
+                              // всё». Плотно прижат к кнопке разворота заметки.
+                              if (habit.reminderTime != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  // Значок «Вспомнить всё» опущен к СЕРЕДИНЕ
+                                  // кластера: вместе с раскрытием (сверху) и
+                                  // карандашом (снизу) три значка садятся на
+                                  // окружность, а не сбиваются в левый верхний
+                                  // угол. Center тянется на всю высоту блока
+                                  // (её задаёт IntrinsicHeight выше).
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.notifications_active_outlined,
+                                      size: 17,
+                                      color: theme.colorScheme.primary,
                                     ),
                                   ),
-                                const SizedBox(height: 2),
-                                _compactIconButton(
-                                  icon: Icons.edit_outlined,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  onPressed: () => _editHabit(habit),
                                 ),
-                              ],
-                            ),
-                          ],
+                              // Значок закрепления справа убран: пин и так виден
+                              // слева (drag-handle превращается в пин у
+                              // закреплённой привычки) — дублировать не нужно.
+                              //
+                              // Действия идут ВЕРТИКАЛЬНО (раскрытие СВЕРХУ,
+                              // карандаш ПОД ним), а не в ряд. Раньше ряд из двух
+                              // кнопок съедал ~54 px по ширине, и имя привычки
+                              // «скукоживалось», не доходя до правого края —
+                              // хотя место справа было. Теперь блок действий
+                              // шириной в одну кнопку, и текст занимает почти
+                              // всю ширину карточки.
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // Кнопка раскрытия есть только если реально
+                                  // есть что показывать: заметки — всегда;
+                                  // статус — только у полезной привычки (у
+                                  // вредной статус не отображается, поэтому и
+                                  // кнопки нет).
+                                  if (habit.notes.isNotEmpty ||
+                                      (habit.type == 'good' &&
+                                          habit.status.isNotEmpty))
+                                    _compactIconButton(
+                                      cornerRipple: true,
+                                      icon: Icons.keyboard_arrow_down,
+                                      rotation:
+                                          (_expandedNotes[habit.id] ?? false)
+                                          ? 3.14159 // пи — стрелка вверх
+                                          : 0,
+                                      color: (_expandedNotes[habit.id] ?? false)
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.onSurfaceVariant,
+                                      onPressed: () => setState(
+                                        () => _expandedNotes[habit.id] =
+                                            !(_expandedNotes[habit.id] ??
+                                                false),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 2),
+                                  _compactIconButton(
+                                    icon: Icons.edit_outlined,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    onPressed: () => _editHabit(habit),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 2),
                         // Полезная → 7 точек стрика. Вредная → бейдж
@@ -1870,7 +1901,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                 child: ValueListenableBuilder<int>(
                   valueListenable: sectionCurrentIndex,
                   builder: (context, idx, _) =>
-                      _PerfBirdFlock(active: idx == 1),
+                      _PerfBirdFlock(key: const ValueKey('perf_birds'), active: idx == 1),
                 ),
               ),
             ),
@@ -1922,7 +1953,11 @@ class _HabitsScreenState extends State<HabitsScreen>
                     ),
                     child: SizedBox(
                       key: ValueKey('perf_strip_$seed'),
-                      height: 118,
+                      // 122 (было 118): содержимое карточки (бейдж иконки,
+                      // заголовок и две строки текста) не помещалось в
+                      // прежнюю высоту — колонка переполнялась на ~2 px и
+                      // под текстом появлялась полоса обрезки.
+                      height: 122,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1967,7 +2002,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Container(
-                                        padding: const EdgeInsets.all(7),
+                                        padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(
                                             10,
@@ -1988,7 +2023,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                           color: p.color,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 7),
                                       Text(
                                         Translations.t(p.titleKey, context),
                                         maxLines: 1,
@@ -2154,7 +2189,7 @@ class _PerfBirdFlock extends StatefulWidget {
   /// Тикать ли стаю. На невидимой вкладке контроллер стоит — иначе
   /// постоянный repeat() держит кадры и греет телефон.
   final bool active;
-  const _PerfBirdFlock({this.active = true});
+  const _PerfBirdFlock({super.key, this.active = true});
 
   @override
   State<_PerfBirdFlock> createState() => _PerfBirdFlockState();
@@ -2235,6 +2270,11 @@ class _FlockBird {
   });
 }
 
+/// Кромки окна стаи: у самых краёв прозрачность падает до нуля, поэтому
+/// птица НЕ сечётся обрезкой плашки, а мягко входит в окно и так же мягко
+/// уходит. Константа публичная — на неё опирается регресс-тест.
+const List<double> perfFlockEdgeStops = <double>[0.0, 0.10, 0.90, 1.0];
+
 class _BirdFlockPainter extends CustomPainter {
   final double t;
   final Color color;
@@ -2294,10 +2334,26 @@ class _BirdFlockPainter extends CustomPainter {
     ),
   ];
 
+  /// Плавная кромка стаи: у самых краёв окна птицы проявляются и гаснут, а
+  /// не «секаются» обрезкой по границе. Раньше [ClipRRect] рубил птицу
+  /// пополам — на входе/выходе из плашки это читалось как мигание. Теперь
+  /// одна и та же прозрачность на краях работает и для крыльев (штрих), и
+  /// для телец (заливка) — птица мягко «входит» в окно и так же мягко уходит.
+  Shader _edgeFade(Size size) {
+    final clear = color.withValues(alpha: 0);
+    return LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [clear, color, color, clear],
+      stops: perfFlockEdgeStops,
+    ).createShader(Offset.zero & size);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
+    final fade = _edgeFade(size);
     final paint = Paint()
-      ..color = color
+      ..shader = fade
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
@@ -2340,7 +2396,7 @@ class _BirdFlockPainter extends CustomPainter {
       canvas.drawCircle(
         Offset(px, py + span * 0.06),
         span * 0.11,
-        Paint()..color = color,
+        Paint()..shader = fade,
       );
     }
   }

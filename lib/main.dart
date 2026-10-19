@@ -176,7 +176,9 @@ void initChannels() {
   if (kIsWeb) return;
   _backupChannel = const MethodChannel('com.wetidom.keramika/alarm_payload');
   _lifecycleChannel = const MethodChannel('com.wetidom.keramika/lifecycle');
-  _alarmPayloadChannel = const MethodChannel('com.wetidom.keramika/alarm_payload');
+  _alarmPayloadChannel = const MethodChannel(
+    'com.wetidom.keramika/alarm_payload',
+  );
 }
 
 /// Включает автоэкспорт: разовый прогон (если нужно) + почасовой таймер.
@@ -1163,28 +1165,28 @@ void main() async {
   // и сигнал о перезагрузке телефона (onBootCompleted).
   if (!kIsWeb) {
     _alarmPayloadChannel.setMethodCallHandler((call) async {
-    if (call.method == 'onNewAlarmPayload') {
-      // Если WakeTaskScreen уже виден — игнорируем повторный payload
-      // (пользователь тапнул по уведомлению, пока будильник уже звонит).
-      if (_wakeScreenShowing) return;
-      final payload = call.arguments as String?;
-      if (payload != null && payload.isNotEmpty) {
-        _handleNotificationTap(payload);
+      if (call.method == 'onNewAlarmPayload') {
+        // Если WakeTaskScreen уже виден — игнорируем повторный payload
+        // (пользователь тапнул по уведомлению, пока будильник уже звонит).
+        if (_wakeScreenShowing) return;
+        final payload = call.arguments as String?;
+        if (payload != null && payload.isNotEmpty) {
+          _handleNotificationTap(payload);
+        }
+      } else if (call.method == 'onBootCompleted') {
+        // Телефон перезагрузился (или приложение обновилось) — система
+        // стёрла ВСЕ одноразовые setAlarmClock. Перепланируем будильники
+        // и проверки реальности, иначе они молча пропадут до ручного
+        // открытия приложения.
+        await rescheduleAllNotifications();
       }
-    } else if (call.method == 'onBootCompleted') {
-      // Телефон перезагрузился (или приложение обновилось) — система
-      // стёрла ВСЕ одноразовые setAlarmClock. Перепланируем будильники
-      // и проверки реальности, иначе они молча пропадут до ручного
-      // открытия приложения.
-      await rescheduleAllNotifications();
-    }
-  });
+    });
 
-  // Канал жизненного цикла от нативной стороны. Раньше по нему приходили
-  // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
-  // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
-  // invoke не падал в MissingPluginException.
-  _lifecycleChannel.setMethodCallHandler((call) async {});
+    // Канал жизненного цикла от нативной стороны. Раньше по нему приходили
+    // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
+    // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
+    // invoke не падал в MissingPluginException.
+    _lifecycleChannel.setMethodCallHandler((call) async {});
   }
 }
 
@@ -1370,11 +1372,12 @@ class KeramikaAppState extends State<KeramikaApp>
   void _goSplash() {
     final nav = navigatorKey.currentState;
     if (nav != null) {
-      // Плавный fade (не slide): после PIN сплэш не «прыгает» снизу —
-      // аватарка появляется мягко своим fade+scale, без двойного движения
-      // (переход экрана + анимация аватарки одновременно).
+      // Тот же [lockRoute], что и у ПИН-экрана: блокировка и разблокировка —
+      // одна и та же мягкая проявка в обе стороны. Раньше сюда шёл fadeRoute
+      // с другой длительностью, и «обратно» выглядело иначе, чем «в блок» —
+      // переход читался как два разных жеста.
       nav.pushAndRemoveUntil(
-        fadeRoute(SplashScreen(onDone: _goHome)),
+        lockRoute(SplashScreen(onDone: _goHome)),
         (route) => false,
       );
     }
@@ -1388,8 +1391,10 @@ class KeramikaAppState extends State<KeramikaApp>
     setSecureWindow(true);
     final nav = navigatorKey.currentState;
     if (nav != null) {
+      // Плавная симметричная проявка (см. [lockRoute]) вместо выезда снизу:
+      // «в блок» и «из блока» — одно движение, без рывка на разблокировке.
       nav.pushAndRemoveUntil(
-        slideUpRoute(LockScreen(onUnlock: () => unlock())),
+        lockRoute(LockScreen(onUnlock: () => unlock())),
         (route) => false,
       );
     }
