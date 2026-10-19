@@ -894,29 +894,38 @@ class _DeveloperPromptEditorState extends State<DeveloperPromptEditor> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          // Лучше читаемый объём: светлая «полированная»
-                          // верхушка, насыщенное ядро и глубокая нижняя
-                          // кромка — керамика, а не плоская заливка.
-                          Color.lerp(accent, Colors.white, 0.30)!,
+                          // Полированный объём керамики: светлый блик сверху,
+                          // насыщенное ядро, глубокая кромка снизу.
+                          Color.lerp(accent, Colors.white, 0.42)!,
                           accent,
-                          Color.lerp(accent, Colors.black, 0.20)!,
+                          Color.lerp(accent, Colors.black, 0.32)!,
+                          Color.lerp(accent, Colors.black, 0.55)!,
                         ],
-                        stops: const [0.0, 0.55, 1.0],
+                        stops: const [0.0, 0.42, 0.78, 1.0],
                       ),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.48),
+                        color: Colors.white.withValues(alpha: 0.55),
                         width: 1.3,
                       ),
                       boxShadow: [
+                        // Исходное свечение акцентом.
                         BoxShadow(
                           color: accent.withValues(alpha: 0.42),
                           blurRadius: 16,
                           offset: const Offset(0, 5),
                         ),
+                        // Внутренний светлый ободок — делает кнопку выпуклой.
                         BoxShadow(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          blurRadius: 2,
+                          color: Colors.white.withValues(alpha: 0.16),
+                          blurRadius: 0,
+                          spreadRadius: -1,
                           offset: const Offset(0, -1),
+                        ),
+                        // Тень снизу для глубины.
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.22),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
