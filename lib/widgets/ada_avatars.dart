@@ -239,7 +239,6 @@ class AdaAvatar extends StatelessWidget {
 
   Widget _core(BuildContext context, AdaVariant v) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
     // Монохромная тональная гамма из ТЕКУЩЕЙ темы: аватарка автоматически
     // подстраивается под смену темы (primary → secondary → tertiary),
     // а не остаётся ярким цветным кружком в любой теме.
