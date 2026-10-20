@@ -72,8 +72,30 @@ jobs:
           done
           ls -la
 
+      - name: Вычислить SHA-256 для APK
+        id: hashes
+        run: |
+          {
+            echo "## SHA-256 суммы"
+            echo ""
+            echo "Ассеты проверяются по SHA-256 при автообновлении."
+            echo ""
+            echo "| Файл | SHA-256 |"
+            echo "|------|---------|"
+            for f in build/app/outputs/flutter-apk/*.apk; do
+              sha=$(sha256sum "$f" | awk '{print $1}')
+              echo "| $(basename "$f") | `$sha` |"
+            done
+          } > hashes.md
+          {
+            echo "body<<EOF"
+            cat hashes.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Публикация релиза
         uses: softprops/action-gh-release@v3
         with:
           files: build/app/outputs/flutter-apk/*.apk
-          generate_release_notes: true
+          body: ${{ steps.hashes.outputs.body }}
+          generate_release_notes: false
