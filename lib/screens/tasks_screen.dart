@@ -480,7 +480,7 @@ class _TasksScreenState extends State<TasksScreen>
                 context,
                 theme,
                 'tasksSectionActive',
-                Colors.green,
+                _shelfTint(theme, done: false),
               ),
             ),
           ),
@@ -495,7 +495,7 @@ class _TasksScreenState extends State<TasksScreen>
                 context,
                 theme,
                 'tasksSectionDone',
-                Colors.blueGrey,
+                _shelfTint(theme, done: true),
               ),
             ),
           ),
@@ -552,6 +552,18 @@ class _TasksScreenState extends State<TasksScreen>
         ),
       ),
     );
+  }
+
+  /// Цвет заголовка полки. На светлой теме — насыщенный, на тёмной —
+  /// осветлённый: чистые `green`/`blueGrey` на тёмном фоне читались бы
+  /// плохо (низкий контраст), а «Выполненные» вообще сливались бы с фоном.
+  Color _shelfTint(ThemeData theme, {required bool done}) {
+    final dark = theme.brightness == Brightness.dark;
+    if (done) {
+      // «Выполненные» — приглушённый сине-серый: спокойнее активных.
+      return dark ? const Color(0xFF9FB2C4) : const Color(0xFF546E7A);
+    }
+    return dark ? const Color(0xFF7BD88F) : const Color(0xFF2E7D32);
   }
 
   /// Заголовок полки: цветное название + растворяющаяся линия до края —

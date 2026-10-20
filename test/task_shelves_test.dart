@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -58,7 +59,11 @@ void main() {
 
   /// Реальный файловый I/O внутри fake-async зоны testWidgets не проходит,
   /// поэтому и запись, и загрузку выполняем через [WidgetTester.runAsync].
-  Future<void> seedAndPump(WidgetTester tester, List<Task> tasks) async {
+  Future<void> seedAndPump(
+    WidgetTester tester,
+    List<Task> tasks, {
+    ThemeData? theme,
+  }) async {
     await tester.runAsync(() async {
       final svc = TaskService();
       for (final t in tasks) {
@@ -71,7 +76,7 @@ void main() {
     await tester.pumpWidget(
       LocaleProvider(
         locale: const Locale('ru'),
-        child: const MaterialApp(home: TasksScreen()),
+        child: MaterialApp(theme: theme, home: const TasksScreen()),
       ),
     );
     await tester.pump();
@@ -79,6 +84,24 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
     await tester.pump(const Duration(milliseconds: 600));
+  }
+
+  /// Относительная яркость цвета (WCAG 2.1).
+  double _luminance(Color c) {
+    double ch(double v) {
+      v = v / 255.0;
+      return v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+    }
+
+    return 0.2126 * ch(c.r * 255) + 0.7152 * ch(c.g * 255) + 0.0722 * ch(c.b * 255);
+  }
+
+  double _contrast(Color a, Color b) {
+    final la = _luminance(a);
+    final lb = _luminance(b);
+    final hi = math.max(la, lb);
+    final lo = math.min(la, lb);
+    return (hi + 0.05) / (lo + 0.05);
   }
 
   /// Текст задачи рендерится через RichText (AnimatedStrikeText), поэтому
@@ -162,4 +185,39 @@ void main() {
       reason: 'галку снять нельзя — задача остаётся выполненной',
     );
   });
+
+  /// «Всё читается»: заголовки полок должны быть контрастны фону в обеих
+  /// темах — приглушённый цвет «Выполненных» на тёмном фоне сливался бы.
+  for (final dark in [false, true]) {
+    testWidgets(
+      'заголовки полок читаются на ${dark ? 'тёмной' : 'светлой'} теме',
+      (tester) async {
+        final base = ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF8E6DB8),
+            brightness: dark ? Brightness.dark : Brightness.light,
+          ),
+        );
+        await seedAndPump(
+          tester,
+          [
+            Task(id: 'a1', title: 'Купить молоко'),
+            Task(id: 'a2', title: 'Позвонить маме', done: true),
+          ],
+          theme: base,
+        );
+
+        final bg = base.scaffoldBackgroundColor;
+        for (final label in ['Активные', 'Выполненные']) {
+          final text = tester.widget<Text>(find.text(label));
+          final color = text.style!.color!;
+          expect(
+            _contrast(color, bg),
+            greaterThanOrEqualTo(4.5),
+            reason: '«$label» должен читаться на фоне (WCAG AA)',
+          );
+        }
+      },
+    );
+  }
 }
