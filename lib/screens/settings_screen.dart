@@ -21,7 +21,6 @@ import '../services/settings_service.dart';
 import '../services/timer_service.dart';
 import '../services/prefs.dart';
 import '../services/json_file.dart';
-import '../utils/wide_dash_formatter.dart';
 import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../services/nutrition_service.dart';
@@ -2542,7 +2541,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   obscureText: !_aiKeyVisible,
                                   textInputAction: TextInputAction.done,
                                   maxLength: 500,
-                                  inputFormatters: [WideDashFormatter()],
+                                  inputFormatters: const [],
                                   enableSuggestions: false,
                                   autocorrect: false,
                                   maxLines: 1,
@@ -3193,7 +3192,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14),
                 leading: const Icon(
-                  Icons.hardware_rounded,
+                 Icons.hardware_rounded,
                   color: Color(0xFF8D6E63),
                 ),
                 title: Text(Translations.t('forgeTitle', routeContext, 'Кузница')),
@@ -3217,6 +3216,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   );
                 },
+
               ),
             ],
           );

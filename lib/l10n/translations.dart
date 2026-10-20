@@ -2160,8 +2160,7 @@ class Translations {
           'Fournisseurs gratuits : Kilo, OVHcloud, Murakumo et AI Horde. La clé Poolside est facultative.',
       'aiGuideKeyNoteProviders': 'Kilo, OVHcloud, Murakumo et AI Horde',
       'aiGuideKeyNoteTail': '',
-      'geminiKey':
-          'Clé Gemini (optionnelle — l’Ada la plus vive et la plus chaude)',
+      'geminiKey': 'Clé Gemini (optionnelle — l’Ada la plus vive et la plus chaude)',
       'geminiKeyHint': 'Colle ta clé Google AI Studio',
       'freeFallbacks': 'Solutions de secours gratuites :',
       'aiResort': 'L’IA est en vacances, attends un peu',

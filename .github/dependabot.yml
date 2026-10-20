@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # Flutter/Dart пакеты — автоматические обновления зависимостей.
+  - package-ecosystem: "pub"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "pub"
+    reviewers:
+      - "@wxstdo-boop"
+    assignees:
+      - "@wxstdo-boop"
+
+  # GitHub Actions workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/.github/workflows"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "@wxstdo-boop"
+    assignees:
+      - "@wxstdo-boop"
