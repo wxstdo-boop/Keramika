@@ -182,14 +182,19 @@ class _TasksScreenState extends State<TasksScreen>
     }
   }
 
-  /// Отметить/снять задачу. При выполнении Ада «реально» выдаёт награду —
-  /// снекбаром, когда достигнута новая веха (все сделано / N всего / стрик).
-  /// Защита от двойного срабатывания: палец на слабом экране может
-  /// «дрогнуть» и GestureDetector выдаст второй tap — значок мигал бы
-  /// туда-обратно. Повторный toggle в течение 500 мс игнорируется.
+  /// Отметить задачу выполненной. Отметка НЕОБРАТИМА: повторный тап по уже
+  /// выполненной задаче ничего не делает — галка не снимается. При выполнении
+  /// Ада «реально» выдаёт награду — снекбаром, когда достигнута новая веха
+  /// (все сделано / N всего / стрик).
+  /// Защита от двойного срабатывания: палец на слабом экране может «дрогнуть»
+  /// и GestureDetector выдаст второй tap — значок мигал бы туда-обратно.
+  /// Повторный toggle в течение 500 мс игнорируется.
   DateTime? _lastTaskTap;
 
   Future<void> _toggleTask(Task task) async {
+    // Снять галку нельзя: выполненная задача уходит на полку «Выполненные»
+    // и остаётся там. Вернуть её в работу можно только правкой задачи.
+    if (task.done) return;
     final now = DateTime.now();
     if (_lastTaskTap != null &&
         now.difference(_lastTaskTap!) < const Duration(milliseconds: 500)) {
@@ -198,9 +203,8 @@ class _TasksScreenState extends State<TasksScreen>
     _lastTaskTap = now;
     // Приятный тактильный отклик: лёгкий «клик» при отметке задачи.
     Haptics.select();
-    final wasDone = task.done;
     await _service.toggle(task.id);
-    if (!mounted || !wasDone) return; // награждаем только за ВЫПОЛНЕНИЕ
+    if (!mounted) return;
     try {
       final lang = await SettingsService.loadLanguageCode();
       final rewards = await AiGuideService.collectRewards(lang);
@@ -430,11 +434,16 @@ class _TasksScreenState extends State<TasksScreen>
   }
 
   /// Единственный скролл раздела задач: и для списка, и для пустого состояния.
-  /// Сам ReorderableListView — основной скроллер (без shrinkWrap и без
-  /// вложенного SingleChildScrollView): элементы строятся лениво, только
-  /// видимые. На слабых телефонах длинный список раньше собирался целиком
-  /// за один кадр и «замирал» — теперь прокручивается плавно даже с
-  /// десятками задач.
+  /// Сам список — [SliverReorderableList] внутри [CustomScrollView]: элементы
+  /// строятся лениво, только видимые. На слабых телефонах длинный список раньше
+  /// собирался целиком за один кадр и «замирал» — теперь прокручивается плавно
+  /// даже с десятками задач.
+  ///
+  /// Пока выполненных задач нет — один список без заголовков (как раньше).
+  /// Как только появляется хотя бы одна выполненная — список делится на две
+  /// полки «Активные» и «Выполненные» (по образцу Полезные/Вредные в
+  /// привычках). Полки — РАЗНЫЕ sliver-списки, поэтому выполненную задачу
+  /// нельзя перетащить обратно в активные.
   Widget _buildScrollList(
     BuildContext context,
     ThemeData theme,
@@ -442,51 +451,147 @@ class _TasksScreenState extends State<TasksScreen>
     List<Task> all,
   ) {
     final empty = tasks.isEmpty;
-    return ReorderableListView.builder(
+    final active = tasks.where((t) => !t.done).toList();
+    final done = tasks.where((t) => t.done).toList();
+    // Делим на полки ровно тогда, когда есть что положить на «Выполненные».
+    final split = done.isNotEmpty;
+
+    return CustomScrollView(
       key: const ValueKey('list'),
-      scrollController: _pillCtrl,
-      // Таблетка разделов + карусель категорий (+ карточка пустого состояния,
-      // если задач нет) — первый (непереставляемый) элемент списка: листаются
-      // вместе с задачами, как обычный контент.
-      header: _buildHeader(context, theme, empty),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      // AlwaysScrollable: иначе на пустом списке не работает pull-to-refresh
-      // (раньше это делал SingleChildScrollView пустого состояния).
+      controller: _pillCtrl,
+      // AlwaysScrollable: иначе на пустом списке не работает pull-to-refresh.
       physics: const AlwaysScrollableScrollPhysics(),
       scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
-      buildDefaultDragHandles: false,
-      itemCount: tasks.length,
-      proxyDecorator: (child, index, animation) =>
-          _taskDragProxy(child, theme, animation),
-      onReorderItem: (oldLocal, newLocal) {
-        // Локальный индекс (в отфильтрованном списке) → глобальный
-        // (в полном списке), чтобы reorder сохранял порядок и при
-        // активном фильтре категории.
-        final oldGlobal = all.indexOf(tasks[oldLocal]);
-        if (oldGlobal < 0) return;
-        int newGlobal;
-        if (newLocal >= tasks.length) {
-          newGlobal = all.indexOf(tasks.last) + 1;
-          if (newGlobal > all.length) newGlobal = all.length;
-        } else {
-          newGlobal = all.indexOf(tasks[newLocal]);
-          if (newGlobal < 0) newGlobal = oldGlobal;
-        }
-        if (newGlobal == oldGlobal) return;
-        _service.reorder(oldGlobal, newGlobal);
-      },
-      itemBuilder: (context, i) => KeyedSubtree(
-        key: ValueKey('item_task_${tasks[i].id}'),
-        // Плавная смена содержимого при переключении категории: задачи мягко
-        // проявляются (фейд + лёгкий подъём), а не подменяются рывком.
-        child: FadeTransition(
-          opacity: _revealFade,
-          child: SlideTransition(
-            position: _revealSlide,
-            child: _buildTaskCard(context, theme, tasks[i], i),
+      slivers: [
+        // Таблетка разделов + карусель категорий (+ карточка пустого
+        // состояния, если задач нет) — первый (непереставляемый) элемент
+        // списка: листаются вместе с задачами, как обычный контент.
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          sliver: SliverToBoxAdapter(
+            child: _buildHeader(context, theme, empty),
+          ),
+        ),
+        if (split && active.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: _shelfHeader(
+                context,
+                theme,
+                'tasksSectionActive',
+                Colors.green,
+              ),
+            ),
+          ),
+          _taskSliver(context, theme, active, all),
+        ] else
+          _taskSliver(context, theme, active, all),
+        if (split && done.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: _shelfHeader(
+                context,
+                theme,
+                'tasksSectionDone',
+                Colors.blueGrey,
+              ),
+            ),
+          ),
+          _taskSliver(context, theme, done, all),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 4)),
+      ],
+    );
+  }
+
+  /// Один переставляемый список задач (полка). Отдельный sliver на каждую
+  /// полку — так сохраняется ленивая сборка и перетаскивание не пересекает
+  /// границу между «Активными» и «Выполненными».
+  Widget _taskSliver(
+    BuildContext context,
+    ThemeData theme,
+    List<Task> list,
+    List<Task> all,
+  ) {
+    if (list.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      sliver: SliverReorderableList(
+        itemCount: list.length,
+        proxyDecorator: (child, index, animation) =>
+            _taskDragProxy(child, theme, animation),
+        onReorderItem: (oldLocal, newLocal) {
+          // Локальный индекс (в полке) → глобальный (в полном списке),
+          // чтобы reorder сохранял порядок и при активном фильтре категории.
+          final oldGlobal = all.indexOf(list[oldLocal]);
+          if (oldGlobal < 0) return;
+          int newGlobal;
+          if (newLocal >= list.length) {
+            newGlobal = all.indexOf(list.last) + 1;
+            if (newGlobal > all.length) newGlobal = all.length;
+          } else {
+            newGlobal = all.indexOf(list[newLocal]);
+            if (newGlobal < 0) newGlobal = oldGlobal;
+          }
+          if (newGlobal == oldGlobal) return;
+          _service.reorder(oldGlobal, newGlobal);
+        },
+        itemBuilder: (context, i) => KeyedSubtree(
+          key: ValueKey('item_task_${list[i].id}'),
+          // Плавная смена содержимого при переключении категории: задачи мягко
+          // проявляются (фейд + лёгкий подъём), а не подменяются рывком.
+          child: FadeTransition(
+            opacity: _revealFade,
+            child: SlideTransition(
+              position: _revealSlide,
+              child: _buildTaskCard(context, theme, list[i], i),
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  /// Заголовок полки: цветное название + растворяющаяся линия до края —
+  /// тот же приём, что у «Полезные/Вредные» в привычках. Появляется мягко
+  /// (фейд + подъём), чтобы деление списка на две полки не «щёлкало».
+  Widget _shelfHeader(
+    BuildContext context,
+    ThemeData theme,
+    String keyName,
+    Color tint,
+  ) {
+    final row = Padding(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+      child: Row(
+        children: [
+          Text(
+            Translations.t(keyName, context),
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: tint,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Divider(color: tint.withValues(alpha: 0.4))),
+        ],
+      ),
+    );
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 8),
+          child: child,
+        ),
+      ),
+      child: row,
     );
   }
 
@@ -561,6 +666,7 @@ class _TasksScreenState extends State<TasksScreen>
                             color: Colors.transparent,
                             borderRadius: BorderRadius.circular(16),
                             child: InkWell(
+                              key: ValueKey('task_toggle_${task.id}'),
                               onTap: () => _toggleTask(task),
                               splashColor: theme.colorScheme.primary.withValues(
                                 alpha: 0.14,
