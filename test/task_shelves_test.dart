@@ -87,7 +87,7 @@ void main() {
   }
 
   /// Относительная яркость цвета (WCAG 2.1).
-  double _luminance(Color c) {
+  double luminance(Color c) {
     double ch(double v) {
       v = v / 255.0;
       return v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
@@ -96,9 +96,9 @@ void main() {
     return 0.2126 * ch(c.r * 255) + 0.7152 * ch(c.g * 255) + 0.0722 * ch(c.b * 255);
   }
 
-  double _contrast(Color a, Color b) {
-    final la = _luminance(a);
-    final lb = _luminance(b);
+  double contrast(Color a, Color b) {
+    final la = luminance(a);
+    final lb = luminance(b);
     final hi = math.max(la, lb);
     final lo = math.min(la, lb);
     return (hi + 0.05) / (lo + 0.05);
@@ -212,7 +212,7 @@ void main() {
           final text = tester.widget<Text>(find.text(label));
           final color = text.style!.color!;
           expect(
-            _contrast(color, bg),
+            contrast(color, bg),
             greaterThanOrEqualTo(4.5),
             reason: '«$label» должен читаться на фоне (WCAG AA)',
           );
