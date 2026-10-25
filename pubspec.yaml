@@ -24,7 +24,7 @@ dependencies:
   # Возврат file_picker к ^10 ломает solve, а удаление share_plus (он нигде
   # не импортируется) откатывает file_picker и flutter_local_notifications
   # на старыеmajor-версии и ломает компиляцию. Не откатывать без нужды.
-  dynamic_color: ^1.9.0
+  dynamic_color: ^2.1.0
   characters: ^1.4.1
   cryptography: ^2.7.0
   flutter_secure_storage: 10.3.4
