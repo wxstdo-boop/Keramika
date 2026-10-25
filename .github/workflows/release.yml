@@ -1,12 +1,47 @@
 name: release
 
-# Сборка и публикация релиза по тегу вида v1.6.46+37120
-# (versionName+versionCode — как в pubspec.yaml). Ассеты переименовываются
-# в Keramika-<version>-<abi>.apk, чтобы приложение могло выбрать свой ABI.
+# ЕДИНЫЙ путь сборки релиза. Остальные workflow (ship.yml — по пушу в main,
+# release-on-tag.yml — по тегу) только вызывают его через `uses:` и НЕ
+# содержат собственных шагов сборки. Так публикуемый APK гарантированно
+# собран тем же SDK, тем же lockfile и после тех же проверок, что и CI.
+#
+# Что проверяем перед сборкой (обязательно, в этом порядке):
+#   1. `flutter pub get --enforce-lockfile` — релиз собирается ровно с теми
+#      зависимостями, что зафиксированы в репозитории. Без флага pub может
+#      молча подтянуть другие версии, и установленный APK будет не тем, что
+#      проверял CI.
+#   2. `flutter analyze` — замечаний быть не должно.
+#   3. `flutter test` — тесты должны зелёными.
+#
+# Flutter зафиксирован на той же версии, что и в ci.yml: расхождение SDK
+# между проверкой и публикацией означает, что релиз собран не тем кодом,
+# который тестировали.
+
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      version_name:
+        description: 'Имя версии без build number, напр. 1.6.72'
+        required: true
+        type: string
+      version_code:
+        description: 'Build number из pubspec, напр. 45144'
+        required: true
+        type: string
+      tag:
+        description: 'Тег релиза, напр. v1.6.72+45144'
+        required: true
+        type: string
+      notes:
+        description: 'Заметки к релизу (пусто = GitHub сгенерирует сам)'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Только сборка, без публикации релиза'
+        required: false
+        type: string
+        default: 'false'
 
 permissions:
   contents: write
@@ -24,14 +59,42 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Тот же SDK, что в ci.yml. Плавающий `channel: stable` означал бы,
+          # что релиз может собраться на непротестированной версии Flutter.
+          flutter-version: '3.47.5'
+          cache: true
 
-      - name: Восстановить keystore из секретов
+      - name: Применить версию
+        run: |
+          set -euo pipefail
+          sed -i "s|^version: .*|version: ${{ inputs.version_name }}+${{ inputs.version_code }}|" pubspec.yaml
+          # kAppVersion обязан совпадать с versionName: регрессионный тест
+          # app_version_test.dart сверяет константу с pubspec.yaml и роняет
+          # сборку при расхождении. Сборка по тегу тоже должна обновлять её,
+          # иначе релиз не соберётся.
+          if [ -f lib/services/app_version.dart ]; then
+            sed -i -E "s|^const String kAppVersion = '[^']*';|const String kAppVersion = '${{ inputs.version_name }}';|" lib/services/app_version.dart
+            grep -n "kAppVersion" lib/services/app_version.dart
+          fi
+          grep '^version:' pubspec.yaml
+
+      - name: Зависимости
+        run: flutter pub get --enforce-lockfile
+
+      - name: Анализ
+        run: flutter analyze
+
+      - name: Тесты
+        run: flutter test --concurrency=1
+
+      - name: Распаковать keystore
         env:
           KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          # См. ship.yml: пустой секрет давал невнятное «Tag number over 30».
+          # Пустые секреты давали загадочное «KeytoolException: Tag number over
+          # 30 is not supported» на этапе packageRelease — падал не Gradle, а
+          # разбор пустого файла. Проверяем вход явно и объясняем причину.
           if [ -z "$KS_B64" ]; then
             echo "::error::Секрет KEYSTORE_BASE64 пуст — подписать release-сборку нечем. Добавь секреты репозитория: KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS."
             exit 1
@@ -48,34 +111,45 @@ jobs:
           storeFile=keystore.jks
           EOF
 
-      - run: flutter pub get
-
       - name: Настройки Gradle для CI
         run: |
           set -euo pipefail
-          # См. ship.yml: локальный heap 1 ГБ вызывает GC-троттлинг демона на
-          # раннере. Поднимаем память только для CI.
+          # android/gradle.properties подогнан под домашнюю машину (~8 ГБ RAM,
+          # heap 1 ГБ) — на раннере этого мало: R8/dexing вызывают GC-троттлинг,
+          # и Gradle убивает демон («the JVM garbage collector is thrashing»).
+          # На раннере 16 ГБ / 4 ядра, поэтому поднимаем память только здесь,
+          # не трогая локальные настройки разработчика.
           sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|' android/gradle.properties
           sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' android/gradle.properties
           sed -i 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
           grep -E '^(org.gradle.jvmargs|org.gradle.workers.max|kotlin.daemon.jvmargs)=' android/gradle.properties
 
-      - run: flutter build apk --release --split-per-abi
+      - name: Сборка APK
+        run: flutter build apk --release --split-per-abi
 
       - name: Переименовать APK с версией
         run: |
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          set -euo pipefail
           cd build/app/outputs/flutter-apk
           for f in *-release.apk; do
             abi="${f%-release.apk}"
-            mv "$f" "Keramika-${VERSION}-${abi}.apk"
+            mv "$f" "Keramika-${{ inputs.version_name }}+${{ inputs.version_code }}-${abi}.apk"
           done
           ls -la
 
       - name: Вычислить SHA-256 для APK
         id: hashes
+        env:
+          NOTES: ${{ inputs.notes }}
         run: |
           {
+            # Заметки автора — если есть — идут первыми, таблица хешей
+            # остаётся в конце при любом варианте: без неё автообновление
+            # сверяет файл по пустому digest и отменяет установку.
+            if [ -n "$NOTES" ]; then
+              echo "$NOTES"
+              echo ""
+            fi
             echo "## SHA-256 суммы"
             echo ""
             echo "Ассеты проверяются по SHA-256 при автообновлении."
@@ -93,9 +167,21 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Артефакт (dry_run)
+        if: ${{ inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: Keramika-${{ inputs.tag }}
+          path: build/app/outputs/flutter-apk/*.apk
+
       - name: Публикация релиза
+        if: ${{ inputs.dry_run != 'true' }}
         uses: softprops/action-gh-release@v3
         with:
-          files: build/app/outputs/flutter-apk/*.apk
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          # Тело — всегда таблица SHA-256 (плюс заметки автора, если есть).
+          # Сгенерированные GitHub заметки добавляются к нему.
           body: ${{ steps.hashes.outputs.body }}
-          generate_release_notes: false
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/*.apk

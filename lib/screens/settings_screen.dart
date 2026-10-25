@@ -17,6 +17,7 @@ import '../widgets/ada_icon.dart';
 import '../widgets/settings_search_icon.dart';
 import '../widgets/press_scale.dart';
 import '../services/alarm_service.dart';
+import '../services/app_version.dart';
 import '../services/settings_service.dart';
 import '../services/timer_service.dart';
 import '../services/prefs.dart';
@@ -196,6 +197,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       _checkFullScreenGrant(),
       _loadAiGuide(),
       _loadAiTracking(),
+      // Версию уточняем по установленному APK: на Android она отличается
+      // от pubspec, если сборка собрана из другой ветки.
+      AppVersion.refresh(),
     ]);
     if (mounted) setState(() {});
   }
@@ -1596,8 +1600,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Text(
-                        // В «О приложении» — именно «1.3-release», как просил.
-                        'v$appVersion-release',
+                        // Версия — из установленного APK (Android) или из
+                        // pubspec (web/десктоп). Раньше здесь стояла
+                        // захардкоженная «1.3», и приложение на 1.6.72
+                        // показывало пользователю старую версию.
+                        'v${AppVersion.current}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

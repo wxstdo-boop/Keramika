@@ -447,7 +447,11 @@ class NotificationService extends ChangeNotifier {
     _enabled = value;
     globalPrefs.setBool(_enabledKey, value);
     if (!value && _isAndroid) {
-      cancelAll();
+      // `await` обязателен: без него `cancelAll()` уходит в фон и доживает
+      // уже после возврата из `setEnabled`. Вызывающий код (и тесты) успевают
+      // снести канал уведомлений, и «плавающий» вызов падает с
+      // MissingPluginException уже после успешного завершения операции.
+      await cancelAll();
     }
     notifyListeners();
   }

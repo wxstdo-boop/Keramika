@@ -1,0 +1,47 @@
+name: release-on-tag
+
+# Сборка релиза по тегу вида v1.6.72+45144 (versionName+versionCode — как в
+# pubspec.yaml). Ассеты переименовываются в Keramika-<version>-<abi>.apk,
+# чтобы приложение могло выбрать свой ABI.
+#
+# Самой сборки здесь нет: её выполняет общий процесс
+# `.github/workflows/release.yml` — тот же, что зовёт ship.yml. Так релиз по
+# тегу и авторелиз по пушу собираются одинаково: один и тот же Flutter SDK,
+# зафиксированный lockfile, analyze и тесты перед сборкой.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Разобрать тег
+        id: ver
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # Формат тега: v<versionName>+<versionCode>, напр. v1.6.72+45144.
+          if ! [[ "$TAG" =~ ^v([0-9]+(\.[0-9]+)*)\+([0-9]+)$ ]]; then
+            echo "::error::Тег «$TAG» не разбирается: нужен формат v<version>+<code>, напр. v1.6.72+45144."
+            exit 1
+          fi
+          echo "name=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          echo "code=${BASH_REMATCH[3]}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Собираем ${TAG}"
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    uses: ./.github/workflows/release.yml
+    with:
+      version_name: ${{ needs.release.outputs.name }}
+      version_code: ${{ needs.release.outputs.code }}
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit

@@ -2,10 +2,17 @@ import 'package:flutter/widgets.dart';
 import 'locale_provider.dart';
 import '../models/alarm.dart';
 
-const appVersion = '1.3';
-
 class Translations {
   Translations._();
+
+  /// Словари переводов в исходном виде — только для тестов.
+  ///
+  /// Отдаём наружу, чтобы тест паритета работал с настоящими данными
+  /// приложения, а не с разбором исходника текстом: многострочные значения
+  /// и значения в кавычках такой разбор ломает. Ключи приватные, поэтому
+  /// наружу смотрит только сам тест.
+  @visibleForTesting
+  static Map<String, Map<String, String>> get rawData => _data;
 
   static const _data = <String, Map<String, String>>{
     'en': {
@@ -571,6 +578,21 @@ class Translations {
       'forgeSubtitle': 'Chat with the agent: ask about the code or ask it to change it.',
       'forgeTokenSection': 'GITHUB ACCESS',
       'forgeTokenHint': 'Fine-grained: Contents, Pull requests — read and write.',
+      'startupDiagTitle': 'Keramika stopped safely',
+      'startupDiagBody':
+          'Keramika could not finish starting and stopped before it drew the '
+          'first screen. Nothing was changed on disk. You can retry, or '
+          'copy/save the details below to report the problem.',
+      'startupDiagDetailsTitle': 'Technical details',
+      'startupDiagCopy': 'Copy',
+      'startupDiagSave': 'Save log',
+      'startupDiagSaved': 'Log saved:',
+      'startupDiagSaveFailed': 'Could not save the log to a file.',
+      'startupDiagCopied': 'Copied to clipboard.',
+      'startupDiagRetry': 'Try again',
+      'startupDiagRetrying': 'Retrying…',
+      'startupDiagRetryFailed':
+          'Restart did not succeed. The error below is unchanged.',
       'forgeTokenCheck': 'Save',
       'forgeTokenForget': 'Forget token',
       'forgeTokenOk': 'Token works',
@@ -611,6 +633,44 @@ class Translations {
       'changePinBlur': 'PIN lock now blurs the app in recent apps',
       'changeNotifIcon': 'Notification icon — signature K badge',
       'changeAlarmFix': 'Alarms: sounds restored, time picker works with drag',
+      'changeTaskShelvesContrast':
+          'Task shelves: headings are now readable in both light and dark themes',
+      'changeLintCleanup':
+          'Internal cleanup: test helpers no longer use underscore-prefixed names',
+      'changeTaskShelves': 'Tasks are split into "Active" and "Completed" shelves',
+      'changeTaskMarkFinal':
+          'Completing a task is final — it moves to the completed shelf',
+      'changeCIUpdate':
+          'Build pipeline updated: newer GitHub Actions and a fixed lint job',
+      'changeCategoryDrag':
+          'Categories can be dragged to reorder them in the task editor',
+      'changeCategoryReorder':
+          'Category order changes smoothly and is remembered',
+      'changeRemindAllCircle':
+          '"Remind all" now matches the tone of the buttons next to it',
+      'changePinSmooth':
+          'The lock screen and habit ring animate smoothly',
+      'changeFlockEdges':
+          'The flock of birds fades in and out instead of being cut off',
+      'changeForgeTokenSave':
+          'Forge: saving a GitHub token now works — the button comes back to life',
+      'changeForgeAgent':
+          'Forge is a real chat agent: it answers questions and edits the code',
+      'changeForgePr':
+          'Agent changes go to a branch and open a pull request for review',
+      'changeForgeFree':
+          'Forge works out of the box on built-in free providers — no API key needed',
+      'changeForgeSection':
+          'Developer Corner gained the Forge section for repository edits',
+      'changeForgeEntry': 'Forge is reachable from Settings, in three languages',
+      'changeCIMemory':
+          'Release builds no longer fail on the runner for lack of Gradle memory',
+      'changeCISigning':
+          'Signing secrets are checked upfront, with a clear error instead of a crash',
+      'changeAutoUpdateName':
+          'Auto-update compares versions by name, so it works with split APKs',
+      'changeHamster':
+          'Hamster: statistics, search and a faster PIN screen',
       'changeMutilatedTheme':
           'New theme MUTILATED — light bloody red with faint splatter overlay',
       'changeElegantEgg':
@@ -1427,6 +1487,21 @@ class Translations {
       'forgeTokenSection': 'ДОСТУП К GITHUB',
       'forgeTokenHint':
           'Fine-grained, Contents и Pull requests: read and write.',
+      'startupDiagTitle': 'Keramika остановилась безопасно',
+      'startupDiagBody':
+          'Keramika не смогла завершить запуск и остановилась до отрисовки '
+          'первого экрана. На диске ничего не изменилось. Можно повторить '
+          'попытку или скопировать/сохранить подробности ниже.',
+      'startupDiagDetailsTitle': 'Технические подробности',
+      'startupDiagCopy': 'Копировать',
+      'startupDiagSave': 'Сохранить лог',
+      'startupDiagSaved': 'Лог сохранён:',
+      'startupDiagSaveFailed': 'Не удалось сохранить лог в файл.',
+      'startupDiagCopied': 'Скопировано в буфер обмена.',
+      'startupDiagRetry': 'Попробовать снова',
+      'startupDiagRetrying': 'Повторяем…',
+      'startupDiagRetryFailed':
+          'Перезапуск не удался. Ошибка ниже осталась прежней.',
       'forgeTokenCheck': 'Сохранить',
       'forgeTokenForget': 'Забыть токен',
       'forgeTokenOk': 'Токен рабочий',
@@ -1470,6 +1545,40 @@ class Translations {
       'changeNotifIcon': 'Иконка уведомлений — фирменный бейдж с K',
       'changeAlarmFix':
           'Будильники: восстановлены звуки, выбор времени работает зажатием',
+      'changeTaskShelvesContrast':
+          'Полки задач: заголовки теперь читаются и в светлой, и в тёмной теме',
+      'changeLintCleanup':
+          'Внутренняя уборка: тестовые помощники больше не начинаются с подчёркивания',
+      'changeTaskShelves': 'Задачи разделены на полки «Активные» и «Выполненные»',
+      'changeTaskMarkFinal':
+          'Выполнение задачи окончательно — она переезжает на полку выполненных',
+      'changeCIUpdate':
+          'Обновлён процесс сборки: новые GitHub Actions и починенная проверка lint',
+      'changeCategoryDrag':
+          'Категории можно перетаскивать, меняя их порядок в редакторе задачи',
+      'changeCategoryReorder': 'Порядок категорий меняется плавно и запоминается',
+      'changeRemindAllCircle':
+          '«Вспомнить всё» теперь того же тона, что и соседние кнопки',
+      'changePinSmooth': 'Экран блокировки и круг привычек анимируются плавно',
+      'changeFlockEdges': 'Стая птиц мягко входит и гаснет, а не обрезается',
+      'changeForgeTokenSave':
+          'Кузница: токен GitHub сохраняется — кнопка оживает',
+      'changeForgeAgent':
+          'Кузница — полноценный чат-агент: отвечает на вопросы и правит код',
+      'changeForgePr':
+          'Правки агента уходят в ветку и открывают pull request на проверку',
+      'changeForgeFree':
+          'Кузница работает «из коробки» на встроенных бесплатных провайдерах',
+      'changeForgeSection':
+          'В уголке разработчика появился раздел Кузницы для правок репозитория',
+      'changeForgeEntry': 'Кузница доступна из Настроек, на трёх языках',
+      'changeCIMemory':
+          'Сборка релиза больше не падает на раннере из-за нехватки памяти Gradle',
+      'changeCISigning':
+          'Секреты подписи проверяются заранее: внятная ошибка вместо падения',
+      'changeAutoUpdateName':
+          'Автообновление сравнивает версии по имени — работает и для split APK',
+      'changeHamster': 'ХАМСТЕР: статистика, поиск и ускоренный PIN-экран',
       'changeMutilatedTheme':
           'Новая тема MUTILATED — светлая кроваво-красная с еле заметными пятнами',
       'changeElegantEgg':
@@ -2125,8 +2234,6 @@ class Translations {
           'Ada est maintenant en mini-fenêtre au-dessus des autres apps — fermez-la là-bas',
       'aiOverlayPermissionHint':
           'Autorisez Keramika à s’afficher par-dessus les autres apps pour activer la mini-fenêtre',
-      'aiTrackingNoPerm':
-          'Le suivi Ada est activé, mais les notifications sont bloquées — autorisez-les dans les réglages',
       'aiOverlayEmpty': 'Discute avec Ada',
       'aiInputHint': 'Message…',
       'pinLimit': 'Vous pouvez épingler jusqu’à 10 messages',
@@ -2294,6 +2401,21 @@ class Translations {
       'forgeSubtitle': 'Discussion avec l’agent : pose une question ou demande une modification.',
       'forgeTokenSection': 'ACCÈS GITHUB',
       'forgeTokenHint': 'Fine-grained : Contents, Pull requests — read and write.',
+      'startupDiagTitle': 'Keramika s’est arrêtée en sécurité',
+      'startupDiagBody':
+          'Keramika n’a pas pu terminer son démarrage et s’est arrêtée avant '
+          'le premier écran. Rien n’a changé sur le disque. Tu peux réessayer '
+          'ou copier/enregistrer les détails ci-dessous.',
+      'startupDiagDetailsTitle': 'Détails techniques',
+      'startupDiagCopy': 'Copier',
+      'startupDiagSave': 'Enregistrer le log',
+      'startupDiagSaved': 'Log enregistré :',
+      'startupDiagSaveFailed': 'Impossible d’enregistrer le log dans un fichier.',
+      'startupDiagCopied': 'Copié dans le presse-papiers.',
+      'startupDiagRetry': 'Réessayer',
+      'startupDiagRetrying': 'Nouvelle tentative…',
+      'startupDiagRetryFailed':
+          'Le redémarrage a échoué. L’erreur ci-dessous est inchangée.',
       'forgeTokenCheck': 'Enregistrer',
       'forgeTokenForget': 'Oublier le jeton',
       'forgeTokenOk': 'Jeton valide',
@@ -2337,6 +2459,44 @@ class Translations {
       'changeNotifIcon': 'Icône de notification — badge K signature',
       'changeAlarmFix':
           'Alarmes : sons restaurés, sélecteur d’heure fonctionne au glissement',
+      'changeTaskShelvesContrast':
+          'Étagères de tâches : les titres sont lisibles en thème clair et sombre',
+      'changeLintCleanup':
+          'Nettoyage interne : les helpers de test ne commencent plus par un tiret bas',
+      'changeTaskShelves':
+          'Les tâches sont réparties en étagères « Actives » et « Terminées »',
+      'changeTaskMarkFinal':
+          'Terminer une tâche est définitif — elle passe à l’étagère des tâches terminées',
+      'changeCIUpdate':
+          'Pipeline de build mis à jour : nouvelles GitHub Actions et job lint corrigé',
+      'changeCategoryDrag':
+          'On peut faire glisser les catégories pour les réordonner dans l’éditeur de tâche',
+      'changeCategoryReorder':
+          'L’ordre des catégories change en douceur et est mémorisé',
+      'changeRemindAllCircle':
+          '« Tout rappeler » adopte maintenant la teinte des boutons voisins',
+      'changePinSmooth':
+          'L’écran de verrouillage et l’anneau des habitudes s’animent en douceur',
+      'changeFlockEdges':
+          'La nuée d’oiseaux apparaît et disparaît en fondu au lieu d’être coupée',
+      'changeForgeTokenSave':
+          'Forge : l’enregistrement du jeton GitHub fonctionne, le bouton revit',
+      'changeForgeAgent':
+          'Forge est un vrai agent de discussion : il répond et modifie le code',
+      'changeForgePr':
+          'Les modifications de l’agent vont sur une branche et ouvrent une pull request',
+      'changeForgeFree':
+          'Forge fonctionne out of the box avec les fournisseurs gratuits intégrés',
+      'changeForgeSection':
+          'Le Coin Développeur a reçu la section Forge pour les modifications du dépôt',
+      'changeForgeEntry': 'Forge est accessible depuis les Réglages, en trois langues',
+      'changeCIMemory':
+          'Les builds de release ne plantent plus sur le runner par manque de mémoire Gradle',
+      'changeCISigning':
+          'Les secrets de signature sont vérifiés d’emblée : une erreur claire au lieu d’un crash',
+      'changeAutoUpdateName':
+          'La mise à jour compare les versions par nom, donc elle marche avec les APK séparés',
+      'changeHamster': 'Hamster : statistiques, recherche et écran PIN plus rapide',
       'changeMutilatedTheme':
           'Nouveau thème MUTILATED — rouge sang clair avec éclaboussures très discrètes',
       'changeElegantEgg':
@@ -2611,13 +2771,20 @@ class Translations {
   static String _lookup(String key, BuildContext context) {
     final code = LocaleProvider.of(context).languageCode;
     final byLocale = _data[code] ?? _data['en']!;
-    return byLocale[key] ?? key;
+    // Забытый перевод НЕ должен показываться пользователю как «someKeyName».
+    // Сначала пробуем текущую локаль, потом английский как надёжный
+    // источник, и лишь в самом конце — сам ключ (такого ключа в словарях
+    // просто нет: об этом предупреждает тест паритета локалей).
+    return byLocale[key] ?? _data['en']![key] ?? key;
   }
 
   static String t(String key, BuildContext context, [String? fallback]) {
     final code = LocaleProvider.of(context).languageCode;
     final byLocale = _data[code] ?? _data['en']!;
-    return _emdash(byLocale[key] ?? fallback ?? key);
+    // Порядок: текущая локаль → явный фолбек → английский → сам ключ.
+    // Фолбек раньше стоял раньше английского намеренно (вызывающий код
+    // знает, что писать), поэтому его приоритет сохраняем.
+    return _emdash(byLocale[key] ?? fallback ?? _data['en']![key] ?? key);
   }
 
   /// В приложении всё, что выглядит как «-», должно быть длинным тире «—».

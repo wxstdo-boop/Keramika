@@ -10,6 +10,190 @@ class ChangelogScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final entries = <_ChangelogEntry>[
       _ChangelogEntry(
+        version: '1.6.72',
+        date: '2026-10-20',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeTaskShelvesContrast',
+            context,
+            'Task shelves: headings are now readable in both light and dark themes',
+          ),
+          Translations.t(
+            'changeLintCleanup',
+            context,
+            'Internal cleanup: test helpers no longer use underscore-prefixed names',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.71',
+        date: '2026-10-20',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeTaskShelves',
+            context,
+            'Tasks are split into "Active" and "Completed" shelves',
+          ),
+          Translations.t(
+            'changeTaskMarkFinal',
+            context,
+            'Completing a task is final — it moves to the completed shelf',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.70',
+        date: '2026-10-19',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeCIUpdate',
+            context,
+            'Build pipeline updated: newer GitHub Actions and a fixed lint job',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.69',
+        date: '2026-10-19',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeCategoryDrag',
+            context,
+            'Categories can be dragged to reorder them in the task editor',
+          ),
+          Translations.t(
+            'changeCategoryReorder',
+            context,
+            'Category order changes smoothly and is remembered',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.68',
+        date: '2026-10-19',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeRemindAllCircle',
+            context,
+            '"Remind all" now matches the tone of the buttons next to it',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.67',
+        date: '2026-10-19',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changePinSmooth',
+            context,
+            'The lock screen and habit ring animate smoothly',
+          ),
+          Translations.t(
+            'changeFlockEdges',
+            context,
+            'The flock of birds fades in and out instead of being cut off',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.66',
+        date: '2026-10-18',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeForgeTokenSave',
+            context,
+            'Forge: saving a GitHub token now works — the button comes back to life',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.65',
+        date: '2026-10-18',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeForgeAgent',
+            context,
+            'Forge is a real chat agent: it answers questions and edits the code',
+          ),
+          Translations.t(
+            'changeForgePr',
+            context,
+            'Agent changes go to a branch and open a pull request for review',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.64',
+        date: '2026-10-18',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeForgeFree',
+            context,
+            'Forge works out of the box on built-in free providers — no API key needed',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.63',
+        date: '2026-10-18',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeForgeSection',
+            context,
+            'Developer Corner gained the Forge section for repository edits',
+          ),
+          Translations.t(
+            'changeForgeEntry',
+            context,
+            'Forge is reachable from Settings, in three languages',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.62',
+        date: '2026-10-18',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeCIMemory',
+            context,
+            'Release builds no longer fail on the runner for lack of Gradle memory',
+          ),
+          Translations.t(
+            'changeCISigning',
+            context,
+            'Signing secrets are checked upfront, with a clear error instead of a crash',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
+        version: '1.6.61',
+        date: '2026-10-18',
+        title: Translations.t('changelogTitle', context, "What's new"),
+        changes: [
+          Translations.t(
+            'changeAutoUpdateName',
+            context,
+            'Auto-update compares versions by name, so it works with split APKs',
+          ),
+          Translations.t(
+            'changeHamster',
+            context,
+            'Hamster: statistics, search and a faster PIN screen',
+          ),
+        ],
+      ),
+      _ChangelogEntry(
         version: '1.3-release',
         date: '2026-08-13',
         title: Translations.t('changelogTitle', context, "What's new"),

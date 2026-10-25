@@ -1,5 +1,13 @@
 name: ship
 
+# Автозапуск релиза по пушу в main.
+#
+# Здесь ТОЛЬКО две вещи: поднять версию и позвать общий процесс сборки
+# `.github/workflows/release.yml`. Сборка, проверки, подпись и публикация
+# живут в одном месте — иначе два релиз-процесса рано или поздно разъезжаются
+# (так и вышло: тег-сборка не проверяла lockfile, не гоняла тесты и брала
+# плавающий SDK).
+#
 # Триггеры:
 #   1. Push в main (когда изменились lib/, android/, test/, ios/, web/, ship.yml
 #      сам). Автоматически поднимает patch-версию и публикует GitHub Release.
@@ -47,6 +55,7 @@ on:
       - 'ios/**'
       - 'web/**'
       - '.github/workflows/ship.yml'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: write
@@ -56,7 +65,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ship:
+  bump:
     # Пропускаем триггер на push, если коммит начинается с «release:»
     # (это бамп, который сам ship сделал — не нужен рекурсивный запуск).
     # Для workflow_dispatch (ручной) условие всегда true.
@@ -64,20 +73,14 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       !startsWith(github.event.head_commit.message, 'release:')
     runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.ver.outputs.name }}
+      code: ${{ steps.ver.outputs.code }}
+      tag: ${{ steps.ver.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: zulu
-          java-version: '17'
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
 
       - name: Бамп версии
         id: ver
@@ -107,75 +110,20 @@ jobs:
             exit 1
           fi
           sed -i "s/^version: .*/version: ${NAME}+${CODE}/" pubspec.yaml
+          # `kAppVersion` в lib/services/app_version.dart обязан совпадать с
+          # versionName из pubspec.yaml — иначе регрессионный тест
+          # app_version_test.dart роняет сборку релизa, а пользователь в
+          # «О приложении» видит версию прошлого релиза. Бамп обновляет
+          # и pubspec.yaml, и эту константу — иначе первый же авторелиз
+          # после этого коммита был бы красным.
+          if [ -f lib/services/app_version.dart ]; then
+            sed -i -E "s/^const String kAppVersion = '[^']*';/const String kAppVersion = '${NAME}';/" lib/services/app_version.dart
+            grep -n "kAppVersion" lib/services/app_version.dart
+          fi
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
           echo "code=${CODE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Собираем ${TAG}"
-
-      - run: flutter pub get --enforce-lockfile
-
-      - name: Анализ
-        run: flutter analyze
-
-      - name: Тесты
-        run: flutter test --concurrency=1
-
-      - name: Распаковать keystore
-        env:
-          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          # Пустые секреты давали загадочное «KeytoolException: Tag number over
-          # 30 is not supported» на этапе packageRelease — падал не Gradle, а
-          # разбор пустого файла. Проверяем вход явно и объясняем причину.
-          if [ -z "$KS_B64" ]; then
-            echo "::error::Секрет KEYSTORE_BASE64 пуст — подписать release-сборку нечем. Добавь секреты репозитория: KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS."
-            exit 1
-          fi
-          printf '%s' "$KS_B64" | base64 -d > android/app/keystore.jks
-          if [ ! -s android/app/keystore.jks ]; then
-            echo "::error::KEYSTORE_BASE64 не декодируется в непустой файл — проверь, что это base64 от .jks/.p12."
-            exit 1
-          fi
-          cat > android/key.properties <<EOF
-          storePassword=${{ secrets.STORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=keystore.jks
-          EOF
-
-      - name: Настройки Gradle для CI
-        run: |
-          set -euo pipefail
-          # android/gradle.properties подогнан под домашнюю машину (~8 ГБ RAM,
-          # heap 1 ГБ) — на раннере этого мало: R8/dexing вызывают GC-троттлинг,
-          # и Gradle убивает демон («the JVM garbage collector is thrashing»).
-          # На раннере 16 ГБ / 4 ядра, поэтому поднимаем память только здесь,
-          # не трогая локальные настройки разработчика.
-          sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|' android/gradle.properties
-          sed -i 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' android/gradle.properties
-          sed -i 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
-          grep -E '^(org.gradle.jvmargs|org.gradle.workers.max|kotlin.daemon.jvmargs)=' android/gradle.properties
-
-      - name: Сборка APK
-        run: flutter build apk --release --split-per-abi
-
-      - name: Переименовать APK
-        run: |
-          set -euo pipefail
-          cd build/app/outputs/flutter-apk
-          for f in *-release.apk; do
-            abi="${f%-release.apk}"
-            mv "$f" "Keramika-${{ steps.ver.outputs.name }}+${{ steps.ver.outputs.code }}-${abi}.apk"
-          done
-          ls -la
-
-      - name: Артефакт (dry_run)
-        if: ${{ inputs.dry_run == 'true' }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: Keramika-${{ steps.ver.outputs.tag }}
-          path: build/app/outputs/flutter-apk/*.apk
 
       - name: Коммит версии
         if: ${{ inputs.dry_run != 'true' }}
@@ -183,19 +131,25 @@ jobs:
           set -euo pipefail
           git config user.name "keramika-ship"
           git config user.email "ship@users.noreply.github.com"
-          git add pubspec.yaml pubspec.lock
+          # kAppVersion обновляется бампом вместе с pubspec.yaml — иначе
+          # следующий же регрессионный тест упадёт на расхождении версий.
+          git add pubspec.yaml pubspec.lock lib/services/app_version.dart
           git commit -m "release: ${{ steps.ver.outputs.tag }}"
           # Только main: бамп не задевает forge и другие ветки.
-          # Пуш в main не перезапустит воркфлоу, т.к. коммит "release: v…"
-          # не попадает в paths-фильтр (lib/, android/, test/ не изменены).
+          # Пуш в main не перезапустит воркфлоу: коммит "release: v…" отсекается
+          # условием job (сообщение начинается с "release:"), даже если он
+          # задевает lib/ — paths-фильтр тут не единственная защита.
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
-      - name: Публикация релиза
-        if: ${{ inputs.dry_run != 'true' }}
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          name: ${{ steps.ver.outputs.tag }}
-          body: ${{ inputs.notes }}
-          generate_release_notes: true
-          files: build/app/outputs/flutter-apk/*.apk
+  publish:
+    # Сборка и публикация — общий процесс, тот же, что и по тегу.
+    needs: bump
+    runs-on: ubuntu-latest
+    uses: ./.github/workflows/release.yml
+    with:
+      version_name: ${{ needs.bump.outputs.name }}
+      version_code: ${{ needs.bump.outputs.code }}
+      tag: ${{ needs.bump.outputs.tag }}
+      notes: ${{ inputs.notes }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit

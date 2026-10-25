@@ -14,6 +14,7 @@ import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/wake_task_screen.dart';
 import 'screens/startup_recovery_screen.dart';
+import 'screens/startup_diagnostic_screen.dart';
 import 'widgets/mutilated_overlay.dart';
 import 'widgets/metel_overlay.dart';
 import 'l10n/locale_provider.dart';
@@ -971,6 +972,28 @@ Future<void> _restoreStartupBackup(Map<String, dynamic> backup) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _startApp();
+}
+
+/// Локаль для экрана диагностики сбоя старта.
+///
+/// Сбой мог произойти ДО того, как настройки прочитались, поэтому здесь
+/// ничего не бросаем: prefs могут быть недоступны, а значение — пустым или
+/// мусорным. Нужен просто «разумный» язык для текста ошибки.
+Locale _startupDiagnosticLocale() {
+  try {
+    final code = globalPrefs.getString('setting_locale') ?? '';
+    if (code == 'ru' || code == 'fr' || code == 'en') return Locale(code);
+  } catch (_) {
+    // Настройки недоступны — показываем английский.
+  }
+  return const Locale('en');
+}
+
+/// Запуск приложения. Вынесено из [main], чтобы экран диагностики сбоя
+/// старта мог повторить попытку: `onRetry` вызывает эту же функцию, и
+/// успешный запуск просто заменяет диагностический корень рабочим.
+Future<void> _startApp() async {
   // Edge-to-edge: контент рисуется ПОД системным статус-баром, чтобы
   // глобальное скругление углов (ClipRRect в корне) доходило и до верхних
   // углов экрана. Без этого сверху остаётся чёрная квадратная полоса
@@ -1010,30 +1033,16 @@ void main() async {
       );
       return;
     }
+    // Любой другой сбой старта — не «чёрный экран»: показываем экран
+    // диагностики с текстом ошибки, стеком и кнопкой «Попробовать снова».
+    // Раньше здесь был `rethrow`, и главный изолят умирал молча — пользователь
+    // видел только тёмное окно приложения без единого слова.
     runApp(
-      MaterialApp(
-        home: Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lock_outline, size: 48),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Keramika could not finish initializing.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text('$error', textAlign: TextAlign.center),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+      StartupDiagnosticApp(
+        locale: _startupDiagnosticLocale(),
+        error: '$error',
+        stack: '$stackTrace',
+        onRetry: _startApp,
       ),
     );
     return;

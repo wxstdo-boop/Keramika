@@ -69,15 +69,20 @@ class UpdateService {
     final uri = Uri.parse(
       'https://api.github.com/repos/$kUpdateRepoOwner/$kUpdateRepoName/releases/latest',
     );
-    final res = await http.get(
-      uri,
-      headers: const {
-        // GitHub требует User-Agent, иначе отдаёт 403.
-        'User-Agent': 'Keramika',
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    );
+    final res = await http
+        .get(
+          uri,
+          headers: const {
+            // GitHub требует User-Agent, иначе отдаёт 403.
+            'User-Agent': 'Keramika',
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        )
+        // Таймаут обязателен: без него зависшая сеть держит кнопку «Проверить
+        // обновления» в состоянии загрузки бесконечно. Тот же подход, что и
+        // в запросах к ИИ-провайдерам (см. ai_guide_service.dart).
+        .timeout(const Duration(seconds: 14));
     if (res.statusCode != 200) return null;
 
     final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -191,12 +196,20 @@ class UpdateService {
     try {
       final req = http.Request('GET', Uri.parse(info.downloadUrl));
       req.headers['User-Agent'] = 'Keramika';
-      final res = await client.send(req);
+      final res = await client
+          .send(req)
+          // Таймаут на открытие соединения: сервер может принять запрос и
+          // не ответить — без таймаута прогресс-бар зависает навсегда.
+          .timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) return null;
       final total = res.contentLength ?? info.size;
       var received = 0;
       final sink = file.openWrite();
-      await for (final chunk in res.stream) {
+      // Таймаут между пакетами: оборванная передача (сеть пропала) иначе
+      // выглядит как бесконечная загрузка.
+      await for (final chunk in res.stream.timeout(
+        const Duration(seconds: 30),
+      )) {
         sink.add(chunk);
         received += chunk.length;
         if (onProgress != null && total > 0) {
