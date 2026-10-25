@@ -37,8 +37,9 @@ jobs:
           echo "Собираем ${TAG}"
 
   publish:
+    # `runs-on` не указываем: раннер выбирает вызываемый workflow. С ним
+    # GitHub не разбирает файл и прогон падает с нулём job'ов.
     needs: release
-    runs-on: ubuntu-latest
     uses: ./.github/workflows/release.yml
     with:
       version_name: ${{ needs.release.outputs.name }}

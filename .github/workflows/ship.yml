@@ -143,8 +143,13 @@ jobs:
 
   publish:
     # Сборка и публикация — общий процесс, тот же, что и по тегу.
+    #
+    # `runs-on` здесь НЕЛЬЗЯ: job, который вызывает reusable workflow через
+    # `uses:`, не может задавать раннер — его выбирает вызываемый workflow.
+    # С `runs-on` GitHub не разбирает файл целиком: прогон падает за секунду
+    # с нулём job'ов, а в списке он называется путём `.github/workflows/ship.yml`
+    # вместо `ship`. Именно так авторелиз молча не запускался.
     needs: bump
-    runs-on: ubuntu-latest
     uses: ./.github/workflows/release.yml
     with:
       version_name: ${{ needs.bump.outputs.name }}
