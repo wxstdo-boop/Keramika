@@ -20,6 +20,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Без этого блока `needs.release.outputs.*` в publish пустой: job
+    # объявляет шаг с id: ver, но наружу ничего не отдаёт. GitHub при этом
+    # не падает, а молча передаёт в release.yml пустые version_name /
+    # version_code — релиз по тегу собирался с версией «+» и падал на
+    # pubspec. Проверяется actionlint'ом: "property name is not defined".
+    outputs:
+      name: ${{ steps.ver.outputs.name }}
+      code: ${{ steps.ver.outputs.code }}
+      tag: ${{ steps.ver.outputs.tag }}
     steps:
       - name: Разобрать тег
         id: ver

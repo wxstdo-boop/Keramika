@@ -1,0 +1,118 @@
+name: release-alert
+
+# «Если релиз не вышел, никто не знает» — это и было главной дырой.
+# Зависший/упавший ship виден только в списке Actions, куда никто не смотрит,
+# а автообновление в приложении при этом молчит до следующего пуша.
+#
+# Здесь на каждый завершившийся прогон сборки:
+#   * провал (failure / timed_out / startup_failure / cancelled)
+#     → открываем issue «Релиз не вышел — автоалерт» (или дополняем
+#       существующее ссылкой на новый прогон);
+#   * успех → закрываем открытое issue, если оно есть.
+#
+# Секретов не требует: работает на штатном GITHUB_TOKEN (issues: write).
+# Дубли комментариев отсекаются по URL прогона.
+#
+# `workflow_run` срабатывает только для workflow, лежащих в ветке по
+# умолчанию (main) — файл должен быть в main, иначе алертов не будет.
+
+on:
+  workflow_run:
+    workflows:
+      - ship
+      - release
+      - release-on-tag
+    types:
+      - completed
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: release-alert
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Открыть или закрыть issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_NUM: ${{ github.event.workflow_run.run_number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TITLE_TEXT: ${{ github.event.workflow_run.display_title }}
+        run: |
+          set -uo pipefail
+
+          ISSUE_TITLE="Релиз не вышел — автоалерт"
+
+          find_issue() {
+            gh issue list --repo "$REPO" --state open --limit 100 \
+              --json number,title \
+              --jq "[.[] | select(.title == \"$ISSUE_TITLE\")][0].number // empty"
+          }
+
+          write_body() {
+            {
+              echo "**$WF_NAME #$RUN_NUM** — \`$CONCLUSION\`"
+              echo
+              echo "- ветка: \`$BRANCH\`"
+              echo "- коммит: \`${SHA:0:7}\`"
+              echo "- прогон: $TITLE_TEXT"
+              echo
+              echo "Лог: $RUN_URL"
+              echo
+              echo "Релизная цепочка не доехала до публикации: пока issue открыт,"
+              echo "автообновление в приложении не получит новую версию."
+              echo
+              echo "Что дальше: если это не ручная отмена, релиз подхватит"
+              echo "release-watchdog в течение 30 минут. Если и он не справится —"
+              echo "смотреть лог выше и запускать ship вручную (workflow_dispatch)."
+            } > body.md
+          }
+
+          case "$CONCLUSION" in
+            success)
+              NUM=$(find_issue)
+              if [ -z "$NUM" ]; then
+                echo "Релиз прошёл, открытых алертов нет — делать нечего."
+                exit 0
+              fi
+              gh issue comment "$NUM" --repo "$REPO" \
+                --body "Релиз снова проходит: [$WF_NAME #$RUN_NUM]($RUN_URL). Закрываю алерт."
+              gh issue close "$NUM" --repo "$REPO"
+              echo "::notice::Алерт #$NUM закрыт — релиз снова зелёный."
+              exit 0
+              ;;
+            failure|timed_out|startup_failure|cancelled)
+              ;;
+            *)
+              echo "Прогон «$WF_NAME» завершился с conclusion=$CONCLUSION — не алерт-кейс."
+              exit 0
+              ;;
+          esac
+
+          write_body
+          NUM=$(find_issue)
+
+          if [ -z "$NUM" ]; then
+            gh issue create --repo "$REPO" --title "$ISSUE_TITLE" --body-file body.md
+            echo "::notice::Открыт алерт: релиз не вышел ($WF_NAME, $CONCLUSION)."
+          else
+            # Один и тот же прогон не должен комментировать дважды.
+            if gh api "repos/$REPO/issues/$NUM/comments" --paginate --jq '.[].body' 2>/dev/null | grep -qF "$RUN_URL"; then
+              echo "Про этот прогон уже написали в #$NUM — не дублирую."
+              exit 0
+            fi
+            gh issue comment "$NUM" --repo "$REPO" --body-file body.md
+            echo "::notice::Дополнен алерт #$NUM ($WF_NAME, $CONCLUSION)."
+          fi

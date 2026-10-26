@@ -2,19 +2,32 @@ name: release-watchdog
 
 # Страховка релизной цепочки: сборка релиза могла зависнуть/упасть,
 # GitHub сам запуск не повторит, и автообновление в приложении молча
-# не получает новый releases/latest (сегодняship провис ~3 часа, и
-# только повторный пуш вытянул релиз).
+# не получает новый releases/latest (так ship провис ~3 часа, и только
+# повторный пуш вытянул релиз).
 #
 # Каждые 30 минут сравниваем версию main с releases/latest:
-#   * main новее последних релиза  И нет активного ship/release-прогона
+#   * main новее последнего релиза И такого релиза ещё нет
+#     И нет активного ship/release-прогона
 #     → запускаем ТОТ ЖЕ release.yml (общий путь сборки), который
-#     вызывают ship и release-on-tag. Код трогать не пробуем — только
+#     вызывают ship и release-on-tag. Код не трогаем — только
 #     догоняем опоздавший релиз.
 #
 # `permissions: contents: write` обязателен: вызываемый release.yml
 # получает наш GITHUB_TOKEN, и без write права softprops/action-gh-release
 # не создаст релиз. `actions: read` — чтобы видеть чужие активные прогоны
 # и не заваливать их дублем.
+#
+# ГРАБЛИ, уже пойманные на этом файле (не повторять):
+#   1. Подсчёт активных прогонов через grep -cE 'ship|release' считал САМ
+#      этот прогон (его имя «release-watchdog» содержит «release»), поэтому
+#      ACTIVE всегда было не меньше 1 и watchdog не срабатывал ни разу.
+#      Теперь свой run_id исключается, а имена матчатся точно.
+#   2. Запросы к api.github.com шли БЕЗ токена. На общих IP раннеров
+#      лимит 60 запросов/час выбивается мгновенно, releases/latest
+#      отдавал ошибку, LTAG становился пустым, LCODE=0 → «main новее» →
+#      попытка опубликовать уже существующий релиз. Теперь все запросы
+#      авторизованы, а нечитаемый ответ API означает «пропустить цикл»,
+#      а не «публиковать».
 
 on:
   schedule:
@@ -40,6 +53,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Сетевые вызовы + jq: больше пяти минут тут делать нечего. Зависший
+    # curl не должен держать очередь до следующего цикла.
+    timeout-minutes: 10
     outputs:
       missing: ${{ steps.cmp.outputs.missing }}
       name: ${{ steps.cmp.outputs.name }}
@@ -53,54 +69,84 @@ jobs:
 
       - name: Сравнить main и releases/latest
         id: cmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SELF_RUN: ${{ github.run_id }}
+          FORCE: ${{ inputs.force || 'false' }}
         run: |
           set -uo pipefail
-          REPO="${{ github.repository }}"
+
+          # Любой сбой на этом шаге должен приводить к «ничего не делаем»:
+          # ложный релиз хуже пропущенного цикла.
+          skip() {
+            echo "::notice::$1"
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          api() {
+            curl -sS --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$@"
+          }
+
           CUR=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           NAME=${CUR%%+*}
           CODE=${CUR##*+}
+          if [ -z "$NAME" ] || [ -z "$CODE" ] || [ "$NAME" = "$CUR" ]; then
+            skip "Не удалось разобрать версию main (\"$CUR\") — пропускаю цикл."
+          fi
+          TAG="v${NAME}+${CODE}"
 
-          LATEST_JSON=$(curl -sf "https://api.github.com/repos/$REPO/releases/latest" || echo '{}')
-          LTAG=$(printf '%s' "$LATEST_JSON" | jq -r '.tag_name // empty')
-          # Из тега «v1.6.76+45148» достаём versionCode: последнее число.
+          # releases/latest: 200 — есть, 404 — релизов ещё нет, иное — ошибка.
+          RAW=$(api -w '\n%{http_code}' "https://api.github.com/repos/$REPO/releases/latest")
+          HTTP=$(printf '%s' "$RAW" | tail -n1)
+          BODY=$(printf '%s' "$RAW" | sed '$d')
+          case "$HTTP" in
+            200) LTAG=$(printf '%s' "$BODY" | jq -r '.tag_name // empty') ;;
+            404) LTAG="" ;;
+            *)   skip "Не удалось прочитать releases/latest (HTTP $HTTP) — пропускаю цикл, чтобы не публиковать дубль." ;;
+          esac
+          # Из тега «v1.6.78+45150» достаём versionCode: последнее число.
           LCODE=$(printf '%s' "$LTAG" | grep -oE '[0-9]+$' || echo 0)
+          LCODE=${LCODE:-0}
+
+          # Этот тег уже опубликован? Тогда догонять нечего, даже если
+          # versionCode в pubspec выше (например, релиз собран вручную).
+          if [ -n "$LTAG" ] && [ "$LTAG" = "$TAG" ]; then
+            skip "Релиз $TAG уже опубликован — всё на месте."
+          fi
 
           # Чужой прогон сборки уже гоняет (ship завис/упал, но висит)?
           # Тогда НЕ запускаем второй — дождёмся следующего цикла.
-          # `grep -c` печатает «0» и сам по себе рвёт pipeline (exit 1) —
-          # глушим через `|| true` и нормализуем пустое значение.
-          ACTIVE=$(
-            curl -sf "https://api.github.com/repos/$REPO/actions/runs?status=active&per_page=50" \
-              | jq -r '.workflow_runs[].name // empty' 2>/dev/null \
-              | grep -cE 'ship|release' || true
-          )
-          ACTIVE=${ACTIVE:-0}
-
-          FORCE="${{ inputs.force || 'false' }}"
-
-          if [ -z "$NAME" ] || [ -z "$CODE" ]; then
-            echo "::warning::Не удалось разобрать версию main — пропускаю цикл."
-            echo "missing=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          # Свой прогон (SELF_RUN) из счёта исключаем: иначе «release-watchdog»
+          # матчится по «release» и watchdog блокирует сам себя.
+          RUNS=$(api "https://api.github.com/repos/$REPO/actions/runs?status=active&per_page=100") || RUNS=""
+          if [ -z "$RUNS" ] || ! printf '%s' "$RUNS" | jq -e '.workflow_runs' >/dev/null 2>&1; then
+            skip "Не удалось прочитать список активных прогонов — пропускаю цикл."
           fi
+          ACTIVE=$(printf '%s' "$RUNS" | jq -r --arg self "$SELF_RUN" '
+            [ .workflow_runs[]
+              | select((.id | tostring) != $self)
+              | select(.name | test("^(ship|release|release-on-tag)$"))
+            ] | length')
 
           if [ "$CODE" -le "$LCODE" ] && [ "$FORCE" = "false" ]; then
-            echo "main=$NAME+$CODE не новее lastRelease=${LTAG:-нет} — всё на месте."
-            echo "missing=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            skip "main=$NAME+$CODE не новее lastRelease=${LTAG:-нет} — всё на месте."
           fi
 
           if [ "$ACTIVE" -gt 0 ] && [ "$FORCE" = "false" ]; then
-            echo "::notice::Опоздание на ${NAME}+${CODE}, но активен чужой ship/release-прогон (${ACTIVE}) — догоним в следующем цикле."
-            echo "missing=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            skip "Опоздание на $TAG, но активен чужой ship/release-прогон (${ACTIVE}) — догоним в следующем цикле."
           fi
 
-          echo "::notice::Publishing missed release ${NAME}+${CODE} (latest: ${LTAG:-нет}, active builds: ${ACTIVE})."
+          echo "::notice::Publishing missed release $TAG (latest: ${LTAG:-нет}, active builds: ${ACTIVE})."
           echo "missing=true" >> "$GITHUB_OUTPUT"
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
           echo "code=${CODE}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${NAME}+${CODE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
   publish:
     # `runs-on` здесь НЕЛЬЗЯ: job, который вызывает reusable workflow
@@ -108,12 +154,16 @@ jobs:
     # workflow. С `runs-on` GitHub не разбирает файл целиком: прогон
     # падает за секунду с нулём job'ов (та же грабли, что в ship.yml).
     needs: check
-    if: needs.check.missing == 'true'
+    # Только `needs.<job>.outputs.<name>`: сокращение `needs.check.missing`
+    # не существует, выражение молча даёт null, условие всегда false — job
+    # никогда не запускался. Это третья причина, по которой watchdog не
+    # догонял релизы (две другие — в шаге check выше).
+    if: needs.check.outputs.missing == 'true'
     uses: ./.github/workflows/release.yml
     with:
-      version_name: ${{ needs.check.name }}
-      version_code: ${{ needs.check.code }}
-      tag: ${{ needs.check.tag }}
+      version_name: ${{ needs.check.outputs.name }}
+      version_code: ${{ needs.check.outputs.code }}
+      tag: ${{ needs.check.outputs.tag }}
       notes: 'Автодогон релиза (release-watchdog): сборка основного прогона зависла или не успела опубликоваться.'
-      dry_run: 'false'
+      # dry_run не передаём: в release.yml у него default 'false'.
     secrets: inherit
