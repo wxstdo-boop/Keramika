@@ -49,6 +49,14 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    # Жёсткий потолок на весь прогон: сегодня Gradle-сборка зависала на
+    # занятом раннере на ~3 часа и «молча глотала» релиз — автообновление
+    # не могло дождаться нового releases/latest. 35 минут покрывает
+    # полный путь (flutter build ~5 + publish), но не даёт висеть вечно.
+    # После таймаута бег падает с conclusion=timeout, и у нас остаётся
+    # watchdog (release-watchdog.yml), который через несколько часов сам
+    # догонит пропущенный релиз.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
 
@@ -124,8 +132,30 @@ jobs:
           sed -i 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
           grep -E '^(org.gradle.jvmargs|org.gradle.workers.max|kotlin.daemon.jvmargs)=' android/gradle.properties
 
-      - name: Сборка APK
-        run: flutter build apk --release --split-per-abi
+      - name: Сборка APK (retry x3)
+        # Один неустойчивый раннер или зависший Gradle-демон больше не
+        # «глотает» релиз: до трёх попыток, каждая с чистыми выходами,
+        # чтобы повтор стартал с чистого состояния. Только полный провал
+        # всех трёх роняет шаг.
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "::group::Сборка APK, попытка ${attempt}/3"
+            rm -rf build/app/outputs/flutter-apk
+            if flutter build apk --release --split-per-abi; then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Сборка APK не удалась после 3 попыток"
+              exit 1
+            fi
+            echo "::warning::Попытка ${attempt} не удалась, перезапуск через 30 с..."
+            pkill -f GradleDaemon || true
+            sleep 30
+          done
+          ls -la build/app/outputs/flutter-apk/
 
       - name: Переименовать APK с версией
         run: |

@@ -25,15 +25,6 @@ class UpdatePill extends StatefulWidget {
 class _UpdatePillState extends State<UpdatePill>
     with SingleTickerProviderStateMixin {
   bool _busy = false;
-
-  /// Прогресс загрузки (0.0–1.0). Показываем в процентах прямо в таблетке,
-  /// чтобы долгое скачивание APK не выглядело как «зависло вечно».
-  double _progress = 0;
-
-  /// Идёт именно загрузка (а не просто проверка) — тогда метка крутится
-  /// с процентами, а не просто «Обновление».
-  bool _downloading = false;
-
   late final AnimationController _squirrel = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 680),
@@ -92,23 +83,8 @@ class _UpdatePillState extends State<UpdatePill>
         return;
       }
 
-      // Можем видеть прогресс в таблетке — без него долгое скачивание
-      // выглядит как «зависло вечно» (крутится белка, а % нет).
-      setState(() {
-        _downloading = true;
-        _progress = 0;
-      });
-      final path = await UpdateService.instance.download(
-        update,
-        onProgress: (p) {
-          if (!mounted) return;
-          // Обновляем только при изменении ≥ 5 % — иначе setState()
-          // на каждый chunk (сотни раз) — и UI трясёт.
-          if ((p - _progress).abs() >= 0.05 || p >= 1.0) {
-            setState(() => _progress = p);
-          }
-        },
-      );
+      // Молча качаем — без подтверждений и лишних диалогов.
+      final path = await UpdateService.instance.download(update);
       if (!mounted) return;
       if (path == null) {
         _toast(
@@ -159,8 +135,6 @@ class _UpdatePillState extends State<UpdatePill>
         _squirrel.value = 0;
         setState(() {
           _busy = false;
-          _downloading = false;
-          _progress = 0;
         });
       }
     }
@@ -174,18 +148,6 @@ class _UpdatePillState extends State<UpdatePill>
       icon: Icons.system_update_alt,
       groupKey: 'update',
     );
-  }
-
-  /// Подпись в покое: привычное «Обновление» (из переводов, запаска — она же).
-  String _idleLabel(BuildContext context) {
-    return Translations.t('update', context, 'Обновление');
-  }
-
-  /// Подпись при загрузке: «Обновление · 43%» — проценты снимают ощущение
-  /// «зависло вечно». До первого chunk показываем «Обновление · …».
-  String _downloadLabel(BuildContext context) {
-    final pct = _progress >= 1.0 ? 100 : (_progress * 100).floor();
-    return '${_idleLabel(context)} · ${_progress > 0 ? '$pct%' : '…'}';
   }
 
   @override
@@ -221,67 +183,39 @@ class _UpdatePillState extends State<UpdatePill>
                 width: 1,
               ),
             ),
-            child: Stack(
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 13,
-                      height: 13,
-                      child: AnimatedBuilder(
-                        animation: _squirrel,
-                        builder: (context, _) => CustomPaint(
-                          painter: _RunningSquirrelPainter(
-                            phase: _busy ? _squirrel.value : 0,
-                            color: cs.onPrimaryContainer,
-                            detailColor: cs.primaryContainer,
-                            running: _busy,
-                          ),
-                        ),
+                SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: AnimatedBuilder(
+                    animation: _squirrel,
+                    builder: (context, _) => CustomPaint(
+                      painter: _RunningSquirrelPainter(
+                        phase: _busy ? _squirrel.value : 0,
+                        color: cs.onPrimaryContainer,
+                        detailColor: cs.primaryContainer,
+                        running: _busy,
                       ),
                     ),
-                    const SizedBox(width: 3),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          // Во время загрузки показываем проценты: без них
-                          // скачивание APK выглядит как «зависло вечно».
-                          _downloading
-                              ? '${_downloadLabel(context)} '
-                              : _idleLabel(context),
-                          maxLines: 1,
-                          softWrap: false,
-                          style: badgeTextStyle.copyWith(
-                            fontSize: 10,
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-                if (_downloading)
-                  // Тонкий прогресс-бар по нижней кромке таблетки: читается
-                  // на любом фоне и двигается только вместе с прогрессом.
-                  Positioned(
-                    left: 8,
-                    right: 8,
-                    bottom: 0,
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(3),
-                        right: Radius.circular(3),
-                      ),
-                      child: LinearProgressIndicator(
-                        value: _progress,
-                        minHeight: 3,
-                        backgroundColor: cs.primary.withValues(alpha: 0.18),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Обновление',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: badgeTextStyle.copyWith(
+                        fontSize: 10,
                         color: cs.onPrimaryContainer,
                       ),
                     ),
                   ),
+                ),
               ],
             ),
           ),
