@@ -457,8 +457,13 @@ Future<void> _showExitDialog(
   const glassMs = 380;
   await showGeneralDialog<Object?>(
     context: context,
+    // Завеса прозрачная, а не чёрная: барьер не участвует в анимации
+    // маршрута — вспыхивает и гаснет мгновенно, и фон «чернеет».
+    // Приглушение рисует сам transitionBuilder — в цвете темы, вместе с
+    // blur и карточкой, симметрично в обе стороны. Тапы по ПИН-экрану
+    // всё так же перехватывают барьер (barrierDismissible: false).
     barrierDismissible: false,
-    barrierColor: Colors.black.withValues(alpha: 0.55),
+    barrierColor: Colors.transparent,
     // Анимация стекла: blur НЕ может жить внутри FadeTransition (слою
     // Opacity не остаётся валидного бэкдропа — экран заливает серым, см.
     // section_pill). Поэтому сам BackdropFilter — В transitionBuilder, и
@@ -466,43 +471,42 @@ Future<void> _showExitDialog(
     // 16, а контент под ним плавно всплывает и проявляется.
     transitionDuration: const Duration(milliseconds: glassMs),
     transitionBuilder: (context, animation, secondaryAnimation, child) {
-      // Кривая одна на оба прохода и СИММЕТРИЧНАЯ: плавный старт И плавная
-      // остановка. Раньше вперёд шёл easeOutCubic (рывок на старте), а назад
-      // easeInCubic — blur почти весь ход висел на ~16 и обваливался в самом
-      // конце, а масштаб наоборот уходил рывком; выход из окна читался как
-      // «подвисание». easeInOutCubic к тому же мягче по скорости в середине
-      // (пик 1.5x против 3x у easeOut) — значит реже выпадает кадр из 16.6 мс.
-      //
-      // Считается вручную, а НЕ через CurvedAnimation: тот создавался на
-      // каждый кадр внутри transitionBuilder, каждый раз навешивая слушателя
-      // на родительский animation — за 260 мс это десятки мусорных объектов
-      // в самом горячем цикле рендера. Результат идентичен: кривая
-      // симметрична, поэтому и в прямом, и в обратном ходе берётся одно
-      // и то же значение.
+      // Одна симметричная кривая на оба хода: плавный старт и плавная
+      // остановка. Считаем вручную, а не через CurvedAnimation — тот
+      // создавался бы на каждый кадр и навешивал лишний слушатель на
+      // родительский animation в самом горячем цикле рендера.
       final t = Curves.easeInOutCubic.transform(animation.value);
-      // Размытие теперь на ВЕСЬ экран: раньше BackdropFilter сжимался в
-      // ClipRect по области окна (экономия fill-rate), но на границе
-      // «размыто/не размыто» оставался видимый прямоугольный шов — при
-      // открытии и закрытии он читался как обрубленные куски фона
-      // («огрызки»). Полноэкранный бэкдроп рисует однородное стекло без
-      // кромок; sigma ниже 16 компенсирует возросшую площадь.
-      return BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t),
-        child: Center(
-          child: Transform.scale(
-            // Ход 0.82 → 1.0 вместо 0.94 → 1.0: при 6% масштабирования окно
-            // на 6" экране смещается на ~1 мм за кадр — глаз такую анимацию
-            // не регистрирует и «стекло» кажется появляющимся мгновенно.
-            scale: 0.82 + 0.18 * t,
-            child: Opacity(
-              // Проявка заканчивается на середине прохода: контент обязан
-              // быть уже видим, пока доигрывают blur и масштаб, иначе
-              // первые ~150 мс анимации не показывают вообще ничего.
-              opacity: (t * 2).clamp(0.0, 1.0),
-              child: child,
+      // Приглушение фона — в цвете темы, а не чёрным «плащом»: тёмная
+      // тема даёт сероватый туман, светлая — мягкое высветление. В
+      // прямом и обратном ходе анимируется симметрично.
+      final dimColor = isDark ? cs.surfaceContainerHigh : cs.surfaceContainerLowest;
+      // Blur на весь экран: в ClipRect по области окна на границе
+      // «размыто/не размыто» оставался прямоугольный шов. Полноэкранный
+      // бэкдроп рисует однородное стекло без кромок.
+      final dimAlpha = isDark ? 0.6 : 0.5;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: dimColor.withValues(alpha: dimAlpha * t)),
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t),
+            child: Center(
+              child: Transform.scale(
+                // Ход 0.82 → 1.0 вместо 0.94 → 1.0: при 6% масштабирования окно
+                // на 6" экране смещается на ~1 мм за кадр — глаз такую анимацию
+                // не регистрирует и «стекло» кажется появляющимся мгновенно.
+                scale: 0.82 + 0.18 * t,
+                child: Opacity(
+                  // Проявка заканчивается на середине прохода: контент обязан
+                  // быть уже видим, пока доигрывают blur и масштаб, иначе
+                  // первые ~150 мс анимации не показывают вообще ничего.
+                  opacity: (t * 2).clamp(0.0, 1.0),
+                  child: child,
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       );
     },
     // Material(type: transparency) обязателен: без него showGeneralDialog
@@ -517,14 +521,11 @@ Future<void> _showExitDialog(
         width: 312,
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
         decoration: BoxDecoration(
-          // Полупрозрачное «стеклянное» основание:
-          // тёмная тема → почти чёрный фон, светлая → почти белый,
-          // чтобы текст всегда читался.
-          // Тёмный фон чуть плотнее — на сильном свечении primary он
-          // почти не читался, и «бьёт по глазам».
+          // Стеклянное основание в цвет темы: тёмная — сероватая, светлая
+          // — тёплая. Текст читается за счёт blur-бэкдропа и обводки.
           color: isDark
-              ? Colors.black.withValues(alpha: 0.62)
-              : Colors.white.withValues(alpha: 0.55),
+              ? cs.surfaceContainerHigh.withValues(alpha: 0.55)
+              : cs.surfaceContainerLowest.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(24),
           // Красивая полупрозрачная обводка в акцентный цвет темы:
           // rose → розовая, peach → персиковая, grok → её акцент.
