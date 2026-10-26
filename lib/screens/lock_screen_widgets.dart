@@ -1219,17 +1219,25 @@ class _PinMedallionState extends State<_PinMedallion>
   /// остаётся квадрат ~104×104 лог. px, а не весь экран с витражом.
   late final AnimationController _pulse;
 
+  /// Фаза движения, с которой медальон «уходит» при размонтировании. При
+  /// следующем входе на ПИН-экран цикл НЕ стартует с нуля, а продолжается
+  /// с последнего угла: замок «крутится с того места, где его оставили», а
+  /// не сбрасывается.
+  static double _lastPhase = 0;
+
   @override
   void initState() {
     super.initState();
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 7200),
+      value: _lastPhase,
     )..repeat();
   }
 
   @override
   void dispose() {
+    _lastPhase = _pulse.value;
     _pulse.dispose();
     super.dispose();
   }

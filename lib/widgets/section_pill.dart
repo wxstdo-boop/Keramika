@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart';
 
 /// Занимаемая таблеткой высота (отступы 4 + капсула 54 + отступ 6).
@@ -353,9 +354,6 @@ class _SectionPillState extends State<SectionPill> {
         // вместе с тягой за край: чем сильней тянешь,
         // тем он крупнее и мягче. Раньше объём был
         // константным и потому «замедлялся» на глазах.
-        final capStretch = _dragging
-            ? 1.0 + 0.045 * edgeStretch
-            : 1.0 + 0.04 * wave;
         final capRadius = _dragging
             ? 22.0 + 5.0 * edgeStretch
             : 22.0 + 2.0 * wave;
@@ -364,53 +362,54 @@ class _SectionPillState extends State<SectionPill> {
           clipBehavior: Clip.none,
           fit: StackFit.expand,
           children: [
-            // Позиция камня берётся прямо из page —
-            // непрерывно, без AnimatedAlign-скачков: он
-            // именно скользит, а не перескакивает.
+            // Позиция камня непрерывна всегда: `indicatorAlignment`
+            // (linear по p) — раньше при тяге за край Align переключался
+            // мгновенно на -1/+1 (скачок «мигал в стороны»). Теперь
+            // X-координата камня идёт одним числом в любой момент.
             Align(
-              alignment: Alignment(
-                edgeStretch > 0 && _dragging
-                    ? (_edgeSide == -1 ? -1 : 1)
-                    : indicatorAlignment,
-                0,
-              ),
+              alignment: Alignment(indicatorAlignment, 0),
               child: TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 1, end: 1 + 0.30 * edgeStretch),
+                // Два независимых масштаба складываются в один Transform:
+                //   scale = breath (дышат волной в полёте)
+                //           × stretch (растягивание за край).
+                // В спокойном полёте stretch=1, breath до 1.04; под пальцем
+                // breath=1, stretch до 1.3. Никогда не трогает layout.
+                tween: Tween<double>(
+                  begin: 1,
+                  end: (1 + 0.30 * edgeStretch) *
+                      (_dragging ? 1.0 : (1.0 + 0.04 * wave)),
+                ),
                 duration: _dragging
-                    // Активная тяга за край — скейл
-                    // следует за пальцем мгновенно;
-                    // возврат внутрь рельса (тяга = 0)
-                    // — 180 мс: камень мягко «отпускает»
-                    // растяжку, вместо кадрового щелчка.
                     ? (edgeStretch > 0
                           ? Duration.zero
                           : const Duration(milliseconds: 180))
                     : const Duration(milliseconds: 230),
                 curve: Curves.easeOutCubic,
                 builder: (context, scale, child) => Transform.scale(
-                  // Keep the stone's inside edge anchored to
-                  // the rail; only its outside edge stretches
-                  // toward the screen edge. Scaling the full
-                  // stone avoids the sideways snap caused by
-                  // changing its fractional layout width.
-                  alignment: edgeStretch > 0 || _edgeAnchorPull != 0
-                      ? ((edgeStretch > 0
-                                ? _edgeSide == -1
-                                : _edgeAnchorPull < 0)
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft)
-                      : Alignment.center,
+                  // Конечная точка растяжки — НЕ boolean (раньше прыгал
+                  // между centerLeft/centerRight/center и «щёлкал»).
+                  // Теперь anchor lerp-ится с edgeStretch: в покое 0 (центр),
+                  // у края → 1 (якорь наружного края). Никаких скачков.
+                  alignment: Alignment(
+                    math.max(
+                      -1.0,
+                      math.min(1.0, -_edgeSide * edgeStretch * 2.0),
+                    ),
+                    0,
+                  ),
                   scaleX: scale,
                   child: child,
                 ),
+                // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
+                // breath). Дышащий масштаб теперь в Transform — иначе
+                // каждый кадр пересобирался layout, камень «дёргался».
                 child: FractionallySizedBox(
-                  widthFactor: capStretch / count,
+                  widthFactor: 1.0 / count,
                   heightFactor: 1,
                   child: RepaintBoundary(
                     child: _GlassStone(
                       capRadius: capRadius,
                       primary: cs.primary,
-                      deep: Color.lerp(cs.primary, cs.tertiary, 0.42)!,
                       dark: dark,
                     ),
                   ),
@@ -486,22 +485,34 @@ class _SectionPillState extends State<SectionPill> {
                               sectionTabTap.value++;
                             },
                             child: Center(
-                              child: _GeoBadge(
-                                index: i,
-                                size: 31,
-                                // Невыбранная — заметный
-                                // фирменный оттенок (чтобы
-                                // фигуры читались), выбранная —
-                                // сочный градиентный «камень».
-                                color: Color.lerp(
-                                  cs.primary.withValues(alpha: 0.3),
-                                  cs.primary,
-                                  badgeT,
-                                )!,
-                                child: Icon(
-                                  icons[i],
-                                  size: 17,
-                                  color: iconColor,
+                              child: PressScale(
+                                // Во время драга камня инвертируем плавное
+                                // зажатие: палец и так ведёт жёст, и
+                                // дополнительная отдача в этот момент
+                                // «сбивает» рисунок иконки под пальцем.
+                                enabled: !_dragging,
+                                pressedScale: 0.88,
+                                duration: const Duration(milliseconds: 160),
+                                releaseDuration: const Duration(
+                                  milliseconds: 260,
+                                ),
+                                child: _GeoBadge(
+                                  index: i,
+                                  size: 31,
+                                  // Невыбранная — заметный
+                                  // фирменный оттенок (чтобы
+                                  // фигуры читались), выбранная —
+                                  // сочный градиентный «камень».
+                                  color: Color.lerp(
+                                    cs.primary.withValues(alpha: 0.3),
+                                    cs.primary,
+                                    badgeT,
+                                  )!,
+                                  child: Icon(
+                                    icons[i],
+                                    size: 17,
+                                    color: iconColor,
+                                  ),
                                 ),
                               ),
                             ),
@@ -591,29 +602,29 @@ class _GlassCapsule extends StatelessWidget {
 class _GlassStone extends StatelessWidget {
   final double capRadius;
   final Color primary;
-  final Color deep;
   final bool dark;
 
   const _GlassStone({
     required this.capRadius,
     required this.primary,
-    required this.deep,
     required this.dark,
   });
 
   @override
   Widget build(BuildContext context) {
-    // В тёмной теме primary — светлый пастельный тон: на матовой капсуле он
-    // «горит». Приглушаем его к чёрному, чтобы камень читался как камень,
-    // а не как подсветка.
-    final top = dark ? Color.lerp(primary, Colors.black, 0.14)! : primary;
-    final bottom = dark
-        ? Color.lerp(deep, Colors.black, 0.24)!
-        : Color.lerp(deep, Colors.black, 0.10)!;
+    // Камень — ОДИН тон: в светлой теме берём primary чуть приглушённый,
+    // в тёмной — primary приглушён к чёрному (иначе «горит»). Вместо
+    // двуступенчатого градиента (который на слабом железе читается как
+    // «грязное пятно» при каждом перемещении) — монохромная заливка с
+    // едва различимым затемнением к низу (0.06), чтобы объём остался.
+    final fill = dark
+        ? Color.lerp(primary, Colors.black, 0.14)!
+        : Color.lerp(primary, Colors.white, 0.06)!;
+    final shade = dark
+        ? Color.lerp(fill, Colors.black, 0.18)!
+        : Color.lerp(fill, Colors.black, 0.06)!;
 
     return DecoratedBox(
-      // Тень вне клипа — иначе она обрезается и камень не «отрывается»
-      // от капсулы.
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(capRadius),
         boxShadow: [
@@ -628,12 +639,14 @@ class _GlassStone extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(capRadius),
         child: DecoratedBox(
+          // Мягкое градиентное «дно» — не резкий переход двух цветов,
+          // а едва заметное углубление к низу (одна палитра).
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(capRadius),
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [top, bottom],
+              colors: [fill, shade],
             ),
           ),
           child: DecoratedBox(
