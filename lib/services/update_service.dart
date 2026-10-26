@@ -193,6 +193,7 @@ class UpdateService {
       } catch (_) {}
     }
     final client = http.Client();
+    IOSink? sink;
     try {
       final req = http.Request('GET', Uri.parse(info.downloadUrl));
       req.headers['User-Agent'] = 'Keramika';
@@ -204,12 +205,19 @@ class UpdateService {
       if (res.statusCode != 200) return null;
       final total = res.contentLength ?? info.size;
       var received = 0;
-      final sink = file.openWrite();
-      // Таймаут между пакетами: оборванная передача (сеть пропала) иначе
-      // выглядит как бесконечная загрузка.
+      sink = file.openWrite();
+      // Общий дедлайн на ВЕСЬ скачивание, а не только на паузу между
+      // пакетами: «капающее» соединение (пакет раз в ~30 с) иначе тянется
+      // бесконечно — таблетка крутится вечно, а APK так и не скачался.
+      // После дедлайна бросаем TimeoutException и уходим в catch → null.
+      final startedAt = DateTime.now();
+      const overall = Duration(minutes: 10);
       await for (final chunk in res.stream.timeout(
         const Duration(seconds: 30),
       )) {
+        if (DateTime.now().difference(startedAt) > overall) {
+          throw TimeoutException('APK download exceeded overall deadline');
+        }
         sink.add(chunk);
         received += chunk.length;
         if (onProgress != null && total > 0) {
@@ -218,10 +226,23 @@ class UpdateService {
       }
       await sink.flush();
       await sink.close();
+      sink = null;
       return file.path;
     } catch (_) {
+      // Любой сбой (дедлайн, обрыв, ошибка записи) — тихий отказ:
+      // таблетка просто покажет «не удалось скачать» и вернётся в покой.
       return null;
     } finally {
+      // Скачивание оборвалось — закрываем поток и убираем наполовину-скачанный
+      // файл, чтобы он не занимал место и не попал в установщик.
+      if (sink != null) {
+        try {
+          await sink.close();
+        } catch (_) {}
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
       client.close();
     }
   }
