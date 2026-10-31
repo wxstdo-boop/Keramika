@@ -135,16 +135,38 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
   Widget _buildFab(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     // Плавное «вдавливание» при зажатии — как у всех значков приложения.
-    return PressScale(
-      child: SmoothTooltip(
-        message: Translations.t('aiGuide', context, 'AI guide'),
-        preferredAbove: true,
-        child: FloatingActionButton.small(
-          heroTag: 'ai_guide_fab',
-          onPressed: () => showAiGuideChat(context),
-          backgroundColor: cs.primaryContainer,
-          foregroundColor: cs.onPrimaryContainer,
-          child: const LiveAdaAvatar(size: 20),
+    // Объёмный стиль, как у «плюса» (OrganicFab): без тёмной обводки, но с
+    // мягкой фирменной тенью снизу — кнопка «парит» над экраном.
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withValues(alpha: 0.26),
+            blurRadius: 16,
+            spreadRadius: -4,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 6,
+            spreadRadius: -2,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: PressScale(
+        child: SmoothTooltip(
+          message: Translations.t('aiGuide', context, 'AI guide'),
+          preferredAbove: true,
+          child: FloatingActionButton.small(
+            heroTag: 'ai_guide_fab',
+            onPressed: () => showAiGuideChat(context),
+            backgroundColor: cs.primaryContainer,
+            foregroundColor: cs.onPrimaryContainer,
+            elevation: 0,
+            child: const LiveAdaAvatar(size: 20),
+          ),
         ),
       ),
     );

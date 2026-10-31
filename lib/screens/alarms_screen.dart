@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart'
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
-import '../widgets/press_scale.dart';
+import '../widgets/press_splat.dart' show OrganicFab;
 import '../widgets/section_pill.dart';
 import '../models/alarm.dart';
 import '../models/app_timer.dart';
@@ -369,17 +369,10 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                 children: [
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
-                  PressScale(
-                    child: BerserkFabStack(
-                      // Долгое зажатие «плюса» открывает режим BERSERK.
-                      child: GestureDetector(
-                        onLongPress: () => showBerserkSheet(context),
-                        child: FloatingActionButton(
-                          onPressed: _addAlarm,
-                          child: const Icon(Icons.add),
-                        ),
-                      ),
-                    ),
+                  OrganicFab(
+                    seed: 3.1,
+                    onTap: _addAlarm,
+                    onLongPress: () => showBerserkSheet(context),
                   ),
                 ],
               ),

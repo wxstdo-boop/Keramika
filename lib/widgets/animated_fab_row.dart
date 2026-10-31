@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
@@ -71,18 +73,30 @@ class _AnimatedFabRowState extends State<AnimatedFabRow>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 260),
+    duration: const Duration(milliseconds: 520),
     value: 0,
   );
+  // Небольшая пауза перед «доплытием»: FAB появляется не в первый же
+  // кадр после сплэша/контента, а чуть позже — это читается как
+  // «тяжёлое плавное» появление, а не резкий попомоп рядом с контентом.
+  Timer? _appearDelay;
 
   @override
   void initState() {
     super.initState();
     widget.visible.addListener(_syncVisibility);
     // FAB часто монтируется только после загрузки данных раздела. Явно
-    // проигрываем вход и в этом случае, а не показываем его резким кадром.
+    // проигрываем вход и в этом случае, но с короткой задержкой, чтобы
+    // появление было «тяжело-плавным», а не резким рядом с контентом.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncVisibility();
+      if (!mounted) return;
+      if (widget.visible.value) {
+        _appearDelay?.cancel();
+        _appearDelay =
+            Timer(const Duration(milliseconds: 120), _syncVisibility);
+      } else {
+        _syncVisibility();
+      }
     });
   }
 
@@ -107,6 +121,7 @@ class _AnimatedFabRowState extends State<AnimatedFabRow>
 
   @override
   void dispose() {
+    _appearDelay?.cancel();
     widget.visible.removeListener(_syncVisibility);
     _controller.dispose();
     super.dispose();
@@ -118,16 +133,24 @@ class _AnimatedFabRowState extends State<AnimatedFabRow>
       animation: _controller,
       child: widget.child,
       builder: (context, child) {
+        // Тяжёлое плавное появление: не просто fade+slide, а ещё
+        // объёмный scale (0.92→1.0) и глубокий подъём. Кривая easeOutCubic
+        // даёт мягкое «доплытие» без рывка в конце; 520 мс + 120 мс
+        // пауза делают появление «тяжеловесным», но плавным.
+        final t = Curves.easeOutCubic.transform(_controller.value);
+        final scale = 0.92 + 0.08 * t;
+        final lift = 0.6 * (1 - t);
         return IgnorePointer(
           ignoring: !widget.visible.value,
           child: Opacity(
-            opacity: _controller.value,
-            child: FractionalTranslation(
-              translation: Offset(
-                0,
-                1.4 * (1 - Curves.easeOutCubic.transform(_controller.value)),
+            opacity: t,
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.bottomCenter,
+              child: FractionalTranslation(
+                translation: Offset(0, lift),
+                child: child,
               ),
-              child: child,
             ),
           ),
         );

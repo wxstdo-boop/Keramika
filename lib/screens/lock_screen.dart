@@ -209,15 +209,16 @@ class _LockScreenState extends State<LockScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-
-    if (_initializing) {
-      return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     final cs = theme.colorScheme;
+    // НИКАКОГО спиннера на первом кадре. Раньше `if (_initializing) return
+    // CircularProgressIndicator()` заставлял LockScreen первые ~2-3 кадра
+    // (пока PinService.hasPin() резолвится) отрисовать отдельное дерево со
+    // спиннером, а уже в середине кроссфейда lockRoute (340 мс) оно
+    // «перекрашивалось» в медальон PIN — это и был видимый лаг/мигание при
+    // входе. Теперь полный UI (медальон, цифры) рендерится с первого
+    // кадра, а фоновая проверка hasPin лишь решает, авто-разблокировать
+    // ли. _initializing по-прежнему гасит выход на ПИН, пока проверка
+    // не завершилась.
     return Scaffold(
       body: Container(
         width: double.infinity,

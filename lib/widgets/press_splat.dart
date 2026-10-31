@@ -402,24 +402,41 @@ class _OrganicFabState extends State<OrganicFab>
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Сама кнопка — обычная FAB «как в будильниках» с полупрозрачной
-            // обводкой почти чёрной (как у снекбаров, только тоньше и чище).
-            // Долгое зажатие (BERSERK) вешаем на неё же.
+            // Сама кнопка — объёмная FAB «как у Ады», но БЕЗ тёмной обводки.
+            // Обводку убрали (она читалась как жирный чёрный контур); вместо
+            // неё объём дают мягкая фирменная тень снизу + лёгкий градиентный
+            // подлож. Долгое зажатие (BERSERK) вешаем на неё же.
             Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.black.withValues(alpha: 0.28),
-                  width: 1.0,
-                ),
+                borderRadius: BorderRadius.circular(16),
+                // Объёмная тень: глубже и мягче дефолтной M3-подложки,
+                // чтобы кнопка «парила» над экраном, а не лежала в нём.
+                boxShadow: [
+                  BoxShadow(
+                    color: cs.primary.withValues(alpha: 0.30),
+                    blurRadius: 18,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    spreadRadius: -2,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: PressScale(
                 child: GestureDetector(
                   onLongPress: widget.onLongPress,
                   child: FloatingActionButton(
                     // Округлый квадрат — ровно как FAB в будильниках (дефолтная
-                    // форма M3). Кругом быть НЕ должно.
+                    // форма M3). Кругом быть НЕ должно. Объёмная фирменная
+                    // подложка (primaryContainer), как у кнопки Ады.
                     onPressed: widget.onTap,
+                    backgroundColor: cs.primaryContainer,
+                    foregroundColor: cs.onPrimaryContainer,
+                    elevation: 0,
                     child: const Icon(Icons.add),
                   ),
                 ),
