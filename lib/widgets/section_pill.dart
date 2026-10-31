@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
@@ -63,9 +62,6 @@ final ValueNotifier<int> sectionTabTap = ValueNotifier<int>(0);
 /// связи, что уже используют [sectionCurrentIndex] и [sectionRailPage].
 final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 
-/// Signed elastic pull at the ends of the rail, in the range -1..1.
-final ValueNotifier<double> sectionDragEdgeStretch = ValueNotifier<double>(0);
-
 /// Значки разделов: у каждого своя геометрическая фигура.
 const List<IconData> sectionIcons = [
   Icons.alarm_outlined,
@@ -103,7 +99,8 @@ class SectionPill extends StatefulWidget {
   State<SectionPill> createState() => _SectionPillState();
 }
 
-class _SectionPillState extends State<SectionPill> {
+class _SectionPillState extends State<SectionPill>
+    with SingleTickerProviderStateMixin {
   /// Внутренняя ширина капсулы: 304 минус набивка 4 слева и справа. Ровно
   /// столько же занимает жест-дорожка: она лежит в `Stack(StackFit.expand)`.
   /// По этой ширине палец переводится в долю карусели — камень едет ровно
@@ -112,8 +109,26 @@ class _SectionPillState extends State<SectionPill> {
 
   /// Идёт ли тяга пальцем по таблетке.
   bool _dragging = false;
-  double _edgeAnchorPull = 0;
-  Timer? _edgeReleaseTimer;
+
+  /// Signed-тяга пальца за край рельса (-0.72..0.72). Под пальцем —
+  /// чистая функция кадра, БЕЗ лага: раньше тяга ходила через общий
+  /// ValueNotifier + TweenAnimationBuilder, который догонял цель с лагом
+  /// 180–230 мс и перестартовывал на каждом кадре у самого края (duration
+  /// zero↔180 мс переключался) — из-за этого камень «мигал и скакал».
+  double _edgePull = 0;
+
+  /// От какого края камень растянут (-1 левый / +1 правый). Держится
+  /// через весь отпуск: раньше `_edgeSide` сбрасывался в 0 в `_dragEnd`,
+  /// и якорь растяжки вбок-скакал на первом кадре «расслабления».
+  int _anchorSide = 0;
+
+  /// Тяга, захваченная в момент отпускания пальца: во время расслабления
+  /// камень спадает с неё к нулю.
+  double _releasePull = 0;
+
+  /// «Расслабление» после отпускания: один контроллер, 220 мс, easeOut.
+  /// Никаких Timer'ов и второго setState.
+  late final AnimationController _edgeSettle;
 
   /// Куда палец увёл камень (дробная страница).
   double _dragPage = 0;
@@ -123,15 +138,23 @@ class _SectionPillState extends State<SectionPill> {
   /// пересекает границу раздела.
   int _dragNearest = -1;
 
-  /// У какого края вытянут камень при тяге за границу трека: -1 — левый
-  /// (edgePull < 0), 1 — правый. Определяется с гистерезисом (порог ±6 px
-  /// в [_dragUpdate]): без него лёгкое покачивание пальцем около края
-  /// перещёлкивало сторону на каждом кадре — камень «подёргивался».
-  int _edgeSide = 0;
+  @override
+  void initState() {
+    super.initState();
+    _edgeSettle = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addStatusListener((status) {
+        // Расслабление завершено (или отменено) — сбрасываем захваченные
+        // значения, чтобы они не влияли на следующий жест.
+        _anchorSide = 0;
+        _releasePull = 0;
+      });
+  }
 
   @override
   void dispose() {
-    _edgeReleaseTimer?.cancel();
+    _edgeSettle.dispose();
     // Экран мог закрыться прямо во время тяги — не оставляем Home с
     // висящей ненулевой страницей.
     if (_dragging) sectionDragPage.value = null;
@@ -141,7 +164,13 @@ class _SectionPillState extends State<SectionPill> {
   void _dragStart(DragStartDetails details, int count) {
     if (count < 2) return;
     _dragging = true;
-    _edgeSide = 0;
+    // Новый жест отменяет «расслабление» предыдущего: камень, ещё
+    // растянутый старой тягой, не должен прыгать в ноль по-своему.
+    _edgeSettle.stop();
+    _edgeSettle.value = 0;
+    _releasePull = 0;
+    _edgePull = 0;
+    _anchorSide = 0;
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
@@ -182,16 +211,15 @@ class _SectionPillState extends State<SectionPill> {
     final over = x < 0 ? x : (x > _trackWidth ? x - _trackWidth : 0.0);
     // «Объём до конца»: тяга наливается весь ход пальца за край (до ±72 px),
     // так что камень дышит на всю длину жеста, а не досыпает первую треть.
-    sectionDragEdgeStretch.value = (over / 110.0).clamp(-0.72, 0.72).toDouble();
+    _edgePull = over;
     // Гистерезис: сторона, у которой камень «сидит» за краем, выбирается
-    // один раз (порог ±6 px). Мгновенная смена стороны на пересечении нуля
-    // дёргала камень при покачивании пальцем у края.
+    // один раз (порог ±6 px) и держится на протяжении ВСЕГО отпускания —
+    // якорь растяжки не должен перещёлкиваться вбок посреди
+    // расслабления (это был вбок-скачок на первом кадре после тапа).
     if (over != 0) {
-      if (_edgeSide != -1 && over < -6) _edgeSide = -1;
-      if (_edgeSide != 1 && over > 6) _edgeSide = 1;
-      if (_edgeSide == 0) _edgeSide = over < 0 ? -1 : 1;
-      _edgeReleaseTimer?.cancel();
-      _edgeAnchorPull = over;
+      if (_anchorSide != -1 && over < -6) _anchorSide = -1;
+      if (_anchorSide != 1 && over > 6) _anchorSide = 1;
+      if (_anchorSide == 0) _anchorSide = over < 0 ? -1 : 1;
     }
     _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
     final nearest = _dragPage.round();
@@ -205,9 +233,7 @@ class _SectionPillState extends State<SectionPill> {
   void _dragEnd(int count) {
     if (!_dragging) return;
     _dragging = false;
-    _edgeSide = 0;
-    sectionDragEdgeStretch.value = 0;
-    _releaseEdgeStretch();
+    _startEdgeSettle();
     final target = _dragPage.round().clamp(0, count - 1);
     // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт
     // пружина Home, которая стартует с текущей страницы PageView.
@@ -223,9 +249,7 @@ class _SectionPillState extends State<SectionPill> {
   void _dragCancel() {
     if (!_dragging) return;
     _dragging = false;
-    _edgeSide = 0;
-    sectionDragEdgeStretch.value = 0;
-    _releaseEdgeStretch();
+    _startEdgeSettle();
     sectionDragPage.value = null;
     final count = sectionIconsFor(context).length;
     if (count > 1) {
@@ -235,13 +259,18 @@ class _SectionPillState extends State<SectionPill> {
     }
   }
 
-  void _releaseEdgeStretch() {
-    if (_edgeAnchorPull == 0) return;
-    _edgeReleaseTimer?.cancel();
-    _edgeReleaseTimer = Timer(const Duration(milliseconds: 230), () {
-      if (!mounted) return;
-      setState(() => _edgeAnchorPull = 0);
-    });
+  /// «Расслабление» камня после отпускания пальца: захватываем текущую
+  /// растяжку и плавно уводим её к нулю (220 мс, easeOut) — камень «сам
+  /// отпускает» край, а не соскакивает. До этого было Timer + второй
+  /// setState: двойная пересборка в один кадр дёргала камень вбок.
+  void _startEdgeSettle() {
+    if (!_dragging && _edgePull == 0) return;
+    _releasePull = _edgePull;
+    _edgeSettle
+      ..stop()
+      ..value = 0
+      ..forward();
+    _edgePull = 0;
   }
 
   @override
@@ -345,10 +374,18 @@ class _SectionPillState extends State<SectionPill> {
     final transit = (p - p.roundToDouble()).abs();
     final t2 = transit * 2.0; // 0..1 (0 — покой)
     final wave = _dragging ? 0.0 : 1.0 - (1.0 - t2) * (1.0 - t2);
-    return ValueListenableBuilder<double>(
-      valueListenable: sectionDragEdgeStretch,
-      builder: (context, edgePull, _) {
-        final edgeStretch = edgePull.abs();
+    // «Расслабление» камня после отпускания: он сползает с _releasePull к
+    // нулю по _edgeSettle (220 мс, easeOut). Под пальцем — 1:1 (_edgePull),
+    // БЕЗ лага. TweenAnimationBuilder убран: он догонял цель с лагом
+    // 180–230 мс и перезапускался у самого края (duration zero↔180
+    // переключался на каждом кадре) — это и была «мигалка/скачок».
+    return AnimatedBuilder(
+      animation: _edgeSettle,
+      builder: (context, _) {
+        final settle = _edgeSettle.value;
+        final stretch =
+            _dragging ? _edgePull : _releasePull * (1.0 - settle);
+        final edgeStretch = stretch.abs();
         // «Объём до конца»: в спокойном полёте камень
         // дышит волной; а под пальцем — наливается
         // вместе с тягой за край: чем сильней тянешь,
@@ -368,40 +405,30 @@ class _SectionPillState extends State<SectionPill> {
             // X-координата камня идёт одним числом в любой момент.
             Align(
               alignment: Alignment(indicatorAlignment, 0),
-              child: TweenAnimationBuilder<double>(
-                // Два независимых масштаба складываются в один Transform:
-                //   scale = breath (дышат волной в полёте)
-                //           × stretch (растягивание за край).
-                // В спокойном полёте stretch=1, breath до 1.04; под пальцем
-                // breath=1, stretch до 1.3. Никогда не трогает layout.
-                tween: Tween<double>(
-                  begin: 1,
-                  end: (1 + 0.30 * edgeStretch) *
-                      (_dragging ? 1.0 : (1.0 + 0.04 * wave)),
-                ),
-                duration: _dragging
-                    ? (edgeStretch > 0
-                          ? Duration.zero
-                          : const Duration(milliseconds: 180))
-                    : const Duration(milliseconds: 230),
-                curve: Curves.easeOutCubic,
-                builder: (context, scale, child) => Transform.scale(
-                  // Конечная точка растяжки — НЕ boolean (раньше прыгал
-                  // между centerLeft/centerRight/center и «щёлкал»).
-                  // Теперь anchor lerp-ится с edgeStretch: в покое 0 (центр),
-                  // у края → 1 (якорь наружного края). Никаких скачков.
-                  alignment: Alignment(
-                    math.max(
-                      -1.0,
-                      math.min(1.0, -_edgeSide * edgeStretch * 2.0),
+              child: Transform.scale(
+                // Масштаб считается прямо из stretch — БЕЗ tween'а:
+                // под пальцем 1:1 за движением (zero latency), после
+                // отпускания stretch спадает по _edgeSettle (easeOut).
+                // TweenAnimationBuilder здесь давал лаг 180–230 мс и
+                // «мигал» у края (перезапуск при переключении duration).
+                //
+                // Якорь растяжки — непрерывный lerp по signed-тяге:
+                // _anchorSide (-1/+1, гистерезис) × edgeStretch, без
+                // дискретных переключений Alignment.center/Left/Right.
+                alignment: Alignment(
+                  math.max(
+                    -1.0,
+                    math.min(
+                      1.0,
+                      -(_anchorSide) * edgeStretch * 2.0,
                     ),
-                    0,
                   ),
-                  scaleX: scale,
-                  child: child,
+                  0,
                 ),
+                scaleX: (1 + 0.30 * edgeStretch) *
+                    (_dragging ? 1.0 : (1.0 + 0.04 * wave)),
                 // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
-                // breath). Дышащий масштаб теперь в Transform — иначе
+                // breath). Дышащий масштаб идёт через Transform — иначе
                 // каждый кадр пересобирался layout, камень «дёргался».
                 child: FractionallySizedBox(
                   widthFactor: 1.0 / count,
