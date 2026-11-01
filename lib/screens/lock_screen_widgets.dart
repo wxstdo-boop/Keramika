@@ -464,55 +464,18 @@ Future<void> _showExitDialog(
     // всё так же перехватывают барьер (barrierDismissible: false).
     barrierDismissible: false,
     barrierColor: Colors.transparent,
-    // Анимация стекла: blur НЕ может жить внутри FadeTransition (слою
-    // Opacity не остаётся валидного бэкдропа — экран заливает серым, см.
-    // section_pill). Поэтому сам BackdropFilter — В transitionBuilder, и
-    // sigma растёт вместе с проходом маршрута: стекло «собирается» с 0 до
-    // 16, а контент под ним плавно всплывает и проявляется.
+    // Анимация: только сама шайба мягко всплывает (opacity + лёгкий
+    // масштаб). НИ ПОЛНОЭКРАННОГО затемнения, НИ blur-окна: раньше «фон
+    // и обводка во весь экран» (затемняющий слой + шов размытия по периметру)
+    // читались грязно. Шайба — само по себе, поверх PИH-экрана.
     transitionDuration: const Duration(milliseconds: glassMs),
     transitionBuilder: (context, animation, secondaryAnimation, child) {
-      // Одна симметричная кривая на оба хода: плавный старт и плавная
-      // остановка. Считаем вручную, а не через CurvedAnimation — тот
-      // создавался бы на каждый кадр и навешивал лишний слушатель на
-      // родительский animation в самом горячем цикле рендера.
-      final t = Curves.easeInOutCubic.transform(animation.value);
-      // Приглушение фона — в цвете темы, а не чёрным «плащом»: тёмная
-      // тема даёт сероватый туман, светлая — мягкое высветление. В
-      // прямом и обратном ходе анимируется симметрично.
-      final dimColor = isDark ? cs.surfaceContainerHigh : cs.surfaceContainerLowest;
-      final dimAlpha = isDark ? 0.6 : 0.5;
-      // Blur рисуется в ограниченной области (320×300) вокруг центра:
-      // компактная шайба 232px, клип на 44px шире с каждой стороны —
-      // шов «размыто/не размыто» невидим, а площадь фильтра в 4 раза
-      // меньше прежнего (460×560) — переход ещё быстрее.
-      const clipW = 320.0, clipH = 300.0;
-      return Stack(
-        fit: StackFit.expand,
-        alignment: Alignment.center,
-        children: [
-          // Затемнение — на весь экран (дёшево, без GPU-фильтра).
-          Positioned.fill(
-            child: Container(color: dimColor.withValues(alpha: dimAlpha * t)),
-          ),
-          // Blur — только в «окне» вокруг карточки: σ растёт с проходом.
-          ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: SizedBox(
-              width: clipW,
-              height: clipH,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10 * t, sigmaY: 10 * t),
-                child: Transform.scale(
-                  scale: 0.82 + 0.18 * t,
-                  child: Opacity(
-                    opacity: (t * 2).clamp(0.0, 1.0),
-                    child: child,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+      // Одна симметричная кривая на оба хода. Считаем вручную — без
+      // CurvedAnimation (не навешивать лишний слушатель на кадр).
+      final t = Curves.easeOutBack.transform(animation.value);
+      return Opacity(
+        opacity: Curves.easeInOutCubic.transform(animation.value),
+        child: Transform.scale(scale: 0.9 + 0.10 * t, child: child),
       );
     },
     // Material(type: transparency) обязателен: без него showGeneralDialog

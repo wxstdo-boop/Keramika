@@ -117,11 +117,6 @@ class _SectionPillState extends State<SectionPill>
   /// zero↔180 мс переключался) — из-за этого камень «мигал и скакал».
   double _edgePull = 0;
 
-  /// От какого края камень растянут (-1 левый / +1 правый). Держится
-  /// через весь отпуск: раньше `_edgeSide` сбрасывался в 0 в `_dragEnd`,
-  /// и якорь растяжки вбок-скакал на первом кадре «расслабления».
-  int _anchorSide = 0;
-
   /// Тяга, захваченная в момент отпускания пальца: во время расслабления
   /// камень спадает с неё к нулю.
   double _releasePull = 0;
@@ -145,9 +140,8 @@ class _SectionPillState extends State<SectionPill>
       vsync: this,
       duration: const Duration(milliseconds: 220),
     )..addStatusListener((status) {
-        // Расслабление завершено (или отменено) — сбрасываем захваченные
-        // значения, чтобы они не влияли на следующий жест.
-        _anchorSide = 0;
+        // Расслабление завершено (или отменено) — сбрасываем захваченную
+        // тягу, чтобы она не влияла на следующий жест.
         _releasePull = 0;
       });
   }
@@ -169,8 +163,7 @@ class _SectionPillState extends State<SectionPill>
     _edgeSettle.stop();
     _edgeSettle.value = 0;
     _releasePull = 0;
-    _edgePull = 0;
-    _anchorSide = 0;
+    _edgePull = 0;
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
@@ -216,27 +209,10 @@ class _SectionPillState extends State<SectionPill>
     // Пропущенный здесь /110 превращал px в 19-кратное раздутие камня.
     _edgePull = (over / 110.0).clamp(-0.72, 0.72);
     _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
-    // Направление «резинки» выбранной таблетки. Раньше якорь выставлялся
-    // только по гистерезису дробной части (`off`), а на КРАЯХ секций
-    // (corner) `frac` клампится в 0 или 1, `off` всегда 0, и якорь так и
-    // не выставлялся — растяжение за угол «не знало», куда смотреть, и
-    // визуально камень просто ехал без набухания («нет растяжения в
-    // углах»). Теперь приоритет — у САМОЙ ТЯГИ: если палец уже потянул
-    // камень за край (`_edgePull ≠ 0`), якорь направлен в сторону этой
-    // тяги. Гистерезис drift остаётся вторичным (на середине секций, где
-    // edge ещё не началась).
-    if (_edgePull > 0.02) {
-      _anchorSide = 1;
-    } else if (_edgePull < -0.02) {
-      _anchorSide = -1;
-    } else {
-      final off = _dragPage - _dragPage.roundToDouble();
-      if (off > 0.15) {
-        _anchorSide = 1;
-      } else if (off < -0.15) {
-        _anchorSide = -1;
-      }
-    }
+    // Направление «резинки» теперь НЕПРЕРЫВНОЕ (см. stretchDir в
+    // _buildStoneRow): знак _edgePull — под пальцем, знак _releasePull
+    // (затухающий по _edgeSettle) — в полёте. Дискретный гистерезис
+    // `_anchorSide` (±0.15) убран — он «тикал» у углов и дёргал камень.
     final nearest = _dragPage.round();
     if (nearest != _dragNearest) {
       _dragNearest = nearest;
@@ -316,11 +292,14 @@ class _SectionPillState extends State<SectionPill>
                   clipBehavior: Clip.none,
                   borderRadius: BorderRadius.circular(22),
                   child: AnimatedBuilder(
-                    // ОДИН слушатель на три состояния вместо трёх вложенных
-                    // ValueListenableBuilder: за кадр тяги и dragPage, и
-                    // railPage меняются одновременно, и вложенные билдеры
-                    // пересобирали камень дважды. Здесь — один rebuild на
-                    // кадр, без лишней работы на слабом железе.
+                    // ЕДИНЫЙ слушатель на все 4 канала (вместе с _edgeSettle
+                    // внутри _buildStoneRow): раньше здесь были ДВА вложенных
+                    // AnimatedBuilder (внешний без _edgeSettle, внутренний с
+                    // _edgeSettle) — на каждый тик любого notifier'а кадр
+                    // пересобирался ДВАЖДЫ (внешний билдер прогнал дерево,
+                    // потом внутренний снова). На Adreno это дало микрофризы.
+                    // Теперь _buildStoneRow сам вешает _edgeSettle через
+                    // merge внутри, и здесь только прокидываем rawPage.
                     animation: Listenable.merge([
                       sectionCurrentIndex,
                       sectionDragPage,
@@ -420,6 +399,14 @@ class _SectionPillState extends State<SectionPill>
         final stretch =
             _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
+        // НЕПРЕРЫВНОЕ направление растяжки (заменяет дискретный
+        // _anchorSide): под пальцем — знак _edgePull, в полёте — знак
+        // _releasePull, затухающий по settle. Полностью гладкое, без
+        // рывков 1→0→-1 у углов (сам источник «дёргает в углу»).
+        final stretchDir = _dragging
+            ? _edgePull.sign.toDouble().clamp(-1.0, 1.0)
+            : _releasePull.sign.toDouble().clamp(-1.0, 1.0) *
+                (1.0 - settle);
         // ОБЪЁМНЫЙ СЛОЙ: «резинка» (wave) — наливка/растяжение выбранной
         // вкладки по ходу к СЛЕДУЮЩЕЙ секции. Под пальцем амплитуда ~0.85,
         // в свободном полёте — 1.0 (см. выше). Это и есть то самое
@@ -452,7 +439,20 @@ class _SectionPillState extends State<SectionPill>
             // X-координата камня идёт одним числом в любой момент.
             Align(
               alignment: Alignment(indicatorAlignment, 0),
-              child: Transform.scale(
+              // Эффект ГЛУБИНЫ: в полёте камень слегка «отоходит» назад и
+              // плавно возвращается — ощущение, что таблетка «опускается» в экран.
+              // Под пальцем (dragging) эффект выключен: только чистая растяжка.
+              child: Transform.translate(
+                // Эффект ГЛУБИНЫ при приземлении на угол: чем сильнее камень
+                // растянут (visualStretch — непрерывная величина: под
+                // пальцем = _edgePull + wave, после отпускания сползает по
+                // _edgeSettle), тем чуть «выше» он парит; в центре секции
+                // (stretch = 0) садится ровно. ВЕЗДЕ — одна и та же формула
+                // (без ветки по _dragging): раньше «в полёте 0 / под
+                // пальцем -3px» дёргало камень вертикально на моменте
+                // отпускания — тот самый «дереж/лаг в углах».
+                offset: Offset(0, -2.6 * visualStretch),
+                child: Transform.scale(
                 // Масштаб считается прямо из stretch — БЕЗ tween'а:
                 // под пальцем 1:1 за движением (zero latency), после
                 // отпускания stretch спадает по _edgeSettle (easeOut).
@@ -460,14 +460,16 @@ class _SectionPillState extends State<SectionPill>
                 // «мигал» у края (перезапуск при переключении duration).
                 //
                 // Якорь растяжки — непрерывный lerp по signed-тяге:
-                // _anchorSide (-1/+1, гистерезис) × edgeStretch, без
-                // дискретных переключений Alignment.center/Left/Right.
+                // stretchDir (-1..0..1, всегда непрерывный) × edgeStretch,
+                // без дискретных переключений Alignment.center/Left/Right.
+                // Раньше здесь был _anchorSide (гистерезис ±0.15) — дискретный
+                // переключатель дёргал якорь вбок у углов («дереж»).
                 alignment: Alignment(
                   math.max(
                     -1.0,
                     math.min(
                       1.0,
-                      -(_anchorSide) * visualStretch * 2.0,
+                      -stretchDir * visualStretch * 2.0,
                     ),
                   ),
                   0,
@@ -491,6 +493,7 @@ class _SectionPillState extends State<SectionPill>
                     ),
                   ),
                 ),
+              ),
               ),
             ),
             // Тяга пальцем: как в выборе приоритета — камень

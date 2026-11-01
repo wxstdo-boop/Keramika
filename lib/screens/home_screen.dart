@@ -163,17 +163,16 @@ class _HomeScreenState extends State<HomeScreen>
     final pos = _pageController.position;
     final perPage = pos.viewportDimension * _pageController.viewportFraction;
     if (perPage <= 0) return;
-    // Мягкое «догоняющее» движение: экран не прыгает 1:1 за пальцем,
-    // а догоняет цель с коэффициента 0.55 на каждое событие драга —
-    // перетаскивание таблетки кажется медленнее и плавнее, а камень
-    // не «дергается» под пальцем. Полное расстояние догоняет пружина
-    // Home после отпускания.
-    final current = pos.pixels;
+    // Абсолютная синхронная установка: экран встаёт РОВНО на долю
+    // таблетки. Никакого «догоняющего» коэффициента — он расцеплял
+    // экран и таблетку (экран отставал на 45 % и дёргался под пальцем,
+    // а потом пружина доматывала). Полный lock 1:1 убирает дёрганье.
+    // Плавность «приземления» по углам даёт пружина Home на отпускании.
     final target = (page * perPage).clamp(
       pos.minScrollExtent,
       pos.maxScrollExtent,
     );
-    pos.jumpTo(current + (target - current) * 0.55);
+    pos.jumpTo(target);
   }
 
   @override
@@ -603,12 +602,31 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         body: Stack(
           children: [
-            // Фоновая «skin» подложка. Проявляется при натяжении экрана вниз —
-            // между верхним AppBar и едущим вниз блоком разделов появляется
-            // естественный «зазор», который и создаёт эффект «экран тянется».
+            // Фоновая «skin» подложка — НЕ статичная: она «ездит» вместе с
+            // прокруткой текущего раздела (sectionScrollOffset), поэтому
+            // когда пользователь листает вниз и таблетка сворачивается,
+            // фон ЗАДВИГАЕТСЯ за контентом, а не остаётся на месте и не
+            // «дорисовывает белый» под таблеткой. Раньше skin был
+            // Positioned.fill-статичным — и при листании вниз белый блок
+            // просачивался сквозь сужающуюся таблетку (отсюда жалоба
+            // «белый фон закрывает таблетку, а не задвигается»).
+            // Натяжение экрана вниз (pull-to-expand) по-прежнему даёт
+            // «зазор» между AppBar и блоком разделов — эффект сохраняется.
             Positioned.fill(
-              child: Container(
-                color: Theme.of(context).scaffoldBackgroundColor,
+              child: AnimatedBuilder(
+                animation: sectionScrollOffset,
+                builder: (context, _) {
+                  // Фон задвигается на ровно офсет скролла раздела: при
+                  // прокрутке вниз (off растёт) подложка уезжает вверх —
+                  // вместе с контентом, а не остаётся.
+                  final off = sectionScrollOffset.value;
+                  return Transform.translate(
+                    offset: Offset(0, -off),
+                    child: Container(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                    ),
+                  );
+                },
               ),
             ),
 

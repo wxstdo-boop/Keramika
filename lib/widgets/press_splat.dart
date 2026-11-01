@@ -463,8 +463,20 @@ class GlassFabTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final r = size * 0.36;
-    final top = Color.lerp(Colors.white, cs.primaryContainer, 0.40)!;
+    // В тёмной теме primaryContainer (≈ #26272C) читается как мёртвый
+    // чёрный квадрат. Приподнимаем базу двумя способами: лерп к белому
+    // (стеклянная подсветка) + лерп к primary (фирменное свечение).
+    // Плитка теперь «светится изнутри» на тёмном фоне, а не тонет.
+    final base = isDark
+        ? Color.lerp(
+            cs.primaryContainer,
+            Color.lerp(Colors.white, cs.primary, 0.28)!,
+            0.55,
+          )!
+        : cs.primaryContainer;
+    final top = Color.lerp(Colors.white, base, 0.40)!;
     return Container(
       width: size,
       height: size,
@@ -473,23 +485,26 @@ class GlassFabTile extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [top, cs.primaryContainer],
+          colors: [top, base],
         ),
         boxShadow: [
           // Фирменное свечение: широкий мягкий ореол цвета primary —
-          // плитка будто подсвечена изнутри. Размер растёт со стороной.
+          // плитка будто подсвечена изнутри. В тёмной теме свечение
+          // сильнее (фон тёмный, ореол заметнее и «вытащивает» плитку
+          // из темноты); в светлой — чуть приглушён, чтобы не «гореть».
           BoxShadow(
-            color: cs.primary.withValues(alpha: 0.30),
-            blurRadius: size * 0.42,
-            spreadRadius: -4,
+            color: cs.primary.withValues(alpha: isDark ? 0.42 : 0.28),
+            blurRadius: size * (isDark ? 0.46 : 0.40),
+            spreadRadius: -3,
             offset: Offset(0, size * 0.14),
           ),
           // Контактный след: короткий, близко к основанию — заземляет плитку.
+          // В тёмной теме сильнее (фон тёмный — след должен читаться).
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: size * 0.09,
-            spreadRadius: -2,
-            offset: Offset(0, size * 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.55 : 0.14),
+            blurRadius: size * 0.10,
+            spreadRadius: -1,
+            offset: Offset(0, size * 0.05),
           ),
         ],
       ),

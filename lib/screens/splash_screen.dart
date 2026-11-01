@@ -314,11 +314,11 @@ class _SplashScreenState extends State<SplashScreen>
                     clipBehavior: Clip.none,
                     alignment: Alignment.center,
                     children: [
-                      // Подпись остаётся строго по центру кадра — без
-                      // «by», с точкой в конце, «Wetcorp.».
-                      // Подпись проявляется с логотипом и растворится в
-                      // самом конце сплеша вместе с человечком — тем же
-                      // окном _badgeExit (0.80→1.0), что и иконка.
+                      // Подпись остаётся строго по центру кадра: «POWERED BY
+                      // LARAF» — мелко и чётко (10px, широкий треинг,
+                      // полужирный для резкости кромки). Подписывает
+                      // проявляется с логотипом и растворяется в самом конце
+                      // сплеша вместе с человечком — тем же окном _badgeExit.
                       AnimatedBuilder(
                         animation: _badgeExit,
                         builder: (context, _) => Opacity(
@@ -326,12 +326,12 @@ class _SplashScreenState extends State<SplashScreen>
                           child: FadeTransition(
                             opacity: _fadeAnimation,
                             child: _ShineText(
-                              'Wetcorp.',
+                              'POWERED BY LARAF',
                               style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? Colors.grey[500] : Colors.grey[600],
-                                letterSpacing: 3,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.grey[300] : Colors.grey[500],
+                                letterSpacing: 3.2,
                               ),
                               shine: _shine,
                             ),

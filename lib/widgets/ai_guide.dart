@@ -156,20 +156,29 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
             // Аватар в круглой «таблетке» с короткой тенью снизу —
             // иконка сидит в стекле, а не лежит на нём плоско.
             child: Container(
-              width: 26,
-              height: 26,
+              width: 30,
+              height: 30,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                // Светлый диск под аватаркой: в тёмной теме тёмный base
+                // плитки «пробирает» сквозь аватарку и Ада читается
+                // ТЕМНЕЕ плюса. Светлый подложечный круг держит яркость
+                // ровной с плюсом, в любой теме.
+                color: Color.lerp(
+                  Colors.white,
+                  Theme.of(context).colorScheme.primaryContainer,
+                  0.45,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
+                    color: Colors.black.withValues(alpha: 0.16),
                     blurRadius: 3,
                     offset: const Offset(0, 1),
                   ),
                 ],
               ),
-              child: Center(child: const LiveAdaAvatar(size: 22)),
+              child: Center(child: const LiveAdaAvatar(size: 24)),
             ),
           ),
         ),
