@@ -64,8 +64,11 @@ class _HomeScreenState extends State<HomeScreen>
     // Плавнее и мягче прежних (200/0.94): «камень» должен именно
     // ПРОСКОЛЬЗЫВАТЬ между вкладками, а не дубакать. Ниже жёсткость,
     // чуть больше демпфинга — перелёт дольше, но ровнее.
-    stiffness: 140,
-    dampingRatio: 0.99,
+    // МЕДЛЕННЕЕ и РАВНЕЕ (было 140/0.99 — «слишком быстро» и дёргано):
+    // камень проскальзывает за ~700 мс, без отскока. Ниже жёсткость —
+    // длиннее, плавнее «приземление» на угол.
+    stiffness: 95,
+    dampingRatio: 1.0,
   );
 
   /// Сколько сейчас разделов (нужно пружине, чтобы не уехать за край).
@@ -612,22 +615,32 @@ class _HomeScreenState extends State<HomeScreen>
             // «белый фон закрывает таблетку, а не задвигается»).
             // Натяжение экрана вниз (pull-to-expand) по-прежнему даёт
             // «зазор» между AppBar и блоком разделов — эффект сохраняется.
-            Positioned.fill(
-              child: AnimatedBuilder(
-                animation: sectionScrollOffset,
-                builder: (context, _) {
-                  // Фон задвигается на ровно офсет скролла раздела: при
-                  // прокрутке вниз (off растёт) подложка уезжает вверх —
-                  // вместе с контентом, а не остаётся.
-                  final off = sectionScrollOffset.value;
-                  return Transform.translate(
-                    offset: Offset(0, -off),
+            AnimatedBuilder(
+              animation: sectionScrollOffset,
+              builder: (context, _) {
+                final off = sectionScrollOffset.value;
+                // Фон ЗАДВИГАЕТСЯ вместе с контентом раздела: при прокрутке
+                // вниз (off растёт) верхняя кромка подложки уходит ВЫШЕ
+                // вьюпорта (за клип), а нижняя остаётся прижата — поэтому
+                // под сужающейся таблеткой видно «уплывающий» бэк, а не
+                // дорисовываемый белый блок. Раньше это был Positioned.fill
+                // + Transform.translate(0,-off), и нижний край панели
+                // уезжал вверх, открывая белую подложку Stack'а — отсюда
+                // «белый фон закрывает таблетку». Теперь Positioned с
+                // bottom:0 и top:-off (панель растёт вверх, снизу не
+                // просвечивает).
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  top: -off,
+                  child: IgnorePointer(
                     child: Container(
                       color: Theme.of(context).scaffoldBackgroundColor,
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
 
             // Таблетка разделов больше НЕ фиксирована сверху: она живёт внутри

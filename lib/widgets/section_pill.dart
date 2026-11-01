@@ -163,7 +163,8 @@ class _SectionPillState extends State<SectionPill>
     _edgeSettle.stop();
     _edgeSettle.value = 0;
     _releasePull = 0;
-    _edgePull = 0;
+    _edgePull = 0;
+
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
@@ -375,7 +376,7 @@ class _SectionPillState extends State<SectionPill>
     // «углов», где раздел граничит со следующим) и почти ноль в центре.
     // Чуть сильнее в полёте (1.0), под пальцем (0.9) — чтобы растяжение
     // выбранного угла читалось отчётливо, но не «раздувалось» рывком.
-    final wave = (_dragging ? 0.90 : 1.0) * (1.0 - (1.0 - t2) * (1.0 - t2));
+    final wave = (_dragging ? 0.92 : 1.0) * (1.0 - (1.0 - t2) * (1.0 - t2));
     // «Расслабление» камня после отпускания: он сползает с _releasePull к
     // нулю по _edgeSettle (220 мс, easeOut). Под пальцем — 1:1 (_edgePull),
     // БЕЗ лага. TweenAnimationBuilder убран: он догонял цель с лагом
@@ -424,10 +425,16 @@ class _SectionPillState extends State<SectionPill>
         // это и есть «растяжение в углах», которого раньше не было
         // вообще. Amplitude 0.55 + capRadius 7.0 держат эффект
         // видимым, `math.min(0.85, ...)` не даёт камню раздуться.
+        // АМПИТУДА РАСТЯЖЕНИЯ В УГЛАХ: раньше коэффициент волны в
+        // visualStretch был 0.55 и capRadius +7 — в полёте между
+        // разделами растяжение «проскальзывало» и читалось как «его
+        // нет вообще». Усилили до 0.72 / +9: у порогов раздела (t2≈1,
+        // wave→1) камень заметно вытягивается и округляется в сторону
+        // следующего раздела — «растяжение в углах» снова отчётливое.
         final visualStretch =
-            math.min(0.85, edgeStretch + 0.55 * wave);
-        // Радиус угла 7.0: растянутая таблетка округляется заметно.
-        final capRadius = 22.0 + 7.0 * visualStretch;
+            math.min(0.95, edgeStretch + 0.72 * wave);
+        // Радиус угла 9.0: растянутая таблетка округляется заметно.
+        final capRadius = 22.0 + 9.0 * visualStretch;
 
         return Stack(
           clipBehavior: Clip.none,
