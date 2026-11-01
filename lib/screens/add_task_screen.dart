@@ -15,6 +15,7 @@ import '../utils/wide_dash_controller.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/category_chip.dart';
+import '../widgets/drag_proxy.dart';
 import '../utils/snackbar.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/priority_selector.dart';
@@ -251,6 +252,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   /// Drag-прокси для чипа категории: подъём, свечение и обводка-«кольцо»,
   /// чтобы палец не терял чип из вида во время перетаскивания.
+  Widget _categoryDragProxy(
+    Widget child,
+    ThemeData theme,
+    Animation<double> animation,
+  ) {
+    return buildDragProxy(child, theme, animation, borderRadius: 999);
+  }
+
   void _save() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
@@ -588,28 +597,63 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           final showTrailing =
                               _taskSvc.categories.length <
                               _taskSvc.maxCategories;
-                          // КАТЕГОРИИ НЕ ПЕРЕМЕЩАЮТСЯ (жалоба: «сами
-                          // категории тоже не должны двигаться»). Порядок
-                          // фиксированный: «Без категории» всегда первой,
-                          // затем реальные категории в сохранённом
-                          // порядке, «+ Новая» — последняя. Ряд только
-                          // ПРОКРУЧИВАЕТСЯ, перетаскивание снято.
-                          //
-                          // Каждый чип несёт собственный правый отступ
-                          // (внутри CategoryChip / _newCategoryChip) —
-                          // внешний padding убран, отступ справа один.
+                          // Категории можно перетаскивать друг за друга
+                          // (кроме «Без категории» — она всегда первой).
+                          // Порядок сохраняется в TaskService и
+                          // автоматически подтягивается в фильтр задач
+                          // на главном экране.
                           return SizedBox(
                             height: 44,
-                            child: ListView(
+                            child: ReorderableListView.builder(
                               scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              children: [
-                                ...List.generate(
-                                  cats.length,
-                                  (i) => _categoryChip(ctx, cats[i]),
-                                ),
-                                if (showTrailing) _newCategoryChip(ctx),
-                              ],
+                              itemCount: cats.length + (showTrailing ? 1 : 0),
+                              onReorderItem: (oldIndex, newIndex) {
+                                // 'Без категории' (индекс 0) и кнопка
+                                // «+ Новая категория» (последняя) — не
+                                // перемещаются.
+                                if (oldIndex == 0 || newIndex == 0) return;
+                                if (showTrailing &&
+                                    (oldIndex == cats.length ||
+                                        newIndex == cats.length)) {
+                                  return;
+                                }
+                                // cats[0] — это '' (Без категории), поэтому
+                                // индексы реальных категорий на единицу меньше.
+                                _taskSvc.reorderCategories(
+                                  oldIndex - 1,
+                                  newIndex - 1,
+                                );
+                              },
+                              buildDefaultDragHandles: false,
+                              proxyDecorator: (child, index, animation) =>
+                                  _categoryDragProxy(child, theme, animation),
+                              itemBuilder: (context, i) {
+                                // Каждый чип несёт собственный отступ справа
+                                // (внутри CategoryChip / _newCategoryChip).
+                                // ВНЕШНИЙ Padding(right: 8) был ЛИШНИМ — он
+                                // складывался с внутренним и давал двойной
+                                // отступ справа (жалоба «лишний отступ»).
+                                // Теперь внешний wrapper — только key: отступ
+                                // правый один.
+                                if (showTrailing && i == cats.length) {
+                                  return KeyedSubtree(
+                                    key: const ValueKey('cat_trailing'),
+                                    child: _newCategoryChip(context),
+                                  );
+                                }
+                                final name = cats[i];
+                                final isUncategorized = name.isEmpty;
+                                final child = _categoryChip(context, name);
+                                return KeyedSubtree(
+                                  key: ValueKey('cat_$name'),
+                                  child: isUncategorized
+                                      ? child
+                                      : ReorderableDragStartListener(
+                                          index: i,
+                                          child: child,
+                                        ),
+                                );
+                              },
                             ),
                           );
                         },

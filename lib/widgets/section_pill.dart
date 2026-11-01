@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
@@ -101,7 +100,7 @@ class SectionPill extends StatefulWidget {
 }
 
 class _SectionPillState extends State<SectionPill>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   /// Внутренняя ширина капсулы: 304 минус набивка 4 слева и справа. Ровно
   /// столько же занимает жест-дорожка: она лежит в `Stack(StackFit.expand)`.
   /// По этой ширине палец переводится в долю карусели — камень едет ровно
@@ -126,18 +125,8 @@ class _SectionPillState extends State<SectionPill>
   /// Никаких Timer'ов и второго setState.
   late final AnimationController _edgeSettle;
 
-  /// Логарифмический догон камня за пальцем (resistance) ведёт КАЖДЫЙ кадр
-  /// отдельным тикером, а не дискретными drag-событиями: палец может дать
-  /// длинный шаг, и камень всё равно докатится плавным «тяжёлым» движением.
-  late final Ticker _smoothTicker;
-
   /// Куда палец увёл камень (дробная страница).
   double _dragPage = 0;
-  // Сглаженный камень: догоняет цель-палец логарифмически (resistance).
-  // Камень и экран, запертый 1:1 к нему, из-за этого едут МЕДЛЕННЕЕ и
-  // ПЛАВНЕЕ пальца, без рывка и без рассинхрона (экран не отстаёт сам,
-  // а следует за уже сглаженным камнем).
-  double _dragSmooth = 0;
   double _dragGrabOffset = 0;
 
   /// Ближайший раздел на прошлом кадре — по нему звучит хаптик, когда палец
@@ -155,31 +144,10 @@ class _SectionPillState extends State<SectionPill>
         // тягу, чтобы она не влияла на следующий жест.
         _releasePull = 0;
       });
-    // Логарифмический догон камня за пальцем идёт КАЖДЫЙ КАДР отдельным
-    // тикером (resistance). Камень и экран, запертый 1:1 к нему, из-за
-    // этого едут МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — «тяжёлое» движение без
-    // рывка и без рассинхрона.
-    _smoothTicker = createTicker(_onSmoothTick);
-  }
-
-  /// Кадровый тик резистанса: камень догоняет цель-палец
-  /// логарифмически и пишет своё сглаженное значение в общий канал.
-  void _onSmoothTick(Duration _) {
-    if (!_dragging) {
-      _smoothTicker.stop();
-      return;
-    }
-    // Коэффициент 0.22 на кадр (~60 fps) даёт ощущение «тяжести» —
-    // палец ведёт, а экран и камень догоняют с лёгким запаздыванием.
-    _dragSmooth += (_dragPage - _dragSmooth) * 0.22;
-    if ((_dragPage - _dragSmooth).abs() < 0.001) _dragSmooth = _dragPage;
-    sectionDragPage.value = _dragSmooth;
   }
 
   @override
   void dispose() {
-    _smoothTicker.stop();
-    _smoothTicker.dispose();
     _edgeSettle.dispose();
     // Экран мог закрыться прямо во время тяги — не оставляем Home с
     // висящей ненулевой страницей.
@@ -200,8 +168,6 @@ class _SectionPillState extends State<SectionPill>
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
         .toDouble();
-    // Камень стартует ровно с позиции пальца — без рывка на захват.
-    _dragSmooth = _dragPage;
     // Камень занимает 1/count дорожки и стоит НЕ по центру слота, а с
     // отступами по краям: его центр при page=0 равен halfStone, при
     // page=last — trackWidth-halfStone. Раньше здесь брали
@@ -217,9 +183,6 @@ class _SectionPillState extends State<SectionPill>
     _dragGrabOffset = stoneCenter - details.localPosition.dx;
     _dragNearest = _dragPage.round();
     sectionDragPage.value = _dragPage;
-    // Кадровый резистанс стартует: камень начинает догонять палец
-    // логарифмически на каждом кадре.
-    _smoothTicker.start();
   }
 
   void _dragUpdate(DragUpdateDetails details, int count) {
@@ -246,12 +209,6 @@ class _SectionPillState extends State<SectionPill>
     // все формулы ниже (scaleX, capRadius, якорь) рассчитаны на долю.
     // Пропущенный здесь /110 превращал px в 19-кратное раздутие камня.
     _edgePull = (over / 110.0).clamp(-0.72, 0.72);
-    // Палец задаёт ЦЕЛЬ камня (точная позиция по дорожке). Сам сдвиг
-    // ведёт кадровый тикер [_onSmoothTick]: камень догоняет цель
-    // логарифмически (resistance) и пишет сглаженное значение в
-    // [sectionDragPage] на каждом кадре. Экраны, запертые 1:1 к нему,
-    // из-за этого едут МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — без рывка и без
-    // рассинхрона (то самое «адски быстро»).
     _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
     // Направление «резинки» теперь НЕПРЕРЫВНОЕ (см. stretchDir в
     // _buildStoneRow): знак _edgePull — под пальцем, знак _releasePull
@@ -262,12 +219,12 @@ class _SectionPillState extends State<SectionPill>
       _dragNearest = nearest;
       Haptics.light();
     }
+    sectionDragPage.value = _dragPage;
   }
 
   void _dragEnd(int count) {
     if (!_dragging) return;
     _dragging = false;
-    _smoothTicker.stop();
     _startEdgeSettle();
     final target = _dragPage.round().clamp(0, count - 1);
     // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт

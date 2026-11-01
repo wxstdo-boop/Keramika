@@ -800,27 +800,19 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                               // Красивая «таблетка» звука: форма ПОСТОЯННА (одна
                               // толщина обводки, один padding, одна весовка
                               // шрифта), а выбор «проявляется» лерпом цвета
-                              // + мягким свечением. Нейтральная палитра: без
-                              // primary (в теме mutilated он красный — отсюда
-                              // «три красные кнопки, дебилизм кусись»).
-                              // Выбранная — приглушённая surface-таблетка с
-                              // тонкой обводкой, НЕ фирменная заливка.
+                              // + мягким свечением. Раньше вес шрифта
+                              // прыгал w500↔w700 (метрики текста менялись →
+                              // «дёрганые» кнопки), а цвета/обводка скакали.
                               final cs = theme.colorScheme;
                               final selBorder = selected
-                                  ? cs.onSurfaceVariant.withValues(alpha: 0.42)
-                                  : cs.outlineVariant.withValues(alpha: 0.28);
+                                  ? cs.primary.withValues(alpha: 0.9)
+                                  : cs.outlineVariant.withValues(alpha: 0.45);
                               final selFg = selected
-                                  ? cs.onSurface
-                                  : cs.onSurfaceVariant;
+                                  ? cs.onPrimaryContainer
+                                  : cs.onSurface;
                               final selIcon = selected
-                                  ? cs.onSurfaceVariant
-                                  : cs.onSurfaceVariant.withValues(alpha: 0.7);
-                              final gradTop = selected
-                                  ? cs.surfaceContainerHighest
-                                  : cs.surfaceContainerHigh;
-                              final gradBottom = selected
-                                  ? cs.surfaceContainerHigh
-                                  : cs.surfaceContainer;
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant;
                               return GestureDetector(
                                 onTap: () => setState(() => _soundName = s),
                                 // Зажатие звука — удаление (свой файл или
@@ -839,27 +831,37 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
-                                    // Нейтральный градиент (surface-лестница)
-                                    // ВСЕГДА — без скачков null↔gradient.
-                                    // Выбранная чуть светлее, не Selected —
-                                    // спокойная глубже. Без primary — нет
-                                    // «красных таблеток».
+                                    // Градиент ВСЕГДА (2 точки, лерп по color):
+                                    // выбранная «наливается» фирменным
+                                    // градиентом, не Selected — спокойный серый.
+                                    // AnimatedContainer лерпит по цветам, без
+                                    // скачков (null↔gradient не интерполируется).
                                     gradient: LinearGradient(
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
-                                      colors: [gradTop, gradBottom],
+                                      colors: [
+                                        selected
+                                            ? Color.lerp(
+                                                  Colors.white, cs.primary, 0.20,
+                                                )!
+                                            : Color.lerp(
+                                                Colors.white, cs.surfaceContainerHigh,
+                                                0.30,
+                                              )!,
+                                        selected
+                                            ? cs.primaryContainer
+                                            : cs.surfaceContainerHigh,
+                                      ],
                                     ),
                                     border: Border.all(
                                       color: selBorder,
-                                      width: 1.5,
+                                      width: 2,
                                     ),
                                     boxShadow: selected
                                         ? [
                                             BoxShadow(
-                                              color:
-                                                  cs.onSurfaceVariant.withValues(
-                                                alpha: 0.20,
-                                              ),
+                                              color: cs.primary
+                                                  .withValues(alpha: 0.28),
                                               blurRadius: 10,
                                               spreadRadius: -1,
                                               offset:

@@ -788,7 +788,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
                   OrganicFab(
-                    seed: 3.1,
+                    seed: 7.7,
                     onTap: () {
                       Haptics.light();
                       _addHabit();
@@ -2163,78 +2163,28 @@ class _BloodSpeckPainter extends CustomPainter {
       final center = Offset(size.width * s[0], size.height * s[1]);
       final r = size.height * s[2];
       final density = s[3];
-      // На тёмной теме бейдж полупрозрачнее — пятна чуть гаснут (×0.72),
-      // но ЧИТАЮТСЯ.
+      // Крупные пятна + заметная плотность: тёмное «сухое» ядро + тёмный
+      // подтёк + светлое «мокрое» ядрышко. На тёмной теме бейдж
+      // полупрозрачнее, поэтому пятна чуть гаснут (×0.72) — но ЧИТАЮТСЯ.
       final scale = isDark ? 0.72 : 1.0;
-      final phase = s[0] * 9.1 + s[1] * 5.3;
-      // Кровь = ОРГАНИЧЕСКАЯ КЛЯКСА с подтёками, а не ровный кружок.
-      // Раньше drawCircle — вышло «три красные кнопки» (жалоба). Теперь
-      // неровный размашистый контур + капли-подтеки вниз, все вокруг
-      // своего центра.
-      // Тёмное «сухое» ядро.
-      canvas.drawPath(
-        _bloodBlob(center, r, phase),
-        Paint()
-          ..color = _dry.withValues(alpha: (isDark ? 0.55 : 0.46) * density * scale),
-      );
-      // Подтёк-капля вниз — отдельная тонкая клякса.
-      canvas.drawPath(
-        _bloodDrip(center, r, phase),
+      final dryPaint = Paint()
+        ..color = _dry.withValues(alpha: (isDark ? 0.55 : 0.46) * density * scale);
+      canvas.drawCircle(center, r, dryPaint);
+      // Подтёк вправо-вниз — «кровь растеклась».
+      canvas.drawCircle(
+        center + Offset(r * 1.5, r * 0.45),
+        r * 0.6,
         Paint()
           ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.34) * density * scale),
       );
-      // Светлое мокрое ядро (блик на свежей крови) — маленькое, внутри.
-      canvas.drawPath(
-        _bloodBlob(
-          center - Offset(r * 0.18, r * 0.22),
-          r * 0.4,
-          phase + 1.7,
-        ),
+      // Светлое мокрое ядрышко (блик на крови).
+      canvas.drawCircle(
+        center - Offset(r * 0.3, r * 0.34),
+        r * 0.42,
         Paint()
           ..color = _wet.withValues(alpha: (isDark ? 0.30 : 0.28) * density * scale),
       );
     }
-  }
-
-  /// Неровная размашистая клякса с волнистым контуром и лёгким вытягиванием
-  /// вниз (подтек). Построена вокруг [center], растёт от [r] и фазы [phase] —
-  /// каждая клякса уникальна и не читается как ровная «кнопка».
-  Path _bloodBlob(Offset center, double r, double phase) {
-    final path = Path();
-    const n = 20;
-    for (var i = 0; i <= n; i++) {
-      final a = i / n * pi * 2;
-      // Волнистость контура (кровь «размазана», не ровный круг).
-      var w = 1.0 +
-          0.20 * sin(a * 3 + phase) +
-          0.13 * sin(a * 5 + phase * 1.7) +
-          0.06 * sin(a * 8 + phase * 0.6);
-      // Капля вниз: контур вытягивается в нижнюю сторону (sin(a) > 0).
-      final drip = max(0.0, sin(a)) * 0.45;
-      w += drip;
-      final x = center.dx + cos(a) * w * r;
-      final y = center.dy + sin(a) * (w * 0.92 + drip * 0.5) * r;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    path.close();
-    return path;
-  }
-
-  /// Тонкий подтёк-капля вниз от кляксы (от её центра [center]).
-  Path _bloodDrip(Offset center, double r, double phase) {
-    final w = r * (0.18 + 0.08 * sin(phase));
-    final len = r * (0.9 + 0.4 * cos(phase));
-    final top = center.dy + r * 0.1;
-    final cx = center.dx;
-    return Path()
-      ..moveTo(cx - w / 2, top)
-      ..cubicTo(cx - w / 2, top + len * 0.35, cx, top + len * 0.5, cx, top + len)
-      ..cubicTo(cx, top + len * 0.5, cx + w / 2, top + len * 0.35, cx + w / 2, top)
-      ..close();
   }
 
   @override
