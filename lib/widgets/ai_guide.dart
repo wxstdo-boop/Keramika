@@ -134,40 +134,91 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
 
   Widget _buildFab(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Плавное «вдавливание» при зажатии — как у всех значков приложения.
-    // Объёмный стиль, как у «плюса» (OrganicFab): без тёмной обводки, но с
-    // мягкой фирменной тенью снизу — кнопка «парит» над экраном.
+    // Премиум-стеклянная плитка (тот же стиль, что OrganicFab):
+    //   1) градиент: белая светится сверху (0.30) → primaryContainer
+    //   2) тень: фирменное свечение (primary, blur 20) + контактный след
+    //   3) стеклянный блик сверху (0.30 → 0) — выпуклость в любой теме
+    //   4) LiveAdaAvatar в центре с лёгкой тенью — «вдавлен в стекло»
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(Colors.white, cs.primaryContainer, 0.35)!,
+            cs.primaryContainer,
+          ],
+        ),
         boxShadow: [
+          // Фирменное свечение — широкая мягкая тень цвета primary.
           BoxShadow(
-            color: cs.primary.withValues(alpha: 0.26),
-            blurRadius: 16,
-            spreadRadius: -4,
-            offset: const Offset(0, 7),
+            color: cs.primary.withValues(alpha: 0.28),
+            blurRadius: 20,
+            spreadRadius: -6,
+            offset: const Offset(0, 8),
           ),
+          // Контактный след — короткий, близко к основанию.
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 6,
-            spreadRadius: -2,
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 4,
+            spreadRadius: -1,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: PressScale(
-        child: SmoothTooltip(
-          message: Translations.t('aiGuide', context, 'AI guide'),
-          preferredAbove: true,
-          child: FloatingActionButton.small(
-            heroTag: 'ai_guide_fab',
-            onPressed: () => showAiGuideChat(context),
-            backgroundColor: cs.primaryContainer,
-            foregroundColor: cs.onPrimaryContainer,
-            elevation: 0,
-            child: const LiveAdaAvatar(size: 20),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Стеклянный блик: белый → 0 к середине. Выпуклость читается.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.32),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.55],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
+          PressScale(
+            child: SmoothTooltip(
+              message: Translations.t('aiGuide', context, 'AI guide'),
+              preferredAbove: true,
+              child: GestureDetector(
+                onTap: () => showAiGuideChat(context),
+                // Аватар в круглой «таблетке» с короткой тенью снизу —
+                // иконка сидит в стекле, а не лежит на нём плоско.
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 3,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Center(child: const LiveAdaAvatar(size: 22)),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

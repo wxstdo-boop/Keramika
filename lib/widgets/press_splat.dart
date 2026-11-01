@@ -402,44 +402,93 @@ class _OrganicFabState extends State<OrganicFab>
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Сама кнопка — объёмная FAB «как у Ады», но БЕЗ тёмной обводки.
-            // Обводку убрали (она читалась как жирный чёрный контур); вместо
-            // неё объём дают мягкая фирменная тень снизу + лёгкий градиентный
-            // подлож. Долгое зажатие (BERSERK) вешаем на неё же.
+            // Сама кнопка — премиум-«объём»: не плоская M3-подложка, а
+            // выпуклая стеклянная плитка. Объём дают ТРИ слоя (по порядку):
+            //   1) фирменное мягкое СВЕЧЕНИЕ под плиткой (primary, размазанное)
+            //      + короткий «контактный» след у основания — плитка парит,
+            //      но не висит в воздухе;
+            //   2) сама плитка с градиентом БЛИК-СВЕРХУ (светлее на 35 %
+            //      в левом верхнем углу → базовый primaryContainer);
+            //   3) стеклянный блик: верхняя половина едва белая и
+            //      гаснет к середине — плитка читается выпуклой в любой теме.
+            // БЕЗ обводки (тёмный контур её убивал). Долгое зажатие
+            // (BERSERK) вешаем на саму плитку.
             Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                // Объёмная тень: глубже и мягче дефолтной M3-подложки,
-                // чтобы кнопка «парила» над экраном, а не лежала в нём.
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color.lerp(Colors.white, cs.primaryContainer, 0.35)!,
+                    cs.primaryContainer,
+                  ],
+                ),
                 boxShadow: [
+                  // Фирменное свечение: размытое и широкое, цвет primary —
+                  // плитка будто подсвечена изнутри.
                   BoxShadow(
-                    color: cs.primary.withValues(alpha: 0.30),
-                    blurRadius: 18,
-                    spreadRadius: -4,
-                    offset: const Offset(0, 8),
+                    color: cs.primary.withValues(alpha: 0.28),
+                    blurRadius: 24,
+                    spreadRadius: -8,
+                    offset: const Offset(0, 10),
                   ),
+                  // Контактный след: короткий, тёмный, близко к основанию —
+                  // заземляет плитку.
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 6,
-                    spreadRadius: -2,
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 5,
+                    spreadRadius: -1,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: PressScale(
-                child: GestureDetector(
-                  onLongPress: widget.onLongPress,
-                  child: FloatingActionButton(
-                    // Округлый квадрат — ровно как FAB в будильниках (дефолтная
-                    // форма M3). Кругом быть НЕ должно. Объёмная фирменная
-                    // подложка (primaryContainer), как у кнопки Ады.
-                    onPressed: widget.onTap,
-                    backgroundColor: cs.primaryContainer,
-                    foregroundColor: cs.onPrimaryContainer,
-                    elevation: 0,
-                    child: const Icon(Icons.add),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  // Стеклянный блик: белый отзеркаленный градиент, гаснет
+                  // к середине плитки — выпуклость читается при любом
+                  // фоне (светлая/тёмная тема).
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.34),
+                                Colors.white.withValues(alpha: 0.0),
+                              ],
+                              stops: const [0.0, 0.55],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  // Фирменный знак на стекле: контрастный onPrimaryContainer
+                  // читается и на светлой пастели, и на тёмном контейнере.
+                  // Объём самой кнопки уже дают градиент + блик + свечение —
+                  // дополнительная тень значка только «мусорит».
+                  Semantics(
+                    button: true,
+                    child: PressScale(
+                      child: GestureDetector(
+                        onLongPress: widget.onLongPress,
+                        onTap: widget.onTap,
+                        child: Icon(
+                          Icons.add,
+                          size: 26,
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             // Мелкие размашистые пятнышки ПОВЕРХ кнопки. IgnorePointer —

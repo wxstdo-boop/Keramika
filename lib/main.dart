@@ -1253,6 +1253,14 @@ class KeramikaAppState extends State<KeramikaApp>
   late String _fontFamily;
   Key _appKey = UniqueKey();
   bool _locked = false;
+
+  /// Подпись последнего применённого системного UI-стиля (яркость +
+  /// цвет статуса-бара). Платформ-вызов `setSystemUIOverlayStyle` дёшев,
+  /// но в первые кадры после сплэша лишних platform-каналов — как раз
+  /// те «подтормозы», которые видит пользователь. Шлём только когда
+  /// параметры реально изменились (смена темы/языка), а не на каждый
+  /// ребилд дерева.
+  String? _lastSysUiSig;
   ColorScheme? _lightDynamic;
   ColorScheme? _darkDynamic;
   Timer? _overlayCheckTimer;
@@ -1371,8 +1379,11 @@ class KeramikaAppState extends State<KeramikaApp>
     aiLockScreenVisible.value = false;
     final nav = navigatorKey.currentState;
     if (nav != null) {
+      // Лёгкий кросс-фейд (без slide+scale на весь 4-экранный дом):
+      // тяжёлый [slideUpRoute] на большом PageView давал «подтормоз» на
+      // первом кадре после сплэша.
       nav.pushAndRemoveUntil(
-        slideUpRoute(const HomeScreen()),
+        homeEntryRoute(const HomeScreen()),
         (route) => false,
       );
     }
@@ -2044,10 +2055,20 @@ class KeramikaAppState extends State<KeramikaApp>
             // и точечно в проблемных местах — работает везде одинаково.
             // Системную навигационную панель красим в цвет фона приложения:
             // иначе внизу (под контентом) видна белая полоса, за которую
-            // «залезает» экран при pull-to-refresh. Вызывается при каждой
-            // перестройке темы — дёшево (один вызов в кадр).
+            // «залезает» экран при pull-to-refresh. Платформ-вызов
+            // [SystemChrome.setSystemUIOverlayStyle] шлём ТОЛЬКО когда
+            // параметры реально изменились (смена темы/языка): до этого
+            // он улетал на каждый ребилд дерева (каждый кадр скролла), и
+            // в первые кадры после сплэша эти лишние platform-каналы
+            // читались как «подтормозы». Гвард по подписи [sig] — яркость
+            // + цвет статус-бара.
             WidgetsBinding.instance.addPostFrameCallback((_) {
               final theme = Theme.of(context);
+              final isDark = theme.brightness == Brightness.dark;
+              final sig =
+                  '${isDark ? 'd' : 'l'}|${theme.scaffoldBackgroundColor.toARGB32()}';
+              if (sig == _lastSysUiSig) return; // ничего не изменилось
+              _lastSysUiSig = sig;
               // Навбар делаем ПРОЗРАЧНЫМ (не просто в цвет фона): на светлых
               // темах полоса навбара всё равно выглядела белой, и при скролле
               // контент статистики «залезал» за неё. Прозрачный навбар
@@ -2058,9 +2079,7 @@ class KeramikaAppState extends State<KeramikaApp>
                   systemNavigationBarColor: Colors.transparent,
                   systemNavigationBarDividerColor: Colors.transparent,
                   systemNavigationBarIconBrightness:
-                      theme.brightness == Brightness.dark
-                      ? Brightness.light
-                      : Brightness.dark,
+                      isDark ? Brightness.light : Brightness.dark,
                   // Android 15+ (targetSdk 35+) накладывает СВОЮ контрастную
                   // белую подложку на навбар поверх нашего цвета — отключаем,
                   // иначе внизу всё равно видна белая полоса.
@@ -2071,9 +2090,8 @@ class KeramikaAppState extends State<KeramikaApp>
                   // экрана не выглядят закруглёнными при оттягивании
                   // крайних разделов. С фоном приложения полоса сливается.
                   statusBarColor: theme.scaffoldBackgroundColor,
-                  statusBarIconBrightness: theme.brightness == Brightness.dark
-                      ? Brightness.light
-                      : Brightness.dark,
+                  statusBarIconBrightness:
+                      isDark ? Brightness.light : Brightness.dark,
                 ),
               );
             });
