@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../l10n/translations.dart';
@@ -111,6 +111,15 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
   // стиля замер и отрисовка шли бы РАЗНЫМИ шрифтами: пузырь выходил уже
   // текста, и последняя буква обрезалась.
   TextStyle _textStyle = _kTooltipTextStyle;
+  // Точный масштаб шрифта якоря (кнопки). Пузырь живёт в OverlayEntry и
+  // наследует textScaler из контекста оверлея - он МОЖЕТ НЕ СОВПАДАТЬ с
+  // context-ом кнопки (отдельная ветка MediaQuery, динамический масштаб
+  // шрифта на разных экранах). Если замерить текст на масштабе кнопки, а
+  // отрисовать на масштабе оверлея, пузырь выйдет уже текста и последние
+  // буквы обрежутся (TextOverflow.clip). Храним явный textScaler якоря и
+  // применяем его К ОДНОЙ И ТОЙ ЖЕ мере замера и отрисовки - иначе
+  // «пол текста не видно».
+  TextScaler? _textScaler;
 
   @override
   void dispose() {
@@ -227,7 +236,10 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
     _textStyle = DefaultTextStyle.of(
       context,
     ).style.merge(_kTooltipTextStyle).copyWith(decoration: TextDecoration.none);
-    final size = _measure(oBox.size.width);
+    // Явный масштаб шрифта якоря: замер и отрисовка обязаны совпадать,
+    // иначе пузырь оказывается уже реального текста.
+    _textScaler = MediaQuery.textScalerOf(context);
+    final size = _measure(oBox.size.width, _textScaler);
     _w = size.width;
     _unitH = size.height;
     final pos = box.localToGlobal(Offset.zero, ancestor: oBox);
@@ -258,6 +270,7 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
         width: _w,
         above: _above,
         textStyle: _textStyle,
+        textScaler: _textScaler,
         onReady: _attachShell,
         remove: () {
           entry.remove();
@@ -354,7 +367,7 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
 
   // ── Точная геометрия пузыря ────────────────────────────────────────
 
-  Size _measure(double overlayW) {
+  Size _measure(double overlayW, TextScaler? scaler) {
     // Доступная ширина текста: от края оверлея отступаем левый/правый
     // clamp-запас пузыря (по 6) и его горизонтальные паддинги (по [_kPadX]).
     // Долгая подсказка переносится на 2-4 строки, а высота пузыря считается
@@ -362,7 +375,7 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
     // Шкалу шрифта берём из MediaQuery (TextScaler): без неё TextPainter
     // меряет на unit-scale, а реальный Text рисуется на системном масштабе
     // шрифта — пузырь выходит меньше текста и буквы «заезжают».
-    final textScaler = MediaQuery.textScalerOf(context);
+    final textScaler = scaler ?? TextScaler.linear(1.0);
     // Доступная ширина текста (оверлей минус клин-запасы и паддинги).
     final maxTextW = (overlayW - 12 - 2 * _kPadX).clamp(80.0, 244.0);
 
@@ -423,6 +436,7 @@ class _TipShell extends StatefulWidget {
   final double width;
   final bool above;
   final TextStyle textStyle;
+  final TextScaler? textScaler;
   final void Function(_TipShellState state) onReady;
 
   /// Убирает наш [OverlayEntry] из оверлея.
@@ -439,6 +453,7 @@ class _TipShell extends StatefulWidget {
     required this.width,
     required this.above,
     required this.textStyle,
+    required this.textScaler,
     required this.onReady,
     required this.remove,
     required this.onGone,
@@ -536,6 +551,7 @@ class _TipShellState extends State<_TipShell>
                 width: widget.width,
                 above: widget.above,
                 textStyle: widget.textStyle,
+                textScaler: widget.textScaler,
               ),
             ),
           ),
@@ -551,12 +567,14 @@ class _Bubble extends StatelessWidget {
   final double width;
   final bool above;
   final TextStyle textStyle;
+  final TextScaler? textScaler;
 
   const _Bubble({
     required this.message,
     required this.width,
     required this.above,
     required this.textStyle,
+    required this.textScaler,
   });
 
   @override
@@ -597,7 +615,9 @@ class _Bubble extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 4,
               overflow: TextOverflow.clip,
-              child: Text(message),
+              // Явный textScaler якоря: отрисовка идёт той же шкалой, по
+              // которой мерили пузырь - буквы не вылезают за границу.
+              child: Text(message, textScaler: textScaler),
             ),
           ),
         ),

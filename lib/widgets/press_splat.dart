@@ -413,7 +413,14 @@ class _OrganicFabState extends State<OrganicFab>
             //      гаснет к середине — плитка читается выпуклой в любой теме.
             // БЕЗ обводки (тёмный контур её убивал). Долгое зажатие
             // (BERSERK) вешаем на саму плитку.
+            // Фиксированный размер плитки: прежняя FloatingActionButton сама
+            // задавала 56×56, а стеклянная плитка без явного размера
+            // «обнимала» иконку (26px) — кнопка схлопывалась. Явно держим
+            // дефолтный M3-размер [widget.size] (56×56) и StackFit.expand,
+            // чтобы стеклянный блик покрыл ВСЮ плитку, а не только значок.
             Container(
+              width: widget.size,
+              height: widget.size,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
                 gradient: LinearGradient(
@@ -445,6 +452,7 @@ class _OrganicFabState extends State<OrganicFab>
               ),
               child: Stack(
                 clipBehavior: Clip.none,
+                fit: StackFit.expand,
                 alignment: Alignment.center,
                 children: [
                   // Стеклянный блик: белый отзеркаленный градиент, гаснет

@@ -139,7 +139,13 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
     //   2) тень: фирменное свечение (primary, blur 20) + контактный след
     //   3) стеклянный блик сверху (0.30 → 0) — выпуклость в любой теме
     //   4) LiveAdaAvatar в центре с лёгкой тенью — «вдавлен в стекло»
+    // Размер держать ЯВНО: прежний FloatingActionButton.small сам задавал
+    // 40×40, а стеклянная плитка без явного размера «обнимает» аватарку
+    // (26px) — кнопка схлопывалась. Возвращаем M3-small (40×40), но
+    // чуть элегантнее: 42×42 (чуть крупнее, мягче сидит в ряду с плюсом).
     return Container(
+      width: 42,
+      height: 42,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
@@ -168,6 +174,7 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
         ],
       ),
       child: Stack(
+        fit: StackFit.expand,
         alignment: Alignment.center,
         children: [
           // Стеклянный блик: белый → 0 к середине. Выпуклость читается.

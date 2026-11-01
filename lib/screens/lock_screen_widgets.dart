@@ -480,28 +480,35 @@ Future<void> _showExitDialog(
       // тема даёт сероватый туман, светлая — мягкое высветление. В
       // прямом и обратном ходе анимируется симметрично.
       final dimColor = isDark ? cs.surfaceContainerHigh : cs.surfaceContainerLowest;
-      // Blur на весь экран: в ClipRect по области окна на границе
-      // «размыто/не размыто» оставался прямоугольный шов. Полноэкранный
-      // бэкдроп рисует однородное стекло без кромок.
       final dimAlpha = isDark ? 0.6 : 0.5;
+      // Blur рисуется в ограниченной области (300×500) вокруг центра:
+      // полноэкранный BackdropFilter на слабом GPU — 3–5 мс на кадр, и
+      // 380 мс перехода = 180+ лишних миллисекунд работы GPU. Радиус
+      // клипа 300×500 — шов «размыто/не размыто» невидим (карточка
+      // диалога 312px, клип на 90px шире с каждой стороны).
+      const clipW = 460.0, clipH = 560.0;
       return Stack(
         fit: StackFit.expand,
+        alignment: Alignment.center,
         children: [
-          Container(color: dimColor.withValues(alpha: dimAlpha * t)),
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t),
-            child: Center(
-              child: Transform.scale(
-                // Ход 0.82 → 1.0 вместо 0.94 → 1.0: при 6% масштабирования окно
-                // на 6" экране смещается на ~1 мм за кадр — глаз такую анимацию
-                // не регистрирует и «стекло» кажется появляющимся мгновенно.
-                scale: 0.82 + 0.18 * t,
-                child: Opacity(
-                  // Проявка заканчивается на середине прохода: контент обязан
-                  // быть уже видим, пока доигрывают blur и масштаб, иначе
-                  // первые ~150 мс анимации не показывают вообще ничего.
-                  opacity: (t * 2).clamp(0.0, 1.0),
-                  child: child,
+          // Затемнение — на весь экран (дёшево, без GPU-фильтра).
+          Positioned.fill(
+            child: Container(color: dimColor.withValues(alpha: dimAlpha * t)),
+          ),
+          // Blur — только в «окне» вокруг карточки: σ растёт с проходом.
+          ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: SizedBox(
+              width: clipW,
+              height: clipH,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10 * t, sigmaY: 10 * t),
+                child: Transform.scale(
+                  scale: 0.82 + 0.18 * t,
+                  child: Opacity(
+                    opacity: (t * 2).clamp(0.0, 1.0),
+                    child: child,
+                  ),
                 ),
               ),
             ),
