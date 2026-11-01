@@ -67,8 +67,12 @@ class _HomeScreenState extends State<HomeScreen>
     // МЕДЛЕННЕЕ и РАВНЕЕ (было 140/0.99 — «слишком быстро» и дёргано):
     // камень проскальзывает за ~700 мс, без отскока. Ниже жёсткость —
     // длиннее, плавнее «приземление» на угол.
-    stiffness: 52,
-    dampingRatio: 0.9,
+    // КРИТИЧЕСКИ ДЕМПФИРОВАННАЯ (damping 1.0): перелёт между разделами
+    // БЕЗ отскока — «приземление» в угол не дёргается назад (жалоба
+    // «отпускаю дёргано возвращаются»). Жёсткость 90: 52 было вялым
+    // («подтормаживает при нажатиях»), 200 — «адски быстро».
+    stiffness: 90,
+    dampingRatio: 1.0,
   );
 
   /// Сколько сейчас разделов (нужно пружине, чтобы не уехать за край).
@@ -365,16 +369,13 @@ class _HomeScreenState extends State<HomeScreen>
     if ((_railPage.value - page).abs() > 0.001) {
       _railPage.value = page;
     }
-    // While the pill is being dragged, or while the release spring is
-    // moving the pages, the horizontal rail only updates the indicator.
-    // We do NOT interpolate the skin/pill height (`_applyRailPillOffset`)
-    // in that window: it was making the white background crawl up and
-    // cover the pill corners while the pill was moving horizontally.
-    // The background stays fixed until the spring settles, then lands
-    // smoothly via the scroll-end handler.
-    if (sectionDragPage.value == null && !_pageSpring.isRunning) {
-      _applyRailPillOffset(page);
-    }
+    // Высота/белая подложка интерполируется по дробной странице ВСЕГДА
+    // (включая полёт пружины по тапу). Раньше здесь был гейт, который
+    // ЗАМОРАЖИВАЛ высоту на полёте и скакал на лонде — из-за этого табы
+    // «подтормаживали» и в углах раздела «дёргано возвращались». Теперь
+    // кожа следует за пружиной непрерывно (и геометрия `top: 64-off`
+    // больше не даёт белому залезать на углы таблетки).
+    _applyRailPillOffset(page);
   }
 
   /// Высота/сворачивание таблетки для ДРОБНОЙ страницы карусели.
@@ -628,21 +629,18 @@ class _HomeScreenState extends State<HomeScreen>
               animation: sectionScrollOffset,
               builder: (context, _) {
                 final off = sectionScrollOffset.value;
-                // Фон ЗАДВИГАЕТСЯ вместе с контентом раздела: при прокрутке
-                // вниз (off растёт) верхняя кромка подложки уходит ВЫШЕ
-                // вьюпорта (за клип), а нижняя остаётся прижата — поэтому
-                // под сужающейся таблеткой видно «уплывающий» бэк, а не
-                // дорисовываемый белый блок. Раньше это был Positioned.fill
-                // + Transform.translate(0,-off), и нижний край панели
-                // уезжал вверх, открывая белую подложку Stack'а — отсюда
-                // «белый фон закрывает таблетку». Теперь Positioned с
-                // bottom:0 и top:-off (панель растёт вверх, снизу не
-                // просвечивает).
+                // Белая подложка следует ЗА НИЖНИМ КРАЕМ таблетки: её верхняя
+                // кромка всегда ровно под дном сворачивающейся капсулы, а не
+                // «заезжает» в середину таблетки. В покое (off=0) она начинается
+                // с 64 px (под полной таблеткой); по мере прокрутки вниз она
+                // ПЛАВНО поднимается (top = 64 - off), заполняя место, которое
+                // освободила сворачивающаяся таблетка — экран сам поднимается/
+                // опускается вместе с ней, и белый не остаётся в середине.
                 return Positioned(
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  top: -off,
+                  top: (kSectionPillSlotHeight - off).clamp(0.0, 64.0),
                   child: IgnorePointer(
                     child: Container(
                       color: Theme.of(context).scaffoldBackgroundColor,

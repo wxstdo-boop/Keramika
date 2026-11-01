@@ -800,19 +800,25 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                               // Красивая «таблетка» звука: форма ПОСТОЯННА (одна
                               // толщина обводки, один padding, одна весовка
                               // шрифта), а выбор «проявляется» лерпом цвета
-                              // + мягким свечением. Раньше вес шрифта
-                              // прыгал w500↔w700 (метрики текста менялись →
-                              // «дёрганые» кнопки), а цвета/обводка скакали.
+                              // + мягким свечением. Выбранная — НЕЙТРАЛЬНАЯ
+                              // surface-таблетка (без primary/красного), не
+                              // Selected — спокойнее. Анимации те же.
                               final cs = theme.colorScheme;
                               final selBorder = selected
-                                  ? cs.primary.withValues(alpha: 0.9)
-                                  : cs.outlineVariant.withValues(alpha: 0.45);
+                                  ? cs.onSurfaceVariant.withValues(alpha: 0.55)
+                                  : cs.outlineVariant.withValues(alpha: 0.35);
                               final selFg = selected
-                                  ? cs.onPrimaryContainer
-                                  : cs.onSurface;
-                              final selIcon = selected
-                                  ? cs.primary
+                                  ? cs.onSurface
                                   : cs.onSurfaceVariant;
+                              final selIcon = selected
+                                  ? cs.onSurfaceVariant
+                                  : cs.onSurfaceVariant.withValues(alpha: 0.7);
+                              final gradTop = selected
+                                  ? cs.surfaceContainerHighest
+                                  : cs.surfaceContainerHigh;
+                              final gradBottom = selected
+                                  ? cs.surfaceContainerHigh
+                                  : cs.surfaceContainer;
                               return GestureDetector(
                                 onTap: () => setState(() => _soundName = s),
                                 // Зажатие звука — удаление (свой файл или
@@ -831,37 +837,27 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
-                                    // Градиент ВСЕГДА (2 точки, лерп по color):
-                                    // выбранная «наливается» фирменным
-                                    // градиентом, не Selected — спокойный серый.
-                                    // AnimatedContainer лерпит по цветам, без
-                                    // скачков (null↔gradient не интерполируется).
+                                    // Нейтральный градиент (surface-лестница)
+                                    // ВСЕГДА: выбранная чуть светлее, не
+                                    // Selected — спокойнее. Без primary/
+                                    // красного — «красные таблетки» ушли.
+                                    // AnimatedContainer лерпит по цветам,
+                                    // без скачков (null↔gradient не
+                                    // интерполируется).
                                     gradient: LinearGradient(
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
-                                      colors: [
-                                        selected
-                                            ? Color.lerp(
-                                                  Colors.white, cs.primary, 0.20,
-                                                )!
-                                            : Color.lerp(
-                                                Colors.white, cs.surfaceContainerHigh,
-                                                0.30,
-                                              )!,
-                                        selected
-                                            ? cs.primaryContainer
-                                            : cs.surfaceContainerHigh,
-                                      ],
+                                      colors: [gradTop, gradBottom],
                                     ),
                                     border: Border.all(
                                       color: selBorder,
-                                      width: 2,
+                                      width: 1.5,
                                     ),
                                     boxShadow: selected
                                         ? [
                                             BoxShadow(
-                                              color: cs.primary
-                                                  .withValues(alpha: 0.28),
+                                              color: cs.onSurfaceVariant
+                                                  .withValues(alpha: 0.22),
                                               blurRadius: 10,
                                               spreadRadius: -1,
                                               offset:
@@ -1124,9 +1120,14 @@ class _SoundActionChipState extends State<_SoundActionChip> {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    // Фирменный кровавый красный: в тёмной теме приподнимаем, чтобы
-    // кромка не тонула в тёмном фоне.
-    final red = dark ? const Color(0xFFFF7B86) : const Color(0xFFC8102E);
+    final cs = Theme.of(context).colorScheme;
+    // Нейтральные кнопки: цвет — из темы (onSurfaceVariant), свечение при
+    // воспроизведении — мягкий primary. Раньше был хардкодный КРОВАВЫЙ
+    // красный (0xFFC8102E / 0xFFFF7B86) — три красные «кнопки-киски»
+    // (жалоба «не сделал, фон не убрал, красные не поменял»). Теперь
+    // кнопки читаются как часть UI, а не как кровь. Анимации те же.
+    final neutral = dark ? cs.onSurfaceVariant : cs.onSurfaceVariant;
+    final glow = cs.primary;
     return SmoothTooltip(
       message: widget.tooltip,
       preferredAbove: true,
@@ -1148,8 +1149,8 @@ class _SoundActionChipState extends State<_SoundActionChip> {
         child: GestureDetector(
           onTap: widget.onPressed,
           child: AnimatedScale(
-            // Мягче и медленнее: 300 мс вместо 220 — капсула «тонет»
-            // под пальцем без щелчка и так же плавно поднимается.
+            // Мягче и медленнее: 300 мс — капсула «тонет» под пальцем без
+            // щелчка и так же плавно поднимается (анимация та же).
             scale: _pressed ? 0.9 : 1.0,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
@@ -1161,17 +1162,19 @@ class _SoundActionChipState extends State<_SoundActionChip> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                color: red.withValues(
-                  alpha: (widget.glowing || _pressed) ? 0.16 : 0.10,
+                color: neutral.withValues(
+                  alpha: (widget.glowing || _pressed) ? 0.18 : 0.10,
                 ),
                 border: Border.all(
-                  color: red.withValues(alpha: widget.glowing ? 0.55 : 0.32),
+                  color: (widget.glowing ? glow : neutral).withValues(
+                    alpha: widget.glowing ? 0.6 : 0.34,
+                  ),
                   width: 1.2,
                 ),
                 boxShadow: widget.glowing
                     ? [
                         BoxShadow(
-                          color: red.withValues(alpha: 0.28),
+                          color: glow.withValues(alpha: 0.30),
                           blurRadius: 12,
                           spreadRadius: -2,
                           offset: const Offset(0, 4),
@@ -1180,7 +1183,10 @@ class _SoundActionChipState extends State<_SoundActionChip> {
                     : null,
               ),
               child: IconTheme(
-                data: IconThemeData(color: red, size: 24),
+                data: IconThemeData(
+                  color: widget.glowing ? glow : neutral,
+                  size: 24,
+                ),
                 child: widget.child,
               ),
             ),

@@ -399,7 +399,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                 const AiGuideFloatingButton(),
                 const SizedBox(width: 10),
                 OrganicFab(
-                  seed: 9.3,
+                  seed: 3.1,
                   onTap: _addCheck,
                   onLongPress: () => showBerserkSheet(context),
                 ),

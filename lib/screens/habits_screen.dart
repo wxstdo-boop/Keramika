@@ -788,7 +788,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                   const AiGuideFloatingButton(),
                   const SizedBox(width: 10),
                   OrganicFab(
-                    seed: 7.7,
+                    seed: 3.1,
                     onTap: () {
                       Haptics.light();
                       _addHabit();

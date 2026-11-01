@@ -287,7 +287,7 @@ class _TasksScreenState extends State<TasksScreen>
                   // зажатие — режим BERSERK (showBerserkSheet сам проверяет,
                   // включён ли режим в настройках).
                   OrganicFab(
-                    seed: 5.2,
+                    seed: 3.1,
                     onTap: () {
                       Haptics.light();
                       _addTask();
