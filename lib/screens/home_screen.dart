@@ -365,16 +365,15 @@ class _HomeScreenState extends State<HomeScreen>
     if ((_railPage.value - page).abs() > 0.001) {
       _railPage.value = page;
     }
-    // While the pill is being dragged, or while the release spring is
-    // moving the pages, the horizontal rail only updates the indicator.
-    // We do NOT interpolate the skin/pill height (`_applyRailPillOffset`)
-    // in that window: it was making the white background crawl up and
-    // cover the pill corners while the pill was moving horizontally.
-    // The background stays fixed until the spring settles, then lands
-    // smoothly via the scroll-end handler.
-    if (sectionDragPage.value == null && !_pageSpring.isRunning) {
-      _applyRailPillOffset(page);
-    }
+    // Высота/белая подложка интерполируется по дробной странице ВСЕГДА
+    // (включая полёт пружины и драг). Само закрытие углов таблетки больше
+    // не даёт белый фон залезать на её углы: geometry skin теперь
+    // `top: kSectionPillSlotHeight - off` (см. build) — нижняя кромка
+    // белого всегда ровно под нижним краем сворачивающейся таблетки, а
+    // значит не налезает на неё. Раньше гейт отключал интерполяцию на
+    // полёте, и кожа «фризовалась» на высоте от-раздела, а на settle
+    // прыгала на высоту до-раздела — это и читалось как дёргание.
+    _applyRailPillOffset(page);
   }
 
   /// Высота/сворачивание таблетки для ДРОБНОЙ страницы карусели.
@@ -638,11 +637,20 @@ class _HomeScreenState extends State<HomeScreen>
                 // «белый фон закрывает таблетку». Теперь Positioned с
                 // bottom:0 и top:-off (панель растёт вверх, снизу не
                 // просвечивает).
+                // ГЛАВНОЕ: верх белого = НИЖНИЙ КРАЙ таблетки. Таблетка
+                // сворачивается вниз (высота 64*(1-off/64) = 64-off), поэтому
+                // панель растёт ВВЕРХ ровно на (64 - off): белый поднимается
+                // ПОД сворачивающейся таблеткой, а не за её угол. Раньше
+                // было `top: -off` — нижний край белого уходил ВЫШЕ нижнего
+                // края таблетки и закрывал её углы (жалоба «белый фон
+                // закрывает углы таблетки / экран должен сам закрыться и
+                // новый расти»). Теперь белый и таблетка — две стороны
+                // одного движения: таблетка закрывается, белый растёт.
                 return Positioned(
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  top: -off,
+                  top: (kSectionPillSlotHeight - off).clamp(0.0, 64.0),
                   child: IgnorePointer(
                     child: Container(
                       color: Theme.of(context).scaffoldBackgroundColor,

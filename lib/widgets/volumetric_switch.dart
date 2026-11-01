@@ -48,12 +48,14 @@ class VolumetricSwitch extends StatelessWidget {
     final k = scale;
 
     // ── Цвета трека ─────────────────────────────────────────────────
-    // Тренок-«вмятина» держится в пределах поверхности раздела: выключенный
-    // трек едва тёмнее фона (не «плавающая серая плитка» — жалоба «не
-    // вписывается»). Включённый — фирменный градиент.
+    // Свитчи живут внутри карточек (surfaceContainerLow). Тренок в ВЫКЛ
+    // берёт средний surfaceContainer (между card и Highest) и слегка
+    // «уплывает» в поверхность (alpha 0.5) — не «плавающая серая плитка»
+    // (жалоба «не вписывается»), а вмятина в том же материале. Включённый
+    // — фирменный градиент.
     final trackOff = isDark
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.82)
-        : scheme.surfaceContainerHigh;
+        ? scheme.surfaceContainerHigh.withValues(alpha: 0.55)
+        : scheme.surfaceContainer.withValues(alpha: 0.6);
 
     // Включённый трек: градиент «стекло»: светлей у верха → primary
     // внизу. На тёмной теме светлей берём из самого primary, чтобы
@@ -116,19 +118,24 @@ class VolumetricSwitch extends StatelessWidget {
           // differently-shaped boxShadow list и СКАЧИЛ теньми (то самое
           // «фон неплавно/дёргано сменяется»). Теперь 3 всегда, различаются
           // только alpha — лерп идёт по каждому полю.
+          // Свитчи живут в карточках: тени ВНЕШНЕГО трека (тоннель + контакт)
+          // держим минимальными в ВЫКЛ — «уплывший в материал» трек, а не
+          // «плавающий квадрат с тенью». При вкл контакт гаснет, остаётся
+          // только фирменное свечение primary.
           boxShadow: [
-            // 1) Утопленность: тёмный «тоннель» сверху — ВЕЗДЕ.
+            // 1) Утопленность: тёмный «тоннель» сверху — в ВКЛ (дорожка
+            // стала «внутрь»), в ВЫКЛ почти не видна.
             BoxShadow(
               color: Colors.black
-                  .withValues(alpha: value ? 0.22 : (isDark ? 0.35 : 0.18)),
+                  .withValues(alpha: value ? 0.22 : (isDark ? 0.14 : 0.06)),
               blurRadius: 3 * k,
               spreadRadius: 0.5 * k,
               offset: Offset(0, -1.5 * k),
             ),
-            // 2) Контактное основание: сильное в ВЫКЛ, в ВКЛ гаснет до 0.
+            // 2) Контактное основание: в ВЫКЛ едва заметное, в ВКЛ 0.
             BoxShadow(
               color: Colors.black.withValues(
-                alpha: value ? 0.0 : (isDark ? 0.25 : 0.10),
+                alpha: value ? 0.0 : (isDark ? 0.10 : 0.04),
               ),
               blurRadius: 4 * k,
               spreadRadius: -1 * k,

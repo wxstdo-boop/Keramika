@@ -79,11 +79,15 @@ void main() {
     );
     await tester.pump();
 
-    // Шагами вправо — значение только растёт.
+    // Камень догоняет палец логарифмически (resistance): дожидаемся
+    // сходимости (60 кадров достаточно, чтобы сглаженное значение
+    // совпало с позицией пальца), и только потом сверяем монотонность.
     var prev = sectionDragPage.value ?? sectionRailPage.value;
     for (var i = 0; i < 3; i++) {
       await gesture.moveBy(const Offset(20, 0));
-      await tester.pump();
+      for (var f = 0; f < 60; f++) {
+        await tester.pump();
+      }
       final now = sectionDragPage.value!;
       expect(now, greaterThan(prev));
       prev = now;
@@ -92,13 +96,19 @@ void main() {
     // А теперь шагами влево — только падает, и не уходит ниже нуля.
     for (var i = 0; i < 8; i++) {
       await gesture.moveBy(const Offset(-30, 0));
-      await tester.pump();
+      for (var f = 0; f < 60; f++) {
+        await tester.pump();
+      }
       final now = sectionDragPage.value!;
       expect(now, lessThanOrEqualTo(prev));
       expect(now, greaterThanOrEqualTo(0));
       prev = now;
     }
-    expect(prev, 0.0, reason: 'левый край дорожки — первый раздел');
+    expect(
+      prev,
+      closeTo(0.0, 0.01),
+      reason: 'левый край дорожки — первый раздел',
+    );
 
     await gesture.up();
     await tester.pump();
@@ -114,9 +124,17 @@ void main() {
     );
     await tester.pump();
     await gesture.moveBy(const Offset(400, 0));
-    await tester.pump();
+    // Камень догоняет палец логарифмически (resistance): даём
+    // сглаживанию докатиться до правого края (зажим) за 60 кадров.
+    for (var f = 0; f < 60; f++) {
+      await tester.pump();
+    }
 
-    expect(sectionDragPage.value, (count - 1).toDouble());
+    expect(
+      sectionDragPage.value,
+      closeTo((count - 1).toDouble(), 0.01),
+      reason: 'зажим правого края = последняя страница (после сходимости)',
+    );
 
     await gesture.up();
     await tester.pump();
