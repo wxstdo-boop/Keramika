@@ -83,10 +83,14 @@ class VolumetricSwitch extends StatelessWidget {
               onChanged!(!value);
             },
       child: AnimatedContainer(
-        // Заливка/свечение трека — тягучее «разгорание» (500 мс): свет
-        // наполняет вмятину, а не щёлкает.
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOutCubic,
+        // Заливка/свечение трека. ПЛАВНОСТЬ ДЕРЖИТСЯ НА ОДНОМ ДОЛЖНОСТИ:
+        // трек, шайба и ядро должны ехать ОДНАКОВО (одна длительность +
+        // одна кривая). Раньше трек шёл 500 мс easeInOutCubic, а ядро —
+        // 420 мс easeOutCubic: фон и ядро доезжали в разное время — из-за
+        // этого переключатель «неплавня/подтормаживал» (фон отстаёт от
+        // шайбы). Теперь всё 280 мс easeOutCubic — коротко и без рывка.
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
         width: 54 * k,
         height: 32 * k,
         padding: EdgeInsets.all(3 * k),
@@ -102,12 +106,15 @@ class VolumetricSwitch extends StatelessWidget {
               value ? onBottom : offBottom,
             ],
           ),
+          // КРИТИЧНО: список теней ВСЕГДА из 3-х позиций в обоих состояниях.
+          // Раньше «контакт» и «свечение» висели в different branch'ах
+          // (if (!value) / if (value)), и при переключении длина списка
+          // прыгала 2↔3 — AnimatedContainer НЕ умеет интерполировать
+          // differently-shaped boxShadow list и СКАЧИЛ теньми (то самое
+          // «фон неплавно/дёргано сменяется»). Теперь 3 всегда, различаются
+          // только alpha — лерп идёт по каждому полю.
           boxShadow: [
-            // Утопленность: тёмный «тоннель» сверху (отдельная тень с
-            // отрицательным сдвигом) — трек читается вмазанным в экран,
-            // а не лежащим на нём. Без `inset` (в этой версии Flutter
-            // у BoxShadow его нет): эффект тот же — полоса затенения
-            // у верхнего края.
+            // 1) Утопленность: тёмный «тоннель» сверху — ВЕЗДЕ.
             BoxShadow(
               color: Colors.black
                   .withValues(alpha: value ? 0.22 : (isDark ? 0.35 : 0.18)),
@@ -115,24 +122,22 @@ class VolumetricSwitch extends StatelessWidget {
               spreadRadius: 0.5 * k,
               offset: Offset(0, -1.5 * k),
             ),
-            // Мягкое основание: в выключенном — короткий контакт,
-            // трек выглядит наклеенным изнутри.
-            if (!value)
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.10),
-                blurRadius: 4 * k,
-                spreadRadius: -1 * k,
-                offset: Offset(0, 1.5 * k),
+            // 2) Контактное основание: сильное в ВЫКЛ, в ВКЛ гаснет до 0.
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: value ? 0.0 : (isDark ? 0.25 : 0.10),
               ),
-            // Свечение: во включённом трек «горит» — широкий цветной
-            // ореол вокруг колбасы (не под ней, а по контуру).
-            if (value)
-              BoxShadow(
-                color: active.withValues(alpha: 0.35),
-                blurRadius: 14 * k,
-                spreadRadius: -2 * k,
-                offset: const Offset(0, 0),
-              ),
+              blurRadius: 4 * k,
+              spreadRadius: -1 * k,
+              offset: Offset(0, 1.5 * k),
+            ),
+            // 3) Свечение primary: 0 в ВЫКЛ, сильное в ВКЛ.
+            BoxShadow(
+              color: active.withValues(alpha: value ? 0.35 : 0.0),
+              blurRadius: 14 * k,
+              spreadRadius: -2 * k,
+              offset: const Offset(0, 0),
+            ),
           ],
         ),
         child: Stack(
@@ -165,7 +170,12 @@ class VolumetricSwitch extends StatelessWidget {
             ),
             // Шайба-«шарик» с тягучим докатом.
             AnimatedAlign(
-              duration: const Duration(milliseconds: 500),
+              // ШАЙБА ЕДЕТ РОВНО ТАК ЖЕ, КАК ФОН: та же длительность (280)
+              // и та же кривая (easeOutCubic). Раньше шайба шла 500 мс, а
+              // фон 500 easeInOutCubic — два разных тайминга расходились,
+              // и шайба «догоняла» свой край позже/раньше фона (дёрганье).
+              // Теперь они синхронны.
+              duration: const Duration(milliseconds: 280),
               curve: Curves.easeOutCubic,
               alignment: value ? Alignment.centerRight : Alignment.centerLeft,
               child: RepaintBoundary(
@@ -176,33 +186,48 @@ class VolumetricSwitch extends StatelessWidget {
                     shape: BoxShape.circle,
                     // Сфера: блик в левом верхнем углу → почти белая
                     // к низу с лёгким серым (тень сферического шара).
+                    // Тёмная тема: шарик НЕ должен быть «лампочкой». Раньше
+                    // ядро шло чистым белым (Colors.white) + белый ободок —
+                    // на тёмном фоне это читалось «блестящим говном» (яркая
+                    // точка-прожектор). Теперь в тёмной теме шарик — мягкий
+                    // тёплый серо-белый, блик приглушён, ободка нет: шайба
+                    // выглядит матовой, а не залитой светом.
                     gradient: RadialGradient(
                       center: const Alignment(-0.42, -0.46),
                       radius: 1.35,
-                      colors: [
-                        Colors.white,
-                        Color.lerp(
-                            Colors.white, isDark ? Color(0xFFB9BCC4) : Color(0xFFD9DAE0), 0.55)!,
-                      ],
+                      colors: isDark
+                          ? [
+                              // Матовый светлый верх (не чистый белый),
+                              // уходит в серую середину — без «лампы».
+                              const Color(0xFFE8E8EC),
+                              const Color(0xFFB9BCC4),
+                            ]
+                          : [
+                              Colors.white,
+                              const Color(0xFFD9DAE0),
+                            ],
                     ),
                     // Контактная тень под шариком — шарик не «впарен
                     // в стену», а лежит в дорожке с зазором.
+                    // В тёмной теме тень мягче (тёмный фон её и так
+                    // читается), в светлой — заметнее.
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black
-                            .withValues(alpha: isDark ? 0.42 : 0.30),
+                            .withValues(alpha: isDark ? 0.28 : 0.30),
                         blurRadius: 5 * k,
                         spreadRadius: -0.5 * k,
                         offset: Offset(0, 1.5 * k),
                       ),
-                      // Тонкий световой ободок по верхней кромке шара —
-                      // дополнительный блик стеклянной оболочки.
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: isDark ? 0.20 : 0.60),
-                        blurRadius: 1 * k,
-                        spreadRadius: -0.8 * k,
-                        offset: Offset(0, -1 * k),
-                      ),
+                      // Световой ободок только в СВЕТлой теме: в тёмной он
+                      // и есть та самая «блестящая точка» — убираем.
+                      if (!isDark)
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.60),
+                          blurRadius: 1 * k,
+                          spreadRadius: -0.8 * k,
+                          offset: Offset(0, -1 * k),
+                        ),
                     ],
                   ),
                   child: Center(
@@ -210,7 +235,10 @@ class VolumetricSwitch extends StatelessWidget {
                       // Ядро-точка в центре шарика: серое в выключенном
                       // (состояние видно и без цвета), наливается
                       // фирменным с мягким свечением во включённом.
-                      duration: const Duration(milliseconds: 420),
+                      // Та же длительность/кривая, что и у шайбы и фона
+                      // (280 мс easeOutCubic) — все три слоя доезжают
+                      // ОДНОВРЕМЕННО, без рассинхрона.
+                      duration: const Duration(milliseconds: 280),
                       curve: Curves.easeOutCubic,
                       width: (value ? 10 : 8) * k,
                       height: (value ? 10 : 8) * k,
@@ -222,15 +250,20 @@ class VolumetricSwitch extends StatelessWidget {
                                 ? Colors.white.withValues(alpha: 0.45)
                                 : scheme.onSurfaceVariant
                                     .withValues(alpha: 0.55)),
-                        boxShadow: value
-                            ? [
-                                BoxShadow(
-                                  color: active.withValues(alpha: 0.6),
-                                  blurRadius: 4 * k,
-                                  spreadRadius: 0.5 * k,
-                                ),
-                              ]
-                            : const [],
+                        // Ядро-точка: в тёмной теме свечение слабее, чем в
+                        // светлой — иначе яркая точка на тёмном фоне
+                        // «блистает и отдаёт говном» (тот же прожектор,
+                        // что и у шайбы). В светлой — мягкое фирменное.
+                        boxShadow: [
+                          if (value)
+                            BoxShadow(
+                              color: active.withValues(
+                                alpha: isDark ? 0.32 : 0.6,
+                              ),
+                              blurRadius: 4 * k,
+                              spreadRadius: 0.5 * k,
+                            ),
+                        ],
                       ),
                     ),
                   ),

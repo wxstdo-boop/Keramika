@@ -1525,46 +1525,52 @@ class _HabitsScreenState extends State<HabitsScreen>
                                   ),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    // Элегантная «стеклянная» таблетка победы:
-                                    // тонкая заливка в фирменном оттенке темы,
-                                    // мягкая светлая кромка и лёгкий внутренний
-                                    // блик сверху — читается как аккуратный
-                                    // бейдж, а не грязное «подтёкшее» пятно.
-                                    // Никаких кровавых пятнышек и глухих
-                                    // градиентов.
+                                    // Таблетка-победа с «кровавыми» пятнышками
+                                    // (как было): винный градиент + живые
+                                    // подтёки + светлая кромка. На тёмной теме
+                                    // стала БОЛЕЕ ПОЛУПРОЗРАЧНОЙ и аккуратной
+                                    // — лёгкое «виноградное стекло», а не глухая
+                                    // тёмная плита, которая давила на глаза.
                                     child: AnimatedContainer(
                                       duration: const Duration(
                                         milliseconds: 320,
                                       ),
                                       curve: Curves.easeOutCubic,
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
+                                        horizontal: 14,
+                                        vertical: 7,
                                       ),
                                       decoration: _erasedDecoration(theme),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.check_circle_rounded,
-                                            size: 15,
-                                            color: theme.colorScheme.primary,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            Translations.t(
-                                              'todayErased',
-                                              context,
-                                              'Сегодня очищено',
+                                      child: CustomPaint(
+                                        painter: _BloodSpeckPainter(
+                                          isDark: theme.brightness ==
+                                              Brightness.dark,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons
+                                                  .check_circle_outline_rounded,
+                                              size: 15,
+                                              color: const Color(0xFFFFE1E3),
                                             ),
-                                            style: theme.textTheme.labelSmall
-                                                ?.copyWith(
-                                              color: theme.colorScheme.primary,
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: 0.3,
+                                            const SizedBox(width: 7),
+                                            Text(
+                                              Translations.t(
+                                                'todayErased',
+                                                context,
+                                                'Сегодня очищено',
+                                              ),
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                color: const Color(0xFFFFEEF0),
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.4,
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -1692,33 +1698,35 @@ class _HabitsScreenState extends State<HabitsScreen>
   /// автоматически подстраивается под палитру (primary) и тему.
   BoxDecoration _erasedDecoration(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    final cs = theme.colorScheme;
     return BoxDecoration(
-      // Мягкий вертикальный градиент: чуть светлее сверху (внутренний
-      // блик «стекла») → чуть глубже к низу. В тёмной теме свечение
-      // приглушённее, в светлой — заметнее, но обе версии спокойные.
+      // Винный градиент с «кровью» (как было): глубокий бордо,
+      // на тёмной теме — тонкое ПОЛУПРОЗРАЧНОЕ «виноградное стекло»
+      // (альфа 0.22-0.30, лёгкий блик), на светлой — плотная винная
+      // таблетка. Без глухих блоков и грязных теней.
       gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color.lerp(Colors.white, cs.primary, isDark ? 0.08 : 0.18)!
-              .withValues(alpha: isDark ? 0.14 : 0.10),
-          cs.primary.withValues(alpha: isDark ? 0.20 : 0.14),
-        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: isDark
+            ? [
+                const Color(0xFFE86A72).withValues(alpha: 0.20),
+                const Color(0xFF8E0E18).withValues(alpha: 0.34),
+                const Color(0xFF4A050C).withValues(alpha: 0.28),
+              ]
+            : [
+                const Color(0xFFC0202C).withValues(alpha: 0.62),
+                const Color(0xFF96101B).withValues(alpha: 0.58),
+                const Color(0xFF6E0810).withValues(alpha: 0.54),
+              ],
+        stops: const [0.0, 0.42, 1.0],
       ),
       borderRadius: BorderRadius.circular(999),
       border: Border.all(
-        color: cs.primary.withValues(alpha: isDark ? 0.42 : 0.38),
+        color: (isDark
+                ? const Color(0xFFFFA2A8)
+                : const Color(0xFFE0525C))
+            .withValues(alpha: isDark ? 0.22 : 0.40),
         width: 1,
       ),
-      boxShadow: [
-        // Лёгкое свечение «под стеклом» — бейдж не прижат, а парит.
-        BoxShadow(
-          color: cs.primary.withValues(alpha: isDark ? 0.18 : 0.14),
-          blurRadius: 12,
-          spreadRadius: -4,
-        ),
-      ],
     );
   }
 
@@ -2120,6 +2128,65 @@ class _SectionIndexSource implements IndexSource {
     final global = habits.indexOf(habit);
     return global < 0 ? index : global;
   }
+}
+
+/// Мелкие «кровавые» пятнышки на таблетке «Сегодня очищено».
+/// Пятна рисуются ПОД текстом (painter у CustomPaint), поэтому буквы
+/// остаются чистыми, а заливка выглядит подтёкшей. Только чистые
+/// заливки, без размытий — чтобы не появлялись «серые квадраты».
+class _BloodSpeckPainter extends CustomPainter {
+  const _BloodSpeckPainter({this.isDark = false});
+
+  final bool isDark;
+
+  /// x, y (доли ширины/высоты), радиус (доля высоты), плотность (0..1).
+  static const List<List<double>> _spots = [
+    [0.05, 0.34, 0.15, 0.85],
+    [0.13, 0.74, 0.09, 0.55],
+    [0.22, 0.30, 0.07, 0.45],
+    [0.33, 0.78, 0.11, 0.65],
+    [0.44, 0.26, 0.06, 0.40],
+    [0.55, 0.72, 0.08, 0.52],
+    [0.66, 0.34, 0.07, 0.44],
+    [0.76, 0.76, 0.12, 0.60],
+    [0.86, 0.32, 0.06, 0.38],
+    [0.95, 0.62, 0.09, 0.50],
+  ];
+
+  static const Color _dry = Color(0xFF3C0206);
+  static const Color _wet = Color(0xFFFF8A90);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.height <= 0) return;
+    for (final s in _spots) {
+      final center = Offset(size.width * s[0], size.height * s[1]);
+      final r = size.height * s[2];
+      final density = s[3];
+      // На тёмной теме бейдж полупрозрачнее — пятнышки гаснут сильнее,
+      // чтобы не «кричать» сквозь стекло.
+      final scale = isDark ? 0.6 : 1.0;
+      final dryPaint = Paint()
+        ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.30) * density * scale);
+      canvas.drawCircle(center, r, dryPaint);
+      canvas.drawCircle(
+        center + Offset(r * 1.6, r * 0.5),
+        r * 0.52,
+        Paint()
+          ..color = _dry.withValues(alpha: (isDark ? 0.28 : 0.20) * density * scale),
+      );
+      canvas.drawCircle(
+        center - Offset(r * 0.35, r * 0.4),
+        r * 0.32,
+        Paint()
+          ..color = _wet.withValues(alpha: (isDark ? 0.14 : 0.12) * density * scale),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BloodSpeckPainter oldDelegate) =>
+      oldDelegate.isDark != isDark;
 }
 
 /// Летящая стая для фуллскрина таблички перфекционизма.
