@@ -797,12 +797,29 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                   : (isCustom
                                         ? Translations.t('customSound', context)
                                         : s);
+                              // Красивая «таблетка» звука: форма ПОСТОЯННА (одна
+                              // толщина обводки, один padding, одна весовка
+                              // шрифта), а выбор «проявляется» лерпом цвета
+                              // + мягким свечением. Раньше вес шрифта
+                              // прыгал w500↔w700 (метрики текста менялись →
+                              // «дёрганые» кнопки), а цвета/обводка скакали.
+                              final cs = theme.colorScheme;
+                              final selBorder = selected
+                                  ? cs.primary.withValues(alpha: 0.9)
+                                  : cs.outlineVariant.withValues(alpha: 0.45);
+                              final selFg = selected
+                                  ? cs.onPrimaryContainer
+                                  : cs.onSurface;
+                              final selIcon = selected
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant;
                               return GestureDetector(
                                 onTap: () => setState(() => _soundName = s),
-                                // Зажатие звука — удаление (свой файл или встроенный).
+                                // Зажатие звука — удаление (свой файл или
+                                // встроенный).
                                 onLongPress: () => _deleteSound(s),
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 260),
+                                  duration: const Duration(milliseconds: 280),
                                   curve: Curves.easeOutCubic,
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 4,
@@ -814,20 +831,48 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
-                                    color: selected
-                                        ? theme.colorScheme.primaryContainer
-                                              .withValues(alpha: 0.55)
-                                        : theme
-                                              .colorScheme
-                                              .surfaceContainerHighest
-                                              .withValues(alpha: 0.35),
-                                    border: Border.all(
-                                      color: selected
-                                          ? theme.colorScheme.primary
-                                          : theme.colorScheme.outlineVariant
-                                                .withValues(alpha: 0.6),
-                                      width: selected ? 1.5 : 1,
+                                    // Градиент ВСЕГДА (2 точки, лерп по color):
+                                    // выбранная «наливается» фирменным
+                                    // градиентом, не Selected — спокойный серый.
+                                    // AnimatedContainer лерпит по цветам, без
+                                    // скачков (null↔gradient не интерполируется).
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        selected
+                                            ? Color.lerp(
+                                                  Colors.white, cs.primary, 0.20,
+                                                )!
+                                            : Color.lerp(
+                                                Colors.white, cs.surfaceContainerHigh,
+                                                0.30,
+                                              )!,
+                                        selected
+                                            ? cs.primaryContainer
+                                            : cs.surfaceContainerHigh,
+                                      ],
                                     ),
+                                    border: Border.all(
+                                      color: selBorder,
+                                      width: 2,
+                                    ),
+                                    boxShadow: selected
+                                        ? [
+                                            BoxShadow(
+                                              color: cs.primary
+                                                  .withValues(alpha: 0.28),
+                                              blurRadius: 10,
+                                              spreadRadius: -1,
+                                              offset:
+                                                  const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : const [
+                                            BoxShadow(
+                                              color: Colors.transparent,
+                                            ),
+                                          ],
                                   ),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
@@ -837,13 +882,13 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                             ? Icons.folder_open
                                             : Icons.music_note_outlined,
                                         size: 20,
-                                        color: selected
-                                            ? theme.colorScheme.primary
-                                            : theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
+                                        color: selIcon,
                                       ),
                                       const SizedBox(height: 4),
+                                      // Вес ПОСТОЯННЫЙ (w600): метрики текста не
+                                      // меняются — кнопка не «дёргается» при
+                                      // выборе. Выбранность читается по
+                                      // заливке, обводке и свечению.
                                       Text(
                                         displayName,
                                         maxLines: 1,
@@ -851,12 +896,8 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 12.5,
-                                          fontWeight: selected
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
-                                          color: selected
-                                              ? theme.colorScheme.primary
-                                              : theme.colorScheme.onSurface,
+                                          fontWeight: FontWeight.w600,
+                                          color: selFg,
                                         ),
                                       ),
                                     ],

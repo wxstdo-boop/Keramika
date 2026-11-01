@@ -628,19 +628,24 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                               proxyDecorator: (child, index, animation) =>
                                   _categoryDragProxy(child, theme, animation),
                               itemBuilder: (context, i) {
+                                // Каждый чип несёт собственный отступ справа
+                                // (внутри CategoryChip / _newCategoryChip).
+                                // ВНЕШНИЙ Padding(right: 8) был ЛИШНИМ — он
+                                // складывался с внутренним и давал двойной
+                                // отступ справа (жалоба «лишний отступ»).
+                                // Теперь внешний wrapper — только key: отступ
+                                // правый один.
                                 if (showTrailing && i == cats.length) {
-                                  return Padding(
+                                  return KeyedSubtree(
                                     key: const ValueKey('cat_trailing'),
-                                    padding: const EdgeInsets.only(right: 8),
                                     child: _newCategoryChip(context),
                                   );
                                 }
                                 final name = cats[i];
                                 final isUncategorized = name.isEmpty;
                                 final child = _categoryChip(context, name);
-                                return Padding(
+                                return KeyedSubtree(
                                   key: ValueKey('cat_$name'),
-                                  padding: const EdgeInsets.only(right: 8),
                                   child: isUncategorized
                                       ? child
                                       : ReorderableDragStartListener(

@@ -67,8 +67,8 @@ class _HomeScreenState extends State<HomeScreen>
     // МЕДЛЕННЕЕ и РАВНЕЕ (было 140/0.99 — «слишком быстро» и дёргано):
     // камень проскальзывает за ~700 мс, без отскока. Ниже жёсткость —
     // длиннее, плавнее «приземление» на угол.
-    stiffness: 95,
-    dampingRatio: 1.0,
+    stiffness: 52,
+    dampingRatio: 0.9,
   );
 
   /// Сколько сейчас разделов (нужно пружине, чтобы не уехать за край).
@@ -365,7 +365,16 @@ class _HomeScreenState extends State<HomeScreen>
     if ((_railPage.value - page).abs() > 0.001) {
       _railPage.value = page;
     }
-    _applyRailPillOffset(page);
+    // While the pill is being dragged, or while the release spring is
+    // moving the pages, the horizontal rail only updates the indicator.
+    // We do NOT interpolate the skin/pill height (`_applyRailPillOffset`)
+    // in that window: it was making the white background crawl up and
+    // cover the pill corners while the pill was moving horizontally.
+    // The background stays fixed until the spring settles, then lands
+    // smoothly via the scroll-end handler.
+    if (sectionDragPage.value == null && !_pageSpring.isRunning) {
+      _applyRailPillOffset(page);
+    }
   }
 
   /// Высота/сворачивание таблетки для ДРОБНОЙ страницы карусели.

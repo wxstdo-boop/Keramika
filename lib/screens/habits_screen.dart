@@ -2140,17 +2140,17 @@ class _BloodSpeckPainter extends CustomPainter {
   final bool isDark;
 
   /// x, y (доли ширины/высоты), радиус (доля высоты), плотность (0..1).
+  /// Заметные кровавые пятна: крупные радиусы + высокая плотность. Раньше
+  /// точки были крохотные (r~1px, alpha~0.15) и на тёмной теме гасились
+  /// ещё сильнее — «пятен вообще нет». Теперь пятна отчётливо читаются.
   static const List<List<double>> _spots = [
-    [0.05, 0.34, 0.15, 0.85],
-    [0.13, 0.74, 0.09, 0.55],
-    [0.22, 0.30, 0.07, 0.45],
-    [0.33, 0.78, 0.11, 0.65],
-    [0.44, 0.26, 0.06, 0.40],
-    [0.55, 0.72, 0.08, 0.52],
-    [0.66, 0.34, 0.07, 0.44],
-    [0.76, 0.76, 0.12, 0.60],
-    [0.86, 0.32, 0.06, 0.38],
-    [0.95, 0.62, 0.09, 0.50],
+    [0.08, 0.40, 0.34, 1.0],
+    [0.22, 0.70, 0.26, 0.9],
+    [0.36, 0.30, 0.22, 0.85],
+    [0.52, 0.74, 0.30, 1.0],
+    [0.66, 0.34, 0.24, 0.85],
+    [0.80, 0.70, 0.34, 0.95],
+    [0.92, 0.36, 0.20, 0.80],
   ];
 
   static const Color _dry = Color(0xFF3C0206);
@@ -2163,23 +2163,26 @@ class _BloodSpeckPainter extends CustomPainter {
       final center = Offset(size.width * s[0], size.height * s[1]);
       final r = size.height * s[2];
       final density = s[3];
-      // На тёмной теме бейдж полупрозрачнее — пятнышки гаснут сильнее,
-      // чтобы не «кричать» сквозь стекло.
-      final scale = isDark ? 0.6 : 1.0;
+      // Крупные пятна + заметная плотность: тёмное «сухое» ядро + тёмный
+      // подтёк + светлое «мокрое» ядрышко. На тёмной теме бейдж
+      // полупрозрачнее, поэтому пятна чуть гаснут (×0.72) — но ЧИТАЮТСЯ.
+      final scale = isDark ? 0.72 : 1.0;
       final dryPaint = Paint()
-        ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.30) * density * scale);
+        ..color = _dry.withValues(alpha: (isDark ? 0.55 : 0.46) * density * scale);
       canvas.drawCircle(center, r, dryPaint);
+      // Подтёк вправо-вниз — «кровь растеклась».
       canvas.drawCircle(
-        center + Offset(r * 1.6, r * 0.5),
-        r * 0.52,
+        center + Offset(r * 1.5, r * 0.45),
+        r * 0.6,
         Paint()
-          ..color = _dry.withValues(alpha: (isDark ? 0.28 : 0.20) * density * scale),
+          ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.34) * density * scale),
       );
+      // Светлое мокрое ядрышко (блик на крови).
       canvas.drawCircle(
-        center - Offset(r * 0.35, r * 0.4),
-        r * 0.32,
+        center - Offset(r * 0.3, r * 0.34),
+        r * 0.42,
         Paint()
-          ..color = _wet.withValues(alpha: (isDark ? 0.14 : 0.12) * density * scale),
+          ..color = _wet.withValues(alpha: (isDark ? 0.30 : 0.28) * density * scale),
       );
     }
   }

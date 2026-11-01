@@ -48,9 +48,12 @@ class VolumetricSwitch extends StatelessWidget {
     final k = scale;
 
     // ── Цвета трека ─────────────────────────────────────────────────
+    // Тренок-«вмятина» держится в пределах поверхности раздела: выключенный
+    // трек едва тёмнее фона (не «плавающая серая плитка» — жалоба «не
+    // вписывается»). Включённый — фирменный градиент.
     final trackOff = isDark
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.9)
-        : scheme.surfaceContainerHighest;
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.82)
+        : scheme.surfaceContainerHigh;
 
     // Включённый трек: градиент «стекло»: светлей у верха → primary
     // внизу. На тёмной теме светлей берём из самого primary, чтобы
@@ -67,10 +70,10 @@ class VolumetricSwitch extends StatelessWidget {
     // градиент всегда на месте и лерпится по цветам — фон «течёт».
     final offTop = isDark
         ? trackOff
-        : Color.lerp(Colors.white, trackOff, 0.25)!;
+        : Color.lerp(Colors.white, trackOff, 0.30)!;
     final offBottom = isDark
-        ? Color.lerp(trackOff, Colors.black, 0.18)!
-        : trackOff;
+        ? Color.lerp(trackOff, Colors.black, 0.14)!
+        : Color.lerp(trackOff, Colors.black, 0.05)!;
     final onTop = trackTop;
     final onBottom = active;
 

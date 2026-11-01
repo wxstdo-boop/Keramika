@@ -1075,11 +1075,14 @@ class _AlarmTimeHighlight extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = theme.colorScheme;
+    // Цвет строки ПСТОЯННЫЙ (onSurface): раньше он ветвился по [enabled]
+    // (onSurfaceVariant → onSurface), и при вкл/выкл время будильника
+    // «подсвечивалось» на мгновение. Теперь переключение не меняет цвет —
+    // подсветка при тапе ушла.
     return Text(
       label,
       style: theme.textTheme.headlineSmall?.copyWith(
-        color: enabled ? cs.onSurface : cs.onSurfaceVariant,
+        color: theme.colorScheme.onSurface,
       ),
     );
   }

@@ -145,6 +145,11 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
     // чуть элегантнее: 42×42 (чуть крупнее, мягче сидит в ряду с плюсом).
     // Единая рецептура [GlassFabTile] (тот же файл, что у кнопки-плюса):
     // материал ОДИН у всей семьи, отличаются только размер и глиф.
+    // Ада без «вложенной кнопки»: раньше внутри стеклянной плитки лежал
+    // отдельный светлый диск 30×30 со своей тенью — «лишняя хуйня»
+    // (кнопка-внутри-кнопки) и на тёмном фоне ещё и светилась. Теперь
+    // аватарка сидит ПРЯМО на стекле: одна цельная кнопка, никакого
+    // внутреннего диска и его тени.
     return GlassFabTile(
       size: 42,
       child: PressScale(
@@ -153,33 +158,7 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
           preferredAbove: true,
           child: GestureDetector(
             onTap: () => showAiGuideChat(context),
-            // Аватар в круглой «таблетке» с короткой тенью снизу —
-            // иконка сидит в стекле, а не лежит на нём плоско.
-            child: Container(
-              width: 30,
-              height: 30,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                // Светлый диск под аватаркой: в тёмной теме тёмный base
-                // плитки «пробирает» сквозь аватарку и Ада читается
-                // ТЕМНЕЕ плюса. Светлый подложечный круг держит яркость
-                // ровной с плюсом, в любой теме.
-                color: Color.lerp(
-                  Colors.white,
-                  Theme.of(context).colorScheme.primaryContainer,
-                  0.45,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.16),
-                    blurRadius: 3,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: Center(child: const LiveAdaAvatar(size: 24)),
-            ),
+            child: Center(child: const LiveAdaAvatar(size: 26)),
           ),
         ),
       ),

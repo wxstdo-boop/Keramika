@@ -1762,7 +1762,6 @@ class KeramikaAppState extends State<KeramikaApp>
 
   Widget _buildApp(BuildContext context) {
     return DynamicColorBuilder(
-      key: _appKey,
       builder: (lightDynamic, darkDynamic) {
         _lightDynamic = lightDynamic;
         _darkDynamic = darkDynamic;
@@ -2009,6 +2008,7 @@ class KeramikaAppState extends State<KeramikaApp>
               })();
 
         return MaterialApp(
+          key: _appKey,
           title: 'Keramika',
           debugShowCheckedModeBanner: false,
           navigatorKey: navigatorKey,
