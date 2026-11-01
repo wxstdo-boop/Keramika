@@ -61,8 +61,11 @@ class _HomeScreenState extends State<HomeScreen>
     // Мягче и медленнее, чем карусель категорий: разделы большие, и
     // «камень» таблетки должен именно ПРОСКОЛЬЗИТЬ между вкладками
     // (≈440 мс, без отскока), а не перескочить.
-    stiffness: 200,
-    dampingRatio: 0.94,
+    // Плавнее и мягче прежних (200/0.94): «камень» должен именно
+    // ПРОСКОЛЬЗЫВАТЬ между вкладками, а не дубакать. Ниже жёсткость,
+    // чуть больше демпфинга — перелёт дольше, но ровнее.
+    stiffness: 140,
+    dampingRatio: 0.99,
   );
 
   /// Сколько сейчас разделов (нужно пружине, чтобы не уехать за край).
@@ -160,16 +163,17 @@ class _HomeScreenState extends State<HomeScreen>
     final pos = _pageController.position;
     final perPage = pos.viewportDimension * _pageController.viewportFraction;
     if (perPage <= 0) return;
-    // АБСОЛЮТНАЯ установка позиции: дробная страница таблетки ставится
-    // ровно на соответствующее смещение PageController. jumpTo синхронно
-    // останавливает предыдущую прокрутку, поэтому дополнительный hold на
-    // каждом pointer event только сбрасывал ScrollPosition и давал мелкую
-    // дрожь под пальцем.
+    // Мягкое «догоняющее» движение: экран не прыгает 1:1 за пальцем,
+    // а догоняет цель с коэффициента 0.55 на каждое событие драга —
+    // перетаскивание таблетки кажется медленнее и плавнее, а камень
+    // не «дергается» под пальцем. Полное расстояние догоняет пружина
+    // Home после отпускания.
+    final current = pos.pixels;
     final target = (page * perPage).clamp(
       pos.minScrollExtent,
       pos.maxScrollExtent,
     );
-    pos.jumpTo(target);
+    pos.jumpTo(current + (target - current) * 0.55);
   }
 
   @override

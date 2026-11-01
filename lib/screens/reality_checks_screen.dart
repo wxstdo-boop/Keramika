@@ -307,6 +307,11 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
         return Scaffold(
           // Без своего AppBar: белая полоса под таблеткой убрана, кнопка
           // «назад» поднята к верху, рядом с таблеткой.
+          // Прозрачный фон: общая «skin»-подложка Home уже стоит ПОД
+          // PageView — раздел показывает ОДНУ ту же поверхность, которая
+          // «задвигается» при прокрутке (а не дорисовывает свой белый блок
+          // под сворачивающейся таблеткой).
+          backgroundColor: Colors.transparent,
           body: FabScrollListener(
             visible: sectionPillVisible,
             child: FabScrollListener(

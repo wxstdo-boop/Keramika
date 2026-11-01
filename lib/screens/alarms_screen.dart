@@ -312,6 +312,13 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           return Scaffold(
             // Без своего AppBar: белая полоса под таблеткой разделов убрана,
             // контент начинается сразу под ней.
+            // Прозрачный фон: единая «skin»-подложка уже стоит в Home ПОД
+            // PageView — она и есть тот единственный непрерывный фон, который
+            // «задвигается» при прокрутке. Со своим непрозрачным белым
+            // фоном каждый раздел дорисовывал СВОЙ белый блок под
+            // сворачивающейся таблеткой (вот те «закрыл белым»). Прозрачный
+            // Scaffold → все разделы показывают одну и ту же поверхность.
+            backgroundColor: Colors.transparent,
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(

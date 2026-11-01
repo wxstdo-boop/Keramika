@@ -253,6 +253,11 @@ class _TasksScreenState extends State<TasksScreen>
             // Без своего AppBar: белая полоса под таблеткой убрана.
             // Карусель категорий лежит в header'е списка/пустого состояния —
             // листается вместе с содержимым, а не стоит фиксированной полосой.
+            // Прозрачный фон: общая «skin»-подложка Home уже стоит ПОД
+            // PageView — разделы показывают ОДНУ ту же поверхность, которая
+            // «задвигается» при прокрутке (а не дорисовывает свой белый блок
+            // под сворачивающейся таблеткой).
+            backgroundColor: Colors.transparent,
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(

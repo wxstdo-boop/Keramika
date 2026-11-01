@@ -481,12 +481,11 @@ Future<void> _showExitDialog(
       // прямом и обратном ходе анимируется симметрично.
       final dimColor = isDark ? cs.surfaceContainerHigh : cs.surfaceContainerLowest;
       final dimAlpha = isDark ? 0.6 : 0.5;
-      // Blur рисуется в ограниченной области (300×500) вокруг центра:
-      // полноэкранный BackdropFilter на слабом GPU — 3–5 мс на кадр, и
-      // 380 мс перехода = 180+ лишних миллисекунд работы GPU. Радиус
-      // клипа 300×500 — шов «размыто/не размыто» невидим (карточка
-      // диалога 312px, клип на 90px шире с каждой стороны).
-      const clipW = 460.0, clipH = 560.0;
+      // Blur рисуется в ограниченной области (320×300) вокруг центра:
+      // компактная шайба 232px, клип на 44px шире с каждой стороны —
+      // шов «размыто/не размыто» невидим, а площадь фильтра в 4 раза
+      // меньше прежнего (460×560) — переход ещё быстрее.
+      const clipW = 320.0, clipH = 300.0;
       return Stack(
         fit: StackFit.expand,
         alignment: Alignment.center,
@@ -525,8 +524,11 @@ Future<void> _showExitDialog(
     pageBuilder: (ctx, _, _) => Material(
       type: MaterialType.transparency,
       child: Container(
-        width: 312,
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
+        // Компактная «шайбочка», а не широченная карточка: стеклянная
+        // колба слева, короткий текст, пара кнопок в столбик. Узкий
+        // профиль — окно не «засыпает» экран, а лишь мягко приглушает его.
+        width: 232,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
           // Стеклянное основание в цвет темы: тёмная — сероватая, светлая
           // — тёплая. Текст читается за счёт blur-бэкдропа и обводки.
@@ -556,17 +558,18 @@ Future<void> _showExitDialog(
               ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Стакан поверх мягкого свечения: ореол тянется из того же цвета
-            // (cs.primary), поэтому на любом фоне читается «жидкость в свете».
+            // Стакан слева (смягчённый ореол из того же цвета): колба
+            // «вжата» в стекло шайбы, читается при любом фоне.
             Stack(
               alignment: Alignment.center,
               children: [
                 Container(
-                  width: 78,
-                  height: 78,
+                  width: 54,
+                  height: 54,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
@@ -582,86 +585,89 @@ Future<void> _showExitDialog(
                   loop: glassLoop,
                   color: cs.primary,
                   isDark: isDark,
-                  size: 40,
+                  size: 28,
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            Text(
-              Translations.t('exitConfirmTitle', context),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              Translations.t('exitConfirmBody', context),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: cs.onSurfaceVariant,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Wrap, а не Row: у диалога жёсткая ширина 312, и в fr («Annuler» +
-            // «Quitter») пара кнопок упирается в её край — Row в таком случае
-            // рисует overflow-полосу, а Wrap просто переносит «Выйти» на вторую
-            // строку. На en/ru, где кнопки влезают, вид не меняется.
-            Wrap(
-              alignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 10,
-              runSpacing: 6,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(
-                    Translations.t('cancel', context),
-                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
-                  ),
-                ),
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: cs.error.withValues(alpha: 0.55),
-                      width: 1.4,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 8,
-                    ),
-                  ),
-                  onPressed: () {
-                    // Обратный проход (glassMs) должен успеть отыграть:
-                    // SystemNavigator.pop() убивает Activity в том же кадре,
-                    // поэтому «стекло» обрывалось на середине и выход выглядел
-                    // как резкое исчезание окна. Закрываем диалог из ctx —
-                    // маршрут диалога, а не лока, — и гасим приложение после
-                    // анимации (+40 мс на кадр конца).
-                    Navigator.of(ctx).pop();
-                    Future<void>.delayed(
-                      const Duration(milliseconds: glassMs + 40),
-                      SystemNavigator.pop,
-                    );
-                  },
-                  child: Text(
-                    Translations.t('exit', context),
+            const SizedBox(width: 12),
+            // Текст и кнопки справа: название чуть крупнее, тираж — мельче,
+            // кнопки — компактный столбик. Всё в один узкий блок.
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    Translations.t('exitConfirmTitle', context),
                     style: TextStyle(
-                      color: cs.error,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                      color: cs.onSurface,
+                      height: 1.3,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 3),
+                  Text(
+                    Translations.t('exitConfirmBody', context),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Компактные кнопки в один ряд: Cancel приглушённый,
+                  // Выйти — акцентом. Узкая шайба: ряд влезает без переноса.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(
+                          Translations.t('cancel', context),
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: cs.error.withValues(alpha: 0.55),
+                            width: 1.4,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                        ),
+                        onPressed: () {
+                          // Обратный проход (glassMs) должен успеть отыграть:
+                          // SystemNavigator.pop() убивает Activity в том же
+                          // кадре, и «стекло» обрывается на середине.
+                          Navigator.of(ctx).pop();
+                          Future<void>.delayed(
+                            const Duration(milliseconds: glassMs + 40),
+                            SystemNavigator.pop,
+                          );
+                        },
+                        child: Text(
+                          Translations.t('exit', context),
+                          style: TextStyle(
+                            color: cs.error,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

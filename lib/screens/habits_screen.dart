@@ -743,6 +743,11 @@ class _HabitsScreenState extends State<HabitsScreen>
           return Scaffold(
             // Без своего AppBar: белая полоса под таблеткой разделов убрана,
             // контент начинается сразу под ней.
+            // Прозрачный фон: единая «skin»-подложка уже стоит в Home ПОД
+            // PageView — она и есть тот единственный непрерывный фон, который
+            // «задвигается» при прокрутке. Свой непрозрачный белый каждый
+            // раздел дорисовывал СВОЙ блок под сворачивающейся таблеткой.
+            backgroundColor: Colors.transparent,
             body: FabScrollListener(
               visible: sectionPillVisible,
               child: FabScrollListener(
@@ -1351,92 +1356,91 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              // Текст напоминания в списке НЕ показываем — только
-                              // колокольчик времени ниже. Сам текст живёт в
-                              // редактировании привычки и в самом уведомлении.
-                              // Быстрое напоминание: маленький колокольчик в
-                              // цвет темы, если у привычки задано «Вспомнить
-                              // всё». Плотно прижат к кнопке разворота заметки.
-                              if (habit.reminderTime != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  // Значок «Вспомнить всё» опущен к СЕРЕДИНЕ
-                                  // кластера: вместе с раскрытием (сверху) и
-                                  // карандашом (снизу) три значка садятся на
-                                  // окружность, а не сбиваются в левый верхний
-                                  // угол. Center тянется на всю высоту блока
-                                  // (её задаёт IntrinsicHeight выше).
-                                  child: Center(
-                                    // Кружок в тон соседних кнопок (карандаш и
-                                    // раскрытие): та же полупрозрачная
-                                    // подложка primaryContainer 0.18, поэтому
-                                    // колокольчик читается частью кластера, а
-                                    // не «голым» значком на карточке. Размер
-                                    // 26 = 18 (иконка) + 4+4 (отступы), как у
-                                    // _compactIconButton.
-                                    child: Container(
-                                      key: const ValueKey('remind_all_chip'),
-                                      width: 26,
-                                      height: 26,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: theme.colorScheme.primaryContainer
-                                            .withValues(alpha: 0.18),
-                                      ),
-                                      child: Icon(
-                                        Icons.notifications_active_outlined,
-                                        size: 17,
-                                        color: theme.colorScheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
                               // Значок закрепления справа убран: пин и так виден
                               // слева (drag-handle превращается в пин у
                               // закреплённой привычки) — дублировать не нужно.
                               //
                               // Действия идут ВЕРТИКАЛЬНО (раскрытие СВЕРХУ,
-                              // карандаш ПОД ним), а не в ряд. Раньше ряд из двух
-                              // кнопок съедал ~54 px по ширине, и имя привычки
-                              // «скукоживалось», не доходя до правого края —
-                              // хотя место справа было. Теперь блок действий
-                              // шириной в одну кнопку, и текст занимает почти
-                              // всю ширину карточки.
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  // Кнопка раскрытия есть только если реально
-                                  // есть что показывать: заметки — всегда;
-                                  // статус — только у полезной привычки (у
-                                  // вредной статус не отображается, поэтому и
-                                  // кнопки нет).
-                                  if (habit.notes.isNotEmpty ||
-                                      (habit.type == 'good' &&
-                                          habit.status.isNotEmpty))
-                                    _compactIconButton(
-                                      cornerRipple: true,
-                                      icon: Icons.keyboard_arrow_down,
-                                      rotation:
-                                          (_expandedNotes[habit.id] ?? false)
-                                          ? 3.14159 // пи — стрелка вверх
-                                          : 0,
-                                      color: (_expandedNotes[habit.id] ?? false)
-                                          ? theme.colorScheme.primary
-                                          : theme.colorScheme.onSurfaceVariant,
-                                      onPressed: () => setState(
-                                        () => _expandedNotes[habit.id] =
-                                            !(_expandedNotes[habit.id] ??
-                                                false),
+                              // карандаш ПОД ним). Значок напоминания НЕ внутри
+                              // этой пары, а РЯДОМ, слева: колокольчик — слева
+                              // по центру высоты пары, стрелка — справа сверху,
+                              // карандаш — справа снизу. Втроём это «треугольник».
+                              IntrinsicHeight(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Текст напоминания в списке НЕ показываем —
+                                    // только колокольчик. Кружок в тон соседних
+                                    // кнопок (карандаш/раскрытие): та же
+                                    // полупрозрачная подложка primaryContainer.
+                                    if (habit.reminderTime != null)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 6),
+                                        child: Container(
+                                          key: const ValueKey(
+                                            'remind_all_chip',
+                                          ),
+                                          width: 26,
+                                          height: 26,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: theme.colorScheme
+                                                .primaryContainer
+                                                .withValues(alpha: 0.18),
+                                          ),
+                                          child: Icon(
+                                            Icons
+                                                .notifications_active_outlined,
+                                            size: 17,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                        ),
                                       ),
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        // Кнопка раскрытия есть только если
+                                        // реально есть что показывать: заметки
+                                        // — всегда; статус — только у полезной
+                                        // привычки (у вредной статус не
+                                        // отображается, поэтому и кнопки нет).
+                                        if (habit.notes.isNotEmpty ||
+                                            (habit.type == 'good' &&
+                                                habit.status.isNotEmpty))
+                                          _compactIconButton(
+                                            cornerRipple: true,
+                                            icon: Icons.keyboard_arrow_down,
+                                            rotation:
+                                                (_expandedNotes[habit.id] ??
+                                                false)
+                                            ? 3.14159 // пи — стрелка вверх
+                                            : 0,
+                                            color: (_expandedNotes[habit.id] ??
+                                                        false)
+                                                ? theme.colorScheme.primary
+                                                : theme.colorScheme
+                                                    .onSurfaceVariant,
+                                            onPressed: () => setState(
+                                              () => _expandedNotes[habit.id] =
+                                                  !(_expandedNotes[habit.id] ??
+                                                      false),
+                                            ),
+                                          ),
+                                        const SizedBox(height: 2),
+                                        _compactIconButton(
+                                          icon: Icons.edit_outlined,
+                                          color:
+                                              theme.colorScheme.onSurfaceVariant,
+                                          onPressed: () => _editHabit(habit),
+                                        ),
+                                      ],
                                     ),
-                                  const SizedBox(height: 2),
-                                  _compactIconButton(
-                                    icon: Icons.edit_outlined,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                    onPressed: () => _editHabit(habit),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ],
                           ),

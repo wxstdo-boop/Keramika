@@ -59,6 +59,21 @@ class VolumetricSwitch extends StatelessWidget {
         ? Color.lerp(active, Colors.black, 0.25)!
         : Color.lerp(Colors.white, active, 0.35)!;
 
+    // КРИТИЧНО: в ОБОИХ состояниях у трека есть реальный градиент
+    // (Light/Dark в один и тот же набор точек). Раньше выключенный трек
+    // имел `gradient: null` + сплошную `color`, а включённый — градиент:
+    // AnimatedContainer НЕ может интерполировать `null` → `gradient`, и
+    // фон трека СКАЧИЛ (заезжал) в первый же кадр переключения. Теперь
+    // градиент всегда на месте и лерпится по цветам — фон «течёт».
+    final offTop = isDark
+        ? trackOff
+        : Color.lerp(Colors.white, trackOff, 0.25)!;
+    final offBottom = isDark
+        ? Color.lerp(trackOff, Colors.black, 0.18)!
+        : trackOff;
+    final onTop = trackTop;
+    final onBottom = active;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onChanged == null
@@ -77,14 +92,16 @@ class VolumetricSwitch extends StatelessWidget {
         padding: EdgeInsets.all(3 * k),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16 * k),
-          color: value ? active : trackOff,
-          gradient: value
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [trackTop, active],
-                )
-              : null,
+          // ВСЕГДА градиент (никогда `null`): AnimatedContainer плавно
+          // лерпит цвет по цветам — фон трека течёт, а не скачет.
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              value ? onTop : offTop,
+              value ? onBottom : offBottom,
+            ],
+          ),
           boxShadow: [
             // Утопленность: тёмный «тоннель» сверху (отдельная тень с
             // отрицательным сдвигом) — трек читается вмазанным в экран,

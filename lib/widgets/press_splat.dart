@@ -402,119 +402,30 @@ class _OrganicFabState extends State<OrganicFab>
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Сама кнопка — премиум-«объём»: не плоская M3-подложка, а
-            // выпуклая стеклянная плитка. Объём дают ТРИ слоя (по порядку):
-            //   1) фирменное мягкое СВЕЧЕНИЕ под плиткой (primary, размазанное)
-            //      + короткий «контактный» след у основания — плитка парит,
-            //      но не висит в воздухе;
-            //   2) сама плитка с градиентом БЛИК-СВЕРХУ (светлее на 35 %
-            //      в левом верхнем углу → базовый primaryContainer);
-            //   3) стеклянный блик: верхняя половина едва белая и
-            //      гаснет к середине — плитка читается выпуклой в любой теме.
-            // БЕЗ обводки (тёмный контур её убивал). Долгое зажатие
-            // (BERSERK) вешаем на саму плитку.
-            // Фиксированный размер плитки: прежняя FloatingActionButton сама
-            // задавала 56×56, а стеклянная плитка без явного размера
-            // «обнимала» иконку (26px) — кнопка схлопывалась. Явно держим
-            // дефолтный M3-размер [widget.size] (56×56) и StackFit.expand,
-            // чтобы стеклянный блик покрыл ВСЮ плитку, а не только значок.
-            Container(
-              width: widget.size,
-              height: widget.size,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color.lerp(Colors.white, cs.primaryContainer, 0.35)!,
-                    cs.primaryContainer,
-                  ],
+            // Кнопка-плюс — та же премиум-плитка [GlassFabTile], что и Ада:
+            // единая рецептура материала, отличается только размер и глиф.
+            // Органические пятнышки уходят в [extraLayer] той же плитки,
+            // поэтому PLUS и Ада читаются как одна семья, а не два стиля.
+            GlassFabTile(
+              size: widget.size,
+              extraLayer: CustomPaint(
+                painter: _PlusSpeckPainter(
+                  color: cs.primary,
+                  deep: Colors.white,
+                  v: _c.value,
+                  seed: widget.seed,
                 ),
-                boxShadow: [
-                  // Фирменное свечение: размытое и широкое, цвет primary —
-                  // плитка будто подсвечена изнутри.
-                  BoxShadow(
-                    color: cs.primary.withValues(alpha: 0.28),
-                    blurRadius: 24,
-                    spreadRadius: -8,
-                    offset: const Offset(0, 10),
-                  ),
-                  // Контактный след: короткий, тёмный, близко к основанию —
-                  // заземляет плитку.
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 5,
-                    spreadRadius: -1,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                fit: StackFit.expand,
-                alignment: Alignment.center,
-                children: [
-                  // Стеклянный блик: белый отзеркаленный градиент, гаснет
-                  // к середине плитки — выпуклость читается при любом
-                  // фоне (светлая/тёмная тема).
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.34),
-                                Colors.white.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.55],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Фирменный знак на стекле: контрастный onPrimaryContainer
-                  // читается и на светлой пастели, и на тёмном контейнере.
-                  // Объём самой кнопки уже дают градиент + блик + свечение —
-                  // дополнительная тень значка только «мусорит».
-                  Semantics(
-                    button: true,
-                    child: PressScale(
-                      child: GestureDetector(
-                        onLongPress: widget.onLongPress,
-                        onTap: widget.onTap,
-                        child: Icon(
-                          Icons.add,
-                          size: 26,
-                          color: cs.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Мелкие размашистые пятнышки ПОВЕРХ кнопки. IgnorePointer —
-            // тап/долгое зажатие идут строго в FAB под ними.
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _c,
-                  builder: (_, _) => CustomPaint(
-                    painter: _PlusSpeckPainter(
-                      // FAB по умолчанию M3 — это primaryContainer (светлая
-                      // пастель) с тёмным значком. Пятнышки рисуем акцентом
-                      // темы (primary) с мягким светлым ядром — они читаются
-                      // на пастели и перекликаются с фирменным цветом.
-                      color: cs.primary,
-                      deep: Colors.white,
-                      v: _c.value,
-                      seed: widget.seed,
+              child: Semantics(
+                button: true,
+                child: PressScale(
+                  child: GestureDetector(
+                    onLongPress: widget.onLongPress,
+                    onTap: widget.onTap,
+                    child: Icon(
+                      Icons.add,
+                      size: 26,
+                      color: cs.onPrimaryContainer,
                     ),
                   ),
                 ),
@@ -522,6 +433,99 @@ class _OrganicFabState extends State<OrganicFab>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Объёмная стеклянная плитка премиум-класса — ОДНА РЕЦЕПТУРА для всех
+/// фирменных FAB (плюс и Ада). Чтобы две кнопки читались как СЕМЬЯ, а не
+/// как два разных решения, весь материал (градиент, блик, свечение,
+/// контактный след) считается здесь в одном месте и масштабируется только
+/// под [size]. Владельцы отличаются размером и центральным глифом — и
+/// всем.
+class GlassFabTile extends StatelessWidget {
+  const GlassFabTile({
+    super.key,
+    required this.size,
+    required this.child,
+    this.extraLayer,
+  });
+
+  final double size;
+  final Widget child;
+
+  /// Дополнительный слой поверх плитки (например, органические пятнышки
+  /// на кнопке-плюсе): рисуется в самом верху стека, через IgnorePointer
+  /// не мешает тапам.
+  final Widget? extraLayer;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final r = size * 0.36;
+    final top = Color.lerp(Colors.white, cs.primaryContainer, 0.40)!;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(r),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [top, cs.primaryContainer],
+        ),
+        boxShadow: [
+          // Фирменное свечение: широкий мягкий ореол цвета primary —
+          // плитка будто подсвечена изнутри. Размер растёт со стороной.
+          BoxShadow(
+            color: cs.primary.withValues(alpha: 0.30),
+            blurRadius: size * 0.42,
+            spreadRadius: -4,
+            offset: Offset(0, size * 0.14),
+          ),
+          // Контактный след: короткий, близко к основанию — заземляет плитку.
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: size * 0.09,
+            spreadRadius: -2,
+            offset: Offset(0, size * 0.04),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.expand,
+        alignment: Alignment.center,
+        children: [
+          // Стеклянный блик: белый → 0 к середине. Выпуклость читается при
+          // любом фоне (светлая/тёмная тема).
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(r),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.36),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.5],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          child,
+          if (extraLayer != null)
+            Positioned.fill(
+              child: IgnorePointer(child: extraLayer!),
+            ),
+        ],
       ),
     );
   }
