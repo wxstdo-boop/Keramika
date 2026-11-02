@@ -16,6 +16,7 @@ import 'package:keramika/services/prefs.dart';
 import 'package:keramika/services/task_service.dart';
 import 'package:keramika/widgets/animated_fab_row.dart';
 import 'package:keramika/widgets/section_pill.dart';
+import 'package:keramika/widgets/icons/keramika_icons.dart';
 
 /// Таблетка разделов при переезде между экранами сворачивается и
 /// возвращается СИНХРОННО с разделами, а не «висит» высотой уехавшего
@@ -313,7 +314,7 @@ void main() {
     // Target the actual visible icon: the outer SectionPill includes the
     // centered side gutters, so deriving a tab hit point from its full rect
     // tapped outside the capsule on narrow devices.
-    await tester.tap(find.byIcon(sectionIcons.first).first);
+    await tester.tap(find.byType(KkAlarmIcon).first);
     final flight = await record(tester, 60);
 
     expect(sectionCurrentIndex.value, 0);

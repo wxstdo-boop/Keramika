@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
+import '../widgets/icons/keramika_icons.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart';
 
@@ -64,12 +65,27 @@ final ValueNotifier<int> sectionTabTap = ValueNotifier<int>(0);
 final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 
 /// Значки разделов: у каждого своя геометрическая фигура.
-const List<IconData> sectionIcons = [
-  Icons.alarm_outlined,
-  Icons.auto_awesome_outlined,
-  Icons.checklist_outlined,
-  Icons.psychology_outlined,
+final List<Widget Function(BuildContext context, {double size, Color? color})>
+    sectionIconBuilders = [
+  (context, {size = 17, color}) => KkAlarmIcon(
+        size: size,
+        color: color,
+      ),
+  (context, {size = 17, color}) => KkHabitsIcon(
+        size: size,
+        color: color,
+      ),
+  (context, {size = 17, color}) => KkTasksIcon(
+        size: size,
+        color: color,
+      ),
+  (context, {size = 17, color}) => KkRealityCheckIcon(
+        size: size,
+        color: color,
+      ),
 ];
+
+
 
 /// Названия разделов (для тултипов) — те же, что строит Home: РП-раздел
 /// виден только когда проверки реальности включены в настройках.
@@ -85,10 +101,12 @@ List<String> sectionLabels(BuildContext context) {
 
 /// Значки разделов с учётом настроек: при выключенных проверках реальности
 /// РП-раздел (и его значок) не должен быть виден вообще.
-List<IconData> sectionIconsFor(BuildContext context) {
+List<Widget Function(BuildContext context, {double size, Color? color})>
+    sectionIconsFor(BuildContext context) {
   final count = sectionLabels(context).length;
-  return sectionIcons.sublist(0, count);
+  return sectionIconBuilders.sublist(0, count);
 }
+
 
 /// Единая объемная капсула разделов. Названия доступны только в тултипах
 /// (показываются НАД таблеткой — иначе прячутся за пальцем), визуально —
@@ -314,8 +332,8 @@ class _SectionPillState extends State<SectionPill>
   @override
   Widget build(BuildContext context) {
     final labels = sectionLabels(context);
-    final icons = sectionIconsFor(context);
-    final count = icons.length;
+    final iconBuilders = sectionIconsFor(context);
+    final count = iconBuilders.length;
     if (count == 0) return const SizedBox.shrink();
 
     // КАПСУЛА (заливка, обводка, тень) не зависит от положения индикатора,
@@ -371,7 +389,7 @@ class _SectionPillState extends State<SectionPill>
                         current: current,
                         rawPage: rawPage,
                         count: count,
-                        icons: icons,
+                        icons: iconBuilders,
                         labels: labels,
                       );
                     },
@@ -392,7 +410,7 @@ class _SectionPillState extends State<SectionPill>
     required int current,
     required double rawPage,
     required int count,
-    required List<IconData> icons,
+    required List<Widget Function(BuildContext context, {double size, Color? color})> icons,
     required List<String> labels,
   }) {
     final p = rawPage.clamp(0.0, (count - 1).toDouble());
@@ -649,11 +667,7 @@ class _SectionPillState extends State<SectionPill>
                                     cs.primary,
                                     badgeT,
                                   )!,
-                                  child: Icon(
-                                    icons[i],
-                                    size: 17,
-                                    color: iconColor,
-                                  ),
+                                  child: icons[i](context, size: 17, color: iconColor),
                                 ),
                               ),
                             ),
