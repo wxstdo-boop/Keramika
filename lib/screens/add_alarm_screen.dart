@@ -1165,30 +1165,41 @@ class _SoundActionChipState extends State<_SoundActionChip> {
       message: widget.tooltip,
       preferredAbove: true,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: widget.onPressed,
-        child: PressScale(
-          // Быстрая отдача «вдавливания» (150 мс), не «лаг 300 мс».
-          pressedScale: 0.90,
-          duration: const Duration(milliseconds: 150),
-          releaseDuration: const Duration(milliseconds: 220),
-          child: SizedBox(
-            width: 30,
-            height: 30,
-            child: CustomPaint(
-              // Кровавые размашистые пятна под подложкой (как у бейджа
-              // «Сегодня очищено») — кнопка «кровавая», «округлее».
-              painter: BloodSpeckPainter(isDark: dark, opacity: 0.65),
-              child: DecoratedBox(
-                decoration: decoration,
-                child: Center(
-                  child: IconTheme(
-                    data: IconThemeData(
-                      color: glowing
-                          ? const Color(0xFFFFE1E3)
-                          : (dark ? const Color(0xFFFFE1E3) : const Color(0xFFF5DBDD)),
-                      size: 16,
+        // Визуал — 30 px, но зона нажатия — 44 px: три кнопки остаются
+        // мелкими и полупрозрачными, но в них всё ещё легко попасть.
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: PressScale(
+              // Быстрая отдача «вдавливания» (150 мс), не «лаг 300 мс».
+              pressedScale: 0.90,
+              duration: const Duration(milliseconds: 150),
+              releaseDuration: const Duration(milliseconds: 220),
+              child: SizedBox(
+                width: 30,
+                height: 30,
+                child: CustomPaint(
+                  // Кровавые размашистые пятна под подложкой (как у бейджа
+                  // «Сегодня очищено») — кнопка «кровавая», «округлее».
+                  painter: BloodSpeckPainter(isDark: dark, opacity: 0.65),
+                  child: DecoratedBox(
+                    decoration: decoration,
+                    child: Center(
+                      child: IconTheme(
+                        data: IconThemeData(
+                          color: glowing
+                              ? const Color(0xFFFFE1E3)
+                              : (dark
+                                    ? const Color(0xFFFFE1E3)
+                                    : const Color(0xFFF5DBDD)),
+                          size: 16,
+                        ),
+                        child: widget.child,
+                      ),
                     ),
-                    child: widget.child,
                   ),
                 ),
               ),
