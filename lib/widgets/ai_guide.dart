@@ -149,10 +149,14 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
     // отдельный светлый диск 30×30 со своей тенью — «лишняя хуйня»
     // (кнопка-внутри-кнопки) и на тёмном фоне ещё и светилась. Теперь
     // аватарка сидит ПРЯМО на стекле: одна цельная кнопка, никакого
-    // внутреннего диска и его тени.
-    return GlassFabTile(
-      size: 42,
-      child: PressScale(
+    // внутреннего диска и его тени. Отдача «вдавливания» — на ВЕСЬУЮ
+    // плитку (0.90/200, как кнопка настроек): плюс и Ада уменьшаются
+    // одинаково заметно.
+    return PressScale(
+      pressedScale: 0.90,
+      duration: const Duration(milliseconds: 200),
+      child: GlassFabTile(
+        size: 42,
         child: SmoothTooltip(
           message: Translations.t('aiGuide', context, 'AI guide'),
           preferredAbove: true,

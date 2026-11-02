@@ -625,10 +625,23 @@ class _HomeScreenState extends State<HomeScreen>
             // «белый фон закрывает таблетку, а не задвигается»).
             // Натяжение экрана вниз (pull-to-expand) по-прежнему даёт
             // «зазор» между AppBar и блоком разделов — эффект сохраняется.
-            AnimatedBuilder(
-              animation: sectionScrollOffset,
+            // КРИТИЧНО: кожа считает off ТОЙ ЖЕ формулой, что и таблетка
+            // (см. pill builder ниже): при snap-анимации — по _pillSnapAnimation,
+            // в покое/скролле — по sectionScrollOffset. Раньше кожа ехала только
+            // по sectionScrollOffset, а таблетка — по snapAnim: во время
+            // snap-анимации раскрывающаяся таблетка «уезжала» выше, а белая
+            // подложка отстаёвала и ЗАКРЫВАЛА её (жалоба «белая штюрка
+            // закрывает таблетку»). Теперь оба слоя синхронны в каждом кадре.
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                sectionScrollOffset,
+                sectionPillSnapTarget,
+                _pillSnapCtrl,
+              ]),
               builder: (context, _) {
-                final off = sectionScrollOffset.value;
+                final off = _pillSnapActive
+                    ? (_pillSnapAnimation?.value ?? sectionScrollOffset.value)
+                    : sectionScrollOffset.value;
                 // Белая подложка следует ЗА НИЖНИМ КРАЕМ таблетки: её верхняя
                 // кромка всегда ровно под дном сворачивающейся капсулы, а не
                 // «заезжает» в середину таблетки. В покое (off=0) она начинается

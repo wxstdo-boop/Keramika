@@ -406,19 +406,23 @@ class _OrganicFabState extends State<OrganicFab>
             // единая рецептура материала, отличается только размер и глиф.
             // Органические пятнышки уходят в [extraLayer] той же плитки,
             // поэтому PLUS и Ада читаются как одна семья, а не два стиля.
-            GlassFabTile(
-              size: widget.size,
-              extraLayer: CustomPaint(
-                painter: _PlusSpeckPainter(
-                  color: cs.primary,
-                  deep: Colors.white,
-                  v: _c.value,
-                  seed: widget.seed,
+            // Отдача «вдавливания» — на ВЕСЬУЮ плитку (0.90/200, как кнопка
+            // настроек): плюс и Ада уменьшаются одинаково заметно.
+            PressScale(
+              pressedScale: 0.90,
+              duration: const Duration(milliseconds: 200),
+              child: GlassFabTile(
+                size: widget.size,
+                extraLayer: CustomPaint(
+                  painter: _PlusSpeckPainter(
+                    color: cs.primary,
+                    deep: Colors.white,
+                    v: _c.value,
+                    seed: widget.seed,
+                  ),
                 ),
-              ),
-              child: Semantics(
-                button: true,
-                child: PressScale(
+                child: Semantics(
+                  button: true,
                   child: GestureDetector(
                     onLongPress: widget.onLongPress,
                     onTap: widget.onTap,

@@ -11,6 +11,7 @@ import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/press_splat.dart' show OrganicFab, PressSplat;
+import '../widgets/blood_speck.dart' show BloodSpeck, BloodSpeckPainter;
 import '../widgets/press_scale.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
@@ -1540,9 +1541,9 @@ class _HabitsScreenState extends State<HabitsScreen>
                                         horizontal: 14,
                                         vertical: 7,
                                       ),
-                                      decoration: _erasedDecoration(theme),
+                                      decoration: BloodSpeck.decoration(theme),
                                       child: CustomPaint(
-                                        painter: _BloodSpeckPainter(
+                                        painter: BloodSpeckPainter(
                                           isDark: theme.brightness ==
                                               Brightness.dark,
                                         ),
@@ -1695,42 +1696,7 @@ class _HabitsScreenState extends State<HabitsScreen>
   /// Оформление таблетки «Сегодня очищено» — аккуратный стеклянный бейдж
   /// в фирменном оттенке текущей темы (не «кровавый»): тонкая полупрозрачная
   /// заливка + светлая кромка + лёгкий внутренний блик сверху. Бейдж
-  /// автоматически подстраивается под палитру (primary) и тему.
-  BoxDecoration _erasedDecoration(ThemeData theme) {
-    final isDark = theme.brightness == Brightness.dark;
-    return BoxDecoration(
-      // Винный градиент с «кровью» (как было): глубокий бордо,
-      // на тёмной теме — тонкое ПОЛУПРОЗРАЧНОЕ «виноградное стекло»
-      // (альфа 0.22-0.30, лёгкий блик), на светлой — плотная винная
-      // таблетка. Без глухих блоков и грязных теней.
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: isDark
-            ? [
-                const Color(0xFFE86A72).withValues(alpha: 0.20),
-                const Color(0xFF8E0E18).withValues(alpha: 0.34),
-                const Color(0xFF4A050C).withValues(alpha: 0.28),
-              ]
-            : [
-                const Color(0xFFC0202C).withValues(alpha: 0.62),
-                const Color(0xFF96101B).withValues(alpha: 0.58),
-                const Color(0xFF6E0810).withValues(alpha: 0.54),
-              ],
-        stops: const [0.0, 0.42, 1.0],
-      ),
-      borderRadius: BorderRadius.circular(999),
-      border: Border.all(
-        color: (isDark
-                ? const Color(0xFFFFA2A8)
-                : const Color(0xFFE0525C))
-            .withValues(alpha: isDark ? 0.22 : 0.40),
-        width: 1,
-      ),
-    );
-  }
-
-  /// Ряд дней недели: активные дни привычки подсвечены компактными кружками.
+    /// Ряд дней недели: активные дни привычки подсвечены компактными кружками.
   Widget _daysRow(Habit habit, ThemeData theme, BuildContext context) {
     if (habit.activeDays.isEmpty) return const SizedBox.shrink();
     final names = Translations.dayNames(context);
@@ -2128,68 +2094,6 @@ class _SectionIndexSource implements IndexSource {
     final global = habits.indexOf(habit);
     return global < 0 ? index : global;
   }
-}
-
-/// Мелкие «кровавые» пятнышки на таблетке «Сегодня очищено».
-/// Пятна рисуются ПОД текстом (painter у CustomPaint), поэтому буквы
-/// остаются чистыми, а заливка выглядит подтёкшей. Только чистые
-/// заливки, без размытий — чтобы не появлялись «серые квадраты».
-class _BloodSpeckPainter extends CustomPainter {
-  const _BloodSpeckPainter({this.isDark = false});
-
-  final bool isDark;
-
-  /// x, y (доли ширины/высоты), радиус (доля высоты), плотность (0..1).
-  /// Заметные кровавые пятна: крупные радиусы + высокая плотность. Раньше
-  /// точки были крохотные (r~1px, alpha~0.15) и на тёмной теме гасились
-  /// ещё сильнее — «пятен вообще нет». Теперь пятна отчётливо читаются.
-  static const List<List<double>> _spots = [
-    [0.08, 0.40, 0.34, 1.0],
-    [0.22, 0.70, 0.26, 0.9],
-    [0.36, 0.30, 0.22, 0.85],
-    [0.52, 0.74, 0.30, 1.0],
-    [0.66, 0.34, 0.24, 0.85],
-    [0.80, 0.70, 0.34, 0.95],
-    [0.92, 0.36, 0.20, 0.80],
-  ];
-
-  static const Color _dry = Color(0xFF3C0206);
-  static const Color _wet = Color(0xFFFF8A90);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.height <= 0) return;
-    for (final s in _spots) {
-      final center = Offset(size.width * s[0], size.height * s[1]);
-      final r = size.height * s[2];
-      final density = s[3];
-      // Крупные пятна + заметная плотность: тёмное «сухое» ядро + тёмный
-      // подтёк + светлое «мокрое» ядрышко. На тёмной теме бейдж
-      // полупрозрачнее, поэтому пятна чуть гаснут (×0.72) — но ЧИТАЮТСЯ.
-      final scale = isDark ? 0.72 : 1.0;
-      final dryPaint = Paint()
-        ..color = _dry.withValues(alpha: (isDark ? 0.55 : 0.46) * density * scale);
-      canvas.drawCircle(center, r, dryPaint);
-      // Подтёк вправо-вниз — «кровь растеклась».
-      canvas.drawCircle(
-        center + Offset(r * 1.5, r * 0.45),
-        r * 0.6,
-        Paint()
-          ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.34) * density * scale),
-      );
-      // Светлое мокрое ядрышко (блик на крови).
-      canvas.drawCircle(
-        center - Offset(r * 0.3, r * 0.34),
-        r * 0.42,
-        Paint()
-          ..color = _wet.withValues(alpha: (isDark ? 0.30 : 0.28) * density * scale),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _BloodSpeckPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
 }
 
 /// Летящая стая для фуллскрина таблички перфекционизма.

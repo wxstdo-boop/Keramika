@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip, BackButtonTooltip;
-import '../services/haptics.dart';
 import 'package:uuid/uuid.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
@@ -22,6 +21,8 @@ import '../widgets/volumetric_switch.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_keyboard_body.dart';
+import '../widgets/blood_speck.dart' show BloodSpeck, BloodSpeckPainter;
+import '../widgets/press_scale.dart';
 
 class AddAlarmScreen extends StatefulWidget {
   final Alarm? existing;
@@ -797,28 +798,30 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                   : (isCustom
                                         ? Translations.t('customSound', context)
                                         : s);
-                              // Красивая «таблетка» звука: форма ПОСТОЯННА (одна
+                              // Красивая «таблетка» звука (ОРИГИНАЛЬНАЯ
+                              // цветовая схема v1.6.87): форма ПОСТОЯННА (одна
                               // толщина обводки, один padding, одна весовка
                               // шрифта), а выбор «проявляется» лерпом цвета
-                              // + мягким свечением. Выбранная — НЕЙТРАЛЬНАЯ
-                              // surface-таблетка (без primary/красного), не
-                              // Selected — спокойнее. Анимации те же.
+                              // + мягким свечением. Выбранная — НАЛИВАЕТСЯ
+                              // фирменным градиентом (не Selected — спокойный).
                               final cs = theme.colorScheme;
                               final selBorder = selected
-                                  ? cs.onSurfaceVariant.withValues(alpha: 0.55)
-                                  : cs.outlineVariant.withValues(alpha: 0.35);
+                                  ? cs.primary.withValues(alpha: 0.9)
+                                  : cs.outlineVariant.withValues(alpha: 0.45);
                               final selFg = selected
-                                  ? cs.onSurface
-                                  : cs.onSurfaceVariant;
+                                  ? cs.onPrimaryContainer
+                                  : cs.onSurface;
                               final selIcon = selected
-                                  ? cs.onSurfaceVariant
-                                  : cs.onSurfaceVariant.withValues(alpha: 0.7);
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant;
                               final gradTop = selected
-                                  ? cs.surfaceContainerHighest
-                                  : cs.surfaceContainerHigh;
+                                  ? Color.lerp(Colors.white, cs.primary, 0.20)!
+                                  : Color.lerp(
+                                        Colors.white, cs.surfaceContainerHigh, 0.30,
+                                      )!;
                               final gradBottom = selected
-                                  ? cs.surfaceContainerHigh
-                                  : cs.surfaceContainer;
+                                  ? cs.primaryContainer
+                                  : cs.surfaceContainerHigh;
                               return GestureDetector(
                                 onTap: () => setState(() => _soundName = s),
                                 // Зажатие звука — удаление (свой файл или
@@ -856,8 +859,8 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                     boxShadow: selected
                                         ? [
                                             BoxShadow(
-                                              color: cs.onSurfaceVariant
-                                                  .withValues(alpha: 0.22),
+                                              color: cs.primary
+                                                  .withValues(alpha: 0.28),
                                               blurRadius: 10,
                                               spreadRadius: -1,
                                               offset:
@@ -1115,79 +1118,76 @@ class _SoundActionChip extends StatefulWidget {
 }
 
 class _SoundActionChipState extends State<_SoundActionChip> {
-  bool _pressed = false;
-
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
-    // Нейтральные кнопки: цвет — из темы (onSurfaceVariant), свечение при
-    // воспроизведении — мягкий primary. Раньше был хардкодный КРОВАВЫЙ
-    // красный (0xFFC8102E / 0xFFFF7B86) — три красные «кнопки-киски»
-    // (жалоба «не сделал, фон не убрал, красные не поменял»). Теперь
-    // кнопки читаются как часть UI, а не как кровь. Анимации те же.
-    final neutral = dark ? cs.onSurfaceVariant : cs.onSurfaceVariant;
-    final glow = cs.primary;
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final glowing = widget.glowing;
+    // Кровавая круглая кнопка (меньше 36px, круглая, как «Сегодня
+    // очищено»): винный градиент + размашистые пятна под подложкой
+    // (BloodSpeck + BloodSpeckPainter — общий виджет, тот же рисунок,
+    // что и у бейджа привычки). Кнопка «кровавая», а не нейтральная.
+    // Отдача-«вдавливание» — быстрый PressScale (150 мс), а не медленный
+    // AnimatedScale (300 мс) — «при нажатии так мигает, лаж» устранён.
+    final decoration = BloodSpeck.decoration(theme).copyWith(
+      // Круглая, а не скруглённая (жалоба «округлее»).
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(
+        color: (glowing
+                ? const Color(0xFFFF5A62)
+                : (dark ? const Color(0xFFFFA2A8) : const Color(0xFFE0525C)))
+            .withValues(alpha: glowing ? 0.70 : (dark ? 0.22 : 0.40)),
+        width: 1.2,
+      ),
+      // При воспроизведении — кровавый ореол вокруг кнопки.
+      boxShadow: glowing
+          ? [
+              BoxShadow(
+                color: const Color(0xFFFF2030).withValues(alpha: 0.42),
+                blurRadius: 12,
+                spreadRadius: -2,
+                offset: const Offset(0, 3),
+              ),
+            ]
+          : [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: dark ? 0.30 : 0.12),
+                blurRadius: 5,
+                spreadRadius: -1,
+                offset: const Offset(0, 2),
+              ),
+            ],
+    );
     return SmoothTooltip(
       message: widget.tooltip,
       preferredAbove: true,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (_) {
-          Haptics.light();
-          if (!mounted) return;
-          setState(() => _pressed = true);
-        },
-        onPointerUp: (_) {
-          if (!mounted) return;
-          setState(() => _pressed = false);
-        },
-        onPointerCancel: (_) {
-          if (!mounted) return;
-          setState(() => _pressed = false);
-        },
-        child: GestureDetector(
-          onTap: widget.onPressed,
-          child: AnimatedScale(
-            // Мягче и медленнее: 300 мс — капсула «тонет» под пальцем без
-            // щелчка и так же плавно поднимается (анимация та же).
-            scale: _pressed ? 0.9 : 1.0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 340),
-              curve: Curves.easeOutCubic,
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                color: neutral.withValues(
-                  alpha: (widget.glowing || _pressed) ? 0.18 : 0.10,
-                ),
-                border: Border.all(
-                  color: (widget.glowing ? glow : neutral).withValues(
-                    alpha: widget.glowing ? 0.6 : 0.34,
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: PressScale(
+          // Быстрая отдача «вдавливания» (150 мс), не «лаг 300 мс».
+          pressedScale: 0.90,
+          duration: const Duration(milliseconds: 150),
+          releaseDuration: const Duration(milliseconds: 220),
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: CustomPaint(
+              // Кровавые размашистые пятна под подложкой (как у бейджа
+              // «Сегодня очищено») — кнопка «кровавая», «округлее».
+              painter: BloodSpeckPainter(isDark: dark),
+              child: DecoratedBox(
+                decoration: decoration,
+                child: Center(
+                  child: IconTheme(
+                    data: IconThemeData(
+                      color: glowing
+                          ? const Color(0xFFFFE1E3)
+                          : (dark ? const Color(0xFFFFE1E3) : const Color(0xFFF5DBDD)),
+                      size: 18,
+                    ),
+                    child: widget.child,
                   ),
-                  width: 1.2,
                 ),
-                boxShadow: widget.glowing
-                    ? [
-                        BoxShadow(
-                          color: glow.withValues(alpha: 0.30),
-                          blurRadius: 12,
-                          spreadRadius: -2,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: IconTheme(
-                data: IconThemeData(
-                  color: widget.glowing ? glow : neutral,
-                  size: 24,
-                ),
-                child: widget.child,
               ),
             ),
           ),
