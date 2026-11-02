@@ -442,7 +442,11 @@ class _SectionPillState extends State<SectionPill>
         sectionRailPage,
       ]),
       builder: (context, _) {
-        final settle = Curves.easeOutCubic.transform(_edgeSettle.value);
+        // СИММЕТРИЧНАЯ кривая: easeOutCubic в первом кадре сбрасывал ~15 %
+        // растяжки — на крайних разделах это читалось как «соскочило и
+        // дёргано возвращается». easeInOutCubic стартует и финиширует с
+        // нулевой скоростью — камень плавно «отпускает» край.
+        final settle = Curves.easeInOutCubic.transform(_edgeSettle.value);
         final stretch =
             _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
@@ -685,8 +689,10 @@ class _GlassCapsule extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final base = dark ? cs.surfaceContainerHigh : cs.surfaceContainerHighest;
-    // Лёгкий фирменный оттенок — таблетка «своя», но не цветная плитка.
-    final tint = Color.lerp(base, cs.primary, dark ? 0.10 : 0.08)!;
+    // Подмес ФИРМЕННОГО контейнера, а не просто primary: на системной теме
+    // primary может быть тёмным (обои), и капсула «чернела». primaryContainer
+    // — это тот же цвет обоев, но гарантированно отличимый от фона.
+    final tint = Color.lerp(base, cs.primaryContainer, dark ? 0.34 : 0.24)!;
     return DecoratedBox(
       // Тень снаружи клипа: внутри скругления она обрезается и капсула
       // выглядит наклеенной.
@@ -706,13 +712,16 @@ class _GlassCapsule extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(26),
-            // Объём — только мягким градиентом сверху вниз, без бликов.
+            // ОБЪЁМ — мягким градиентом, но капсула ПОЛНОСТЬЮ НЕПРОЗРАЧНА:
+            // раньше alpha 0.94/0.90 пропускала белый контент, ползущий под
+            // таблеткой, и он «просвечивал» сквозь неё — читалось как белая
+            // шторка, закрывающая середину таблетки. Теперь фон не виден.
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                tint.withValues(alpha: 0.94),
-                tint.withValues(alpha: 0.90),
+                tint,
+                Color.lerp(tint, cs.primary, dark ? 0.10 : 0.06)!,
               ],
             ),
             border: Border.all(

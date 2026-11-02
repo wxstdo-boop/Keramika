@@ -68,9 +68,12 @@ class SettingsService {
       // подарком: после сброса события тема на диске ещё могла остаться, и
       // без проверки здесь она переживала бы сброс до первой смены темы.
       case 'metel':
-        return NewYearEventService().prizeGranted ? 'metel' : 'grok';
+        return NewYearEventService().prizeGranted ? 'metel' : 'system';
       default:
-        return 'grok';
+        // Без явного выбора — СИСТЕМНАЯ тема (обои/Material You), а не Grok:
+        // у Grok primary почти чёрный, и таблетка/переключатели выглядели
+        // «чёрными» вместо цветов обоев.
+        return 'system';
     }
   }
 

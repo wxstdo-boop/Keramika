@@ -2033,8 +2033,10 @@ class KeramikaAppState extends State<KeramikaApp>
                 }
                 return ColorScheme.fromSeed(
                   seedColor: const Color(
-                    0xFF5E6E7E,
-                  ), // нейтральный стальной (не фиолетовый)
+                    0xFF6750A4,
+                  ), // фирменный фиолетовый: даже без dynamic color
+                  // тёмная «системная» не выглядит чёрной/стальной —
+                  // поверхности и primary имеют цветовой подмес.
                   brightness: Brightness.dark,
                 );
               })();

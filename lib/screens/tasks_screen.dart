@@ -369,7 +369,10 @@ class _TasksScreenState extends State<TasksScreen>
                                 // «гаснуть» целых 450 мс и всё это время
                                 // ехала рядом с новой — читалось как
                                 // «призрак/дубль» таблетки за категорией.
-                                duration: const Duration(milliseconds: 220),
+                                // 180 мс: цвет выбранной категории успевает
+                                // догнать карусель, а не «доцветает» после
+                                // её остановки (тот самый лаг в конце).
+                                duration: const Duration(milliseconds: 180),
                                 curve: Curves.easeInOutCubic,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
@@ -523,14 +526,14 @@ class _TasksScreenState extends State<TasksScreen>
         },
         itemBuilder: (context, i) => KeyedSubtree(
           key: ValueKey('item_task_${list[i].id}'),
-          // Плавная смена содержимого при переключении категории: задачи мягко
-          // проявляются (фейд + лёгкий подъём), а не подменяются рывком.
-          child: FadeTransition(
-            opacity: _revealFade,
-            child: SlideTransition(
-              position: _revealSlide,
-              child: _buildTaskCard(context, theme, list[i], i),
-            ),
+          // Плавная смена содержимого при переключении категории: только
+          // лёгкий подъём (SlideTransition — чистая трансформация, без
+          // saveLayer). FadeTransition на КАЖДОЙ карточке создавал по
+          // слою прозрачности на карточку каждый кадр — на слабом GPU это
+          // и был «тормоз в конце» переключения категорий.
+          child: SlideTransition(
+            position: _revealSlide,
+            child: _buildTaskCard(context, theme, list[i], i),
           ),
         ),
       ),
@@ -796,10 +799,20 @@ class _TasksScreenState extends State<TasksScreen>
                             ),
                           ],
                         ),
-                        // Приоритет (всегда показываем, включая low=0)
-                        if (task.priority >= 0) ...[
+                        // Приоритет + срок (если задан) — одной строкой.
+                        if (task.priority >= 0 || task.dueAt != null) ...[
                           const SizedBox(height: 8),
-                          _priorityPill(task.priority, theme, context),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (task.priority >= 0)
+                                _priorityPill(task.priority, theme, context),
+                              if (task.dueAt != null)
+                                _duePill(task, theme, context),
+                            ],
+                          ),
                         ],
                         // Заметка «Вспомнил, что использую…» — красивая
                         // плашка внизу карточки.
@@ -924,6 +937,62 @@ class _TasksScreenState extends State<TasksScreen>
           const SizedBox(width: 6),
           Text(
             label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Срок задачи: «до какого дня» + «за сколько». Просроченная — красная,
+  /// сегодняшняя — оранжевая, остальные — спокойные. Компактно, одной
+  /// строкой с приоритетом.
+  Widget _duePill(Task task, ThemeData theme, BuildContext context) {
+    final cs = theme.colorScheme;
+    final overdue = task.isOverdue;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = task.dueAt!;
+    final dueDay = DateTime(due.year, due.month, due.day);
+    final isToday = dueDay == today;
+    final color = overdue
+        ? cs.error
+        : isToday
+        ? const Color(0xFFE08A00)
+        : cs.onSurfaceVariant;
+    final label = overdue
+        ? Translations.t('overdue', context, 'Просрочено')
+        : isToday
+        ? Translations.t('dueToday', context, 'Сегодня')
+        : '${due.day.toString().padLeft(2, '0')}.'
+              '${due.month.toString().padLeft(2, '0')}';
+    final est = task.estimateMinutes;
+    final estLabel = est == null
+        ? null
+        : est < 60
+        ? '$est мин'
+        : '${est ~/ 60} ч';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.30), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            overdue ? Icons.warning_amber_rounded : Icons.schedule,
+            size: 13,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            estLabel == null ? label : '$label · $estLabel',
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: color,

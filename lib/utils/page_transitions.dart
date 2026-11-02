@@ -95,8 +95,8 @@ Route<T> lockRoute<T>(Widget page) {
 Route<T> homeEntryRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: const Duration(milliseconds: 320),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionDuration: const Duration(milliseconds: 280),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(

@@ -52,8 +52,10 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
     vsync: this,
     controller: _ctrl,
     // Карусель категорий — собраннее: короткий доворот без «хвоста».
-    stiffness: 230,
-    dampingRatio: 0.95,
+    // 320 вместо 230: в конце перелёта больше не остаётся медленного
+    // «доползания» последних пикселей — именно оно читалось как тормоз.
+    stiffness: 320,
+    dampingRatio: 1.0,
   );
   // Свайп пользователя уже движет карусель — не дёргаем контроллер в ответ.
   bool _settling = false;

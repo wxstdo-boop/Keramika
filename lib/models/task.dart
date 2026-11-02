@@ -10,6 +10,13 @@ class Task {
   String category;
   int priority;
   String note;
+
+  /// Дедлайн: «до какого дня» (конец выбранного дня, локальное время).
+  DateTime? dueAt;
+
+  /// Бюджет времени «за сколько надо сделать», в минутах.
+  int? estimateMinutes;
+
   DateTime createdAt;
 
   Task({
@@ -20,10 +27,16 @@ class Task {
     this.category = '',
     this.priority = 0,
     this.note = '',
+    this.dueAt,
+    this.estimateMinutes,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
   IconData get icon => iconDataForCodePoint(iconCodePoint);
+
+  /// Просрочена: срок уже прошёл, а задача не выполнена.
+  bool get isOverdue =>
+      !done && dueAt != null && dueAt!.isBefore(DateTime.now());
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -33,6 +46,8 @@ class Task {
     'category': category,
     'priority': priority,
     'note': note,
+    'dueAt': dueAt?.toIso8601String(),
+    'estimateMinutes': estimateMinutes,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -48,6 +63,8 @@ class Task {
     category: json['category'] as String? ?? '',
     priority: json['priority'] as int? ?? 0,
     note: json['note'] as String? ?? '',
+    dueAt: DateTime.tryParse(json['dueAt'] as String? ?? ''),
+    estimateMinutes: (json['estimateMinutes'] as num?)?.toInt(),
     createdAt:
         DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
   );

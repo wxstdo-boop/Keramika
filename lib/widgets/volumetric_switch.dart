@@ -51,9 +51,15 @@ class VolumetricSwitch extends StatelessWidget {
     // Тренок-«вмятина» держится в пределах поверхности раздела: выключенный
     // трек едва тёмнее фона (не «плавающая серая плитка» — жалоба «не
     // вписывается»). Включённый — фирменный градиент.
+    // Выключенный трек — не «чёрная вмятина»: подмешиваем primaryContainer
+    // (цвет обоев на системной теме), чтобы дорожка читалась как часть темы.
     final trackOff = isDark
-        ? scheme.surfaceContainerHighest.withValues(alpha: 0.82)
-        : scheme.surfaceContainerHigh;
+        ? Color.lerp(
+            scheme.surfaceContainerHighest,
+            scheme.primaryContainer,
+            0.40,
+          )!
+        : Color.lerp(scheme.surfaceContainerHigh, scheme.primaryContainer, 0.30)!;
 
     // Включённый трек: градиент «стекло»: светлей у верха → primary
     // внизу. На тёмной теме светлей берём из самого primary, чтобы

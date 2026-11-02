@@ -15,7 +15,6 @@ import '../utils/wide_dash_controller.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/category_chip.dart';
-import '../widgets/drag_proxy.dart';
 import '../utils/snackbar.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/priority_selector.dart';
@@ -35,6 +34,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late int _iconCodePoint;
   late String _category;
   late int _priority;
+  DateTime? _dueAt;
+  int? _estimateMinutes;
   final TaskService _taskSvc = TaskService();
   bool _editing = false;
 
@@ -46,12 +47,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _iconCodePoint = widget.existing!.iconCodePoint;
       _category = widget.existing!.category;
       _priority = widget.existing!.priority;
+      _dueAt = widget.existing!.dueAt;
+      _estimateMinutes = widget.existing!.estimateMinutes;
       _editing = true;
     } else {
       _titleCtrl = WideDashController();
       _iconCodePoint = 58830;
       _category = '';
       _priority = 0;
+      _dueAt = null;
+      _estimateMinutes = null;
     }
     _taskSvc.load();
   }
@@ -250,16 +255,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
   }
 
-  /// Drag-прокси для чипа категории: подъём, свечение и обводка-«кольцо»,
-  /// чтобы палец не терял чип из вида во время перетаскивания.
-  Widget _categoryDragProxy(
-    Widget child,
-    ThemeData theme,
-    Animation<double> animation,
-  ) {
-    return buildDragProxy(child, theme, animation, borderRadius: 999);
-  }
-
   void _save() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
@@ -271,9 +266,163 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       category: _category,
       priority: _priority,
       note: widget.existing?.note ?? '',
+      dueAt: _dueAt,
+      estimateMinutes: _estimateMinutes,
       createdAt: widget.existing?.createdAt,
     );
     Navigator.of(context).pop(task);
+  }
+
+  /// Короткий срок задачи: «до какого дня» + «за сколько».
+  ///
+  /// Быстрые чипы (сегодня/завтра/3 дня/неделя) закрывают 95 % случаев
+  /// одним тапом; «Дата…» открывает календарь. Всё на одном Card и
+  /// анимируется 180 мс — без простыней и без реординга.
+  Widget _deadlineCard(BuildContext context, ThemeData theme) {
+    final cs = theme.colorScheme;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 23, 59);
+    final tomorrow = today.add(const Duration(days: 1));
+    final in3 = today.add(const Duration(days: 3));
+    final inWeek = today.add(const Duration(days: 7));
+
+    bool sameDay(DateTime? a, DateTime b) =>
+        a != null && a.year == b.year && a.month == b.month && a.day == b.day;
+
+    Widget quick(String label, DateTime? value) => _DeadlineChip(
+      label: label,
+      selected: value == null ? _dueAt == null : sameDay(_dueAt, value),
+      onTap: () => setState(() => _dueAt = value),
+    );
+
+    final customSelected =
+        _dueAt != null &&
+        !sameDay(_dueAt, today) &&
+        !sameDay(_dueAt, tomorrow) &&
+        !sameDay(_dueAt, in3) &&
+        !sameDay(_dueAt, inWeek);
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_outlined, size: 17, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  Translations.t('dueDate', context, 'Срок'),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: cs.primary,
+                  ),
+                ),
+                const Spacer(),
+                if (_dueAt != null)
+                  Text(
+                    _dueLabel(context, _dueAt!),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                quick(
+                  Translations.t('dueNone', context, 'Без срока'),
+                  null,
+                ),
+                quick(
+                  Translations.t('dueToday', context, 'Сегодня'),
+                  today,
+                ),
+                quick(
+                  Translations.t('dueTomorrow', context, 'Завтра'),
+                  tomorrow,
+                ),
+                quick(
+                  Translations.t('dueIn3Days', context, 'Через 3 дня'),
+                  in3,
+                ),
+                quick(
+                  Translations.t('dueInWeek', context, 'Через неделю'),
+                  inWeek,
+                ),
+                _DeadlineChip(
+                  label: Translations.t('duePickDate', context, 'Дата…'),
+                  selected: customSelected,
+                  icon: Icons.calendar_month_outlined,
+                  onTap: _pickDueDate,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(Icons.timer_outlined, size: 17, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  Translations.t('estimate', context, 'За сколько'),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: cs.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final m in const [15, 30, 60, 120, 240])
+                  _DeadlineChip(
+                    label: _estimateLabel(m),
+                    selected: _estimateMinutes == m,
+                    onTap: () => setState(
+                      () => _estimateMinutes = _estimateMinutes == m ? null : m,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _estimateLabel(int minutes) =>
+      minutes < 60 ? '$minutes мин' : '${minutes ~/ 60} ч';
+
+  String _dueLabel(BuildContext context, DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = day.difference(today).inDays;
+    if (diff < 0) return Translations.t('overdue', context, 'Просрочено');
+    if (diff == 0) return Translations.t('dueToday', context, 'Сегодня');
+    if (diff == 1) return Translations.t('dueTomorrow', context, 'Завтра');
+    return '${d.day.toString().padLeft(2, '0')}.'
+        '${d.month.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueAt ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _dueAt = DateTime(picked.year, picked.month, picked.day, 23, 59);
+    });
   }
 
   @override
@@ -390,6 +539,41 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             const SizedBox(height: 12),
             StaggerIn(
               index: 3,
+              child: Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Translations.t('priority', context),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Свой селектор вместо SegmentedButton: капсулы с
+                      // градиентом, бликом и цветным свечением выбранного
+                      // уровня — тот же визуальный язык, что у таблетки
+                      // приоритета в списке задач, но «глубже».
+                      PrioritySelector(
+                        value: _priority,
+                        onChanged: (p) => setState(() => _priority = p),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            StaggerIn(
+              index: 4,
               child: Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -597,44 +781,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           final showTrailing =
                               _taskSvc.categories.length <
                               _taskSvc.maxCategories;
-                          // Категории можно перетаскивать друг за друга
-                          // (кроме «Без категории» — она всегда первой).
-                          // Порядок сохраняется в TaskService и
-                          // автоматически подтягивается в фильтр задач
-                          // на главном экране.
+                          // Без перетаскивания: порядок категорий задаётся
+                          // их созданием, а не ручным реордингом (жалоба
+                          // «муторная хуета»). Просто горизонтальный ряд
+                          // чипов, который можно прокручивать.
                           return SizedBox(
                             height: 44,
-                            child: ReorderableListView.builder(
+                            child: ListView.builder(
                               scrollDirection: Axis.horizontal,
                               itemCount: cats.length + (showTrailing ? 1 : 0),
-                              onReorderItem: (oldIndex, newIndex) {
-                                // 'Без категории' (индекс 0) и кнопка
-                                // «+ Новая категория» (последняя) — не
-                                // перемещаются.
-                                if (oldIndex == 0 || newIndex == 0) return;
-                                if (showTrailing &&
-                                    (oldIndex == cats.length ||
-                                        newIndex == cats.length)) {
-                                  return;
-                                }
-                                // cats[0] — это '' (Без категории), поэтому
-                                // индексы реальных категорий на единицу меньше.
-                                _taskSvc.reorderCategories(
-                                  oldIndex - 1,
-                                  newIndex - 1,
-                                );
-                              },
-                              buildDefaultDragHandles: false,
-                              proxyDecorator: (child, index, animation) =>
-                                  _categoryDragProxy(child, theme, animation),
                               itemBuilder: (context, i) {
-                                // Каждый чип несёт собственный отступ справа
-                                // (внутри CategoryChip / _newCategoryChip).
-                                // ВНЕШНИЙ Padding(right: 8) был ЛИШНИМ — он
-                                // складывался с внутренним и давал двойной
-                                // отступ справа (жалоба «лишний отступ»).
-                                // Теперь внешний wrapper — только key: отступ
-                                // правый один.
                                 if (showTrailing && i == cats.length) {
                                   return KeyedSubtree(
                                     key: const ValueKey('cat_trailing'),
@@ -642,16 +798,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                   );
                                 }
                                 final name = cats[i];
-                                final isUncategorized = name.isEmpty;
-                                final child = _categoryChip(context, name);
                                 return KeyedSubtree(
                                   key: ValueKey('cat_$name'),
-                                  child: isUncategorized
-                                      ? child
-                                      : ReorderableDragStartListener(
-                                          index: i,
-                                          child: child,
-                                        ),
+                                  child: _categoryChip(context, name),
                                 );
                               },
                             ),
@@ -664,38 +813,67 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            StaggerIn(
-              index: 4,
-              child: Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        Translations.t('priority', context),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      // Свой селектор вместо SegmentedButton: капсулы с
-                      // градиентом, бликом и цветным свечением выбранного
-                      // уровня — тот же визуальный язык, что у таблетки
-                      // приоритета в списке задач, но «глубже».
-                      PrioritySelector(
-                        value: _priority,
-                        onChanged: (p) => setState(() => _priority = p),
-                      ),
-                    ],
-                  ),
-                ),
+            // Срок — ПОСЛЕ категории (категория теперь ниже приоритета):
+            // «до какого дня» + «за сколько», короткими чипами.
+            StaggerIn(index: 5, child: _deadlineCard(context, theme)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Компактная чип-кнопка срока: выбранная заливается primary, остальные —
+/// спокойные. 180 мс easeOutCubic — переключение читается мягко.
+class _DeadlineChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  const _DeadlineChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: selected ? cs.primary : cs.surfaceContainerHighest,
+          border: Border.all(
+            color: selected
+                ? cs.primary
+                : cs.outlineVariant.withValues(alpha: 0.6),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? cs.onPrimary : cs.onSurfaceVariant,
               ),
             ),
           ],
