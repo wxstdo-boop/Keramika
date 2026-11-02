@@ -15,6 +15,7 @@ import '../utils/wide_dash_controller.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/category_chip.dart';
+import '../widgets/due_date_picker.dart';
 import '../utils/snackbar.dart';
 import '../widgets/stagger_in.dart';
 import '../widgets/priority_selector.dart';
@@ -36,6 +37,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late int _priority;
   DateTime? _dueAt;
   int? _estimateMinutes;
+
+  /// Ряд категорий с плавным сдвигом: AnimatedList сам анимирует
+  /// удаление/добавление, а соседи переезжают кадр в кадр.
+  final GlobalKey<AnimatedListState> _catListKey =
+      GlobalKey<AnimatedListState>();
+  List<String> _catItems = <String>[];
   final TaskService _taskSvc = TaskService();
   bool _editing = false;
 
@@ -59,6 +66,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _estimateMinutes = null;
     }
     _taskSvc.load();
+    _catItems = <String>['', ..._taskSvc.categories];
   }
 
   @override
@@ -255,6 +263,80 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
   }
 
+  bool _sameCatList(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Диффит ряд категорий и анимирует удаление/вставку. Благодаря этому
+  /// после удаления соседи СДВИГАЮТСЯ плавно (SizeTransition по ширине),
+  /// а не прыгают на новое место; добавление/переименование — так же.
+  void _syncCatList(List<String> target) {
+    final state = _catListKey.currentState;
+    if (state == null) {
+      _catItems = List<String>.from(target);
+      return;
+    }
+    // Удаляем то, чего больше нет — с конца, чтобы индексы не съезжали.
+    for (var i = _catItems.length - 1; i >= 0; i--) {
+      if (!target.contains(_catItems[i])) {
+        final removed = _catItems.removeAt(i);
+        state.removeItem(
+          i,
+          (context, animation) => _catItemBuilder(context, removed, animation),
+          duration: const Duration(milliseconds: 260),
+        );
+      }
+    }
+    // Вставляем/переставляем по порядку.
+    for (var i = 0; i < target.length; i++) {
+      if (i < _catItems.length && _catItems[i] == target[i]) continue;
+      final existing = _catItems.indexOf(target[i]);
+      if (existing >= 0) {
+        final moved = _catItems.removeAt(existing);
+        state.removeItem(
+          existing,
+          (context, animation) => _catItemBuilder(context, moved, animation),
+          duration: const Duration(milliseconds: 220),
+        );
+      }
+      _catItems.insert(i, target[i]);
+      state.insertItem(i, duration: const Duration(milliseconds: 260));
+    }
+    // Хвост (если остался) — убираем.
+    while (_catItems.length > target.length) {
+      final idx = _catItems.length - 1;
+      final removed = _catItems.removeAt(idx);
+      state.removeItem(
+        idx,
+        (context, animation) => _catItemBuilder(context, removed, animation),
+        duration: const Duration(milliseconds: 220),
+      );
+    }
+  }
+
+  Widget _catItemBuilder(
+    BuildContext context,
+    String name,
+    Animation<double> animation,
+  ) {
+    final isNew = name == '__new__';
+    final child = isNew
+        ? _newCategoryChip(context)
+        : _categoryChip(context, name);
+    return SizeTransition(
+      sizeFactor: animation,
+      axis: Axis.horizontal,
+      child: FadeTransition(
+        opacity: animation,
+        child: KeyedSubtree(key: ValueKey('cat_$name'), child: child),
+      ),
+    );
+  }
+
   void _save() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
@@ -320,13 +402,30 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 ),
                 const Spacer(),
-                if (_dueAt != null)
-                  Text(
-                    _dueLabel(context, _dueAt!),
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: cs.onSurfaceVariant,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.25, 0),
+                        end: Offset.zero,
+                      ).animate(anim),
+                      child: child,
                     ),
                   ),
+                  child: _dueAt == null
+                      ? const SizedBox.shrink(key: ValueKey('due_none'))
+                      : Text(
+                          _dueLabel(context, _dueAt!),
+                          key: ValueKey(_dueAt!.toIso8601String()),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -334,14 +433,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                quick(
-                  Translations.t('dueNone', context, 'Без срока'),
-                  null,
-                ),
-                quick(
-                  Translations.t('dueToday', context, 'Сегодня'),
-                  today,
-                ),
+                quick(Translations.t('dueNone', context, 'Без срока'), null),
+                quick(Translations.t('dueToday', context, 'Сегодня'), today),
                 quick(
                   Translations.t('dueTomorrow', context, 'Завтра'),
                   tomorrow,
@@ -412,13 +505,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _pickDueDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dueAt ?? now,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 5),
-    );
+    final picked = await showDueDatePicker(context, _dueAt);
     if (picked == null || !mounted) return;
     setState(() {
       _dueAt = DateTime(picked.year, picked.month, picked.day, 23, 59);
@@ -781,26 +868,31 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           final showTrailing =
                               _taskSvc.categories.length <
                               _taskSvc.maxCategories;
-                          // Без перетаскивания: порядок категорий задаётся
-                          // их созданием, а не ручным реордингом (жалоба
-                          // «муторная хуета»). Просто горизонтальный ряд
-                          // чипов, который можно прокручивать.
+                          final target = <String>[
+                            ...cats,
+                            if (showTrailing) '__new__',
+                          ];
+                          if (!_sameCatList(_catItems, target)) {
+                            // Синхронизируем AnimatedList ПОСЛЕ кадра:
+                            // внутри builder нельзя звать insert/remove.
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) _syncCatList(target);
+                            });
+                          }
                           return SizedBox(
                             height: 44,
-                            child: ListView.builder(
+                            child: AnimatedList(
+                              key: _catListKey,
                               scrollDirection: Axis.horizontal,
-                              itemCount: cats.length + (showTrailing ? 1 : 0),
-                              itemBuilder: (context, i) {
-                                if (showTrailing && i == cats.length) {
-                                  return KeyedSubtree(
-                                    key: const ValueKey('cat_trailing'),
-                                    child: _newCategoryChip(context),
-                                  );
-                                }
-                                final name = cats[i];
-                                return KeyedSubtree(
-                                  key: ValueKey('cat_$name'),
-                                  child: _categoryChip(context, name),
+                              initialItemCount: _catItems.length,
+                              itemBuilder: (context, i, animation) {
+                                final name = i < _catItems.length
+                                    ? _catItems[i]
+                                    : '__new__';
+                                return _catItemBuilder(
+                                  context,
+                                  name,
+                                  animation,
                                 );
                               },
                             ),
@@ -841,42 +933,51 @@ class _DeadlineChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: selected ? cs.primary : cs.surfaceContainerHighest,
-          border: Border.all(
-            color: selected
-                ? cs.primary
-                : cs.outlineVariant.withValues(alpha: 0.6),
-            width: 1.2,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 14,
-                color: selected ? cs.onPrimary : cs.onSurfaceVariant,
-              ),
-              const SizedBox(width: 5),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? cs.onPrimary : cs.onSurfaceVariant,
-              ),
+    return PressScale(
+      // Та же приятная отдача, что у чипов категории (0.96 / 400 мс).
+      pressedScale: 0.96,
+      duration: const Duration(milliseconds: 400),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Haptics.select();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: selected ? cs.primary : cs.surfaceContainerHighest,
+            border: Border.all(
+              color: selected
+                  ? cs.primary
+                  : cs.outlineVariant.withValues(alpha: 0.6),
+              width: 1.2,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 14,
+                  color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                ),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

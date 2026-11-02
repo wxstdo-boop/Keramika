@@ -719,63 +719,13 @@ class _HomeScreenState extends State<HomeScreen>
                         top: 0,
                         left: 0,
                         right: 0,
-                        // Таблетка «уезжает» вместе с прокруткой: высота среза
-                        // пропорциональна скроллу. Align+ClipRect режут готовый
-                        // слой — сама таблетка не перекладывается.
-                        //
-                        // Линейное окно в kSectionPillSlotHeight, а НЕ easeOutCubic
-                        // по 72 px:easeOut почти не убирал высоту в первых кадрах,
-                        // а зазор между нижним краем капсулы (58) и началом списка
-                        // (68) — всего 10 px. Заголовок секции успевал въехать
-                        // прямо на ещё полную таблетку. При f = 1 - off/64 клиренс
-                        // 58·f ≤ 68 - off держится на всём прокрутке.
-                        child: ListenableBuilder(
-                          listenable: Listenable.merge([
-                            sectionScrollOffset,
-                            sectionPillSnapTarget,
-                            _pillSnapCtrl,
-                          ]),
-                          // САМА таблетка передаётся через `child:` и
-                          // пересобирается ОДИН РАЗ: builder вызывается на
-                          // каждый кадр скролла, и без этого под каждый кадр
-                          // создавался новый экземпляр SectionPill → заново
-                          // прогонялось всё её стекло (StainedGlassPainter +
-                          // 4 _ShapePainter + куча Color.lerp). На Adreno 610
-                          // это и были микрофризы вертикального скролла:
-                          // двигать готовый слой дёшево, перекладывать — нет.
-                          // Таблетка передаётся через `child:`, то есть
-                          // пересобирается при пересборке HomeScreen, а НЕ при
-                          // каждом кадре скролла: builder вызывается на каждый
-                          // кадр, и без этого под каждый кадр создавался свежий
-                          // SectionPill → заново прогонялось всё её стекло
-                          // (StainedGlassPainter + 4 _ShapePainter + Color.lerp).
-                          // На Adreno 610 это и были микрофризы вертикального
-                          // скролла: двигать готовый слой дёшево, перекладывать
-                          // — нет. Без `const` намеренно: список разделов
-                          // читается из RealityCheckService().enabled, а
-                          // HomeScreen слушает этот сервис (_onRcChanged), так
-                          // что при выключении РП таблетка пересобирается.
-                          child: RepaintBoundary(child: SectionPill()),
-                          builder: (context, pill) {
-                            final off = _pillSnapActive
-                                ? (_pillSnapAnimation?.value ??
-                                      sectionScrollOffset.value)
-                                : sectionScrollOffset.value;
-                            final tEased = (1.0 - off / kSectionPillSlotHeight)
-                                .clamp(0.0, 1.0);
-                            if (tEased <= 0.01) return const SizedBox.shrink();
-                            return ClipRect(
-                              child: Align(
-                                alignment: Alignment.topCenter,
-                                heightFactor: tEased,
-                                child: IgnorePointer(
-                                  ignoring: tEased < 0.5,
-                                  child: pill,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                        // Таблетка ВСЕГДА ПОЛНАЯ: больше не срезается по
+                        // скроллу. Раньше она «сворачивалась» через
+                        // ClipRect+heightFactor, и в середине прокрутки
+                        // получалась половина капсулы + белая полоса под
+                        // ней — та самая «белая шторка». Теперь капсула
+                        // неподвижна, контент листается ПОД ней.
+                        child: RepaintBoundary(child: SectionPill()),
                       ),
                     ],
                   ),

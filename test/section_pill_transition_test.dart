@@ -18,21 +18,10 @@ import 'package:keramika/widgets/animated_fab_row.dart';
 import 'package:keramika/widgets/section_pill.dart';
 import 'package:keramika/widgets/icons/keramika_icons.dart';
 
-/// Таблетка разделов при переезде между экранами сворачивается и
-/// возвращается СИНХРОННО с разделами, а не «висит» высотой уехавшего
-/// раздела и не мигает скачком на финише.
-///
-/// Как было: высота таблетки жёстко переставлялась на высоту целевого
-/// раздела — при пересечении половины пути (раздел становился активным)
-/// или на отпускании пальца. Посреди свайпа таблетка оставалась «мёртвым
-/// грузом» чужой высоты, а на финише прыгала. Теперь высоту ведёт
-/// интерполяция по ДРОБНОЙ странице карусели: насколько разделы проехали —
-/// настолько таблетка и свернулась.
-///
-/// Проверяем инварианты, а не абсолютную геометрию: плавность шага за кадр,
-/// монотонность и то, что в середине переезда высота действительно
-/// промежуточная (значит движением управляет интерполяция, а не поздняя
-/// жёсткая запись).
+/// Таблетка разделов теперь ВСЕГДА полная: она не срезается по скроллу.
+/// Раньше ClipRect+heightFactor оставлял на середине прокрутки половину
+/// капсулы и белую полосу под ней — «белую шторку». Эти тесты фиксируют
+/// новое поведение: высота таблетки не меняется, а разделы листаются под ней.
 void main() {
   late Directory tmpDir;
 
@@ -61,24 +50,20 @@ void main() {
             return null;
           },
         );
-    // Данные — вне FakeAsync-зоны testWidgets.
     await AlarmService().load();
     for (final a in AlarmService().alarms.toList()) {
       await AlarmService().remove(a.id);
     }
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 20; i++) {
       await AlarmService().add(
-        Alarm(
-          id: 'a$i',
-          time: TimeOfDay(hour: 6, minute: i % 60),
-        ),
+        Alarm(id: 'a$i', time: TimeOfDay(hour: 6, minute: i % 60)),
       );
     }
     await HabitService().load();
     for (final h in HabitService().habits.toList()) {
       await HabitService().remove(h.id);
     }
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < 10; i++) {
       await HabitService().add(
         Habit(
           id: 'h$i',
@@ -117,34 +102,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   }
 
-  /// Видимая (не срезанная) высота таблетки. 0 — таблетка срезана целиком
-  /// (tEased <= 0.01 → SizedBox.shrink, в дереве её нет).
   double pillHeight(WidgetTester tester) {
-    final clips = find
-        .ancestor(of: find.byType(SectionPill), matching: find.byType(ClipRect))
-        .evaluate()
-        .toList();
-    if (clips.isEmpty) return 0;
-    final box = clips.first.renderObject as RenderBox?;
-    if (box == null || !box.hasSize) return 0;
-    return box.size.height;
+    final finder = find.byType(SectionPill);
+    if (finder.evaluate().isEmpty) return 0;
+    return tester.getSize(finder.first).height;
   }
 
-  /// Прокрутить активный раздел вниз (часть протяжки съедает touch slop,
-  /// поэтому офсет читаем из общего состояния, а не задаём константой).
-  Future<double> scrollActive(WidgetTester tester, double dy) async {
-    await tester.drag(
-      find.byType(HomeScreen),
-      Offset(0, dy),
-      warnIfMissed: false,
-    );
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 600));
-    return sectionScrollOffset.value;
-  }
-
-  /// Свайп по самому PageView: выше карточек (иначе горизонтальный драг
-  /// забирает SwipeToDelete карточки) и вне капсулы таблетки.
   Future<void> swipePage(WidgetTester tester, {required bool left}) async {
     final g = await tester.startGesture(
       left ? const Offset(385, 62) : const Offset(26, 62),
@@ -159,172 +122,52 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
   }
 
-  /// Высота таблетки по кадрам.
-  Future<List<double>> record(WidgetTester tester, int frames) async {
-    final out = <double>[];
-    for (var i = 0; i < frames; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-      out.add(pillHeight(tester));
-    }
-    return out;
-  }
-
-  /// Плавность ряда высот: шаг за кадр ограничен, движение — почти
-  /// монотонное (ни одного кадра против общего направления больше полупикселя).
-  void expectSmooth(List<double> frames, double direction, String tag) {
-    expect(frames, isNotEmpty, reason: tag);
-    var maxStep = 0.0;
-    for (var i = 1; i < frames.length; i++) {
-      final step = frames[i] - frames[i - 1];
-      if (step.abs() > maxStep) maxStep = step.abs();
-      expect(
-        step * direction,
-        greaterThan(-0.6),
-        reason: '$tag: откат назад в ряду высот: $frames',
-      );
-    }
-    expect(maxStep, lessThan(8.0), reason: '$tag: скачок за кадр: $frames');
-  }
-
-  /// Сколько кадров высота была ПРОМЕЖУТОЧНОЙ между состояниями разделов:
-  /// именно это доказывает, что переезд ведёт интерполяция, а не поздняя
-  /// жёсткая запись на половине пути/на финише.
-  int intermediateFrames(List<double> frames, double a, double b) {
-    final lo = (a < b ? a : b) + 0.5;
-    final hi = (a > b ? a : b) - 0.5;
-    return frames.where((h) => h > lo && h < hi).length;
-  }
-
-  testWidgets('свайп со свёрнутой таблетки: возвращается вместе с разделами', (
+  testWidgets('прокрутка: таблетка остаётся полной, без белой шторки', (
     tester,
   ) async {
     await boot(tester);
     expect(pillHeight(tester), fullPill);
 
-    final source = await scrollActive(tester, -50);
-    expect(source, greaterThan(0));
-    expect(source, lessThan(fullPill));
-    final sourcePill = pillHeight(tester);
-    expect(
-      sourcePill,
-      closeTo(source > 28 ? 0 : fullPill - source, 0.6),
-      reason: 'после остановки вертикального скролла таблетка доводится к краю',
+    await tester.drag(
+      find.byType(HomeScreen),
+      const Offset(0, -120),
+      warnIfMissed: false,
     );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
 
-    final g = await tester.startGesture(const Offset(385, 62));
-    await tester.pump(const Duration(milliseconds: 40));
-    final during = <double>[];
-    for (var i = 0; i < 12; i++) {
-      await g.moveBy(const Offset(-30, 0));
-      await tester.pump(const Duration(milliseconds: 16));
-      during.add(pillHeight(tester));
-    }
-    await g.up();
-    final settle = await record(tester, 40);
-
-    expect(
-      intermediateFrames(during, sourcePill, fullPill),
-      greaterThanOrEqualTo(4),
-      reason:
-          'таблетка должна разворачиваться ПО ХОДУ свайпа, а не ждать '
-          'финиша на старой высоте: $during',
-    );
-    expectSmooth(during, 1, 'свайп');
-    expectSmooth(settle, 1, 'доводка');
-    expect(sectionCurrentIndex.value, 1);
     expect(
       pillHeight(tester),
-      closeTo(fullPill, 0.6),
-      reason: 'на верхнем разделе таблетка видна целиком',
+      fullPill,
+      reason: 'таблетка не должна срезаться по скроллу',
     );
   });
 
-  testWidgets('свайп на свёрнутый экран: сворачивается вместе с разделами', (
-    tester,
-  ) async {
+  testWidgets('свайп между разделами: таблетка остаётся полной', (tester) async {
     await boot(tester);
+    expect(pillHeight(tester), fullPill);
 
-    // Готовим второй раздел (привычки) прокрученным.
     await swipePage(tester, left: true);
     expect(sectionCurrentIndex.value, 1);
-    final targetScroll = await scrollActive(tester, -50);
-    expect(targetScroll, greaterThan(0));
-    expect(targetScroll, lessThan(fullPill - 4));
-    final targetPill = pillHeight(tester);
-    expect(
-      targetPill,
-      closeTo(targetScroll > 28 ? 0 : fullPill - targetScroll, 0.6),
-    );
+    expect(pillHeight(tester), fullPill);
 
-    // Возвращаемся на первый раздел — таблетка разворачивается обратно.
     await swipePage(tester, left: false);
     expect(sectionCurrentIndex.value, 0);
-    expect(pillHeight(tester), closeTo(fullPill, 0.6));
-
-    // Свайп обратно на прокрученный раздел: таблетка должна свернуться
-    // ПО ХОДУ переезда, а не пропасть скачком на половине пути.
-    final g = await tester.startGesture(const Offset(385, 62));
-    await tester.pump(const Duration(milliseconds: 40));
-    final during = <double>[];
-    for (var i = 0; i < 12; i++) {
-      await g.moveBy(const Offset(-30, 0));
-      await tester.pump(const Duration(milliseconds: 16));
-      during.add(pillHeight(tester));
-    }
-    await g.up();
-    final settle = await record(tester, 40);
-
-    expect(
-      intermediateFrames(during, fullPill, targetPill),
-      greaterThanOrEqualTo(4),
-      reason:
-          'таблетка должна сворачиваться постепенно, без скачка на '
-          'половине пути: $during',
-    );
-    expectSmooth(during, -1, 'свайп');
-    expectSmooth(settle, -1, 'доводка');
-    expect(
-      pillHeight(tester),
-      closeTo(targetPill, 0.6),
-      reason: 'на прокрученном разделе таблетка срезана по его офсету',
-    );
+    expect(pillHeight(tester), fullPill);
   });
 
-  testWidgets('тап по разделу: таблетка разворачивается по ходу полёта', (
+  testWidgets('тап по разделу: переключает страницу, таблетка полная', (
     tester,
   ) async {
     await boot(tester);
     await swipePage(tester, left: true);
-    // Небольшая прокрутка: таблетку можно тапнуть, пока видна её
-    // БОЛЬШАЯ половина (при tEased < 0.5 её накрывает IgnorePointer).
-    final source = await scrollActive(tester, -35);
     expect(sectionCurrentIndex.value, 1);
-    expect(source, greaterThan(0));
-    expect(
-      source,
-      lessThan(kSectionPillSlotHeight * 0.5),
-      reason: 'прокрутили слишком много — таблетка перестаёт принимать тапы',
-    );
-    final sourcePill = pillHeight(tester);
-    expect(sourcePill, closeTo(fullPill, 0.6));
 
-    // Тап по «Будильникам» (первый значок): полёт пружиной на верхний раздел.
-    // Целимся в ЦЕНТР ВИДИМОЙ части: нижний край капсулы срезан клипом,
-    // и туда тап физически не попадает.
-    // Target the actual visible icon: the outer SectionPill includes the
-    // centered side gutters, so deriving a tab hit point from its full rect
-    // tapped outside the capsule on narrow devices.
     await tester.tap(find.byType(KkAlarmIcon).first);
-    final flight = await record(tester, 60);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 700));
 
     expect(sectionCurrentIndex.value, 0);
-    if ((fullPill - sourcePill).abs() > 0.6) {
-      expect(
-        intermediateFrames(flight, sourcePill, fullPill),
-        greaterThan(3),
-        reason: 'разворот должен идти кадрами полёта, а не скачком: $flight',
-      );
-    }
-    expect(pillHeight(tester), closeTo(fullPill, 0.6));
+    expect(pillHeight(tester), fullPill);
   });
 }

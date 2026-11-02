@@ -809,8 +809,33 @@ class _TasksScreenState extends State<TasksScreen>
                             children: [
                               if (task.priority >= 0)
                                 _priorityPill(task.priority, theme, context),
-                              if (task.dueAt != null)
-                                _duePill(task, theme, context),
+                              // Срок появляется/исчезает плавно и мягко
+                              // раздвигает приоритет (SizeTransition по
+                              // горизонтали), а не вставляется рывком.
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 240),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: (child, anim) =>
+                                    FadeTransition(
+                                      opacity: anim,
+                                      child: SizeTransition(
+                                        sizeFactor: anim,
+                                        axis: Axis.horizontal,
+                                        child: child,
+                                      ),
+                                    ),
+                                child: task.dueAt == null
+                                    ? const SizedBox.shrink(
+                                        key: ValueKey('no_due'),
+                                      )
+                                    : KeyedSubtree(
+                                        key: ValueKey(
+                                          task.dueAt!.toIso8601String(),
+                                        ),
+                                        child: _duePill(task, theme, context),
+                                      ),
+                              ),
                             ],
                           ),
                         ],
@@ -979,8 +1004,8 @@ class _TasksScreenState extends State<TasksScreen>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: color.withValues(alpha: 0.10),
-        border: Border.all(color: color.withValues(alpha: 0.30), width: 1),
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.22), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -988,14 +1013,14 @@ class _TasksScreenState extends State<TasksScreen>
           Icon(
             overdue ? Icons.warning_amber_rounded : Icons.schedule,
             size: 13,
-            color: color,
+            color: color.withValues(alpha: 0.85),
           ),
           const SizedBox(width: 5),
           Text(
             estLabel == null ? label : '$label · $estLabel',
             style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
+              fontWeight: FontWeight.w800,
+              color: color.withValues(alpha: 0.88),
             ),
           ),
         ],

@@ -66,26 +66,12 @@ final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 
 /// Значки разделов: у каждого своя геометрическая фигура.
 final List<Widget Function(BuildContext context, {double size, Color? color})>
-    sectionIconBuilders = [
-  (context, {size = 17, color}) => KkAlarmIcon(
-        size: size,
-        color: color,
-      ),
-  (context, {size = 17, color}) => KkHabitsIcon(
-        size: size,
-        color: color,
-      ),
-  (context, {size = 17, color}) => KkTasksIcon(
-        size: size,
-        color: color,
-      ),
-  (context, {size = 17, color}) => KkRealityCheckIcon(
-        size: size,
-        color: color,
-      ),
+sectionIconBuilders = [
+  (context, {size = 17, color}) => KkAlarmIcon(size: size, color: color),
+  (context, {size = 17, color}) => KkHabitsIcon(size: size, color: color),
+  (context, {size = 17, color}) => KkTasksIcon(size: size, color: color),
+  (context, {size = 17, color}) => KkRealityCheckIcon(size: size, color: color),
 ];
-
-
 
 /// Названия разделов (для тултипов) — те же, что строит Home: РП-раздел
 /// виден только когда проверки реальности включены в настройках.
@@ -102,11 +88,10 @@ List<String> sectionLabels(BuildContext context) {
 /// Значки разделов с учётом настроек: при выключенных проверках реальности
 /// РП-раздел (и его значок) не должен быть виден вообще.
 List<Widget Function(BuildContext context, {double size, Color? color})>
-    sectionIconsFor(BuildContext context) {
+sectionIconsFor(BuildContext context) {
   final count = sectionLabels(context).length;
   return sectionIconBuilders.sublist(0, count);
 }
-
 
 /// Единая объемная капсула разделов. Названия доступны только в тултипах
 /// (показываются НАД таблеткой — иначе прячутся за пальцем), визуально —
@@ -163,17 +148,18 @@ class _SectionPillState extends State<SectionPill>
   @override
   void initState() {
     super.initState();
-    _edgeSettle = AnimationController(
-      vsync: this,
-      // Чуть длиннее (300 мс) и с ease-out ниже: после отпускания растяжка
-      // уходит к нулю с нулевой скоростью на финише, а не обрывается
-      // линейно — именно линейный спад читался как «резко спадает».
-      duration: const Duration(milliseconds: 300),
-    )..addStatusListener((status) {
-        // Расслабление завершено (или отменено) — сбрасываем захваченную
-        // тягу, чтобы она не влияла на следующий жест.
-        _releasePull = 0;
-      });
+    _edgeSettle =
+        AnimationController(
+          vsync: this,
+          // 480 мс: возврат растяжки на краях читается как «отпустило и
+          // медленно вернулось», а не «щёлкнуло обратно». Кривая ниже —
+          // симметричная, с нулевой скоростью на обоих концах.
+          duration: const Duration(milliseconds: 480),
+        )..addStatusListener((status) {
+          // Расслабление завершено (или отменено) — сбрасываем захваченную
+          // тягу, чтобы она не влияла на следующий жест.
+          _releasePull = 0;
+        });
     // Логарифмический догон камня за пальцем идёт КАЖДЫЙ КАДР отдельным
     // тикером (resistance). Камень и экран, запертый 1:1 к нему, из-за
     // этого едут МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — «тяжёлое» движение без
@@ -410,7 +396,10 @@ class _SectionPillState extends State<SectionPill>
     required int current,
     required double rawPage,
     required int count,
-    required List<Widget Function(BuildContext context, {double size, Color? color})> icons,
+    required List<
+      Widget Function(BuildContext context, {double size, Color? color})
+    >
+    icons,
     required List<String> labels,
   }) {
     final p = rawPage.clamp(0.0, (count - 1).toDouble());
@@ -465,8 +454,7 @@ class _SectionPillState extends State<SectionPill>
         // дёргано возвращается». easeInOutCubic стартует и финиширует с
         // нулевой скоростью — камень плавно «отпускает» край.
         final settle = Curves.easeInOutCubic.transform(_edgeSettle.value);
-        final stretch =
-            _dragging ? _edgePull : _releasePull * (1.0 - settle);
+        final stretch = _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
         // НЕПРЕРЫВНОЕ направление растяжки (заменяет дискретный
         // _anchorSide): под пальцем — знак _edgePull, в полёте — знак
@@ -474,8 +462,7 @@ class _SectionPillState extends State<SectionPill>
         // рывков 1→0→-1 у углов (сам источник «дёргает в углу»).
         final stretchDir = _dragging
             ? _edgePull.sign.toDouble().clamp(-1.0, 1.0)
-            : _releasePull.sign.toDouble().clamp(-1.0, 1.0) *
-                (1.0 - settle);
+            : _releasePull.sign.toDouble().clamp(-1.0, 1.0) * (1.0 - settle);
         // ОБЪЁМНЫЙ СЛОЙ: «резинка» (wave) — наливка/растяжение выбранной
         // вкладки по ходу к СЛЕДУЮЩЕЙ секции. Под пальцем амплитуда ~0.85,
         // в свободном полёте — 1.0 (см. выше). Это и есть то самое
@@ -499,8 +486,7 @@ class _SectionPillState extends State<SectionPill>
         // нет вообще». Усилили до 0.72 / +9: у порогов раздела (t2≈1,
         // wave→1) камень заметно вытягивается и округляется в сторону
         // следующего раздела — «растяжение в углах» снова отчётливое.
-        final visualStretch =
-            math.min(0.98, edgeStretch + 0.90 * wave);
+        final visualStretch = math.min(0.98, edgeStretch + 0.90 * wave);
         // Радиус угла 10.0: растянутая таблетка округляется заметно.
         final capRadius = 22.0 + 10.0 * visualStretch;
 
@@ -528,47 +514,44 @@ class _SectionPillState extends State<SectionPill>
                 // отпускания — тот самый «дереж/лаг в углах».
                 offset: Offset(0, -2.6 * visualStretch),
                 child: Transform.scale(
-                // Масштаб считается прямо из stretch — БЕЗ tween'а:
-                // под пальцем 1:1 за движением (zero latency), после
-                // отпускания stretch спадает по _edgeSettle (easeOut).
-                // TweenAnimationBuilder здесь давал лаг 180–230 мс и
-                // «мигал» у края (перезапуск при переключении duration).
-                //
-                // Якорь растяжки — непрерывный lerp по signed-тяге:
-                // stretchDir (-1..0..1, всегда непрерывный) × edgeStretch,
-                // без дискретных переключений Alignment.center/Left/Right.
-                // Раньше здесь был _anchorSide (гистерезис ±0.15) — дискретный
-                // переключатель дёргал якорь вбок у углов («дереж»).
-                alignment: Alignment(
-                  math.max(
-                    -1.0,
-                    math.min(
-                      1.0,
-                      -stretchDir * visualStretch * 2.0,
+                  // Масштаб считается прямо из stretch — БЕЗ tween'а:
+                  // под пальцем 1:1 за движением (zero latency), после
+                  // отпускания stretch спадает по _edgeSettle (easeOut).
+                  // TweenAnimationBuilder здесь давал лаг 180–230 мс и
+                  // «мигал» у края (перезапуск при переключении duration).
+                  //
+                  // Якорь растяжки — непрерывный lerp по signed-тяге:
+                  // stretchDir (-1..0..1, всегда непрерывный) × edgeStretch,
+                  // без дискретных переключений Alignment.center/Left/Right.
+                  // Раньше здесь был _anchorSide (гистерезис ±0.15) — дискретный
+                  // переключатель дёргал якорь вбок у углов («дереж»).
+                  alignment: Alignment(
+                    math.max(
+                      -1.0,
+                      math.min(1.0, -stretchDir * visualStretch * 2.0),
                     ),
+                    0,
                   ),
-                  0,
-                ),
-                // Растяжка читается ИЗ visualStretch: под пальцем камень
-                // вытягивается по ходу секции (wave) и за крайом (edgeStretch),
-                // после отпускания — сползает по _edgeSettle. Единый
-                // коэффициент, без дискретных переключений.
-                scaleX: 1.0 + 0.42 * visualStretch,
-                // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
-                // breath). Дышащий масштаб идёт через Transform — иначе
-                // каждый кадр пересобирался layout, камень «дёргался».
-                child: FractionallySizedBox(
-                  widthFactor: 1.0 / count,
-                  heightFactor: 1,
-                  child: RepaintBoundary(
-                    child: _GlassStone(
-                      capRadius: capRadius,
-                      primary: cs.primary,
-                      dark: dark,
+                  // Растяжка читается ИЗ visualStretch: под пальцем камень
+                  // вытягивается по ходу секции (wave) и за крайом (edgeStretch),
+                  // после отпускания — сползает по _edgeSettle. Единый
+                  // коэффициент, без дискретных переключений.
+                  scaleX: 1.0 + 0.42 * visualStretch,
+                  // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
+                  // breath). Дышащий масштаб идёт через Transform — иначе
+                  // каждый кадр пересобирался layout, камень «дёргался».
+                  child: FractionallySizedBox(
+                    widthFactor: 1.0 / count,
+                    heightFactor: 1,
+                    child: RepaintBoundary(
+                      child: _GlassStone(
+                        capRadius: capRadius,
+                        primary: cs.primary,
+                        dark: dark,
+                      ),
                     ),
                   ),
                 ),
-              ),
               ),
             ),
             // Тяга пальцем: как в выборе приоритета — камень
@@ -667,7 +650,11 @@ class _SectionPillState extends State<SectionPill>
                                     cs.primary,
                                     badgeT,
                                   )!,
-                                  child: icons[i](context, size: 17, color: iconColor),
+                                  child: icons[i](
+                                    context,
+                                    size: 17,
+                                    color: iconColor,
+                                  ),
                                 ),
                               ),
                             ),
@@ -733,10 +720,7 @@ class _GlassCapsule extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                tint,
-                Color.lerp(tint, cs.primary, dark ? 0.10 : 0.06)!,
-              ],
+              colors: [tint, Color.lerp(tint, cs.primary, dark ? 0.10 : 0.06)!],
             ),
             border: Border.all(
               // Тонкая обводка: раньше 3 px яркого primary давали неоновую

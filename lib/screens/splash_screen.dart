@@ -16,7 +16,6 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _scaleAnimation;
 
   /// Ход блика по стеклу. ВЕДЁТСЯ ОТ ТОГО ЖЕ мастер-контроллера, что и
   /// появление логотипа, а не из отдельного таймера: собственный контроллер
@@ -25,7 +24,6 @@ class _SplashScreenState extends State<SplashScreen>
   /// полоса входит с левого края (ход обрывался на t≈0.58), а пик яркости
   /// приходился ровно на смену экрана.
   late final CurvedAnimation _shine;
-
 
   /// Левитирующий человечек — независимый бесшовный цикл.
   late final AnimationController _float;
@@ -55,19 +53,15 @@ class _SplashScreenState extends State<SplashScreen>
       parent: _controller,
       curve: const Interval(0.34, 0.88),
     );
-    // Очень плавное появление: мягкое проявление + лёгкий рост масштаба.
-    // БЕЗ смещения-«прыжка» сверху — аватарка не дёргается ни при первом
-    // запуске, ни после PIN (на слабых телефонах slide сверху выглядел
-    // как резкий скачок из-за просадок кадров).
+    // Быстрое и чистое проявление: ТОЛЬКО fade, без масштаба. Масштаб
+    // (0.94→1.0) на большой карточке с тенью заставлял GPU каждый кадр
+    // перефильтровывать слой — на бюджетнике это и читалось как
+    // «иконка появляется подтормаживая». Fade готового растра дешёвый.
+    // Окно 0→0.60 (1.2 с): логотип появляется решительно, а не «выползает»
+    // полторы секунды.
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.85, curve: Curves.easeInOut),
-    );
-    _scaleAnimation = Tween<double>(begin: 0.94, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.85, curve: Curves.easeOutCubic),
-      ),
+      curve: const Interval(0.0, 0.60, curve: Curves.easeOutCubic),
     );
     _controller.forward();
     // Левитация — бесконечный цикл (repeat()): пейнтер рисует
@@ -100,12 +94,9 @@ class _SplashScreenState extends State<SplashScreen>
     // переход читается одним движением, а не «пауза → смена кадра».
     _splashTimer = Timer(const Duration(milliseconds: 1950), () {
       if (!mounted) return;
-      // Гасим бесконечную левитацию и мастер-контроллер ДО кросс-фейда:
-      // во время перехода старый route ещё живёт, и без остановки он
-      // каждый кадр перерисовывал блик/человечка поверх уже
-      // появляющегося дома — именно это подтормаживало финал.
-      _float.stop();
-      _controller.stop();
+      // НЕ останавливаем анимации: заморозка левитации/блика ровно на
+      // кадре кроссфейда выглядела как «дёрганье». Пусть доигрывают —
+      // они уже почти в конце и 280 мс перехода это переживут.
       widget.onDone?.call();
     });
     // Разрешения больше не запрашиваем автоматически.
@@ -167,151 +158,146 @@ class _SplashScreenState extends State<SplashScreen>
               const Spacer(),
               FadeTransition(
                 opacity: _fadeAnimation,
-                child: ScaleTransition(
-                  scale: _scaleAnimation,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Логотип крупным планом, без «коробки» и без обрезки
-                          // (contain) — текст внутри картинки читается чётко.
-                          // Вокруг — красивая полупрозрачная обводка в цвет
-                          // ВЫБРАННОЙ темы (primary из ColorScheme): rose → розовая,
-                          // peach → персиковая, grok → её акцент и т.д. Смотрится
-                          // дорого и на светлом, и на тёмном фоне.
-                          // Заранее прогреваем кэш, чтобы логотип не «мигал»
-                          // и не появлялся не сразу на слабых телефонах вроде
-                          // Redmi Note 12 — первый кадр сразу рисуется с ним.
-                          // Логотип крупным планом, с прогретым кэшем
-                          // из initState сразу выезжает на первый кадр.
-                          // RepaintBoundary кэширует отрисованную аватарку
-                          // текстурой: во время slide/fade-анимации (1800мс)
-                          // движется готовый растр, а не перефильтровывается
-                          // большая картинка каждый кадр — на слабых
-                          // телефонах аватарка не «дёргается».
-                          // Блик лежит ОТДЕЛЬНЫМ слоем над всей карточкой, а
-                          // не внутри картинки: полоса должна проходить и по
-                          // цветному кольцу-обводке, и по самому логотипу —
-                          // только тогда она читается как отражение на стекле.
-                          // Обрезка — своим ClipRRect с тем же радиусом,
-                          // поэтому тень карточки (она рисуется ЗА её
-                          // габаритом) не подрезается.
-                          Stack(
-                            children: [
-                              RepaintBoundary(
-                                child: Container(
-                                  width: 104,
-                                  height: 104,
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    // «Скруглый» (squircle) — круглее квадрата, но
-                                    // НЕ круг: нижняя подпись на логотипе не
-                                    // обрезается кружком и остаётся читаемой.
-                                    borderRadius: BorderRadius.circular(
-                                      _kRadius,
-                                    ),
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Colors.white.withValues(
-                                          alpha: isDark ? 0.10 : 0.92,
-                                        ),
-                                        accent.withValues(
-                                          alpha: isDark ? 0.20 : 0.12,
-                                        ),
-                                      ],
-                                    ),
-                                    border: Border.all(
-                                      color: accent.withValues(alpha: 0.62),
-                                      width: 3,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: accent.withValues(alpha: 0.28),
-                                        blurRadius: 30,
-                                        spreadRadius: 2,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Логотип крупным планом, без «коробки» и без обрезки
+                        // (contain) — текст внутри картинки читается чётко.
+                        // Вокруг — красивая полупрозрачная обводка в цвет
+                        // ВЫБРАННОЙ темы (primary из ColorScheme): rose → розовая,
+                        // peach → персиковая, grok → её акцент и т.д. Смотрится
+                        // дорого и на светлом, и на тёмном фоне.
+                        // Заранее прогреваем кэш, чтобы логотип не «мигал»
+                        // и не появлялся не сразу на слабых телефонах вроде
+                        // Redmi Note 12 — первый кадр сразу рисуется с ним.
+                        // Логотип крупным планом, с прогретым кэшем
+                        // из initState сразу выезжает на первый кадр.
+                        // RepaintBoundary кэширует отрисованную аватарку
+                        // текстурой: во время slide/fade-анимации (1800мс)
+                        // движется готовый растр, а не перефильтровывается
+                        // большая картинка каждый кадр — на слабых
+                        // телефонах аватарка не «дёргается».
+                        // Блик лежит ОТДЕЛЬНЫМ слоем над всей карточкой, а
+                        // не внутри картинки: полоса должна проходить и по
+                        // цветному кольцу-обводке, и по самому логотипу —
+                        // только тогда она читается как отражение на стекле.
+                        // Обрезка — своим ClipRRect с тем же радиусом,
+                        // поэтому тень карточки (она рисуется ЗА её
+                        // габаритом) не подрезается.
+                        Stack(
+                          children: [
+                            RepaintBoundary(
+                              child: Container(
+                                width: 104,
+                                height: 104,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  // «Скруглый» (squircle) — круглее квадрата, но
+                                  // НЕ круг: нижняя подпись на логотипе не
+                                  // обрезается кружком и остаётся читаемой.
+                                  borderRadius: BorderRadius.circular(_kRadius),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withValues(
+                                        alpha: isDark ? 0.10 : 0.92,
                                       ),
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: isDark ? 0.28 : 0.08,
-                                        ),
-                                        blurRadius: 18,
-                                        offset: const Offset(0, 9),
+                                      accent.withValues(
+                                        alpha: isDark ? 0.20 : 0.12,
                                       ),
                                     ],
                                   ),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(25),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.55,
-                                        ),
+                                  border: Border.all(
+                                    color: accent.withValues(alpha: 0.62),
+                                    width: 3,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: accent.withValues(alpha: 0.28),
+                                      blurRadius: 30,
+                                      spreadRadius: 2,
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: isDark ? 0.28 : 0.08,
+                                      ),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 9),
+                                    ),
+                                  ],
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(25),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.55,
                                       ),
                                     ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(23),
-                                      // Логотип уже декодирован в main() до
-                                      // первого кадра — RawImage рисует его
-                                      // мгновенно, без «мигания» на слабых
-                                      // телефонах.
-                                      child: preDecodedLogo != null
-                                          ? RawImage(
-                                              image: preDecodedLogo,
-                                              width: 94,
-                                              height: 94,
-                                              fit: BoxFit.contain,
-                                              filterQuality: FilterQuality.high,
-                                            )
-                                          : Image.asset(
-                                              'assets/keramika.png',
-                                              width: 94,
-                                              height: 94,
-                                              cacheWidth: 512,
-                                              cacheHeight: 512,
-                                              filterQuality: FilterQuality.high,
-                                              isAntiAlias: true,
-                                              fit: BoxFit.contain,
-                                            ),
-                                    ),
                                   ),
-                                ),
-                              ),
-                              Positioned.fill(
-                                child: IgnorePointer(
-                                  child: RepaintBoundary(
-                                    child: AnimatedBuilder(
-                                      animation: _shine,
-                                      builder: (context, _) => ClipRRect(
-                                        borderRadius: BorderRadius.circular(
-                                          _kRadius,
-                                        ),
-                                        child: CustomPaint(
-                                          painter: _GlassSweepPainter(
-                                            t: _shine.value,
-                                            // На светлой теме белое ядро по
-                                            // белому кольцу не видно ВООБЩЕ —
-                                            // поэтому яркость задаётся темой,
-                                            // а тёмные кромки полосы делают
-                                            // блик читаемым на любом фоне.
-                                            strength: isDark ? 0.62 : 0.95,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(23),
+                                    // Логотип уже декодирован в main() до
+                                    // первого кадра — RawImage рисует его
+                                    // мгновенно, без «мигания» на слабых
+                                    // телефонах.
+                                    child: preDecodedLogo != null
+                                        ? RawImage(
+                                            image: preDecodedLogo,
+                                            width: 94,
+                                            height: 94,
+                                            fit: BoxFit.contain,
+                                            filterQuality: FilterQuality.high,
+                                          )
+                                        : Image.asset(
+                                            'assets/keramika.png',
+                                            width: 94,
+                                            height: 94,
+                                            cacheWidth: 512,
+                                            cacheHeight: 512,
+                                            filterQuality: FilterQuality.high,
+                                            isAntiAlias: true,
+                                            fit: BoxFit.contain,
                                           ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: RepaintBoundary(
+                                  child: AnimatedBuilder(
+                                    animation: _shine,
+                                    builder: (context, _) => ClipRRect(
+                                      borderRadius: BorderRadius.circular(
+                                        _kRadius,
+                                      ),
+                                      child: CustomPaint(
+                                        painter: _GlassSweepPainter(
+                                          t: _shine.value,
+                                          // На светлой теме белое ядро по
+                                          // белому кольцу не видно ВООБЩЕ —
+                                          // поэтому яркость задаётся темой,
+                                          // а тёмные кромки полосы делают
+                                          // блик читаемым на любом фоне.
+                                          strength: isDark ? 0.62 : 0.95,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const Spacer(),
@@ -338,7 +324,9 @@ class _SplashScreenState extends State<SplashScreen>
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w700,
-                                color: isDark ? Colors.grey[300] : Colors.grey[500],
+                                color: isDark
+                                    ? Colors.grey[300]
+                                    : Colors.grey[500],
                                 letterSpacing: 3.2,
                               ),
                               shine: _shine,
@@ -357,12 +345,16 @@ class _SplashScreenState extends State<SplashScreen>
                         bottom: 0,
                         child: Center(
                           child: AnimatedBuilder(
-                            animation: Listenable.merge([_badgeExit, _fadeAnimation]),
+                            animation: Listenable.merge([
+                              _badgeExit,
+                              _fadeAnimation,
+                            ]),
                             builder: (context, _) => Opacity(
                               // В начале — невидим, проявляется вместе с текстом
                               // Wetcorp. (_fadeAnimation); в конце плавно
                               // растворяется (_badgeExit). Ничего не «доезжает».
-                              opacity: _fadeAnimation.value *
+                              opacity:
+                                  _fadeAnimation.value *
                                   (1.0 - _badgeExit.value),
                               child: _LevitationBadge(
                                 t: _float,
@@ -646,10 +638,7 @@ class _LevitationPainter extends CustomPainter {
       // витков искра телепортировалась на противоположную сторону орбиты —
       // тот самый рывок раз в цикл. Теперь угол в p=0 и p=1 совпадает.
       final a = _tau * p + i * (_tau / 3);
-      final spark = Offset(
-        cx + math.cos(a) * 12.0,
-        cy - 3 + math.sin(a) * 6.0,
-      );
+      final spark = Offset(cx + math.cos(a) * 12.0, cy - 3 + math.sin(a) * 6.0);
       final pulse = 0.30 + 0.55 * (0.5 + 0.5 * math.sin(_tau * p * 2 + i));
       canvas.drawCircle(
         spark,

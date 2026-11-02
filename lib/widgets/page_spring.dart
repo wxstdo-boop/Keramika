@@ -42,11 +42,11 @@ class PageSpring {
   double _max = double.infinity;
   Duration _last = Duration.zero;
 
-  /// Остаток, который уже не видно (≈2 px), доводим одним кадром. Иначе у
-  /// пружины остаётся длинный «хвост»: последние пиксели она ползёт сотни
-  /// миллисекунд — это и читалось как «тормозно, едет по чуть-чуть».
-  static const double _settlePos = 0.006;
-  static const double _settleVel = 0.08;
+  /// Остаток, который уже не видно, доводим одним кадром. Порог МАЛЕНЬКИЙ:
+  /// раньше 0.006 страницы (~2.5 px) докидывались одним кадром — на финише
+  /// тап-перехода это читалось как «чуть дёрнуло». Теперь остаток <1 px.
+  static const double _settlePos = 0.0015;
+  static const double _settleVel = 0.03;
 
   bool get isRunning => _ticker.isActive;
 
