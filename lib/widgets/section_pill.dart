@@ -147,7 +147,10 @@ class _SectionPillState extends State<SectionPill>
     super.initState();
     _edgeSettle = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 220),
+      // Чуть длиннее (300 мс) и с ease-out ниже: после отпускания растяжка
+      // уходит к нулю с нулевой скоростью на финише, а не обрывается
+      // линейно — именно линейный спад читался как «резко спадает».
+      duration: const Duration(milliseconds: 300),
     )..addStatusListener((status) {
         // Расслабление завершено (или отменено) — сбрасываем захваченную
         // тягу, чтобы она не влияла на следующий жест.
@@ -167,9 +170,9 @@ class _SectionPillState extends State<SectionPill>
       _smoothTicker.stop();
       return;
     }
-    // Коэффициент 0.18 на кадр (~60 fps): камень ЛЯГКО отстаёт от пальца —
-    // «медленнее и плавнее под зажатием», без дёрганья экранов.
-    _dragSmooth += (_dragPage - _dragSmooth) * 0.18;
+    // Коэффициент 0.30 на кадр (~60 fps): камень мягко отстаёт от пальца,
+    // но уже не «плывёт» с заметной задержкой (0.18 читалось как тормоз).
+    _dragSmooth += (_dragPage - _dragSmooth) * 0.30;
     if ((_dragPage - _dragSmooth).abs() < 0.001) _dragSmooth = _dragPage;
     sectionDragPage.value = _dragSmooth;
   }
@@ -439,7 +442,7 @@ class _SectionPillState extends State<SectionPill>
         sectionRailPage,
       ]),
       builder: (context, _) {
-        final settle = _edgeSettle.value;
+        final settle = Curves.easeOutCubic.transform(_edgeSettle.value);
         final stretch =
             _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();

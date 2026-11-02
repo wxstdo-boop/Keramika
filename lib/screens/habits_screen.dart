@@ -10,7 +10,7 @@ import '../services/habit_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
-import '../widgets/press_splat.dart' show OrganicFab, PressSplat;
+import '../widgets/press_splat.dart' show PressSplat;
 import '../widgets/blood_speck.dart' show BloodSpeck, BloodSpeckPainter;
 import '../widgets/press_scale.dart';
 import '../utils/page_transitions.dart';
@@ -18,7 +18,6 @@ import '../utils/snackbar.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/drag_proxy.dart';
 import '../widgets/animated_strike_text.dart';
-import '../widgets/ai_guide.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import '../widgets/section_pill.dart'
@@ -257,6 +256,8 @@ class _HabitsScreenState extends State<HabitsScreen>
     // ПРЕДЫДУЩЕЙ жизни вкладки (её State пересоздан). Без сброса таблетка
     // разделов оставалась спрятанной, пока пользователь не начнёт крутить.
     sectionOffsetByPage[widget.pillIndex] = 0.0;
+    // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
+    sectionAddActions[widget.pillIndex] = _addHabit;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
     // Данные уже загружены в main() до первого кадра — показываем их
     // СРАЗУ, без ожидания повторного load() (иначе после Splash раздел
@@ -450,6 +451,7 @@ class _HabitsScreenState extends State<HabitsScreen>
   @override
   void dispose() {
     _dayTimer?.cancel();
+    sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.removeListener(_syncPillOffset);
     _pillCtrl.dispose();
@@ -777,26 +779,6 @@ class _HabitsScreenState extends State<HabitsScreen>
                     ),
                   ],
                 ),
-              ),
-            ),
-            // SingleChildScrollView is now inside _buildBody and _buildEmpty
-            floatingActionButton: AnimatedFabRow(
-              visible: _fabVisible,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const AiGuideFloatingButton(),
-                  const SizedBox(width: 10),
-                  OrganicFab(
-                    seed: 3.1,
-                    onTap: () {
-                      Haptics.light();
-                      _addHabit();
-                    },
-                    onLongPress: () => showBerserkSheet(context),
-                  ),
-                ],
               ),
             ),
           );

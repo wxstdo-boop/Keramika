@@ -9,7 +9,6 @@ import '../services/task_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/animated_strike_text.dart';
-import '../widgets/press_splat.dart' show OrganicFab;
 import '../widgets/section_pill.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/rolling_number.dart';
@@ -18,7 +17,6 @@ import '../widgets/manual_time_dialog.dart';
 import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
-import '../widgets/ai_guide.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_reality_check_screen.dart';
@@ -69,6 +67,8 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     // map держит старый прокрут и таблетка висит невидимой пока первый скролл
     // не обновит значение.
     sectionOffsetByPage[widget.pillIndex] = 0.0;
+    // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
+    sectionAddActions[widget.pillIndex] = _addCheck;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
   }
 
@@ -85,6 +85,7 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.removeListener(_syncPillOffset);
     _pillCtrl.dispose();
@@ -388,22 +389,6 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                   ),
                 ),
               ),
-            ),
-          ),
-          floatingActionButton: AnimatedFabRow(
-            visible: _fabVisible,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const AiGuideFloatingButton(),
-                const SizedBox(width: 10),
-                OrganicFab(
-                  seed: 3.1,
-                  onTap: _addCheck,
-                  onLongPress: () => showBerserkSheet(context),
-                ),
-              ],
             ),
           ),
         );

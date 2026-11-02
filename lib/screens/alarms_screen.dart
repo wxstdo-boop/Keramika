@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart'
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
-import '../widgets/press_splat.dart' show OrganicFab;
 import '../widgets/section_pill.dart';
 import '../models/alarm.dart';
 import '../models/app_timer.dart';
@@ -22,7 +21,6 @@ import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../utils/snackbar.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/drag_proxy.dart';
-import '../widgets/ai_guide.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_alarm_screen.dart';
@@ -59,6 +57,8 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     // ПРЕДЫДУЩЕЙ жизни вкладки. Без сброса таблетка разделов оставалась
     // спрятанной, пока пользователь не начнёт крутить.
     sectionOffsetByPage[widget.pillIndex] = 0.0;
+    // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
+    sectionAddActions[widget.pillIndex] = _addAlarm;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
     _service.load();
     _timerSvc.load();
@@ -84,6 +84,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   void dispose() {
     _timerSvc.onTimerDone = null;
     _fabVisible.dispose();
+    sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.removeListener(_syncPillOffset);
     _pillCtrl.dispose();
@@ -366,22 +367,6 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                     ),
                   ],
                 ),
-              ),
-            ),
-            floatingActionButton: AnimatedFabRow(
-              visible: _fabVisible,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const AiGuideFloatingButton(),
-                  const SizedBox(width: 10),
-                  OrganicFab(
-                    seed: 3.1,
-                    onTap: _addAlarm,
-                    onLongPress: () => showBerserkSheet(context),
-                  ),
-                ],
               ),
             ),
           );

@@ -828,8 +828,11 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                 // встроенный).
                                 onLongPress: () => _deleteSound(s),
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 280),
-                                  curve: Curves.easeOutCubic,
+                                  duration: const Duration(milliseconds: 240),
+                                  // Симметричная кривая: градиент выбранной
+                                  // таблетки переливается без «толчка» на
+                                  // старте и без рывка на финише.
+                                  curve: Curves.easeInOutCubic,
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 4,
                                     vertical: 4,
@@ -1129,30 +1132,30 @@ class _SoundActionChipState extends State<_SoundActionChip> {
     // что и у бейджа привычки). Кнопка «кровавая», а не нейтральная.
     // Отдача-«вдавливание» — быстрый PressScale (150 мс), а не медленный
     // AnimatedScale (300 мс) — «при нажатии так мигает, лаж» устранён.
-    final decoration = BloodSpeck.decoration(theme).copyWith(
+    final decoration = BloodSpeck.decoration(theme, opacity: 0.55).copyWith(
       // Круглая, а не скруглённая (жалоба «округлее»).
       borderRadius: BorderRadius.circular(999),
       border: Border.all(
         color: (glowing
                 ? const Color(0xFFFF5A62)
                 : (dark ? const Color(0xFFFFA2A8) : const Color(0xFFE0525C)))
-            .withValues(alpha: glowing ? 0.70 : (dark ? 0.22 : 0.40)),
-        width: 1.2,
+            .withValues(alpha: glowing ? 0.55 : (dark ? 0.16 : 0.30)),
+        width: 1.0,
       ),
       // При воспроизведении — кровавый ореол вокруг кнопки.
       boxShadow: glowing
           ? [
               BoxShadow(
-                color: const Color(0xFFFF2030).withValues(alpha: 0.42),
-                blurRadius: 12,
+                color: const Color(0xFFFF2030).withValues(alpha: 0.30),
+                blurRadius: 10,
                 spreadRadius: -2,
                 offset: const Offset(0, 3),
               ),
             ]
           : [
               BoxShadow(
-                color: Colors.black.withValues(alpha: dark ? 0.30 : 0.12),
-                blurRadius: 5,
+                color: Colors.black.withValues(alpha: dark ? 0.22 : 0.08),
+                blurRadius: 4,
                 spreadRadius: -1,
                 offset: const Offset(0, 2),
               ),
@@ -1169,12 +1172,12 @@ class _SoundActionChipState extends State<_SoundActionChip> {
           duration: const Duration(milliseconds: 150),
           releaseDuration: const Duration(milliseconds: 220),
           child: SizedBox(
-            width: 36,
-            height: 36,
+            width: 30,
+            height: 30,
             child: CustomPaint(
               // Кровавые размашистые пятна под подложкой (как у бейджа
               // «Сегодня очищено») — кнопка «кровавая», «округлее».
-              painter: BloodSpeckPainter(isDark: dark),
+              painter: BloodSpeckPainter(isDark: dark, opacity: 0.65),
               child: DecoratedBox(
                 decoration: decoration,
                 child: Center(
@@ -1183,7 +1186,7 @@ class _SoundActionChipState extends State<_SoundActionChip> {
                       color: glowing
                           ? const Color(0xFFFFE1E3)
                           : (dark ? const Color(0xFFFFE1E3) : const Color(0xFFF5DBDD)),
-                      size: 18,
+                      size: 16,
                     ),
                     child: widget.child,
                   ),

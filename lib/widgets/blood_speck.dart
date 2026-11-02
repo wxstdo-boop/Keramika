@@ -7,9 +7,13 @@ import 'package:flutter/material.dart';
 /// иконки остаются чистыми, а подложка выглядит подтёкшей. Только чистые
 /// заливки без размытий — не появляются «серые квадраты».
 class BloodSpeckPainter extends CustomPainter {
-  const BloodSpeckPainter({this.isDark = false});
+  const BloodSpeckPainter({this.isDark = false, this.opacity = 1.0});
 
   final bool isDark;
+
+  /// Общая прозрачность пятен (1.0 — как у бейджа привычки, меньше — для
+  /// мелких кнопок звука, которым нужна лёгкая полупрозрачная подложка).
+  final double opacity;
 
   /// x, y (доли ширины/высоты), радиус (доля высоты), плотность (0..1).
   static const List<List<double>> _spots = [
@@ -34,7 +38,7 @@ class BloodSpeckPainter extends CustomPainter {
       final density = s[3];
       // На тёмной теме подложка полупрозрачнее — пятна чуть гаснут (×0.72),
       // но ЧИТАЮТСЯ.
-      final scale = isDark ? 0.72 : 1.0;
+      final scale = (isDark ? 0.72 : 1.0) * opacity;
       final dryPaint = Paint()
         ..color = _dry.withValues(alpha: (isDark ? 0.55 : 0.46) * density * scale);
       canvas.drawCircle(center, r, dryPaint);
@@ -57,7 +61,7 @@ class BloodSpeckPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant BloodSpeckPainter old) =>
-      old.isDark != isDark;
+      old.isDark != isDark || old.opacity != opacity;
 }
 
 /// Кровавая подложка-таблетка: винный градиент + размашистые пятна поверх,
@@ -66,7 +70,11 @@ class BloodSpeckPainter extends CustomPainter {
 class BloodSpeck {
   /// Винный градиент (тёмная тема — полупрозрачное «виноградное стекло»,
   /// светлая — плотная винная таблетка).
-  static BoxDecoration decoration(ThemeData theme) {
+  ///
+  /// [opacity] — общий множитель прозрачности. 1.0 — бейдж привычки,
+  /// ~0.55–0.7 — мелкие кнопки звука: они должны быть полупрозрачными,
+  /// а не плотными «кровавыми» плашками.
+  static BoxDecoration decoration(ThemeData theme, {double opacity = 1.0}) {
     final isDark = theme.brightness == Brightness.dark;
     return BoxDecoration(
       gradient: LinearGradient(
@@ -74,14 +82,14 @@ class BloodSpeck {
         end: Alignment.bottomRight,
         colors: isDark
             ? [
-                const Color(0xFFE86A72).withValues(alpha: 0.20),
-                const Color(0xFF8E0E18).withValues(alpha: 0.34),
-                const Color(0xFF4A050C).withValues(alpha: 0.28),
+                const Color(0xFFE86A72).withValues(alpha: 0.20 * opacity),
+                const Color(0xFF8E0E18).withValues(alpha: 0.34 * opacity),
+                const Color(0xFF4A050C).withValues(alpha: 0.28 * opacity),
               ]
             : [
-                const Color(0xFFC0202C).withValues(alpha: 0.62),
-                const Color(0xFF96101B).withValues(alpha: 0.58),
-                const Color(0xFF6E0810).withValues(alpha: 0.54),
+                const Color(0xFFC0202C).withValues(alpha: 0.62 * opacity),
+                const Color(0xFF96101B).withValues(alpha: 0.58 * opacity),
+                const Color(0xFF6E0810).withValues(alpha: 0.54 * opacity),
               ],
         stops: const [0.0, 0.42, 1.0],
       ),
@@ -90,7 +98,7 @@ class BloodSpeck {
         color: (isDark
                 ? const Color(0xFFFFA2A8)
                 : const Color(0xFFE0525C))
-            .withValues(alpha: isDark ? 0.22 : 0.40),
+            .withValues(alpha: (isDark ? 0.22 : 0.40) * opacity),
         width: 1,
       ),
     );

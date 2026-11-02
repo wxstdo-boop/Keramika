@@ -80,32 +80,30 @@ Route<T> lockRoute<T>(Widget page) {
 /// Лёгкий вход на ДОМАШНИЙ экран после сплэша/PIN.
 ///
 /// В отличие от [slideUpRoute] — НИКАКОГО движения: только мягкий
-/// crossfade (240 мс) с едва заметным масштабом 0.995→1.0. Дом содержит
-/// сразу 4 экрана (PageView + keepAlive), поэтому тяжёлый slide+scale на
-/// весь контент на первом кадре после сплэша выглядел как «подтормоз»:
-/// GPU перефильтровывал большой слой по кадру перехода. Чистый кросс-фейд
-/// не добавляет движение — домашний экран просто «проявляется».
+/// crossfade с едва заметным масштабом. Дом содержит сразу 4 экрана
+/// (PageView + keepAlive), поэтому тяжёлый slide+scale на весь контент на
+/// первом кадре после сплэша выглядел как «подтормоз»: GPU
+/// перефильтровывал большой слой по кадру перехода.
+///
+/// Сделано ещё мягче: 320 мс и симметричная кривая [Curves.easeInOutCubic]
+/// (вход и выход с нулевой скоростью). Масштаб убран совсем — на слабом GPU
+/// он давал едва заметный «толчок» в первом кадре, а чистый кросс-фейд
+/// читается как одно плавное проявление.
 ///
 /// Без blur/saveLayer (дорого на слабом GPU), без SlideTransition
 /// (полупрозрачный слайд «размазывал» текст).
 Route<T> homeEntryRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: const Duration(milliseconds: 240),
-    reverseTransitionDuration: const Duration(milliseconds: 200),
+    transitionDuration: const Duration(milliseconds: 320),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
         parent: animation,
-        curve: Curves.easeOutCubic,
+        curve: Curves.easeInOutCubic,
       );
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.995, end: 1.0).animate(curved),
-          child: child,
-        ),
-      );
+      return FadeTransition(opacity: curved, child: child);
     },
   );
 }

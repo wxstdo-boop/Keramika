@@ -9,7 +9,6 @@ import '../services/ai_guide_service.dart';
 import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
-import '../widgets/press_splat.dart' show OrganicFab;
 import '../utils/markdown_text.dart' show sanitizeTextForWrap;
 import '../widgets/swipe_to_delete.dart';
 import '../utils/page_transitions.dart';
@@ -17,7 +16,6 @@ import '../utils/snackbar.dart';
 import '../utils/wide_dash_formatter.dart';
 import '../utils/wide_dash_controller.dart';
 import '../widgets/smooth_hover.dart';
-import '../widgets/ai_guide.dart';
 import '../widgets/animated_strike_text.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/sliding_picker.dart';
@@ -91,6 +89,8 @@ class _TasksScreenState extends State<TasksScreen>
     // ПРЕДЫДУЩЕЙ жизни вкладки. Без сброса таблетка разделов оставалась
     // спрятанной, пока пользователь не начнёт крутить.
     sectionOffsetByPage[widget.pillIndex] = 0.0;
+    // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
+    sectionAddActions[widget.pillIndex] = _addTask;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
     _service.load();
   }
@@ -121,6 +121,7 @@ class _TasksScreenState extends State<TasksScreen>
   @override
   void dispose() {
     _pillCtrl.removeListener(_syncPillOffset);
+    sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.dispose();
     _fabVisible.dispose();
@@ -272,29 +273,6 @@ class _TasksScreenState extends State<TasksScreen>
                   key: const ValueKey('tasks_scroll_view'),
                   child: _buildScrollList(context, theme, tasks, all),
                 ),
-              ),
-            ),
-            floatingActionButton: AnimatedFabRow(
-              visible: _fabVisible,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const AiGuideFloatingButton(),
-                  const SizedBox(width: 10),
-                  // Кнопка-«плюс» как на экране будильников: обычная круглая
-                  // FAB + мелкие размашистые пятнышки на её поверхности. Долгое
-                  // зажатие — режим BERSERK (showBerserkSheet сам проверяет,
-                  // включён ли режим в настройках).
-                  OrganicFab(
-                    seed: 3.1,
-                    onTap: () {
-                      Haptics.light();
-                      _addTask();
-                    },
-                    onLongPress: () => showBerserkSheet(context),
-                  ),
-                ],
               ),
             ),
           );

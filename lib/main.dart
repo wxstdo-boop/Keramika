@@ -1254,6 +1254,13 @@ class KeramikaAppState extends State<KeramikaApp>
   Key _appKey = UniqueKey();
   bool _locked = false;
 
+  /// Приложение ушло в фон (экран погас / свёрнуто) — при возврате нужно
+  /// снова спросить PIN. Не ставим, если уходили в системный диалог/настройки
+  /// ([systemUiActive]) или на экране будильника ([_wakeScreenShowing]):
+  /// будильник специально обходит блокировку, а возврат из настроек не должен
+  /// запирать приложение.
+  bool _relockPending = false;
+
   /// Подпись последнего применённого системного UI-стиля (яркость +
   /// цвет статуса-бара). Платформ-вызов `setSystemUIOverlayStyle` дёшев,
   /// но в первые кадры после сплэша лишних platform-каналов — как раз
@@ -1409,6 +1416,9 @@ class KeramikaAppState extends State<KeramikaApp>
     // снимок приложения вместо приватных данных.
     aiLockScreenVisible.value = true;
     setSecureWindow(true);
+    // Держим флаг в актуальном состоянии: по нему решается, нужен ли
+    // повторный запрос PIN при следующем возврате из фона.
+    if (!_locked) setState(() => _locked = true);
     final nav = navigatorKey.currentState;
     if (nav != null) {
       // Плавная симметричная проявка (см. [lockRoute]) вместо выезда снизу:
@@ -1544,10 +1554,32 @@ class KeramikaAppState extends State<KeramikaApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    // Уход в фон (погас экран / приложение свёрнуто): запоминаем, что при
+    // возврате нужен PIN. Это закрывает обход блокировки «включил телефон —
+    // приложение уже открыто без PIN». Исключения: системный диалог/настройки
+    // (возврат из них не должен запирать) и экран будильника (он специально
+    // открывается без PIN). Если PIN-экран уже на экране — не дублируем.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      if (!systemUiActive &&
+          !_wakeScreenShowing &&
+          !_locked &&
+          PinService.hasPinSync()) {
+        _relockPending = true;
+      }
+      return;
+    }
     if (state == AppLifecycleState.resumed) {
       // Приложение снова на переднем плане.
       // Системный UI (файл-пикер и т.п.) закрылся — флаг сбрасываем.
       systemUiActive = false;
+      // Возврат из фона с включённым PIN: показываем блокировку ДО того,
+      // как человек увидит содержимое. Будильник сюда не попадает
+      // (_wakeScreenShowing), системные экраны — тоже (флаг выше).
+      if (_relockPending) {
+        _relockPending = false;
+        _goLock();
+      }
       HabitService().normalizeIfDayChanged();
       rescheduleAllNotifications();
       // Ада-трекинг: догоняем пропущенный отчёт (приложение лежало в фоне)

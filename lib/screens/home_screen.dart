@@ -4,11 +4,16 @@ import '../services/haptics.dart';
 import '../widgets/section_pill.dart';
 import '../widgets/animated_fab_row.dart'
     show
+        AnimatedFabRow,
+        sectionAddActions,
         sectionOffsetByPage,
         sectionPillSnapByPage,
         sectionPillSnapTarget,
+        sectionPillVisible,
         sectionScrollOffset;
 import '../widgets/press_scale.dart';
+import '../widgets/ai_guide.dart' show AiGuideFloatingButton, showBerserkSheet;
+import '../widgets/press_splat.dart' show OrganicFab;
 import 'package:flutter/material.dart';
 import 'alarms_screen.dart';
 import 'habits_screen.dart';
@@ -71,7 +76,9 @@ class _HomeScreenState extends State<HomeScreen>
     // БЕЗ отскока — «приземление» в угол не дёргается назад (жалоба
     // «отпускаю дёргано возвращаются»). Жёсткость 90: 52 было вялым
     // («подтормаживает при нажатиях»), 200 — «адски быстро».
-    stiffness: 90,
+    // 160 — компромисс: перелёт заметно собраннее (≈360 мс до покоя),
+    // но всё ещё без отскока; 90 читалось как «экран тормозит».
+    stiffness: 160,
     dampingRatio: 1.0,
   );
 
@@ -444,6 +451,10 @@ class _HomeScreenState extends State<HomeScreen>
               sectionPillSnapByPage[settled] ??
               sectionOffsetByPage[settled] ??
               0;
+          // Общий FAB-ряд живёт на Home, а не внутри страницы: после
+          // переезда он должен следовать позиции НОВОЙ страницы, а не
+          // оставаться скрытым от прокрутки предыдущей.
+          sectionPillVisible.value = sectionScrollOffset.value <= 8;
           // Пишем в SharedPreferences только на settled странице
           // (не на каждом пересечении границ PageView — так было 3
           // async platform channel calls на один дальний перелёт).
@@ -615,52 +626,19 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         body: Stack(
           children: [
-            // Фоновая «skin» подложка — НЕ статичная: она «ездит» вместе с
-            // прокруткой текущего раздела (sectionScrollOffset), поэтому
-            // когда пользователь листает вниз и таблетка сворачивается,
-            // фон ЗАДВИГАЕТСЯ за контентом, а не остаётся на месте и не
-            // «дорисовывает белый» под таблеткой. Раньше skin был
-            // Positioned.fill-статичным — и при листании вниз белый блок
-            // просачивался сквозь сужающуюся таблетку (отсюда жалоба
-            // «белый фон закрывает таблетку, а не задвигается»).
-            // Натяжение экрана вниз (pull-to-expand) по-прежнему даёт
-            // «зазор» между AppBar и блоком разделов — эффект сохраняется.
-            // КРИТИЧНО: кожа считает off ТОЙ ЖЕ формулой, что и таблетка
-            // (см. pill builder ниже): при snap-анимации — по _pillSnapAnimation,
-            // в покое/скролле — по sectionScrollOffset. Раньше кожа ехала только
-            // по sectionScrollOffset, а таблетка — по snapAnim: во время
-            // snap-анимации раскрывающаяся таблетка «уезжала» выше, а белая
-            // подложка отстаёвала и ЗАКРЫВАЛА её (жалоба «белая штюрка
-            // закрывает таблетку»). Теперь оба слоя синхронны в каждом кадре.
-            ListenableBuilder(
-              listenable: Listenable.merge([
-                sectionScrollOffset,
-                sectionPillSnapTarget,
-                _pillSnapCtrl,
-              ]),
-              builder: (context, _) {
-                final off = _pillSnapActive
-                    ? (_pillSnapAnimation?.value ?? sectionScrollOffset.value)
-                    : sectionScrollOffset.value;
-                // Белая подложка следует ЗА НИЖНИМ КРАЕМ таблетки: её верхняя
-                // кромка всегда ровно под дном сворачивающейся капсулы, а не
-                // «заезжает» в середину таблетки. В покое (off=0) она начинается
-                // с 64 px (под полной таблеткой); по мере прокрутки вниз она
-                // ПЛАВНО поднимается (top = 64 - off), заполняя место, которое
-                // освободила сворачивающаяся таблетка — экран сам поднимается/
-                // опускается вместе с ней, и белый не остаётся в середине.
-                return Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  top: (kSectionPillSlotHeight - off).clamp(0.0, 64.0),
-                  child: IgnorePointer(
-                    child: Container(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                    ),
-                  ),
-                );
-              },
+            // Фон раздела — СТАТИЧНЫЙ слой под контентом. Раньше здесь была
+            // «кожа», которая ездила вверх вместе со скроллом (top: 64-off),
+            // и при сворачивании таблетки её белая кромка поднималась ПОД
+            // капсулу — в переходных кадрах это читалось как «белая шторка
+            // закрывает таблетку». Теперь белый не двигается вообще: он
+            // всегда лежит ЗА PageView, а таблетка — отдельный верхний слой.
+            // Двигать нечего — перекрыть таблетку физически нечем.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                ),
+              ),
             ),
 
             // Таблетка разделов больше НЕ фиксирована сверху: она живёт внутри
@@ -874,6 +852,28 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ],
+        ),
+        // ОДИН общий ряд «плюс + Ада» на все разделы. Раньше он жил в
+        // floatingActionButton каждого экрана, поэтому при свайпе между
+        // страницами кнопка была частью страницы и «рисовалась заново».
+        // Теперь ряд стоит НАД PageView: страницы листаются под ним, а
+        // кнопки остаются на месте. Действие берётся у активного раздела
+        // из [sectionAddActions].
+        floatingActionButton: AnimatedFabRow(
+          visible: sectionPillVisible,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const AiGuideFloatingButton(),
+              const SizedBox(width: 10),
+              OrganicFab(
+                seed: 3.1,
+                onTap: () => sectionAddActions[_currentIndex.value]?.call(),
+                onLongPress: () => showBerserkSheet(context),
+              ),
+            ],
+          ),
         ),
       ),
     );

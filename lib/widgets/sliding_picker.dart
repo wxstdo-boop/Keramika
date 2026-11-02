@@ -291,7 +291,7 @@ class _SlidingPickerState<T> extends State<SlidingPicker<T>>
                       scale: scale,
                       child: PressScale(
                         pressedScale: 0.96,
-                        duration: const Duration(milliseconds: 400),
+                        duration: const Duration(milliseconds: 200),
                         child: ItemReveal(
                           key: ValueKey<Object>('picker_cell_$item'),
                           // Проявляем заново только сразу после смены состава

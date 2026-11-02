@@ -31,6 +31,13 @@
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
+        <!-- ВАЖНО: здесь НЕТ android:showWhenLocked / android:turnScreenOn.
+             Эти флаги на самой активности действуют ВСЕГДА — приложение
+             вылезало поверх экрана блокировки при любом запуске, включая
+             обычное включение телефона, и человек видел его без PIN.
+             Будильнику они не нужны в манифесте: MainActivity.applyAlarmWindowFlags()
+             ставит их программно ТОЛЬКО когда intent пришёл с alarm_launch /
+             payload=alarm: (см. onCreate/onNewIntent). Не возвращать сюда. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -39,9 +46,7 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true">
+            android:windowSoftInputMode="adjustResize">
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"

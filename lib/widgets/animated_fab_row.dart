@@ -34,6 +34,16 @@ final ValueNotifier<double> sectionScrollOffset = ValueNotifier<double>(0);
 /// налезала на контент до первого скролла.
 final Map<int, double> sectionOffsetByPage = <int, double>{};
 
+/// Действия кнопки-«плюс» для каждого раздела.
+///
+/// Раньше каждый раздел держал СВОЙ [AnimatedFabRow] в `floatingActionButton`
+/// собственного Scaffold — при свайпе между страницами кнопка была частью
+/// страницы и «перерисовывалась» на каждой (казалось, что плюс с Адой
+/// появляется заново). Теперь на Home ОДИН общий ряд поверх PageView, а
+/// разделы лишь регистрируют здесь своё действие «добавить». Ключ — индекс
+/// страницы ([sectionCurrentIndex]); Home вызывает действие активной.
+final Map<int, VoidCallback> sectionAddActions = <int, VoidCallback>{};
+
 /// Раздел сообщает РЕАЛЬНУЮ позицию своего списка — для таблетки разделов.
 ///
 /// Офсет ВСЕГДА пишется в карту по разделам ([sectionOffsetByPage]): из неё
