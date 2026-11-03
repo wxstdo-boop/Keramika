@@ -4,6 +4,30 @@ then install over the existing Android device (keep user data):
 `& "$env:USERPROFILE\dev\android-sdk\platform-tools\adb.exe" install -r "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"`.
 flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\dev\flutter\bin\flutter.bat`, adb at `C:\Users\Larafut\dev\android-sdk\platform-tools\adb.exe` (see `android/local.properties`).
 
+## Linux dev sandbox (agent environment)
+
+No Flutter and no Android SDK are preinstalled, and the sandbox can be wiped
+mid-session. Recipe that works here (pin the version — the project needs
+Dart >= 3.12, so 3.35.x is too old):
+
+```
+mkdir -p /home/openhands/sdk && cd /home/openhands/sdk
+curl -sL -o f.tar.xz https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.5-stable.tar.xz
+tar xf f.tar.xz && rm f.tar.xz
+export PATH="/home/openhands/sdk/flutter/bin:$PATH"
+git config --global --add safe.directory /home/openhands/sdk/flutter
+```
+
+Then `flutter pub get && flutter analyze && flutter test`. Android SDK/Java are
+absent, so `flutter build apk` cannot run here — releases come from CI only.
+
+Visual checks without a device: render widgets to PNG in a widget test via
+`RenderRepaintBoundary.toImage` + `ImageByteFormat.png`, write to `/tmp`, then
+inspect with Pillow (a plain `flutter test` works; screenshots are not needed).
+Note `flutter test` needs a mocked `path_provider` channel and
+`SharedPreferences.setMockInitialValues` before `initPrefs()` — copy the setup
+from `test/section_pill_transition_test.dart`.
+
 ## CI (GitHub Actions): грабли, на которые уже наступали
 
 Релизы собирает `.github/workflows/ship.yml` (push в `main`) и `release.yml`
