@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
+import '../widgets/animated_fab_row.dart' show sectionPillVisible;
 import '../widgets/icons/keramika_icons.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart';
@@ -91,6 +92,83 @@ List<Widget Function(BuildContext context, {double size, Color? color})>
 sectionIconsFor(BuildContext context) {
   final count = sectionLabels(context).length;
   return sectionIconBuilders.sublist(0, count);
+}
+
+/// Обёртка таблетки: плавно убирает её вверх при прокрутке вниз и
+/// возвращает при долистывании до верха.
+///
+/// Слушает [sectionPillVisible] (его пишет [FabScrollListener] каждого
+/// раздела). Скрытие — мягкий подъём + затухание, а не резкое исчезновение:
+/// таблетка «уезжает» вверх вместе с контентом, поэтому прокрутка читается
+/// одним движением. Обратно приезжает тем же путём — «закрывается в скролле»
+/// и раскрывается симметрично.
+///
+/// Сдвиг идёт по Transform, а не по высоте слота: layout не пересобирается,
+/// скролл-контент разделов не дёргается. Когда таблетка скрыта, она не
+/// ловит касания — жест уходит списку.
+class SectionPillHost extends StatefulWidget {
+  const SectionPillHost({super.key});
+
+  @override
+  State<SectionPillHost> createState() => _SectionPillHostState();
+}
+
+class _SectionPillHostState extends State<SectionPillHost>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    value: 1,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    sectionPillVisible.addListener(_sync);
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    sectionPillVisible.removeListener(_sync);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _sync() {
+    if (!mounted) return;
+    if (sectionPillVisible.value) {
+      _ctrl.forward();
+    } else {
+      _ctrl.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(_ctrl.value);
+        // Таблетка ОСТАЁТСЯ в дереве и держит высоту слота: контент разделов
+        // не перекладывается, а список, живущий под ней, не «прыгает» при
+        // возврате. При opacity 0 Flutter не рисует ребёнка вовсе
+        // (RenderOpacity выходит до paint), так что скрытая таблетка
+        // бесплатна по GPU.
+        return IgnorePointer(
+          ignoring: t < 0.5,
+          child: Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, -(1 - t) * kSectionPillSlotHeight),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: const RepaintBoundary(child: SectionPill()),
+    );
+  }
 }
 
 /// Единая объемная капсула разделов. Названия доступны только в тултипах
@@ -641,6 +719,7 @@ class _SectionPillState extends State<SectionPill>
                                 child: _GeoBadge(
                                   index: i,
                                   size: 31,
+                                  dark: dark,
                                   // Невыбранная — заметный
                                   // фирменный оттенок (чтобы
                                   // фигуры читались), выбранная —
@@ -810,18 +889,21 @@ class _GlassStone extends StatelessWidget {
 }
 
 /// Значок раздела: иконка сидит внутри своей «драгоценной» фигуры
-/// (круг, скруглённый квадрат, ромб, гексагон). У каждого раздела свой
-/// контур; градиент + блик + гранёный ободок — фигура читается объёмной.
+/// (круг, скруглённый квадрат, ромб, звезда). У каждого раздела свой контур.
+/// Фигура вылеплена из глины: свет сверху-слева, тень снизу-справа,
+/// мягкий рельеф по кромке — не глянец, а объём.
 class _GeoBadge extends StatelessWidget {
   final int index;
   final double size;
   final Color color;
+  final bool dark;
   final Widget child;
 
   const _GeoBadge({
     required this.index,
     required this.size,
     required this.color,
+    required this.dark,
     required this.child,
   });
 
@@ -839,7 +921,7 @@ class _GeoBadge extends StatelessWidget {
       width: size,
       height: size,
       child: CustomPaint(
-        painter: _ShapePainter(index, color),
+        painter: _ShapePainter(index, color, dark),
         child: Center(
           child: SizedBox(
             width: size * _iconScale,
@@ -852,11 +934,16 @@ class _GeoBadge extends StatelessWidget {
   }
 }
 
+/// Фигуры значков — «глиняные»: у каждой своя форма, свет лепит объём
+/// сверху-слева, снизу-справа ложится мягкая тень. Вместо глянцевого
+/// блика — матовый рельеф: тёмная кромка по контуру и светлая грань по
+/// верхней дуге.
 class _ShapePainter extends CustomPainter {
   final int index;
   final Color color;
+  final bool dark;
 
-  const _ShapePainter(this.index, this.color);
+  const _ShapePainter(this.index, this.color, this.dark);
 
   /// Контуры значков зависят только от фигуры и размера — при перелистывании
   /// разделов цвет меняется каждый кадр, а геометрия нет. Звезда и
@@ -874,11 +961,13 @@ class _ShapePainter extends CustomPainter {
     if (index == 0) {
       shape = Path()..addOval(Rect.fromCircle(center: center, radius: r));
     } else if (index == 1) {
+      // Привычки — «подушка»: скруглённый квадрат с мягкими углами, как
+      // оттиск ладони в глине (скругление крупнее, чем у обычного квадрата).
       shape = Path()
         ..addRRect(
           RRect.fromRectAndRadius(
             Rect.fromCircle(center: center, radius: r),
-            Radius.circular(r * 0.38),
+            Radius.circular(r * 0.44),
           ),
         );
     } else if (index == 2) {
@@ -904,9 +993,10 @@ class _ShapePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final r = size.width / 2 - 1.0;
-    // «Драгоценный» градиент: свет сверху-слева, глубина снизу-справа.
-    final light = Color.lerp(color, Colors.white, 0.42)!;
-    final deep = Color.lerp(color, Colors.black, 0.18)!;
+    // МАТОВАЯ ГЛИНА: заливка — объёмный градиент той же палитры, без
+    // перехода в белый. Свет сверху-слева, глубина снизу-справа.
+    final light = Color.lerp(color, Colors.white, dark ? 0.26 : 0.34)!;
+    final deep = Color.lerp(color, Colors.black, dark ? 0.24 : 0.16)!;
     final shader = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -918,34 +1008,57 @@ class _ShapePainter extends CustomPainter {
     // ✦ пятиконечная звезда («искра» проверок реальности).
     final shape = _shapeFor(index, size);
 
+    // Тень под фигурой: она «лежит» на глиняной плите, а не парит.
+    // Смещённый тёмный силуэт вместо MaskFilter.blur — объём тот же, но без
+    // размытия (на слабом GPU blur дорог, а фигура перерисовывается на
+    // каждой ступени цвета).
+    canvas.save();
+    canvas.translate(0, r * 0.09);
+    canvas.drawPath(
+      shape,
+      Paint()..color = Colors.black.withValues(alpha: dark ? 0.22 : 0.13),
+    );
+    canvas.restore();
     canvas.drawPath(shape, Paint()..shader = shader);
 
-    // Гранёный ободок: тонкая светлая кромка по контуру фигуры.
+    // Матовая кромка: тёмный контур по фигуре (объём без глянца).
     canvas.drawPath(
       shape,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1
-        ..color = Colors.white.withValues(alpha: 0.38),
+        ..strokeWidth = 1.0
+        ..color = Color.lerp(color, Colors.black, 0.30)!.withValues(alpha: 0.5),
     );
 
-    // Глянцевый блик: мягкое светлое пятно в верхней части фигуры.
+    // Светлая грань по верхней дуге — свет лепит верх фигуры.
     canvas.save();
     canvas.clipPath(shape);
+    final arcRect = Rect.fromCircle(center: center, radius: r * 0.86);
+    canvas.drawArc(
+      arcRect,
+      math.pi * 1.06,
+      math.pi * 0.88,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3
+        ..color = Colors.white.withValues(alpha: dark ? 0.30 : 0.42),
+    );
+    // Мягкая подсветка сверху-слева (диффузная, не блик).
     canvas.drawCircle(
-      Offset(center.dx - r * 0.30, center.dy - r * 0.34),
-      r * 0.34,
+      Offset(center.dx - r * 0.28, center.dy - r * 0.32),
+      r * 0.52,
       Paint()
         ..shader =
             RadialGradient(
               colors: [
-                Colors.white.withValues(alpha: 0.30),
+                Colors.white.withValues(alpha: dark ? 0.16 : 0.24),
                 Colors.white.withValues(alpha: 0.0),
               ],
             ).createShader(
               Rect.fromCircle(
-                center: Offset(center.dx - r * 0.30, center.dy - r * 0.34),
-                radius: r * 0.7,
+                center: Offset(center.dx - r * 0.28, center.dy - r * 0.32),
+                radius: r * 0.9,
               ),
             ),
     );
@@ -998,5 +1111,7 @@ class _ShapePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ShapePainter oldDelegate) =>
-      oldDelegate.index != index || oldDelegate.color != color;
+      oldDelegate.index != index ||
+      oldDelegate.color != color ||
+      oldDelegate.dark != dark;
 }
