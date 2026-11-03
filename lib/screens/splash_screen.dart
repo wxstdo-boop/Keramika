@@ -127,6 +127,19 @@ class _SplashScreenState extends State<SplashScreen>
     // Цвет обводки логотипа — primary выбранной темы (rose/peach/grok/...).
     final accent = theme.colorScheme.primary;
     final cs = theme.colorScheme;
+    // Цвет «глины» для плиты авы. Берём surfaceContainerHighest и заметно
+    // подмешиваем primaryContainer: он всегда отличим от фона (в системной
+    // теме primary бывает тёмным и плита «чернела»), но остаётся в фирменном
+    // оттенке темы. Подмес крупный (0.5+): на малом подмесе плита сливалась с
+    // фоном сплэша — тот тоже подмешивает primaryContainer в нижней трети.
+    final clayTint = Color.lerp(
+      cs.surfaceContainerHighest,
+      cs.primaryContainer,
+      isDark ? 0.55 : 0.50,
+    )!;
+    // В светлой теме фон сплэша почти белый, и светлая глина растворялась в
+    // нём — подмешиваем primary, чтобы плита читалась отдельным тёплым комком.
+    final clay = isDark ? clayTint : Color.lerp(clayTint, cs.primary, 0.16)!;
 
     return Scaffold(
       body: Container(
@@ -166,24 +179,20 @@ class _SplashScreenState extends State<SplashScreen>
                       children: [
                         // Логотип крупным планом, без «коробки» и без обрезки
                         // (contain) — текст внутри картинки читается чётко.
-                        // Вокруг — красивая полупрозрачная обводка в цвет
-                        // ВЫБРАННОЙ темы (primary из ColorScheme): rose → розовая,
-                        // peach → персиковая, grok → её акцент и т.д. Смотрится
-                        // дорого и на светлом, и на тёмном фоне.
+                        // Ава — матовая глиняная плита в цвет ВЫБРАННОЙ темы:
+                        // rose → розовая, peach → персиковая, grok → её акцент.
                         // Заранее прогреваем кэш, чтобы логотип не «мигал»
                         // и не появлялся не сразу на слабых телефонах вроде
                         // Redmi Note 12 — первый кадр сразу рисуется с ним.
-                        // Логотип крупным планом, с прогретым кэшем
-                        // из initState сразу выезжает на первый кадр.
                         // RepaintBoundary кэширует отрисованную аватарку
                         // текстурой: во время slide/fade-анимации (1800мс)
                         // движется готовый растр, а не перефильтровывается
                         // большая картинка каждый кадр — на слабых
                         // телефонах аватарка не «дёргается».
-                        // Блик лежит ОТДЕЛЬНЫМ слоем над всей карточкой, а
-                        // не внутри картинки: полоса должна проходить и по
-                        // цветному кольцу-обводке, и по самому логотипу —
-                        // только тогда она читается как отражение на стекле.
+                        // Блик лежит ОТДЕЛЬНЫМ слоем над всей плитой, а не
+                        // внутри картинки: искра должна проходить и по
+                        // глиняной кромке, и по самому медальону — только
+                        // тогда она читается как отражение на глянце.
                         // Обрезка — своим ClipRRect с тем же радиусом,
                         // поэтому тень карточки (она рисуется ЗА её
                         // габаритом) не подрезается.
@@ -199,71 +208,143 @@ class _SplashScreenState extends State<SplashScreen>
                                   // НЕ круг: нижняя подпись на логотипе не
                                   // обрезается кружком и остаётся читаемой.
                                   borderRadius: BorderRadius.circular(_kRadius),
+                                  // МАТОВАЯ ГЛИНА: плотная НЕПРОЗРАЧНАЯ заливка
+                                  // с мягким объёмом — свет только лепит форму
+                                  // (верх чуть светлее, низ темнее), а не
+                                  // блестит плёнкой. Прежний стеклянный
+                                  // градиент «белое → акцент» с белым глянцевым
+                                  // кантом читался как наклеенная плёнка.
                                   gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
                                     colors: [
-                                      Colors.white.withValues(
-                                        alpha: isDark ? 0.10 : 0.92,
-                                      ),
-                                      accent.withValues(
-                                        alpha: isDark ? 0.20 : 0.12,
-                                      ),
+                                      Color.lerp(
+                                        clay,
+                                        Colors.white,
+                                        isDark ? 0.16 : 0.14,
+                                      )!,
+                                      clay,
+                                      Color.lerp(
+                                        clay,
+                                        Colors.black,
+                                        isDark ? 0.20 : 0.10,
+                                      )!,
                                     ],
+                                    stops: const [0.0, 0.55, 1.0],
                                   ),
+                                  // Тонкий рант вместо трёхпиксельной неоновой
+                                  // рамки: глина держит кромку, но не светится.
                                   border: Border.all(
-                                    color: accent.withValues(alpha: 0.62),
-                                    width: 3,
+                                    color: accent.withValues(
+                                      alpha: isDark ? 0.55 : 0.40,
+                                    ),
+                                    width: 1.4,
                                   ),
                                   boxShadow: [
-                                    BoxShadow(
-                                      color: accent.withValues(alpha: 0.28),
-                                      blurRadius: 30,
-                                      spreadRadius: 2,
-                                    ),
+                                    // Мягкая рассеянная тень — плита лежит на
+                                    // фоне, а не парит в ореоле.
                                     BoxShadow(
                                       color: Colors.black.withValues(
-                                        alpha: isDark ? 0.28 : 0.08,
+                                        alpha: isDark ? 0.45 : 0.16,
                                       ),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 9),
+                                      blurRadius: 20,
+                                      spreadRadius: -4,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                    // Едва заметный цветной ореол вместо
+                                    // прежнего яркого свечения.
+                                    BoxShadow(
+                                      color: accent.withValues(
+                                        alpha: isDark ? 0.22 : 0.14,
+                                      ),
+                                      blurRadius: 24,
+                                      spreadRadius: -8,
                                     ),
                                   ],
                                 ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(25),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.55,
-                                      ),
-                                    ),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(23),
-                                    // Логотип уже декодирован в main() до
-                                    // первого кадра — RawImage рисует его
-                                    // мгновенно, без «мигания» на слабых
-                                    // телефонах.
-                                    child: preDecodedLogo != null
-                                        ? RawImage(
-                                            image: preDecodedLogo,
-                                            width: 94,
-                                            height: 94,
-                                            fit: BoxFit.contain,
-                                            filterQuality: FilterQuality.high,
-                                          )
-                                        : Image.asset(
-                                            'assets/keramika.png',
-                                            width: 94,
-                                            height: 94,
-                                            cacheWidth: 512,
-                                            cacheHeight: 512,
-                                            filterQuality: FilterQuality.high,
-                                            isAntiAlias: true,
-                                            fit: BoxFit.contain,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(25),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      // Логотип уже декодирован в main() до
+                                      // первого кадра — RawImage рисует его
+                                      // мгновенно, без «мигания» на слабых
+                                      // телефонах.
+                                      if (preDecodedLogo != null)
+                                        RawImage(
+                                          image: preDecodedLogo,
+                                          fit: BoxFit.contain,
+                                          filterQuality: FilterQuality.high,
+                                        )
+                                      else
+                                        Image.asset(
+                                          'assets/keramika.png',
+                                          cacheWidth: 512,
+                                          cacheHeight: 512,
+                                          filterQuality: FilterQuality.high,
+                                          isAntiAlias: true,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      // ГЛИНЯНАЯ ТОНИРОВКА МЕДАЛЬОНА: логотип
+                                      // не остаётся «стеклянным» — на него
+                                      // ложится тот же глиняный оттенок, что и
+                                      // на плиту, поэтому штамп читается как
+                                      // вылепленный из той же массы.
+                                      IgnorePointer(
+                                        child: ColoredBox(
+                                          color: clay.withValues(
+                                            alpha: isDark ? 0.18 : 0.12,
                                           ),
+                                        ),
+                                      ),
+                                      // УГЛУБЛЕНИЕ ПОД ШТАМП: медальон не
+                                      // наклеен на глину, а вдавлен в неё —
+                                      // тёмная внутренняя тень по верхней
+                                      // кромке и мягкий блик по нижней.
+                                      IgnorePointer(
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.black.withValues(
+                                                  alpha: isDark ? 0.30 : 0.20,
+                                                ),
+                                                Colors.transparent,
+                                                Colors.white.withValues(
+                                                  alpha: isDark ? 0.05 : 0.10,
+                                                ),
+                                              ],
+                                              stops: const [0.0, 0.22, 1.0],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // СВЕТОВАЯ КРОМКА СВЕРХУ: матовая глина
+                                      // ловит свет верхней гранью. Тонкая
+                                      // светлая линия по верхнему краю и мягкое
+                                      // затемнение к низу дают «выпуклость»
+                                      // без глянца.
+                                      IgnorePointer(
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.white.withValues(
+                                                  alpha: isDark ? 0.14 : 0.22,
+                                                ),
+                                                Colors.transparent,
+                                              ],
+                                              stops: const [0.0, 0.08],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -458,21 +539,26 @@ class _ShineText extends StatelessWidget {
   }
 }
 
-/// Полоса блика, катящаяся по «стеклу» карточки логотипа.
+/// Острый блик-спекуляр, скользящий по глиняной плите авы.
 ///
 /// [t] — ход 0 → 1 одного прохода. Оба конца обязаны быть нулевой яркости и
 /// нулевой скоростью, иначе блик «включается» и «выключается» кадром:
 /// яркость — огибающая sin(π·t) (на старте и финише ровно 0), положение —
 /// easeInOutSine (там же скорость 0).
 ///
-/// Полоса ДВУХТОНАЛЬНАЯ: светлое ядро плюс тёмная кромка перед ним. Без
-/// тёмной кромки блик на светлой теме невидим физически — белым по белому
-/// ярче не стать, и именно поэтому первая версия «не показывала никакого
-/// блеска».
+/// Блик СОБРАН ИЗ ЧЕТЫРЁХ СЛОЁВ, а не одной размазанной полосы: тонкая почти
+/// белая «нить» в центре (даёт остриё), вокруг неё узкое яркое ядро с крутыми
+/// скатами, под ними слабое широкое гало, а впереди — тёмный контактный кант.
+/// Одна широкая полоса читалась как «помазанная кистью» дымка; нить и крутые
+/// скаты дают резкий отсвет, как от глянца на керамике.
+///
+/// Тёмный кант идёт ПЕРЕД ядром: без него белый блик физически невидим на
+/// светлой теме (белым по белому ярче не стать) — он и делает полосу
+/// читаемой на любой заливке.
 class _GlassSweepPainter extends CustomPainter {
   final double t;
 
-  /// Верхняя точка яркости: на тёмном стекле белый блик читается сильнее,
+  /// Верхняя точка яркости: на тёмной плите белый блик читается сильнее,
   /// поэтому темой задаётся разная глубина.
   final double strength;
 
@@ -481,13 +567,16 @@ class _GlassSweepPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (t <= 0 || t >= 1) return;
-    final env = math.pow(math.sin(math.pi * t), 1.35).toDouble() * strength;
+    // Степень 1.6 вместо 1.35: вспышка набирает и отдаёт яркость резче, из-за
+    // чего проход читается как короткая искра, а не как долгий разлив.
+    final env = math.pow(math.sin(math.pi * t), 1.6).toDouble() * strength;
     if (env <= 0.004) return;
 
     final diagonal = math.sqrt(
       size.width * size.width + size.height * size.height,
     );
-    const angle = -math.pi / 5; // полоса под ~36°, как отражение на скруглении
+    // Чуть круче прежних 36°: острый скол света на скруглённом углу плиты.
+    const angle = -math.pi / 4.2;
     final cx =
         -diagonal * 1.05 + Curves.easeInOutSine.transform(t) * diagonal * 2.1;
 
@@ -495,8 +584,17 @@ class _GlassSweepPainter extends CustomPainter {
     canvas.translate(size.width / 2, size.height / 2);
     canvas.rotate(angle);
 
-    // Одна полоса: прозрачные края → пик яркости по центру.
-    void band(double center, double width, int peak, {bool dark = false}) {
+    // Полоса с настраиваемым профилем: stops задают «скат» (чем ближе крайние
+    // stops к 0.5, тем острее пик), peak — альфу вершины. Края всегда
+    // прозрачны, иначе полоса включается и выключается видимой кромкой.
+    void band(
+      double center,
+      double width,
+      int peak, {
+      bool dark = false,
+      List<double> stops = const [0.0, 0.5, 1.0],
+      Color? color,
+    }) {
       if (peak <= 1) return;
       final r = Rect.fromLTWH(
         center - width / 2,
@@ -504,31 +602,43 @@ class _GlassSweepPainter extends CustomPainter {
         width,
         diagonal * 2,
       );
-      final edge = dark ? const Color(0x00000000) : const Color(0x00FFFFFF);
-      final hot = dark
-          ? Color.fromARGB(peak, 0, 0, 0)
-          : Color.fromARGB(peak, 255, 255, 255);
+      final hot =
+          color ?? (dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF));
+      final solid = hot.withValues(alpha: peak / 255);
+      final colors = [
+        for (var i = 0; i < stops.length; i++)
+          (i == 0 || i == stops.length - 1) ? solid.withValues(alpha: 0) : solid,
+      ];
       canvas.drawRect(
         r,
         Paint()
           ..shader = LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: [edge, hot, edge],
-            stops: const [0.0, 0.5, 1.0],
+            colors: colors,
+            stops: stops,
           ).createShader(r),
       );
     }
 
-    // Тёмная кромка идёт ПЕРЕД ядром (блик движется слева направо) — это
-    // даёт контраст и на цветном кольце, и на белом.
+    // 1. Тёмный контактный кант — узкий и впереди ядра.
     band(
-      cx - diagonal * 0.19,
-      diagonal * 0.20,
-      (0.10 * env * 255).round(),
+      cx - diagonal * 0.11,
+      diagonal * 0.12,
+      (0.12 * env * 255).round(),
       dark: true,
     );
-    band(cx, diagonal * 0.34, (0.95 * env * 255).round());
+    // 2. Широкое слабое гало — мягкая подсветка вокруг искры.
+    band(cx, diagonal * 0.30, (0.16 * env * 255).round());
+    // 3. Узкое яркое ядро с крутыми скатами (плато в середине).
+    band(
+      cx,
+      diagonal * 0.11,
+      (0.98 * env * 255).round(),
+      stops: const [0.0, 0.42, 0.5, 0.58, 1.0],
+    );
+    // 4. Тонкая почти белая «нить» по центру — остриё блеска.
+    band(cx, diagonal * 0.022, 255, color: Colors.white);
     canvas.restore();
   }
 
