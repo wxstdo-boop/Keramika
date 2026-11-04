@@ -66,12 +66,28 @@ final ValueNotifier<int> sectionTabTap = ValueNotifier<int>(0);
 final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 
 /// Значки разделов: у каждого своя геометрическая фигура.
-final List<Widget Function(BuildContext context, {double size, Color? color})>
+final List<Widget Function(BuildContext context, {double size, Color? color, double? strokeWidth})>
 sectionIconBuilders = [
-  (context, {size = 17, color}) => KkAlarmIcon(size: size, color: color),
-  (context, {size = 17, color}) => KkHabitsIcon(size: size, color: color),
-  (context, {size = 17, color}) => KkTasksIcon(size: size, color: color),
-  (context, {size = 17, color}) => KkRealityCheckIcon(size: size, color: color),
+  (context, {size = 17, color, strokeWidth}) => KkAlarmIcon(
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth ?? kKkStroke,
+  ),
+  (context, {size = 17, color, strokeWidth}) => KkHabitsIcon(
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth ?? kKkStroke,
+  ),
+  (context, {size = 17, color, strokeWidth}) => KkTasksIcon(
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth ?? kKkStroke,
+  ),
+  (context, {size = 17, color, strokeWidth}) => KkRealityCheckIcon(
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth ?? kKkStroke,
+  ),
 ];
 
 /// Названия разделов (для тултипов) — те же, что строит Home: РП-раздел
@@ -88,7 +104,7 @@ List<String> sectionLabels(BuildContext context) {
 
 /// Значки разделов с учётом настроек: при выключенных проверках реальности
 /// РП-раздел (и его значок) не должен быть виден вообще.
-List<Widget Function(BuildContext context, {double size, Color? color})>
+List<Widget Function(BuildContext context, {double size, Color? color, double? strokeWidth})>
 sectionIconsFor(BuildContext context) {
   final count = sectionLabels(context).length;
   return sectionIconBuilders.sublist(0, count);
@@ -475,7 +491,7 @@ class _SectionPillState extends State<SectionPill>
     required double rawPage,
     required int count,
     required List<
-      Widget Function(BuildContext context, {double size, Color? color})
+      Widget Function(BuildContext context, {double size, Color? color, double? strokeWidth})
     >
     icons,
     required List<String> labels,
@@ -667,8 +683,12 @@ class _SectionPillState extends State<SectionPill>
                   // CustomPaint перерисовывается лишь на смене ступени —
                   // без мерцания и без шейдерного шторма на каждый кадр.
                   final badgeT = (proximity * 48).round() / 48;
+                  // Чернила глифа: фирменный primary на нейтральном бейдже
+                  // и onPrimary на выбранном. Раньше в тёмной теме был
+                  // onSurfaceVariant — светлый глиф на светлом бейдже, контраст
+                  // падал до 2.2 и значки читались как «мыло».
                   final iconColor = Color.lerp(
-                    cs.onSurfaceVariant,
+                    cs.primary,
                     cs.onPrimary,
                     badgeT,
                   );
@@ -724,14 +744,21 @@ class _SectionPillState extends State<SectionPill>
                                   // фирменный оттенок (чтобы
                                   // фигуры читались), выбранная —
                                   // сочный градиентный «камень».
+                                  // Невыбранная — нейтральная приподнятая
+                                  // площадка (без «глины» и цветной каши),
+                                  // выбранная — сплошной primary. Обе дают
+                                  // чёткий контраст с глифом.
                                   color: Color.lerp(
-                                    cs.primary.withValues(alpha: 0.3),
+                                    dark
+                                        ? cs.surfaceContainerHighest
+                                        : cs.surfaceContainerLowest,
                                     cs.primary,
                                     badgeT,
                                   )!,
                                   child: icons[i](
                                     context,
-                                    size: 17,
+                                    size: _GeoBadge.iconSizeFor(i),
+                                    strokeWidth: 2.4,
                                     color: iconColor,
                                   ),
                                 ),
@@ -768,11 +795,11 @@ class _GlassCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    // ПЛОСКИЙ нейтральный фон: одна непрозрачная поверхность и мягкая тень.
+    // Раньше здесь была «глиняная» лепнина — подмес primaryContainer плюс
+    // градиент, — из-за чего капсула желтела/розовела и спорила с фигурами.
+    // Значки должны читаться на спокойном фоне, а не на цветной массе.
     final base = dark ? cs.surfaceContainerHigh : cs.surfaceContainerHighest;
-    // Подмес ФИРМЕННОГО контейнера, а не просто primary: на системной теме
-    // primary может быть тёмным (обои), и капсула «чернела». primaryContainer
-    // — это тот же цвет обоев, но гарантированно отличимый от фона.
-    final tint = Color.lerp(base, cs.primaryContainer, dark ? 0.34 : 0.24)!;
     return DecoratedBox(
       // Тень снаружи клипа: внутри скругления она обрезается и капсула
       // выглядит наклеенной.
@@ -792,20 +819,11 @@ class _GlassCapsule extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(26),
-            // ОБЪЁМ — мягким градиентом, но капсула ПОЛНОСТЬЮ НЕПРОЗРАЧНА:
-            // раньше alpha 0.94/0.90 пропускала белый контент, ползущий под
-            // таблеткой, и он «просвечивал» сквозь неё — читалось как белая
-            // шторка, закрывающая середину таблетки. Теперь фон не виден.
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [tint, Color.lerp(tint, cs.primary, dark ? 0.10 : 0.06)!],
-            ),
+            color: base,
             border: Border.all(
-              // Тонкая обводка: раньше 3 px яркого primary давали неоновую
-              // рамку, которая перетягивала внимание с иконок.
-              color: cs.primary.withValues(alpha: dark ? 0.24 : 0.30),
-              width: 1.2,
+              // Тонкая обводка только для контура, без неоновой рамки.
+              color: cs.outlineVariant.withValues(alpha: dark ? 0.55 : 0.70),
+              width: 1.0,
             ),
           ),
           child: child,
@@ -907,12 +925,14 @@ class _GeoBadge extends StatelessWidget {
     required this.child,
   });
 
-  /// Коэффициент иконки внутри фигуры: у «колючих» фигур (ромб, звезда)
-  /// иконка меньше, чтобы не вылезать за острые края.
-  double get _iconScale => switch (index) {
-    2 => 0.5,
-    3 => 0.44,
-    _ => 0.56,
+  /// Размер глифа внутри фигуры. Раньше глиф рисовался в 17 px и затем
+  /// вписывался в бокс 15.5 px — двойное масштабирование размывало штрих.
+  /// Теперь размер задаётся один раз: у «колючих» фигур (ромб, звезда)
+  /// глиф мельче, чтобы не вылезать за острые края.
+  static double iconSizeFor(int index) => switch (index) {
+    2 => 18,
+    3 => 16,
+    _ => 20,
   };
 
   @override
@@ -922,13 +942,7 @@ class _GeoBadge extends StatelessWidget {
       height: size,
       child: CustomPaint(
         painter: _ShapePainter(index, color, dark),
-        child: Center(
-          child: SizedBox(
-            width: size * _iconScale,
-            height: size * _iconScale,
-            child: child,
-          ),
-        ),
+        child: Center(child: child),
       ),
     );
   }
@@ -991,78 +1005,24 @@ class _ShapePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final r = size.width / 2 - 1.0;
-    // МАТОВАЯ ГЛИНА: заливка — объёмный градиент той же палитры, без
-    // перехода в белый. Свет сверху-слева, глубина снизу-справа.
-    final light = Color.lerp(color, Colors.white, dark ? 0.26 : 0.34)!;
-    final deep = Color.lerp(color, Colors.black, dark ? 0.24 : 0.16)!;
-    final shader = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [light, color, deep],
-      stops: const [0.0, 0.55, 1.0],
-    ).createShader(Offset.zero & size);
-
-    // Фигура: 🔵 круг, ⬜ скруглённый квадрат, 💠 вытянутый ромб,
-    // ✦ пятиконечная звезда («искра» проверок реальности).
+    // Фигура: 🔵 круг, ⬜ скруглённый квадрат, 💠 ромб, ✦ звезда.
     final shape = _shapeFor(index, size);
 
-    // Тень под фигурой: она «лежит» на глиняной плите, а не парит.
-    // Смещённый тёмный силуэт вместо MaskFilter.blur — объём тот же, но без
-    // размытия (на слабом GPU blur дорог, а фигура перерисовывается на
-    // каждой ступени цвета).
-    canvas.save();
-    canvas.translate(0, r * 0.09);
-    canvas.drawPath(
-      shape,
-      Paint()..color = Colors.black.withValues(alpha: dark ? 0.22 : 0.13),
-    );
-    canvas.restore();
-    canvas.drawPath(shape, Paint()..shader = shader);
+    // ПЛОСКИЙ бейдж: одна заливка и тонкая чёткая кромка. Раньше здесь была
+    // «глиняная» лепнина — объёмный градиент, смещённый тёмный силуэт, белая
+    // дуга и радиальный блик. В масштабе 1:1 на телефоне это читалось как
+    // грязное пятно, а не фигура: значки сливались и «плыли».
+    canvas.drawPath(shape, Paint()..color = color);
 
-    // Матовая кромка: тёмный контур по фигуре (объём без глянца).
+    // Кромка: чуть темнее заливки — держит контур, не превращаясь в рамку.
     canvas.drawPath(
       shape,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0
-        ..color = Color.lerp(color, Colors.black, 0.30)!.withValues(alpha: 0.5),
+        ..color = Color.lerp(color, Colors.black, dark ? 0.22 : 0.14)!
+            .withValues(alpha: 0.35),
     );
-
-    // Светлая грань по верхней дуге — свет лепит верх фигуры.
-    canvas.save();
-    canvas.clipPath(shape);
-    final arcRect = Rect.fromCircle(center: center, radius: r * 0.86);
-    canvas.drawArc(
-      arcRect,
-      math.pi * 1.06,
-      math.pi * 0.88,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.3
-        ..color = Colors.white.withValues(alpha: dark ? 0.30 : 0.42),
-    );
-    // Мягкая подсветка сверху-слева (диффузная, не блик).
-    canvas.drawCircle(
-      Offset(center.dx - r * 0.28, center.dy - r * 0.32),
-      r * 0.52,
-      Paint()
-        ..shader =
-            RadialGradient(
-              colors: [
-                Colors.white.withValues(alpha: dark ? 0.16 : 0.24),
-                Colors.white.withValues(alpha: 0.0),
-              ],
-            ).createShader(
-              Rect.fromCircle(
-                center: Offset(center.dx - r * 0.28, center.dy - r * 0.32),
-                radius: r * 0.9,
-              ),
-            ),
-    );
-    canvas.restore();
   }
 
   /// Пятиконечная звезда с центром [center] и внешним радиусом [r].

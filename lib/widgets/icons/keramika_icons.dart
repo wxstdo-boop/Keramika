@@ -111,21 +111,24 @@ class KkAlarmIcon extends StatelessWidget {
       strokeWidth: strokeWidth,
       paint: (canvas, size, c, sw) {
         final p = _p(c, sw);
-        // Циферблат
-        _circle(canvas, 12, 12, 5.5, p);
-        // Чёрточки часов
-        _line(canvas, 12, 6.6, 12, 7.8, p);
-        _line(canvas, 16.4, 14.9, 17.6, 16.1, p);
-        _line(canvas, 12, 16.2, 12, 17.4, p);
-        _line(canvas, 7.6, 14.9, 6.4, 16.1, p);
-        // Колокольчики
-        _circle(canvas, 8.2, 9.2, 2.6, p);
-        _circle(canvas, 15.8, 9.2, 2.6, p);
-        _line(canvas, 8.2, 6.6, 8.2, 7.9, p);
-        _line(canvas, 15.8, 6.6, 15.8, 7.9, p);
-        // Молоточек
-        _line(canvas, 12, 8.6, 12, 10.4, p);
-        _line(canvas, 12, 10.4, 13.4, 11.4, p);
+        // Циферблат по центру.
+        _circle(canvas, 12, 13, 6.8, p);
+        // Стрелки.
+        _line(canvas, 12, 13, 12, 9, p);
+        _line(canvas, 12, 13, 15.2, 13, p);
+        // Колокольчики сверху: две короткие дуги, разведённые наружу.
+        _path(canvas, Path()
+          ..addArc(
+            Rect.fromCircle(center: const Offset(7.2, 6.6), radius: 2.6),
+            math.pi * 1.02,
+            math.pi * 0.52,
+          ), p);
+        _path(canvas, Path()
+          ..addArc(
+            Rect.fromCircle(center: const Offset(16.8, 6.6), radius: 2.6),
+            math.pi * 1.46,
+            math.pi * 0.52,
+          ), p);
       },
     );
   }
@@ -152,15 +155,18 @@ class KkHabitsIcon extends StatelessWidget {
       strokeWidth: strokeWidth,
       paint: (canvas, size, c, sw) {
         final p = _p(c, sw);
-        final p1 = Path()..addArc(Rect.fromCircle(center: Offset(8, 16), radius: 6), -math.pi, -math.pi / 2);
-        final p2 = Path()..addArc(Rect.fromCircle(center: Offset(12, 16), radius: 6), -math.pi, -math.pi / 2);
-        final p3 = Path()..addArc(Rect.fromCircle(center: Offset(16, 16), radius: 5), -math.pi, -math.pi / 2);
-        _path(canvas, p1, p);
-        _path(canvas, p2, p);
-        _path(canvas, p3, p);
-        _circle(canvas, 8, 15.6, 1.1, p);
-        _circle(canvas, 12, 15.6, 1.1, p);
-        _circle(canvas, 16, 15.4, 1.1, p);
+        // Огонёк серии: язык пламени с внутренним завитком — читается как
+        // «держится уже N дней». Три дуги прежней версии не читались ни в
+        // каком масштабе.
+        _path(canvas, Path()
+          ..moveTo(12, 4.2)
+          ..cubicTo(15.4, 7.6, 17.4, 10.2, 17.4, 13.6)
+          ..cubicTo(17.4, 17.2, 15.0, 19.8, 12, 19.8)
+          ..cubicTo(9.0, 19.8, 6.6, 17.2, 6.6, 13.6)
+          ..cubicTo(6.6, 11.4, 7.6, 9.6, 9.2, 7.6)
+          ..cubicTo(9.6, 9.6, 10.6, 10.8, 12, 11.4)
+          ..cubicTo(12, 8.8, 11.6, 6.4, 12, 4.2)
+          ..close(), p);
       },
     );
   }
@@ -187,11 +193,24 @@ class KkTasksIcon extends StatelessWidget {
       strokeWidth: strokeWidth,
       paint: (canvas, size, c, sw) {
         final p = _p(c, sw);
-        for (final y in [8.2, 12.0, 15.8]) {
-          _line(canvas, 6.4, y, 13.2, y, p);
-          _line(canvas, 13.2, y, 14.6, y + 1.2, p);
-          _line(canvas, 14.6, y + 1.2, 17.2, y - 1.2, p);
-        }
+        // Планшет с зажимом и галочкой: одна ясная фигура вместо трёх строк
+        // с наползающими галочками, которые в 18 px сливались в штриховку.
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTRB(5.6, 5.4, 18.4, 19.8),
+            const Radius.circular(2.6),
+          ),
+          p,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTRB(9.4, 3.4, 14.6, 7.0),
+            const Radius.circular(1.6),
+          ),
+          p,
+        );
+        _line(canvas, 8.8, 12.6, 11.0, 14.8, p);
+        _line(canvas, 11.0, 14.8, 15.2, 10.2, p);
       },
     );
   }
@@ -218,15 +237,17 @@ class KkRealityCheckIcon extends StatelessWidget {
       strokeWidth: strokeWidth,
       paint: (canvas, size, c, sw) {
         final p = _p(c, sw);
+        // Глаз строго по центру (был смещён вправо: 7.2…21.6 при центре 14.4
+        // — значок выглядел «уехавшим» из своего бейджа).
         final eye = Path()
-          ..moveTo(7.2, 12)
-          ..cubicTo(7.2, 9.4, 10.8, 7.8, 14.4, 7.8)
-          ..cubicTo(18.0, 7.8, 21.6, 9.4, 21.6, 12)
-          ..cubicTo(21.6, 14.6, 18.0, 16.2, 14.4, 16.2)
-          ..cubicTo(10.8, 16.2, 7.2, 14.6, 7.2, 12)
+          ..moveTo(4.4, 12)
+          ..cubicTo(7.0, 8.2, 9.6, 7.0, 12, 7.0)
+          ..cubicTo(14.4, 7.0, 17.0, 8.2, 19.6, 12)
+          ..cubicTo(17.0, 15.8, 14.4, 17.0, 12, 17.0)
+          ..cubicTo(9.6, 17.0, 7.0, 15.8, 4.4, 12)
           ..close();
         _path(canvas, eye, p);
-        _circle(canvas, 14.4, 12, 2.2, p);
+        _circle(canvas, 12, 12, 2.4, p);
       },
     );
   }
