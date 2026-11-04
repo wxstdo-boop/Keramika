@@ -35,6 +35,10 @@ class _SplashScreenState extends State<SplashScreen>
 
   Timer? _splashTimer;
 
+  /// Селекторы _float и _splashTimer: отложенный запуск левитации + её
+  /// остановка на выходе.
+  Timer? _startFloatTimer;
+
   /// Радиус скругления «стекла» — тот же, что у карточки-сквайркла.
   static const double _kRadius = 30;
 
@@ -73,7 +77,19 @@ class _SplashScreenState extends State<SplashScreen>
     _float = AnimationController(
       duration: const Duration(milliseconds: 2200),
       vsync: this,
-    )..repeat();
+    );
+    // ЛЕВИТАЦИЯ НЕ ПУСКАЕТСЯ СРАЗУ: сплеш въезжает через lockRoute
+    // (340 мс, scale + fade всей страницы), и в это же время крутился бы
+    // бесконечный CustomPaint-пейнтер — GPU одновременно перефильтровал бы
+    // масштабируемую страницу И перечитывал пейнтер каждый кадр: отсюда
+    // «подлагивание на входе». В первые 340 мс человечек всё равно невидим
+    // (alpha = _fade * (1 - _badgeExit) ≈ 0), поэтому старт левитации на
+    // 340-м мс не виден глазом, а тяжёлый loop крутится уже когда
+    // страница встала на место.
+    _startFloatTimer = Timer(const Duration(milliseconds: 340), () {
+      if (!mounted) return;
+      _float.repeat();
+    });
     // Человечек доигрывает левитацию и затем мягко растворяется: за
     // последние ~400 мс (t 0.80→1.0) альфа 1→0. Таким образом он живёт
     // весь сплэш и исчезает в КОНЦЕ, когда экран уже уходит.
@@ -94,9 +110,15 @@ class _SplashScreenState extends State<SplashScreen>
     // переход читается одним движением, а не «пауза → смена кадра».
     _splashTimer = Timer(const Duration(milliseconds: 1950), () {
       if (!mounted) return;
-      // НЕ останавливаем анимации: заморозка левитации/блика ровно на
-      // кадре кроссфейда выглядела как «дёрганье». Пусть доигрывают —
-      // они уже почти в конце и 280 мс перехода это переживут.
+      // ВЫХОД: в момент onHome стартует homeEntryRoute (280 мс, наезд
+      // дома: 4 keepAlive-экрана + таблетка). Если в это же время сплеш
+      // крутит бесконечную левитацию, оба экрана перечитывают кады
+      // одновременно — GPU проседает, и переход читается как
+      // «подлагивание на выходе». Останавливаем loop: левитация (лёгкое
+      // покачивание на ±2.8 px) замирает почти незаметно, растворение
+      // человечка (_badgeExit) продолжается — его ведёт ещё живой
+      // _controller, а блик к этому моменту уже отработал.
+      _float.stop();
       widget.onDone?.call();
     });
     // Разрешения больше не запрашиваем автоматически.
@@ -109,10 +131,14 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _startFloatTimer?.cancel();
     _splashTimer?.cancel();
+    // Левитацию останавливаем ПЕРЕД dispose: контроллер, размонтированный
+    // со стартовавшим бесконечным циклом, роняет assertion («ticker
+    // active at dispose»).
+    _float.stop();
     // CurvedAnimation снимает свой слушатель с мастер-контроллера, поэтому
-    // его dispose() идёт ДО dispose родителя. Отдельного таймера старта
-    // больше нет — он и ронял smoke-тест на «A Timer is still pending».
+    // его dispose() идёт ДО dispose родителя.
     _shine.dispose();
     _badgeExit.dispose();
     _float.dispose();
