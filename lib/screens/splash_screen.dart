@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../main.dart' show preDecodedLogo;
-import '../widgets/clay_surface.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback? onDone;
@@ -76,26 +75,18 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
     )..repeat();
     // Человечек доигрывает левитацию и затем мягко растворяется: за
-    // последние ~440 мс (t 0.78→0.95, 1560→1900 мс) альфа 1→0. К моменту
-    // ухода на контент (1950 мс) он уже полностью погас — поэтому остановка
-    // его тикера в этот момент не видна глазу, а кадр перехода не платит
-    // за лишнюю перерисовку.
+    // последние ~400 мс (t 0.80→1.0) альфа 1→0. Таким образом он живёт
+    // весь сплэш и исчезает в КОНЦЕ, когда экран уже уходит.
     _badgeExit = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.78, 0.95, curve: Curves.easeIn),
+      curve: const Interval(0.80, 1.0, curve: Curves.easeIn),
     );
     // Заранее прогреваем кэш логотипа: первый кадр после сплэша
-    // не «мигает» и не показывает пустое место.
-    //
-    // Если логотип уже декодирован в main() (_predecodeSplashLogo), прогрев
-    // НЕ повторяем: precacheImage снова декодировал бы ту же 1024×1024 PNG —
-    // лишняя работа на старте, ровно на том кадре, где и без неё тесно.
-    if (preDecodedLogo == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        precacheImage(const AssetImage('assets/keramika.png'), context);
-      });
-    }
+    // не «мигает» и не показывает пустое место. PrcacheImage сам
+    // отработает, когда у него будет MediaQuery.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      precacheImage(const AssetImage('assets/keramika.png'), context);
+    });
     // Анимация идёт 2 секунды; переходим на главную сразу после её
     // окончания. Раньше стояло 2200 мс — лишние 200 мс «мёртвой паузы»
     // после того, как логотип уже растворился, читались как рывок.
@@ -103,13 +94,9 @@ class _SplashScreenState extends State<SplashScreen>
     // переход читается одним движением, а не «пауза → смена кадра».
     _splashTimer = Timer(const Duration(milliseconds: 1950), () {
       if (!mounted) return;
-      // Кросс-фейд на контент уже начался — левитация больше не видна
-      // (человечек догас по _badgeExit), но её тикер продолжал бы
-      // перерисовывать пейнтер 60 раз в секунду ПОКА строится и проявляется
-      // Home (4 экрана). Останавливаем: в кадре перехода мы платим только
-      // за проявляющийся контент, а не за два экрана сразу. Мастер-контроллер
-      // и блик не трогаем — они к этому моменту уже почти в конце.
-      _float.stop();
+      // НЕ останавливаем анимации: заморозка левитации/блика ровно на
+      // кадре кроссфейда выглядела как «дёрганье». Пусть доигрывают —
+      // они уже почти в конце и 280 мс перехода это переживут.
       widget.onDone?.call();
     });
     // Разрешения больше не запрашиваем автоматически.
@@ -140,436 +127,270 @@ class _SplashScreenState extends State<SplashScreen>
     // Цвет обводки логотипа — primary выбранной темы (rose/peach/grok/...).
     final accent = theme.colorScheme.primary;
     final cs = theme.colorScheme;
-    // Цвет «глины» для плиты авы. Берём surfaceContainerHighest и заметно
-    // подмешиваем primaryContainer: он всегда отличим от фона (в системной
-    // теме primary бывает тёмным и плита «чернела»), но остаётся в фирменном
-    // оттенке темы. Подмес крупный (0.5+): на малом подмесе плита сливалась с
-    // фоном сплэша — тот тоже подмешивает primaryContainer в нижней трети.
-    final clayTint = Color.lerp(
-      cs.surfaceContainerHighest,
-      cs.primaryContainer,
-      isDark ? 0.55 : 0.50,
-    )!;
-    // В светлой теме фон сплэша почти белый, и светлая глина растворялась в
-    // нём — подмешиваем primary, чтобы плита читалась отдельным тёплым комком.
-    final clay = isDark ? clayTint : Color.lerp(clayTint, cs.primary, 0.16)!;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Фон — та же матовая глина, что и плита аватара: мелкая фракция
-          // «пупырок» и мягкий свет делают поверхность объёмной, а не плоской
-          // заливкой. Отдельным слоем, а не обёрткой вокруг всего экрана:
-          // у фона свой RepaintBoundary, поэтому анимации сплэша
-          // (появление и левитация) его не перерисовывают — фон лепится
-          // один раз и дальше едет готовым растром.
-          Positioned.fill(
-            child: ClaySurface(
-              base: cs.surface,
-              isDark: isDark,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark
-                    ? [
-                        cs.surface,
-                        cs.surfaceContainerLow,
-                        Color.lerp(cs.surface, cs.primaryContainer, 0.28)!,
-                      ]
-                    : [
-                        cs.surfaceContainerLowest,
-                        cs.surface,
-                        Color.lerp(cs.surface, cs.primaryContainer, 0.35)!,
-                      ],
-              ),
-              bumpScale: 2.0,
-              strength: 0.45,
-              seed: 23,
-            ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          // Фон сплеша под темы — как у экрана PIN-кода: градиент от
+          // поверхности к лёгкому фирменному оттенку primaryContainer,
+          // а не жёсткий серый/чёрный. Светлый/тёмный по текущей теме.
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [
+                    cs.surface,
+                    cs.surfaceContainerLow,
+                    Color.lerp(cs.surface, cs.primaryContainer, 0.28)!,
+                  ]
+                : [
+                    cs.surfaceContainerLowest,
+                    cs.surface,
+                    Color.lerp(cs.surface, cs.primaryContainer, 0.35)!,
+                  ],
           ),
-          SafeArea(
-            child: Column(
-              children: [
-                const Spacer(),
-                FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Логотип крупным планом, без «коробки» и без обрезки
-                          // (contain) — текст внутри картинки читается чётко.
-                          // Ава — матовая глиняная плита в цвет ВЫБРАННОЙ темы:
-                          // rose → розовая, peach → персиковая, grok → её акцент.
-                          // Заранее прогреваем кэш, чтобы логотип не «мигал»
-                          // и не появлялся не сразу на слабых телефонах вроде
-                          // Redmi Note 12 — первый кадр сразу рисуется с ним.
-                          // RepaintBoundary кэширует отрисованную аватарку
-                          // текстурой: во время slide/fade-анимации (1800мс)
-                          // движется готовый растр, а не перефильтровывается
-                          // большая картинка каждый кадр — на слабых
-                          // телефонах аватарка не «дёргается».
-                          // Блик лежит ОТДЕЛЬНЫМ слоем над всей плитой, а не
-                          // внутри картинки: искра должна проходить и по
-                          // глиняной кромке, и по самому медальону — только
-                          // тогда она читается как отражение на глянце.
-                          // Обрезка — своим ClipRRect с тем же радиусом,
-                          // поэтому тень карточки (она рисуется ЗА её
-                          // габаритом) не подрезается.
-                          Stack(
-                            children: [
-                              // ОБЪЁМНАЯ ГЛИНА С «ПУПЫРКАМИ»: как у иконки на
-                              // домашнем экране — плита не плоская заливка, а
-                              // вылепленная масса. Свет лепит каждую выпуклость
-                              // (пятно сверху-слева, тень снизу-справа), сверху
-                              // мелкое зерно и виньетка по краям.
-                              //
-                              // RepaintBoundary внутри ClaySurface держит
-                              // готовую текстуру: во время slide/fade-анимации
-                              // (1800 мс) движется растр, а не пересчитываются
-                              // десятки градиентов каждый кадр — на слабых
-                              // телефонах плита не «дёргается».
-                              RepaintBoundary(
-                                child: SizedBox(
-                                  width: 128,
-                                  height: 128,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      // «Скруглый» (squircle) — круглее квадрата,
-                                      // но НЕ круг: нижняя подпись на логотипе не
-                                      // обрезается кружком и остаётся читаемой.
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Spacer(),
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Логотип крупным планом, без «коробки» и без обрезки
+                        // (contain) — текст внутри картинки читается чётко.
+                        // Вокруг — красивая полупрозрачная обводка в цвет
+                        // ВЫБРАННОЙ темы (primary из ColorScheme): rose → розовая,
+                        // peach → персиковая, grok → её акцент и т.д. Смотрится
+                        // дорого и на светлом, и на тёмном фоне.
+                        // Заранее прогреваем кэш, чтобы логотип не «мигал»
+                        // и не появлялся не сразу на слабых телефонах вроде
+                        // Redmi Note 12 — первый кадр сразу рисуется с ним.
+                        // Логотип крупным планом, с прогретым кэшем
+                        // из initState сразу выезжает на первый кадр.
+                        // RepaintBoundary кэширует отрисованную аватарку
+                        // текстурой: во время slide/fade-анимации (1800мс)
+                        // движется готовый растр, а не перефильтровывается
+                        // большая картинка каждый кадр — на слабых
+                        // телефонах аватарка не «дёргается».
+                        // Блик лежит ОТДЕЛЬНЫМ слоем над всей карточкой, а
+                        // не внутри картинки: полоса должна проходить и по
+                        // цветному кольцу-обводке, и по самому логотипу —
+                        // только тогда она читается как отражение на стекле.
+                        // Обрезка — своим ClipRRect с тем же радиусом,
+                        // поэтому тень карточки (она рисуется ЗА её
+                        // габаритом) не подрезается.
+                        Stack(
+                          children: [
+                            RepaintBoundary(
+                              child: Container(
+                                width: 104,
+                                height: 104,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  // «Скруглый» (squircle) — круглее квадрата, но
+                                  // НЕ круг: нижняя подпись на логотипе не
+                                  // обрезается кружком и остаётся читаемой.
+                                  borderRadius: BorderRadius.circular(_kRadius),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withValues(
+                                        alpha: isDark ? 0.10 : 0.92,
+                                      ),
+                                      accent.withValues(
+                                        alpha: isDark ? 0.20 : 0.12,
+                                      ),
+                                    ],
+                                  ),
+                                  border: Border.all(
+                                    color: accent.withValues(alpha: 0.62),
+                                    width: 3,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: accent.withValues(alpha: 0.28),
+                                      blurRadius: 30,
+                                      spreadRadius: 2,
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: isDark ? 0.28 : 0.08,
+                                      ),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 9),
+                                    ),
+                                  ],
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(25),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(23),
+                                    // Логотип уже декодирован в main() до
+                                    // первого кадра — RawImage рисует его
+                                    // мгновенно, без «мигания» на слабых
+                                    // телефонах.
+                                    child: preDecodedLogo != null
+                                        ? RawImage(
+                                            image: preDecodedLogo,
+                                            width: 94,
+                                            height: 94,
+                                            fit: BoxFit.contain,
+                                            filterQuality: FilterQuality.high,
+                                          )
+                                        : Image.asset(
+                                            'assets/keramika.png',
+                                            width: 94,
+                                            height: 94,
+                                            cacheWidth: 512,
+                                            cacheHeight: 512,
+                                            filterQuality: FilterQuality.high,
+                                            isAntiAlias: true,
+                                            fit: BoxFit.contain,
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // РАЗБИТОЕ СТЕКЛО: радиальные трещины из точки
+                            // удара, концентрические разломы и светлые пятна
+                            // напряжения. Лежит над плитой, но ПОД бегущим
+                            // бликом — искра проходит и по трещинам, поэтому
+                            // ава читается настоящим сколом, а не наклейкой.
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(_kRadius),
+                                  child: RepaintBoundary(
+                                    child: CustomPaint(
+                                      painter: _ShatteredGlassPainter(
+                                        isDark: isDark,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: RepaintBoundary(
+                                  child: AnimatedBuilder(
+                                    animation: _shine,
+                                    builder: (context, _) => ClipRRect(
                                       borderRadius: BorderRadius.circular(
                                         _kRadius,
                                       ),
-                                      // Тонкий рант вместо трёхпиксельной неоновой
-                                      // рамки: глина держит кромку, но не светится.
-                                      border: Border.all(
-                                        color: accent.withValues(
-                                          alpha: isDark ? 0.55 : 0.40,
-                                        ),
-                                        width: 1.4,
-                                      ),
-                                      boxShadow: [
-                                        // Мягкая рассеянная тень — плита лежит на
-                                        // фоне, а не парит в ореоле.
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: isDark ? 0.45 : 0.16,
-                                          ),
-                                          blurRadius: 20,
-                                          spreadRadius: -4,
-                                          offset: const Offset(0, 10),
-                                        ),
-                                        // Едва заметный цветной ореол вместо
-                                        // прежнего яркого свечения.
-                                        BoxShadow(
-                                          color: accent.withValues(
-                                            alpha: isDark ? 0.22 : 0.14,
-                                          ),
-                                          blurRadius: 24,
-                                          spreadRadius: -8,
-                                        ),
-                                      ],
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(25),
-                                      child: ClaySurface(
-                                        // Базовая глина: мягкий вертикальный
-                                        // объём под выпуклостями.
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [
-                                            Color.lerp(
-                                              clay,
-                                              Colors.white,
-                                              isDark ? 0.16 : 0.14,
-                                            )!,
-                                            clay,
-                                            Color.lerp(
-                                              clay,
-                                              Colors.black,
-                                              isDark ? 0.20 : 0.10,
-                                            )!,
-                                          ],
-                                          stops: const [0.0, 0.55, 1.0],
-                                        ),
-                                        base: clay,
-                                        isDark: isDark,
-                                        bumpScale: 1.0,
-                                        seed: 11,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            child: Stack(
-                                              fit: StackFit.expand,
-                                              children: [
-                                                // Логотип уже декодирован в main()
-                                                // до первого кадра — RawImage
-                                                // рисует его мгновенно, без
-                                                // «мигания» на слабых телефонах.
-                                                if (preDecodedLogo != null)
-                                                  RawImage(
-                                                    image: preDecodedLogo,
-                                                    fit: BoxFit.contain,
-                                                    filterQuality:
-                                                        FilterQuality.medium,
-                                                  )
-                                                else
-                                                  Image.asset(
-                                                    'assets/keramika.png',
-                                                    cacheWidth: 512,
-                                                    cacheHeight: 512,
-                                                    filterQuality:
-                                                        FilterQuality.medium,
-                                                    isAntiAlias: true,
-                                                    fit: BoxFit.contain,
-                                                  ),
-                                                // ГЛИНЯНАЯ ТОНИРОВКА МЕДАЛЬОНА:
-                                                // логотип не остаётся
-                                                // «стеклянным» — на него ложится
-                                                // тот же глиняный оттенок, что и
-                                                // на плиту, поэтому штамп
-                                                // читается как вылепленный из той
-                                                // же массы.
-                                                IgnorePointer(
-                                                  child: ColoredBox(
-                                                    color: clay.withValues(
-                                                      alpha: isDark
-                                                          ? 0.18
-                                                          : 0.12,
-                                                    ),
-                                                  ),
-                                                ),
-                                                // РЕЛЬЕФ ПОВЕРХ ЛОГОТИПА: те же
-                                                // «пупырки», что и по краям
-                                                // плиты, идут и по медальону —
-                                                // штамп не «наклеен», а вылеплен
-                                                // в той же массе.
-                                                IgnorePointer(
-                                                  child: ClaySurface(
-                                                    base: clay,
-                                                    isDark: isDark,
-                                                    bumpScale: 1.6,
-                                                    seed: 11,
-                                                    strength: 0.6,
-                                                    fill: false,
-                                                  ),
-                                                ),
-                                                // УГЛУБЛЕНИЕ ПОД ШТАМП: медальон
-                                                // не наклеен на глину, а вдавлен
-                                                // в неё — тёмная внутренняя тень
-                                                // по верхней кромке и мягкий блик
-                                                // по нижней.
-                                                IgnorePointer(
-                                                  child: DecoratedBox(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        begin:
-                                                            Alignment.topCenter,
-                                                        end: Alignment
-                                                            .bottomCenter,
-                                                        colors: [
-                                                          Colors.black
-                                                              .withValues(
-                                                                alpha: isDark
-                                                                    ? 0.30
-                                                                    : 0.20,
-                                                              ),
-                                                          Colors.transparent,
-                                                          Colors.white
-                                                              .withValues(
-                                                                alpha: isDark
-                                                                    ? 0.05
-                                                                    : 0.10,
-                                                              ),
-                                                        ],
-                                                        stops: const [
-                                                          0.0,
-                                                          0.22,
-                                                          1.0,
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                // СВЕТОВАЯ КРОМКА СВЕРХУ: матовая
-                                                // глина ловит свет верхней гранью.
-                                                // Тонкая светлая линия по верхнему
-                                                // краю и мягкое затемнение к низу
-                                                // дают «выпуклость» без глянца.
-                                                IgnorePointer(
-                                                  child: DecoratedBox(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        begin:
-                                                            Alignment.topCenter,
-                                                        end: Alignment
-                                                            .bottomCenter,
-                                                        colors: [
-                                                          Colors.white
-                                                              .withValues(
-                                                                alpha: isDark
-                                                                    ? 0.14
-                                                                    : 0.22,
-                                                              ),
-                                                          Colors.transparent,
-                                                        ],
-                                                        stops: const [
-                                                          0.0,
-                                                          0.08,
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
+                                      child: CustomPaint(
+                                        painter: _GlassSweepPainter(
+                                          t: _shine.value,
+                                          // На светлой теме белое ядро по
+                                          // белому кольцу не видно ВООБЩЕ —
+                                          // поэтому яркость задаётся темой,
+                                          // а тёмные кромки полосы делают
+                                          // блик читаемым на любом фоне.
+                                          strength: isDark ? 0.78 : 1.10,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              // РАЗБИТОЕ СТЕКЛО: радиальные трещины из точки
-                              // удара, концентрические разломы и светлые
-                              // «пятна» напряжения. Лежит над плитой, но ПОД
-                              // бегущим бликом — искра проходит и по трещинам,
-                              // поэтому ава читается как настоящий скол, а не
-                              // как наклейка. FadeTransition проявляет скол
-                              // вместе с логотипом, а RepaintBoundary держит
-                              // готовый растр: трещины не пересчитываются
-                              // каждый кадр.
-                              Positioned.fill(
-                                child: IgnorePointer(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(
-                                      _kRadius,
-                                    ),
-                                    child: FadeTransition(
-                                      opacity: _fadeAnimation,
-                                      child: RepaintBoundary(
-                                        child: CustomPaint(
-                                          painter: _ShatteredGlassPainter(
-                                            isDark: isDark,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 48),
+                child: Center(
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      // Подпись остаётся строго по центру кадра: «POWERED BY
+                      // LARAF» — мелко и чётко (10px, широкий треинг,
+                      // полужирный для резкости кромки). Подписывает
+                      // проявляется с логотипом и растворяется в самом конце
+                      // сплеша вместе с человечком — тем же окном _badgeExit.
+                      AnimatedBuilder(
+                        animation: _badgeExit,
+                        builder: (context, _) => Opacity(
+                          opacity: 1.0 - _badgeExit.value,
+                          child: FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: _ShineText(
+                              'POWERED BY LARAF',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: isDark
+                                    ? Colors.grey[300]
+                                    : Colors.grey[500],
+                                letterSpacing: 3.2,
                               ),
-                              Positioned.fill(
-                                child: IgnorePointer(
-                                  child: RepaintBoundary(
-                                    child: AnimatedBuilder(
-                                      animation: _shine,
-                                      builder: (context, _) => ClipRRect(
-                                        borderRadius: BorderRadius.circular(
-                                          _kRadius,
-                                        ),
-                                        child: CustomPaint(
-                                          painter: _GlassSweepPainter(
-                                            t: _shine.value,
-                                            // На светлой теме белое ядро по
-                                            // белому кольцу не видно ВООБЩЕ —
-                                            // поэтому яркость задаётся темой,
-                                            // а тёмные кромки полосы делают
-                                            // блик читаемым на любом фоне.
-                                            strength: isDark ? 0.78 : 1.10,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                              shine: _shine,
+                            ),
                           ),
-                        ],
+                        ),
+                      ),
+                      // Человечек наложен ВНЕ потока СЛЕВА от «W» — он
+                      // не сдвигает центрированный текст. Живёт весь сплэш
+                      // и плавно растворяется в последние 400 мс (_badgeExit),
+                      // то есть исчезает в КОНЦЕ, когда сплеш уходит на
+                      // контент.
+                      Positioned(
+                        left: -34,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: AnimatedBuilder(
+                            animation: Listenable.merge([
+                              _badgeExit,
+                              _fadeAnimation,
+                            ]),
+                            builder: (context, _) => Opacity(
+                              // В начале — невидим, проявляется вместе с текстом
+                              // Wetcorp. (_fadeAnimation); в конце плавно
+                              // растворяется (_badgeExit). Ничего не «доезжает».
+                              opacity:
+                                  _fadeAnimation.value *
+                                  (1.0 - _badgeExit.value),
+                              child: _LevitationBadge(
+                                t: _float,
+                                color: accent,
+                                isDark: isDark,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 48),
-                  child: Center(
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.center,
-                      children: [
-                        // Подпись остаётся строго по центру кадра: «POWERED BY
-                        // LARAF» — мелко и чётко (10px, широкий треинг,
-                        // полужирный для резкости кромки). Подписывает
-                        // проявляется с логотипом и растворяется в самом конце
-                        // сплеша вместе с человечком — тем же окном _badgeExit.
-                        AnimatedBuilder(
-                          animation: _badgeExit,
-                          builder: (context, _) => Opacity(
-                            opacity: 1.0 - _badgeExit.value,
-                            child: FadeTransition(
-                              opacity: _fadeAnimation,
-                              child: _ShineText(
-                                'POWERED BY LARAF',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark
-                                      ? Colors.grey[300]
-                                      : Colors.grey[500],
-                                  letterSpacing: 3.2,
-                                ),
-                                shine: _shine,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Человечек наложен ВНЕ потока СЛЕВА от «W» — он
-                        // не сдвигает центрированный текст. Живёт весь сплэш
-                        // и плавно растворяется в последние 400 мс (_badgeExit),
-                        // то есть исчезает в КОНЦЕ, когда сплеш уходит на
-                        // контент.
-                        Positioned(
-                          left: -34,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: AnimatedBuilder(
-                              animation: Listenable.merge([
-                                _badgeExit,
-                                _fadeAnimation,
-                              ]),
-                              builder: (context, _) => Opacity(
-                                // В начале — невидим, проявляется вместе с текстом
-                                // Wetcorp. (_fadeAnimation); в конце плавно
-                                // растворяется (_badgeExit). Ничего не «доезжает».
-                                opacity:
-                                    _fadeAnimation.value *
-                                    (1.0 - _badgeExit.value),
-                                child: _LevitationBadge(
-                                  t: _float,
-                                  color: accent,
-                                  isDark: isDark,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -609,32 +430,22 @@ class _ShineText extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: shine,
-      // Оба текста — готовые child'ы: базовый и под маской. Раньше второй
-      // Text создавался В БИЛДЕРЕ, то есть заново на каждом кадре хода
-      // (2 с × 60 fps): Flutter каждый раз раскладывал строку заново —
-      // это и был заметный «подхруст» подписи. Теперь layout один.
-      child: Stack(
+      child: Text(text, style: style),
+      builder: (context, base) => Stack(
         alignment: Alignment.center,
         children: [
-          Text(text, style: style),
+          base!,
           Positioned.fill(
             child: ShaderMask(
               shaderCallback: (rect) => _band(rect, shine.value),
               blendMode: BlendMode.srcIn,
+              // Тот же стиль без изменений: srcIn берёт отсюда только альфу
+              // глифов, а метрики обязаны совпасть с базовой строкой.
               child: Text(text, style: style),
             ),
           ),
         ],
       ),
-      builder: (context, child) {
-        // Вне окна хода маска не нужна: полоса прозрачна, а ShaderMask
-        // заставляет GPU делать saveLayer каждый кадр. Пока блик не идёт,
-        // отдаём только базовую строку — вступительный и финальный отрезки
-        // сплэша не платят за saveLayer.
-        final t = shine.value;
-        if (t <= 0.0 || t >= 1.0) return Text(text, style: style);
-        return child!;
-      },
     );
   }
 
@@ -666,7 +477,7 @@ class _ShineText extends StatelessWidget {
   }
 }
 
-/// Острый блик-спекуляр, скользящий по глиняной плите авы.
+/// Полоса блика, катящаяся по «стеклу» карточки логотипа.
 ///
 /// [t] — ход 0 → 1 одного прохода. Оба конца обязаны быть нулевой яркости и
 /// нулевой скоростью, иначе блик «включается» и «выключается» кадром:
@@ -685,7 +496,7 @@ class _ShineText extends StatelessWidget {
 class _GlassSweepPainter extends CustomPainter {
   final double t;
 
-  /// Верхняя точка яркости: на тёмной плите белый блик читается сильнее,
+  /// Верхняя точка яркости: на тёмном стекле белый блик читается сильнее,
   /// поэтому темой задаётся разная глубина.
   final double strength;
 
@@ -737,9 +548,7 @@ class _GlassSweepPainter extends CustomPainter {
       final solid = hot.withValues(alpha: peak / 255);
       final colors = [
         for (var i = 0; i < stops.length; i++)
-          (i == 0 || i == stops.length - 1)
-              ? solid.withValues(alpha: 0)
-              : solid,
+          (i == 0 || i == stops.length - 1) ? solid.withValues(alpha: 0) : solid,
       ];
       canvas.drawRect(
         r,
@@ -755,22 +564,22 @@ class _GlassSweepPainter extends CustomPainter {
 
     // 1. Тёмный контактный кант — узкий и впереди ядра.
     band(
-      cx - diagonal * 0.055,
-      diagonal * 0.05,
-      (0.14 * env * 255).round(),
+      cx - diagonal * 0.11,
+      diagonal * 0.12,
+      (0.12 * env * 255).round(),
       dark: true,
     );
     // 2. Широкое слабое гало — мягкая подсветка вокруг искры.
-    band(cx, diagonal * 0.17, (0.11 * env * 255).round());
+    band(cx, diagonal * 0.30, (0.16 * env * 255).round());
     // 3. Узкое яркое ядро с крутыми скатами (плато в середине).
     band(
       cx,
-      diagonal * 0.055,
-      (0.92 * env * 255).round(),
-      stops: const [0.0, 0.40, 0.5, 0.60, 1.0],
+      diagonal * 0.11,
+      (0.98 * env * 255).round(),
+      stops: const [0.0, 0.42, 0.5, 0.58, 1.0],
     );
     // 4. Тонкая почти белая «нить» по центру — остриё блеска.
-    band(cx, diagonal * 0.011, 255, color: Colors.white);
+    band(cx, diagonal * 0.022, 255, color: Colors.white);
     canvas.restore();
   }
 
@@ -779,18 +588,20 @@ class _GlassSweepPainter extends CustomPainter {
       oldDelegate.t != t || oldDelegate.strength != strength;
 }
 
-/// Эффект разбитого стекла на аве: радиальные трещины из точки удара,
-/// концентрические разломы-«паутинка» и светлые пятна напряжения.
+/// Разбитое стекло поверх плиты авы: скол расходится из точки удара.
 ///
-/// Всё детерминировано (фиксированный seed), поэтому скол не «дышит» между
-/// кадрами и не мерцает при перерисовке. Рисуется один раз под RepaintBoundary.
+/// Геометрия детерминирована (фиксированный seed): при перерисовке кадра
+/// трещины стоят на месте, а не «кипят». Слой кэшируется RepaintBoundary,
+/// поэтому растр лежит готовым и не грузит бюджетные телефоны.
+///
+/// Точка удара смещена от центра (0.30, 0.32) — если бить по центру, скол
+/// приходится ровно на логотип и читается хуже.
 class _ShatteredGlassPainter extends CustomPainter {
   final bool isDark;
 
   const _ShatteredGlassPainter({required this.isDark});
 
-  /// Точка удара — не в центре: скол из угла выглядит правдоподобнее и не
-  /// закрывает логотип по центру.
+  // Точка удара в долях стороны плиты.
   static const Offset _impact = Offset(0.30, 0.32);
 
   @override
@@ -798,13 +609,15 @@ class _ShatteredGlassPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final impact = Offset(_impact.dx * w, _impact.dy * h);
+
+    // Фиксированный seed: скол детерминирован и не мерцает между кадрами.
     final rng = math.Random(4711);
 
     final crackLight = Colors.white.withValues(alpha: isDark ? 0.58 : 0.88);
     final crackDark = Colors.black.withValues(alpha: isDark ? 0.58 : 0.34);
     final spot = Colors.white.withValues(alpha: isDark ? 0.17 : 0.30);
 
-    // Светлые «пятна» напряжения: слабые размытые кляксы вокруг удара.
+    // Пятна напряжения вокруг удара — светлые разводы на «стекле».
     for (var i = 0; i < 5; i++) {
       final a = rng.nextDouble() * math.pi * 2;
       final d = rng.nextDouble() * 0.32;
@@ -812,22 +625,20 @@ class _ShatteredGlassPainter extends CustomPainter {
         impact.dx + math.cos(a) * d * w,
         impact.dy + math.sin(a) * d * h,
       );
+      final rr = w * (0.06 + rng.nextDouble() * 0.09);
       canvas.drawCircle(
         c,
-        w * (0.06 + rng.nextDouble() * 0.09),
+        rr,
         Paint()
           ..shader = RadialGradient(
             colors: [spot, spot.withValues(alpha: 0)],
-          ).createShader(
-            Rect.fromCircle(center: c, radius: w * 0.12),
-          ),
+          ).createShader(Rect.fromCircle(center: c, radius: rr)),
       );
     }
 
-    // Радиальные трещины: лучи от удара к кромке с лёгким изломом на пути.
-    // Длина считается накопителем (шаг × число шагов), а не t·t — иначе
-    // дальние сегменты схлопывались к центру.
-    final spokes = 11;
+    // Радиальные трещины: ломаная линия с изломом на каждом шаге, поэтому
+    // скол читается как настоящий, а не как ровный «луч».
+    const spokes = 11;
     final span = math.sqrt(w * w + h * h) * 0.5;
     for (var i = 0; i < spokes; i++) {
       final a = (i / spokes) * math.pi * 2 + rng.nextDouble() * 0.28;
@@ -863,18 +674,17 @@ class _ShatteredGlassPainter extends CustomPainter {
       );
     }
 
-    // Концентрические разломы вокруг удара — «паутинка» между лучами.
-    final rings = 4;
+    // Концентрические разломы-«паутинка», затухающие к краю.
+    const rings = 4;
     for (var r = 1; r <= rings; r++) {
       final rr = (r / rings) * w * 0.72;
       final arcPath = Path();
-      final segs = 9;
       var started = false;
-      for (var i = 0; i <= segs; i++) {
-        final a = (i / segs) * math.pi * 2;
-        final wobble = 0.82 + rng.nextDouble() * 0.36;
-        final x = impact.dx + math.cos(a) * rr * wobble;
-        final y = impact.dy + math.sin(a) * rr * wobble;
+      for (var i = 0; i <= 9; i++) {
+        final a = (i / 9) * math.pi * 2;
+        final wob = 0.82 + rng.nextDouble() * 0.36;
+        final x = impact.dx + math.cos(a) * rr * wob;
+        final y = impact.dy + math.sin(a) * rr * wob;
         if (!started) {
           arcPath.moveTo(x, y);
           started = true;
@@ -883,13 +693,14 @@ class _ShatteredGlassPainter extends CustomPainter {
         }
       }
       arcPath.close();
+      final fade = 1 - r / (rings + 1);
       canvas.drawPath(
         arcPath,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.4
           ..color = crackDark.withValues(
-            alpha: (isDark ? 0.30 : 0.18) * (1 - r / (rings + 1)),
+            alpha: (isDark ? 0.30 : 0.18) * fade,
           ),
       );
       canvas.drawPath(
@@ -898,12 +709,12 @@ class _ShatteredGlassPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.7
           ..color = crackLight.withValues(
-            alpha: (isDark ? 0.55 : 0.85) * (1 - r / (rings + 1)),
+            alpha: (isDark ? 0.55 : 0.85) * fade,
           ),
       );
     }
 
-    // Яркая точка удара: осколок поймал свет.
+    // Яркая точка удара — центр скола.
     canvas.drawCircle(
       impact,
       w * 0.035,
