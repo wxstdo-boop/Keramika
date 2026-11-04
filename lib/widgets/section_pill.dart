@@ -239,6 +239,22 @@ class _SectionPillState extends State<SectionPill>
   /// пересекает границу раздела.
   int _dragNearest = -1;
 
+  /// Величина «растяжки-волны» (transit) в момент отпускания пальца. Пока
+  /// идёт «расслабление» края ([_edgeSettle]), форма камня затухает от
+  /// ЭТОГО зафиксированного значения по той же кривой settle, а не
+  /// преследует живую пружину (которая «складывается» в ноль в последний
+  /// кадр при лонде в угол — отсюда рывок «резко возвращается в форму»).
+  double _releaseWave = 0;
+
+  /// Идёт ли «расслабление после отпускания драга»: в это окно форму камня
+  /// ведёт [_releaseWave] (зафиксированный), а не живая пружина. Во время
+  /// свободного полёта по тапу (не-драг) растяжение остаётся живым.
+  bool _releasing = false;
+
+  /// Последняя вычисленная величина transit-растяжки (волна) — снапшот,
+  /// чтобы в момент отпускания понимать, с какой растяжки затухать.
+  double _lastWave = 0;
+
   @override
   void initState() {
     super.initState();
@@ -253,6 +269,14 @@ class _SectionPillState extends State<SectionPill>
           // Расслабление завершено (или отменено) — сбрасываем захваченную
           // тягу, чтобы она не влияла на следующий жест.
           _releasePull = 0;
+          if (status == AnimationStatus.completed ||
+              status == AnimationStatus.dismissed) {
+            // «Расслабление» отыграно — растяжение снова ведётся живой
+            // формулой (по тапу/следующему драгу).
+            _releasing = false;
+            _releaseWave = 0;
+            _lastWave = 0;
+          }
         });
     // Логарифмический догон камня за пальцем идёт КАЖДЫЙ КАДР отдельным
     // тикером (resistance). Камень и экран, запертый 1:1 к нему, из-за
@@ -295,6 +319,11 @@ class _SectionPillState extends State<SectionPill>
     _edgeSettle.value = 0;
     _releasePull = 0;
     _edgePull = 0;
+    // Снимаем «зафиксированную волну» с прошлого отпускания: под новым
+    // пальцем растяжение снова ведётся живой формулой.
+    _releasing = false;
+    _releaseWave = 0;
+    _lastWave = 0;
 
     _dragPage = sectionRailPage.value
         .clamp(0.0, (count - 1).toDouble())
@@ -368,6 +397,13 @@ class _SectionPillState extends State<SectionPill>
     if (!_dragging) return;
     _dragging = false;
     _smoothTicker.stop();
+    // Захватываем величину transit-растяжки в точке, где отпустили:
+    // по этой величины камень будет ПЛАВНО затухать (см. _releasing в
+    // билдере), а не резким броском «складываться» в форму, когда живая
+    // пружина долетает до угла.
+    _releasing = true;
+    _releaseWave = _waveAt(_dragPage, count);
+    _lastWave = _releaseWave;
     _startEdgeSettle();
     final target = _dragPage.round().clamp(0, count - 1);
     // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт
@@ -385,6 +421,11 @@ class _SectionPillState extends State<SectionPill>
     if (!_dragging) return;
     _dragging = false;
     _smoothTicker.stop();
+    // Отмена (палец ушёл не по сценарию): то же плавное затухание
+    // transit-растяжки от зафиксированной величины.
+    _releasing = true;
+    _releaseWave = _waveAt(_dragPage, sectionIconsFor(context).length);
+    _lastWave = _releaseWave;
     _startEdgeSettle();
     sectionDragPage.value = null;
     final count = sectionIconsFor(context).length;
@@ -393,6 +434,19 @@ class _SectionPillState extends State<SectionPill>
       sectionCurrentIndex.value = target;
       sectionTabTap.value++;
     }
+  }
+
+  /// Величина transit-растяжки (wave) для дробной страницы [page] из
+  /// [count] разделов: пик у порогов раздела, ноль в центре секции.
+  /// Одна формула и в билдере (живая), и в момент отпускания (снапшот),
+  /// чтобы «зафиксированная волна» точно совпадала с той, что палец
+  /// «отпустил» — иначе в первый кадр отпускания форма бы просела.
+  double _waveAt(double page, int count) {
+    final p = page.clamp(0.0, (count - 1).toDouble());
+    final transit = (p - p.roundToDouble()).abs();
+    final t2 = transit * 2.0; // 0..1 (0 — покой в центре секции)
+    // Та же формула, что в билдере: амплитуда 1.0, квадратичная кривая.
+    return 1.0 * (1.0 - (1.0 - t2) * (1.0 - t2));
   }
 
   /// «Расслабление» камня после отпускания пальца: захватываем текущую
@@ -523,7 +577,11 @@ class _SectionPillState extends State<SectionPill>
     // «углов», где раздел граничит со следующим) и почти ноль в центре.
     // Чуть сильнее в полёте (1.0), под пальцем (0.9) — чтобы растяжение
     // выбранного угла читалось отчётливо, но не «раздувалось» рывком.
-    final wave = 1.0 * (1.0 - (1.0 - t2) * (1.0 - t2));
+    // Снапшот живой транзитной волны (stretch в середине секции): держим в
+    // [_lastWave], чтобы в момент отпускания понимать, с какой величины
+    // затухать. Сама смена «живая → затухающая» происходит ВНУТРИ
+    // внутреннего AnimatedBuilder (см. ниже), где она ведётся по _edgeSettle.
+    _lastWave = 1.0 * (1.0 - (1.0 - t2) * (1.0 - t2));
     // «Расслабление» камня после отпускания: он сползает с _releasePull к
     // нулю по _edgeSettle (220 мс, easeOut). Под пальцем — 1:1 (_edgePull),
     // БЕЗ лага. TweenAnimationBuilder убран: он догонял цель с лагом
@@ -548,6 +606,15 @@ class _SectionPillState extends State<SectionPill>
         // дёргано возвращается». easeInOutCubic стартует и финиширует с
         // нулевой скоростью — камень плавно «отпускает» край.
         final settle = Curves.easeInOutCubic.transform(_edgeSettle.value);
+        // ВОЛНА УГЛОВ: в обычном полёте (тап/пружина) — живая [_lastWave];
+        // в окне «расслабления после отпускания драга» — ЗАФИКСИРОВАННАЯ
+        // [_releaseWave], плавно затухающая по той же кривой easeInOutCubic.
+        // Раньше в этом окне шёл _lastWave (живая пружина), который в
+        // последнем кадре лонда резко падал в 0 — «резко возвращается
+        // в форму». Теперь отпускание формы идёт синхронно с краем.
+        final wave = _releasing
+            ? _releaseWave * (1.0 - settle)
+            : _lastWave;
         final stretch = _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
         // НЕПРЕРЫВНОЕ направление растяжки (заменяет дискретный
