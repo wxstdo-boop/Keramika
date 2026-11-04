@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../main.dart' show preDecodedLogo;
+import '../widgets/clay_surface.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback? onDone;
@@ -154,33 +155,42 @@ class _SplashScreenState extends State<SplashScreen>
     final clay = isDark ? clayTint : Color.lerp(clayTint, cs.primary, 0.16)!;
 
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          // Фон сплэша под темы — как у экрана PIN-кода: градиент от
-          // поверхности к лёгкому фирменному оттенку primaryContainer,
-          // а не жёсткий серый/чёрный. Светлый/тёмный по текущей теме.
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [
-                    cs.surface,
-                    cs.surfaceContainerLow,
-                    Color.lerp(cs.surface, cs.primaryContainer, 0.28)!,
-                  ]
-                : [
-                    cs.surfaceContainerLowest,
-                    cs.surface,
-                    Color.lerp(cs.surface, cs.primaryContainer, 0.35)!,
-                  ],
+      body: Stack(
+        children: [
+          // Фон — та же матовая глина, что и плита аватара: мелкая фракция
+          // «пупырок» и мягкий свет делают поверхность объёмной, а не плоской
+          // заливкой. Отдельным слоем, а не обёрткой вокруг всего экрана:
+          // у фона свой RepaintBoundary, поэтому анимации сплэша
+          // (появление и левитация) его не перерисовывают — фон лепится
+          // один раз и дальше едет готовым растром.
+          Positioned.fill(
+            child: ClaySurface(
+              base: cs.surface,
+              isDark: isDark,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDark
+                    ? [
+                        cs.surface,
+                        cs.surfaceContainerLow,
+                        Color.lerp(cs.surface, cs.primaryContainer, 0.28)!,
+                      ]
+                    : [
+                        cs.surfaceContainerLowest,
+                        cs.surface,
+                        Color.lerp(cs.surface, cs.primaryContainer, 0.35)!,
+                      ],
+              ),
+              bumpScale: 2.0,
+              strength: 0.45,
+              seed: 23,
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              const Spacer(),
+          SafeArea(
+            child: Column(
+              children: [
+                const Spacer(),
                 FadeTransition(
                   opacity: _fadeAnimation,
                   child: Column(
@@ -210,15 +220,17 @@ class _SplashScreenState extends State<SplashScreen>
                           // габаритом) не подрезается.
                           Stack(
                             children: [
-                              // ОБЪЁМНАЯ ГЛИНА: плита не плоская заливка,
-                              // а вылепленная масса — светлая грань
-                              // сверху-слева и тёмная снизу-справа.
+                              // ОБЪЁМНАЯ ГЛИНА С «ПУПЫРКАМИ»: как у иконки на
+                              // домашнем экране — плита не плоская заливка, а
+                              // вылепленная масса. Свет лепит каждую выпуклость
+                              // (пятно сверху-слева, тень снизу-справа), сверху
+                              // мелкое зерно и виньетка по краям.
                               //
-                              // RepaintBoundary держит готовую текстуру: во
-                              // время slide/fade-анимации (1800 мс) движется
-                              // растр, а не пересчитываются десятки
-                              // градиентов каждый кадр — на слабых телефонах
-                              // плита не «дёргается».
+                              // RepaintBoundary внутри ClaySurface держит
+                              // готовую текстуру: во время slide/fade-анимации
+                              // (1800 мс) движется растр, а не пересчитываются
+                              // десятки градиентов каждый кадр — на слабых
+                              // телефонах плита не «дёргается».
                               RepaintBoundary(
                                 child: SizedBox(
                                   width: 128,
@@ -230,6 +242,14 @@ class _SplashScreenState extends State<SplashScreen>
                                       // обрезается кружком и остаётся читаемой.
                                       borderRadius: BorderRadius.circular(
                                         _kRadius,
+                                      ),
+                                      // Тонкий рант вместо трёхпиксельной неоновой
+                                      // рамки: глина держит кромку, но не светится.
+                                      border: Border.all(
+                                        color: accent.withValues(
+                                          alpha: isDark ? 0.55 : 0.40,
+                                        ),
+                                        width: 1.4,
                                       ),
                                       boxShadow: [
                                         // Мягкая рассеянная тень — плита лежит на
@@ -255,35 +275,31 @@ class _SplashScreenState extends State<SplashScreen>
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(25),
-                                      child: DecoratedBox(
-                                        // Настоящая ФАСКА вместо «пупырок»: у
-                                        // плиты резкая светлая грань сверху-слева
-                                        // и тёмная снизу-справа, а середина
-                                        // остаётся чистым цветом глины. Переход
-                                        // держим близко к кромке (0.0→0.16 и
-                                        // 0.84→1.0) — именно резкий перегиб даёт
-                                        // «огранку», которую видно в масштабе 1:1;
-                                        // плавный градиент читался как грязь.
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: [
-                                              Color.lerp(
-                                                clay,
-                                                Colors.white,
-                                                isDark ? 0.40 : 0.34,
-                                              )!,
+                                      child: ClaySurface(
+                                        // Базовая глина: мягкий вертикальный
+                                        // объём под выпуклостями.
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Color.lerp(
                                               clay,
-                                              Color.lerp(
-                                                clay,
-                                                Colors.black,
-                                                isDark ? 0.42 : 0.24,
-                                              )!,
-                                            ],
-                                            stops: const [0.0, 0.16, 1.0],
-                                          ),
+                                              Colors.white,
+                                              isDark ? 0.16 : 0.14,
+                                            )!,
+                                            clay,
+                                            Color.lerp(
+                                              clay,
+                                              Colors.black,
+                                              isDark ? 0.20 : 0.10,
+                                            )!,
+                                          ],
+                                          stops: const [0.0, 0.55, 1.0],
                                         ),
+                                        base: clay,
+                                        isDark: isDark,
+                                        bumpScale: 1.0,
+                                        seed: 11,
                                         child: Padding(
                                           padding: const EdgeInsets.all(16),
                                           child: ClipRRect(
@@ -330,58 +346,83 @@ class _SplashScreenState extends State<SplashScreen>
                                                     ),
                                                   ),
                                                 ),
-                                                // ВДАВЛЕННЫЙ МЕДАЛЬОН: логотип
-                                                // не наклеен на плиту, а утоплен в
-                                                // неё. Две вещи вместе: КАНАВКА по
-                                                // кромке (тонкая тёмная линия по всему
-                                                // контуру — она и читается как
-                                                // углубление) и НАПРАВЛЕННАЯ фаска
-                                                // (тень сверху-слева, свет снизу-
-                                                // справа). Раньше здесь были только
-                                                // мягкие градиенты поверх яркого
-                                                // логотипа — они в нём тонули, и
-                                                // вдавленности не было видно.
+                                                // РЕЛЬЕФ ПОВЕРХ ЛОГОТИПА: те же
+                                                // «пупырки», что и по краям
+                                                // плиты, идут и по медальону —
+                                                // штамп не «наклеен», а вылеплен
+                                                // в той же массе.
+                                                IgnorePointer(
+                                                  child: ClaySurface(
+                                                    base: clay,
+                                                    isDark: isDark,
+                                                    bumpScale: 1.6,
+                                                    seed: 11,
+                                                    strength: 0.6,
+                                                    fill: false,
+                                                  ),
+                                                ),
+                                                // УГЛУБЛЕНИЕ ПОД ШТАМП: медальон
+                                                // не наклеен на глину, а вдавлен
+                                                // в неё — тёмная внутренняя тень
+                                                // по верхней кромке и мягкий блик
+                                                // по нижней.
                                                 IgnorePointer(
                                                   child: DecoratedBox(
                                                     decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            16,
-                                                          ),
-                                                      border: Border.all(
-                                                        color: Color.lerp(
-                                                          clay,
-                                                          Colors.black,
-                                                          isDark ? 0.55 : 0.40,
-                                                        )!.withValues(
-                                                          alpha: isDark
-                                                              ? 0.50
-                                                              : 0.38,
-                                                        ),
-                                                        width: 1.6,
-                                                      ),
                                                       gradient: LinearGradient(
-                                                        begin: Alignment.topLeft,
-                                                        end: Alignment.bottomRight,
+                                                        begin:
+                                                            Alignment.topCenter,
+                                                        end: Alignment
+                                                            .bottomCenter,
                                                         colors: [
-                                                          Colors.black.withValues(
-                                                            alpha: isDark ? 0.50 : 0.34,
-                                                          ),
-                                                          Colors.black.withValues(
-                                                            alpha: 0.0,
-                                                          ),
-                                                          Colors.white.withValues(
-                                                            alpha: 0.0,
-                                                          ),
-                                                          Colors.white.withValues(
-                                                            alpha: isDark ? 0.20 : 0.30,
-                                                          ),
+                                                          Colors.black
+                                                              .withValues(
+                                                                alpha: isDark
+                                                                    ? 0.30
+                                                                    : 0.20,
+                                                              ),
+                                                          Colors.transparent,
+                                                          Colors.white
+                                                              .withValues(
+                                                                alpha: isDark
+                                                                    ? 0.05
+                                                                    : 0.10,
+                                                              ),
                                                         ],
                                                         stops: const [
                                                           0.0,
-                                                          0.12,
-                                                          0.88,
+                                                          0.22,
                                                           1.0,
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                // СВЕТОВАЯ КРОМКА СВЕРХУ: матовая
+                                                // глина ловит свет верхней гранью.
+                                                // Тонкая светлая линия по верхнему
+                                                // краю и мягкое затемнение к низу
+                                                // дают «выпуклость» без глянца.
+                                                IgnorePointer(
+                                                  child: DecoratedBox(
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        begin:
+                                                            Alignment.topCenter,
+                                                        end: Alignment
+                                                            .bottomCenter,
+                                                        colors: [
+                                                          Colors.white
+                                                              .withValues(
+                                                                alpha: isDark
+                                                                    ? 0.14
+                                                                    : 0.22,
+                                                              ),
+                                                          Colors.transparent,
+                                                        ],
+                                                        stops: const [
+                                                          0.0,
+                                                          0.08,
                                                         ],
                                                       ),
                                                     ),
@@ -389,6 +430,34 @@ class _SplashScreenState extends State<SplashScreen>
                                                 ),
                                               ],
                                             ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // РАЗБИТОЕ СТЕКЛО: радиальные трещины из точки
+                              // удара, концентрические разломы и светлые
+                              // «пятна» напряжения. Лежит над плитой, но ПОД
+                              // бегущим бликом — искра проходит и по трещинам,
+                              // поэтому ава читается как настоящий скол, а не
+                              // как наклейка. FadeTransition проявляет скол
+                              // вместе с логотипом, а RepaintBoundary держит
+                              // готовый растр: трещины не пересчитываются
+                              // каждый кадр.
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(
+                                      _kRadius,
+                                    ),
+                                    child: FadeTransition(
+                                      opacity: _fadeAnimation,
+                                      child: RepaintBoundary(
+                                        child: CustomPaint(
+                                          painter: _ShatteredGlassPainter(
+                                            isDark: isDark,
                                           ),
                                         ),
                                       ),
@@ -413,7 +482,7 @@ class _SplashScreenState extends State<SplashScreen>
                                             // поэтому яркость задаётся темой,
                                             // а тёмные кромки полосы делают
                                             // блик читаемым на любом фоне.
-                                            strength: isDark ? 0.62 : 0.95,
+                                            strength: isDark ? 0.78 : 1.10,
                                           ),
                                         ),
                                       ),
@@ -500,7 +569,8 @@ class _SplashScreenState extends State<SplashScreen>
               ],
             ),
           ),
-        ),
+        ],
+      ),
     );
   }
 }
@@ -653,6 +723,9 @@ class _GlassSweepPainter extends CustomPainter {
       Color? color,
     }) {
       if (peak <= 1) return;
+      // strength > 1 (светлая тема) разгоняет вершину выше 255 — withValues
+      // такое значение не принимает, поэтому подрезаем к пределу альфы.
+      peak = peak > 255 ? 255 : peak;
       final r = Rect.fromLTWH(
         center - width / 2,
         -diagonal,
@@ -704,6 +777,151 @@ class _GlassSweepPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GlassSweepPainter oldDelegate) =>
       oldDelegate.t != t || oldDelegate.strength != strength;
+}
+
+/// Эффект разбитого стекла на аве: радиальные трещины из точки удара,
+/// концентрические разломы-«паутинка» и светлые пятна напряжения.
+///
+/// Всё детерминировано (фиксированный seed), поэтому скол не «дышит» между
+/// кадрами и не мерцает при перерисовке. Рисуется один раз под RepaintBoundary.
+class _ShatteredGlassPainter extends CustomPainter {
+  final bool isDark;
+
+  const _ShatteredGlassPainter({required this.isDark});
+
+  /// Точка удара — не в центре: скол из угла выглядит правдоподобнее и не
+  /// закрывает логотип по центру.
+  static const Offset _impact = Offset(0.30, 0.32);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final impact = Offset(_impact.dx * w, _impact.dy * h);
+    final rng = math.Random(4711);
+
+    final crackLight = Colors.white.withValues(alpha: isDark ? 0.58 : 0.88);
+    final crackDark = Colors.black.withValues(alpha: isDark ? 0.58 : 0.34);
+    final spot = Colors.white.withValues(alpha: isDark ? 0.17 : 0.30);
+
+    // Светлые «пятна» напряжения: слабые размытые кляксы вокруг удара.
+    for (var i = 0; i < 5; i++) {
+      final a = rng.nextDouble() * math.pi * 2;
+      final d = rng.nextDouble() * 0.32;
+      final c = Offset(
+        impact.dx + math.cos(a) * d * w,
+        impact.dy + math.sin(a) * d * h,
+      );
+      canvas.drawCircle(
+        c,
+        w * (0.06 + rng.nextDouble() * 0.09),
+        Paint()
+          ..shader = RadialGradient(
+            colors: [spot, spot.withValues(alpha: 0)],
+          ).createShader(
+            Rect.fromCircle(center: c, radius: w * 0.12),
+          ),
+      );
+    }
+
+    // Радиальные трещины: лучи от удара к кромке с лёгким изломом на пути.
+    // Длина считается накопителем (шаг × число шагов), а не t·t — иначе
+    // дальние сегменты схлопывались к центру.
+    final spokes = 11;
+    final span = math.sqrt(w * w + h * h) * 0.5;
+    for (var i = 0; i < spokes; i++) {
+      final a = (i / spokes) * math.pi * 2 + rng.nextDouble() * 0.28;
+      final reach = 0.62 + rng.nextDouble() * 0.62;
+      final steps = 3 + rng.nextInt(3);
+      final stepLen = span * reach / steps;
+      final path = Path()..moveTo(impact.dx, impact.dy);
+      var x = impact.dx;
+      var y = impact.dy;
+      var ang = a;
+      for (var j = 0; j < steps; j++) {
+        ang += (rng.nextDouble() - 0.5) * 0.5;
+        x += math.cos(ang) * stepLen;
+        y += math.sin(ang) * stepLen;
+        path.lineTo(x, y);
+      }
+      // Тёмная подложка + светлая линия = скол с бликом на грани.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.8
+          ..strokeCap = StrokeCap.round
+          ..color = crackDark,
+      );
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3
+          ..strokeCap = StrokeCap.round
+          ..color = crackLight,
+      );
+    }
+
+    // Концентрические разломы вокруг удара — «паутинка» между лучами.
+    final rings = 4;
+    for (var r = 1; r <= rings; r++) {
+      final rr = (r / rings) * w * 0.72;
+      final arcPath = Path();
+      final segs = 9;
+      var started = false;
+      for (var i = 0; i <= segs; i++) {
+        final a = (i / segs) * math.pi * 2;
+        final wobble = 0.82 + rng.nextDouble() * 0.36;
+        final x = impact.dx + math.cos(a) * rr * wobble;
+        final y = impact.dy + math.sin(a) * rr * wobble;
+        if (!started) {
+          arcPath.moveTo(x, y);
+          started = true;
+        } else {
+          arcPath.lineTo(x, y);
+        }
+      }
+      arcPath.close();
+      canvas.drawPath(
+        arcPath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..color = crackDark.withValues(
+            alpha: (isDark ? 0.30 : 0.18) * (1 - r / (rings + 1)),
+          ),
+      );
+      canvas.drawPath(
+        arcPath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.7
+          ..color = crackLight.withValues(
+            alpha: (isDark ? 0.55 : 0.85) * (1 - r / (rings + 1)),
+          ),
+      );
+    }
+
+    // Яркая точка удара: осколок поймал свет.
+    canvas.drawCircle(
+      impact,
+      w * 0.035,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Colors.white.withValues(alpha: isDark ? 0.85 : 0.95),
+            Colors.white.withValues(alpha: 0),
+          ],
+        ).createShader(
+          Rect.fromCircle(center: impact, radius: w * 0.06),
+        ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ShatteredGlassPainter oldDelegate) =>
+      oldDelegate.isDark != isDark;
 }
 
 /// Левитирующий стикман рядом с подписью «Wetcorp.»
