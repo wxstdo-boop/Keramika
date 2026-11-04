@@ -28,6 +28,14 @@ Note `flutter test` needs a mocked `path_provider` channel and
 `SharedPreferences.setMockInitialValues` before `initPrefs()` — copy the setup
 from `test/section_pill_transition_test.dart`.
 
+Грабля визуальных проверок: `testWidgets` крутит тело теста в fake-async зоне,
+поэтому РЕАЛЬНЫЙ I/O там виснет — `Directory.systemTemp.createTemp()` и любой
+`await` по файловой системе не завершаются, тест уходит в `flutter test`
+таймаут. Для рендера подставь в мок `path_provider` готовый путь (`/tmp`),
+а PNG пиши синхронным `File(...).writeAsBytesSync`. Полноэкранные сплэш-тесты
+с `pumpAndSettle()` тоже виснут — анимации там бесконечные (`repeat()`),
+крути время дискретными `pump(Duration)`.
+
 ## CI (GitHub Actions): грабли, на которые уже наступали
 
 Релизы собирает `.github/workflows/ship.yml` (push в `main`) и `release.yml`
