@@ -286,7 +286,13 @@ class _SectionPillState extends State<SectionPill>
   }
 
   /// Кадровый тик резистанса: камень догоняет цель-палец логарифмически и
-  /// пишет своё сглаженное значение в общий канал.
+  /// пишет своё сглаженное значение в общий канал. КРИТИЧНО: как только
+  /// догоняющий хвост становится незаметным (&lt;0.0005 страницы ≈ 0.15 px
+  /// на дорожке), тикер ОСТАНАВЛИВАЕТСЯ — иначе он каждые ~16 мс пишет
+  /// sectionDragPage, и Listenable.merge в билдере пересобирает таблетку,
+  /// а Home jumpTo читает keep-alive экраны — отсюда «под удержанием
+  /// дёргает экраны / доводит». При каждом новом dragUpdate тикер
+  /// перезапускается (см. [_dragUpdate]).
   void _onSmoothTick(Duration _) {
     if (!_dragging) {
       _smoothTicker.stop();
@@ -295,7 +301,16 @@ class _SectionPillState extends State<SectionPill>
     // Коэффициент 0.30 на кадр (~60 fps): камень мягко отстаёт от пальца,
     // но уже не «плывёт» с заметной задержкой (0.18 читалось как тормоз).
     _dragSmooth += (_dragPage - _dragSmooth) * 0.30;
-    if ((_dragPage - _dragSmooth).abs() < 0.001) _dragSmooth = _dragPage;
+    final diff = (_dragPage - _dragSmooth).abs();
+    if (diff < 0.0005) {
+      // Дошёл — фиксируем ровно на цели и остановили тикер: палец застыл,
+      // и каждый кадр писать sectionDragPage вредно (пересборка билдера +
+      // слушатель Home = дёрганье). Новый сдвиг пальца разбудит тикер.
+      _dragSmooth = _dragPage;
+      sectionDragPage.value = _dragSmooth;
+      _smoothTicker.stop();
+      return;
+    }
     sectionDragPage.value = _dragSmooth;
   }
 
@@ -381,6 +396,11 @@ class _SectionPillState extends State<SectionPill>
     // из-за этого едут МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — без рывка и без
     // рассинхрона (то самое «ультрабыстрый перелёт зажатием»).
     _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
+    // Кадровый резистанс: если тикер остановился на сходимости (см.
+    // [_onSmoothTick]), новый сдвиг пальца обязан его разбудить — иначе
+    // «зажать и пошевелить» не двигало бы камень (тикер был уже
+    // остановлен и не писал sectionDragPage).
+    if (!_smoothTicker.isActive) _smoothTicker.start();
     // Направление «резинки» теперь НЕПРЕРЫВНОЕ (см. stretchDir в
     // _buildStoneRow): знак _edgePull — под пальцем, знак _releasePull
     // (затухающий по _edgeSettle) — в полёте. Дискретный гистерезис
@@ -454,7 +474,13 @@ class _SectionPillState extends State<SectionPill>
   /// отпускает» край, а не соскакивает. До этого было Timer + второй
   /// setState: двойная пересборка в один кадр дёргала камень вбок.
   void _startEdgeSettle() {
-    if (!_dragging && _edgePull == 0) return;
+    // Дыра старого guard'а: `!_dragging && _edgePull == 0` — при отпускании
+    // ВНУТРИ трека (без выноса пальца за край) _edgePull = 0, и гашение НЕ
+    // запускалось, хотя _releasing/_releaseWave уже были захвачены:
+    // «зафиксированная волна» с замороженным settle=0 висела до следующего
+    // жеста — растянутая таблетка резко «складывалась» разом. Гасим, когда
+    // есть что гасить: крайняя тяга ИЛИ зафиксированная волна.
+    if (!_dragging && _edgePull == 0 && _releaseWave <= 0.02) return;
     _releasePull = _edgePull;
     _edgeSettle
       ..stop()
