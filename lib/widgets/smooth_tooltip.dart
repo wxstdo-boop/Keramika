@@ -421,7 +421,15 @@ class _SmoothTooltipState extends State<SmoothTooltip> {
       onPointerDown: (_) => _onDown(),
       onPointerUp: (_) => _onUp(),
       onPointerCancel: (_) => _onCancel(),
-      child: widget.child,
+      // Подпись-подсказка уходит и в дерево доступности: для кнопки без
+      // видимого текста (значки шапки — обновить, статистика, настройки)
+      // TalkBack иначе произносит просто «кнопка» без названия. `tooltip`
+      // (а не `label`) — чтобы не дублировать подпись там, где у ребёнка
+      // уже есть свой текст или `Semantics.label`.
+      child: Semantics(
+        tooltip: widget.message,
+        child: widget.child,
+      ),
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'installer.dart';
 import 'prefs.dart';
+import '../models/changelog_entry.dart';
 
 /// Репозиторий, из релизов которого приложение берёт обновления.
 const String kUpdateRepoOwner = 'wxstdo-boop';
@@ -156,6 +157,9 @@ class UpdateService {
 
   /// Поразрядное сравнение «1.6.10» и «1.6.9» → 1. Хвосты вроде «-beta»
   /// отбрасываются: сравниваются только ведущие числа.
+  static int compareVersionNames(String a, String b) =>
+      _compareVersionNames(a, b);
+
   static int _compareVersionNames(String a, String b) {
     List<int> parts(String v) => v
         .split(RegExp(r'[.+-]'))
@@ -175,6 +179,124 @@ class UpdateService {
   /// Скачивает APK во временный каталог. Возвращает путь к файлу или null.
   static bool hasValidSha256(String value) =>
       RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
+
+  // ── Живой журнал изменений ─────────────────────────────────────────────
+  //
+  // Экран «Что нового» берёт список прямо из GitHub-релизов, а не из
+  // захардкоженного массива: раньше он застрял на 1.6.72, пока приложение
+  // ушло на 1.6.104, и «элитная» мелочь — живой changelog — читалась как
+  // брошенная. Источник тот же, что у автообновления: публичные релизы.
+
+  /// Забирает последние релизы и превращает их в записи журнала.
+  /// Возвращает null при любой сетевой/форматной ошибке — экран тогда
+  /// показывает встроенный список, а не пустоту.
+  ///
+  /// Результат кэшируется в памяти на [_changelogTtl]: повторное открытие
+  /// экрана не дёргает сеть и рисуется мгновенно.
+  Future<List<ChangelogEntry>?> fetchChangelog({
+    int limit = 20,
+    bool force = false,
+  }) async {
+    final now = DateTime.now();
+    final cachedAt = _changelogCacheAt;
+    if (!force &&
+        _changelogCache != null &&
+        cachedAt != null &&
+        now.difference(cachedAt) < _changelogTtl) {
+      return _changelogCache;
+    }
+    final uri = Uri.parse(
+      'https://api.github.com/repos/$kUpdateRepoOwner/$kUpdateRepoName/'
+      'releases?per_page=$limit',
+    );
+    try {
+      final res = await http
+          .get(
+            uri,
+            headers: const {
+              'User-Agent': 'Keramika',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          )
+          .timeout(const Duration(seconds: 14));
+      if (res.statusCode != 200) return null;
+      final list = jsonDecode(res.body);
+      if (list is! List) return null;
+      final entries = <ChangelogEntry>[];
+      for (final raw in list) {
+        if (raw is! Map) continue;
+        final entry = parseRelease(raw.cast<String, dynamic>());
+        if (entry != null) entries.add(entry);
+      }
+      if (entries.isEmpty) return null;
+      // Свежие сверху: имена версий сравниваем по числам, а не строками.
+      entries.sort(
+        (a, b) => compareVersionNames(b.version, a.version),
+      );
+      _changelogCache = entries;
+      _changelogCacheAt = now;
+      return entries;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static const Duration _changelogTtl = Duration(hours: 6);
+  List<ChangelogEntry>? _changelogCache;
+  DateTime? _changelogCacheAt;
+
+  /// Разбор одного релиза GitHub в запись журнала. Вынесено отдельно, чтобы
+  /// покрыть тестом без сети.
+  @visibleForTesting
+  static ChangelogEntry? parseRelease(Map<String, dynamic> json) {
+    final tag = (json['tag_name'] as String?) ?? '';
+    final match = RegExp(r'v?(\d+(?:\.\d+)*)\+(\d+)').firstMatch(tag);
+    final version = match?.group(1) ?? tag.replaceFirst(RegExp(r'^v'), '');
+    if (version.isEmpty) return null;
+    final published = (json['published_at'] as String?) ?? '';
+    final date = published.length >= 10 ? published.substring(0, 10) : '';
+    final changes = parseReleaseNotes((json['body'] as String?) ?? '');
+    if (changes.isEmpty) {
+      changes.add('Обновление $version');
+    }
+    return ChangelogEntry(version: version, date: date, changes: changes);
+  }
+
+  /// Вытаскивает из тела релиза человекочитаемые пункты.
+  ///
+  /// Тело релиза — это авто-заметки GitHub («What's Changed» со списком
+  /// `* текст by @автор in <ссылка>`) плюс наша таблица SHA-256. Таблицу,
+  /// заголовки и служебную строку «Full Changelog» отбрасываем, из пунктов
+  /// срезаем `by @… in …` и markdown-ссылки.
+  @visibleForTesting
+  static List<String> parseReleaseNotes(String body) {
+    final out = <String>[];
+    for (var line in body.split('\n')) {
+      line = line.trim();
+      if (line.isEmpty) continue;
+      // Заголовки, таблицы SHA, служебные строки — не пункты.
+      if (line.startsWith('#') || line.startsWith('|')) continue;
+      if (line.toLowerCase().startsWith('**full changelog**')) continue;
+      final bullet = RegExp(r'^[*-]\s+').firstMatch(line);
+      if (bullet == null) continue;
+      var text = line.substring(bullet.end).trim();
+      // «… by @user in https://…» → «…»
+      text = text.replaceFirst(
+        RegExp(r'\s+by\s+@[\w-]+(\s+in\s+\S+)?$'),
+        '',
+      );
+      // [текст](url) → текст
+      text = text.replaceAllMapped(
+        RegExp(r'\[([^\]]+)\]\([^)]*\)'),
+        (m) => m.group(1)!,
+      );
+      text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (text.isEmpty) continue;
+      out.add(text);
+    }
+    return out;
+  }
 
   Future<String?> download(
     UpdateInfo info, {

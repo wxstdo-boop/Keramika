@@ -163,9 +163,9 @@ APK, уже установленный у пользователя, откати
 ## Чек-лист перед релизом
 
 - [ ] `versionCode` в `pubspec.yaml` выше, чем на устройстве
+- [ ] `kAppVersion` в `lib/services/app_version.dart` совпадает с `pubspec.yaml`
 - [ ] `flutter analyze` чист
 - [ ] `flutter test` зелёный
-- [ ] Заметки в `lib/screens/changelog_screen.dart` дополнены
 - [ ] `git status` без мусора и случайных файлов
 - [ ] Сборка установлена на реальный телефон поверх старой версии
 - [ ] Будильник срабатывает после перезагрузки

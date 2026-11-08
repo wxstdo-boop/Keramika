@@ -22,21 +22,27 @@
 ## 📸 Скриншоты
 
 > [!NOTE]
-> Галерея ещё не наполнена — в репозитории лежат только отладочные снимки с
-> тестовыми данными. Нормальные скриншоты нужно снять с устройства и положить в
-> [`docs/screenshots/`](docs/screenshots/). Как это сделать — там же README.
+> Галерея собрана из реальных экранов с демо-данными (без личных записей).
+> Снимки воспроизводимы: `flutter test tool/screenshots/render_screenshots.dart`
+> кладёт PNG в [`docs/screenshots/`](docs/screenshots/).
 
 <div align="center">
   <table>
     <tr>
-      <td width="33%"><img src="assets/keramika.png" width="120" alt="" /></td>
-      <td width="33%"><img src="assets/keramika.png" width="120" alt="" /></td>
-      <td width="33%"><img src="assets/keramika.png" width="120" alt="" /></td>
+      <td width="50%"><img src="docs/screenshots/alarms.png" width="260" alt="Будильники" /></td>
+      <td width="50%"><img src="docs/screenshots/habits.png" width="260" alt="Привычки со стриками" /></td>
     </tr>
     <tr>
       <td align="center"><sub>Будильники</sub></td>
-      <td align="center"><sub>Привычки</sub></td>
-      <td align="center"><sub>Ада</sub></td>
+      <td align="center"><sub>Привычки со стриками</sub></td>
+    </tr>
+    <tr>
+      <td width="50%"><img src="docs/screenshots/tasks.png" width="260" alt="Задачи" /></td>
+      <td width="50%"><img src="docs/screenshots/stats.png" width="260" alt="Статистика" /></td>
+    </tr>
+    <tr>
+      <td align="center"><sub>Задачи с приоритетами</sub></td>
+      <td align="center"><sub>Статистика РП</sub></td>
     </tr>
   </table>
 </div>
@@ -87,8 +93,12 @@
 ### 🛠 Система
 - **Автообновление** прямо из приложения: проверяет GitHub Releases, сверяет
   SHA-256 и ставит APK поверх старого — данные (PIN, будильники) сохраняются
+- **«Что нового»** тянется из живых релизов, а не из зашитого списка: экран
+  никогда не отстаёт от установленной версии
 - Material You: цвета тянутся из системной темы, есть тёмная тема
 - Плавные анимации: пружинные переходы, инерционный ввод, мягкие тултипы
+- Тумблеры **вибрации** и **«убрать анимации»**: декоративные петли гаснут,
+  система «упростить движение» уважается всегда
 - Локализация: **русский / English / Français**
 
 ---
@@ -125,14 +135,15 @@ flutter run
 
 ```
 lib/
-├── main.dart          Точка входа, тема, навигация, startup
+├── main.dart          Точка входа, навигация, startup, автосохранение
 ├── l10n/              Переводы (ru/en/fr) и провайдер локали
 ├── models/            Alarm, Habit, Task, RealityCheck, AppTimer, WakeTask
-├── screens/           24 файла: экраны и их компоненты
+├── screens/           24 экрана: разделы и их компоненты
 ├── services/          29 сервисов: данные, уведомления, ИИ, обновления
 ├── overlay/           Оверлей Ады + мост (io / web)
-├── utils/             Иконки, анимации, снэкбары, локализация системных диалогов
-└── widgets/           55 UI-компонентов
+├── theme/             Единый построитель темы (app_theme.dart)
+├── utils/             Иконки, анимации, токены дизайна, «убрать анимации»
+└── widgets/           56 UI-компонентов
 
 android/app/src/main/kotlin/com/wetidom/keramika/
 ├── MainActivity.kt             Точка входа Android
@@ -145,6 +156,11 @@ third_party/
 ```
 
 Подробный разбор — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Токены дизайна
+Геометрия, отступы, длительности и начертания живут в одном файле —
+`lib/utils/design_tokens.dart`. Тема (`lib/theme/app_theme.dart`) собирается
+из этих шкал, поэтому «ещё один магический радиус» не появляется незаметно.
 
 ### Хранение данных
 Без базы данных и без облака. Каждая сущность лежит отдельным JSON-файлом в
@@ -173,11 +189,11 @@ fsync-ом каждые 10 секунд. На web `dart:io` недоступен
 flutter test --concurrency=1
 ```
 
-33 тестовых файла, 199 тестов: стрики привычек, анимации чипов и тултипов,
+35 тестовых файлов, 210 тестов: стрики привычек, анимации чипов и тултипов,
 счётчик, слайдер-пикер, логика ворк-леда, локализация диалогов, смоук-тест.
 
-> По состоянию на 2026-11-03 в CI (Flutter 3.47.5, как в `.github/workflows/ci.yml`)
-> `flutter analyze` чистый, `flutter test` — 199 тестов, 3 пропущено (ручные,
+> По состоянию на 2026-11-08 в CI (Flutter 3.47.5, как в `.github/workflows/ci.yml`)
+> `flutter analyze` чистый, `flutter test` — 210 тестов, 3 пропущено (ручные,
 > требуют сети), падений нет. Подробности — в разделе
 > [Состояние тестов](docs/TESTS.md).
 

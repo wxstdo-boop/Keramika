@@ -2,6 +2,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
+import '../utils/motion_prefs.dart';
+
 /// Лёгкие, еле заметные «кровавые пятна» поверх фона темы MUTILATED.
 /// Это не полноценные Splash'и — фон почти не меняется, а пятна чуть
 /// «дышат», чтобы на слабых телефонах картинка не «залипала»,
@@ -21,7 +23,7 @@ class MutilatedSplatter extends StatefulWidget {
 }
 
 class _MutilatedSplatterState extends State<MutilatedSplatter>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   late final AnimationController _ctrl;
   late final List<_Splatter> _spots;
   final ValueNotifier<double> _phase = ValueNotifier<double>(0);
@@ -41,11 +43,12 @@ class _MutilatedSplatterState extends State<MutilatedSplatter>
       );
     });
     _cache.spots = _spots;
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 12),
-    )..addListener(_syncPhase);
-    _ctrl.repeat();
+    _ctrl = ambientRepeat(
+      AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 12),
+      )..addListener(_syncPhase),
+    );
   }
 
   void _syncPhase() {

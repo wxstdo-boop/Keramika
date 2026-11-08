@@ -41,6 +41,7 @@ import 'developer_corner_screen.dart';
 import '../services/update_service.dart';
 import 'forge_screen.dart';
 import '../utils/page_transitions.dart';
+import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
 import 'changelog_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -124,6 +125,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _perfectionism = false;
   bool _berserk = false;
   bool _taskNotes = false;
+  bool _haptics = true;
+  bool _reduceMotion = false;
   bool _permissionWarningDismissed = false;
   bool _grantPressed = false; // Состояние зажатия кнопки «Выдать»
   bool? _notificationsEnabled; // Кэш статуса уведомлений
@@ -192,6 +195,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       _loadPerfectionism(),
       _loadBerserk(),
       _loadTaskNotes(),
+      _loadHaptics(),
+      _loadReduceMotion(),
       _checkPermissionWarning(),
       _checkNotificationsEnabled(),
       _checkFullScreenGrant(),
@@ -819,6 +824,31 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _loadTaskNotes() async {
     _taskNotes = await SettingsService.loadTaskNotes();
+  }
+
+  Future<void> _loadHaptics() async {
+    _haptics = await SettingsService.loadHaptics();
+    Haptics.enabled = _haptics;
+  }
+
+  Future<void> _setHaptics(bool value) async {
+    await SettingsService.saveHaptics(value);
+    Haptics.enabled = value;
+    if (mounted) setState(() => _haptics = value);
+    // Отклик на само включение: когда включаем — даём короткий клик, чтобы
+    // человек сразу услышал/почувствовал, что стало иначе.
+    if (value) Haptics.select();
+  }
+
+  Future<void> _loadReduceMotion() async {
+    _reduceMotion = await SettingsService.loadReduceMotion();
+    MotionPrefs.enabled.value = _reduceMotion;
+  }
+
+  Future<void> _setReduceMotion(bool value) async {
+    await SettingsService.saveReduceMotion(value);
+    MotionPrefs.enabled.value = value;
+    if (mounted) setState(() => _reduceMotion = value);
   }
 
   Future<void> _checkPin() async {
@@ -2426,6 +2456,72 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                   trailing: const Icon(Icons.chevron_right, size: 20),
                   onTap: _clearCache,
+                ),
+              ),
+              const Divider(height: 1),
+              // Вибрация: гасит ВСЕ отклики — и прямые вызовы, и плеск
+              // кнопок. Тот же объёмный переключатель, что у соседних
+              // строк, чтобы карточка читалась единым блоком.
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: Icon(
+                    Icons.vibration,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(Translations.t('haptics', context)),
+                  subtitle: Text(
+                    Translations.t('hapticsDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: () async {
+                    final v = !_haptics;
+                    await _setHaptics(v);
+                  },
+                  trailing: VolumetricSwitch(
+                    value: _haptics,
+                    onChanged: _setHaptics,
+                    activeColor: theme.colorScheme.primary,
+                    semanticLabel: Translations.t('haptics', context),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              // «Убрать анимации»: гасит декоративные петли (блики, стая
+              // птиц, дыхание свечения) и переходы. Системный запрос
+              // «убрать анимации» действует независимо и всегда сильнее.
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: Icon(
+                    Icons.motion_photos_off_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(Translations.t('reduceMotion', context)),
+                  subtitle: Text(
+                    Translations.t('reduceMotionDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: () async {
+                    final v = !_reduceMotion;
+                    await _setReduceMotion(v);
+                  },
+                  trailing: VolumetricSwitch(
+                    value: _reduceMotion,
+                    onChanged: _setReduceMotion,
+                    activeColor: theme.colorScheme.primary,
+                    semanticLabel: Translations.t('reduceMotion', context),
+                  ),
                 ),
               ),
             ],

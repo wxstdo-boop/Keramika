@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../main.dart' show preDecodedLogo;
+import '../utils/motion_prefs.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback? onDone;
@@ -102,6 +103,9 @@ class _SplashScreenState extends State<SplashScreen>
     // страница встала на место.
     _startFloatTimer = Timer(const Duration(milliseconds: _kFloatStartMs), () {
       if (!mounted) return;
+      // Левитация — чисто декоративная петля: при «убрать анимации»
+      // человечек просто стоит на месте (в позе покоя), а не парит.
+      if (MotionPrefs.shouldReduceMotion) return;
       _float.repeat();
     });
     // Человечек доигрывает левитацию и затем мягко растворяется: за

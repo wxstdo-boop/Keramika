@@ -14,6 +14,8 @@ class SettingsService {
   static const _keyExperimental = 'setting_experimental';
   static const _keyAutoSave = 'setting_auto_save';
   static const _keyDevMode = 'setting_dev_mode';
+  static const _keyHaptics = 'setting_haptics';
+  static const _keyReduceMotion = 'setting_reduce_motion';
   static const _keyDeveloperPrompt = 'developer_prompt';
   static const _keyAutoExport = 'setting_auto_export';
   static const _keyAiGuide = 'setting_ai_guide';
@@ -186,6 +188,30 @@ class SettingsService {
   static Future<void> saveDevMode(bool value) async {
     final map = await _loadSettings();
     map[_keyDevMode] = value;
+    await _saveSettings(map);
+  }
+
+  /// Вибрация включена по умолчанию. Читается ДО первого кадра (см.
+  /// `main.dart`), чтобы плеск кнопок не успел дать один лишний отклик.
+  static Future<bool> loadHaptics() async {
+    final map = await _loadSettings();
+    return _bool(map[_keyHaptics], true);
+  }
+
+  static Future<void> saveHaptics(bool value) async {
+    final map = await _loadSettings();
+    map[_keyHaptics] = value;
+    await _saveSettings(map);
+  }
+
+  static Future<bool> loadReduceMotion() async {
+    final map = await _loadSettings();
+    return _bool(map[_keyReduceMotion], false);
+  }
+
+  static Future<void> saveReduceMotion(bool value) async {
+    final map = await _loadSettings();
+    map[_keyReduceMotion] = value;
     await _saveSettings(map);
   }
 

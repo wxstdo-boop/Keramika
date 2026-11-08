@@ -3,32 +3,57 @@
 ## Текущее состояние (проверено в CI)
 
 GitHub Actions, workflow `CI` (`.github/workflows/ci.yml`), Flutter **3.47.5**,
-ветка `main`, 2026-11-03:
+ветка `main`, 2026-11-08:
 
 ```
 flutter pub get --enforce-lockfile
 flutter analyze                 →  No issues found!
-flutter test                    →  All tests passed! (199, 3 skipped)
+flutter test                    →  All tests passed! (210, 3 skipped)
 ```
 
-Прогон зелёный целиком: **199 тестов в 33 файлах**, падений нет; 3 теста
+Прогон зелёный целиком: **210 тестов в 35 файлах**, падений нет; 3 теста
 помечены `skip` — это ручные прогоны, которым нужны сеть и токен
 (`live_forge_test.dart`). В том числе проходит `exit_dialog_localization_test.dart`
 (3 теста: ru/en/fr).
 
 Число тестов сверено с подсчётом объявлений `test(` / `testWidgets(` в
-`test/*.dart` — 199; файлов `test/*.dart` — 33.
+`test/*.dart` — 210; файлов `test/*.dart` — 35.
 
 Эти же команды CI выполняет на каждый pull request и на каждый push в `main`,
 поэтому состояние воспроизводимо на раннере GitHub: локальный SDK для проверки
 не нужен.
+
+## Что покрыто
+
+| Область | Файлы |
+|---|---|
+| Логика привычек и стриков | `habit_streak_test`, `habit_first_streak_test`, `services_test` |
+| Слой плавности | `page_transitions_test`, `smooth_typing_test`, `smooth_tooltip_test`, `section_pill_transition_test`, `section_pill_drag_test`, `chips_animation_test`, `volumetric_switch_test`, `rolling_counter_test` |
+| Настройки и «убрать анимации» | `preferences_test` (переживают перезапуск, гасят вечные петли), `app_version_test` |
+| Будильники и уведомления | `alarm_scheduler_test`, `notification_service_test`, `remind_all_chip_test` |
+| ИИ-проводник Ада и «Кузница» | `services_test`, `forge_service_test`, `forge_screen_test`, `live_forge_test` (ручной, `skip`) |
+| Данные и миграции | `json_file_test`, `migration_test`, `move_ledger_test` |
+| Локализация и тексты | `translations_parity_test`, `exit_dialog_localization_test`, `wide_dash_test` |
+| Экраны (смоук) | `smoke_test`, `nutrition_interactions_test`, `stats_stretch_test`, `task_shelves_test`, `developer_corner_screen_test`, `changelog_screen_test` |
+
+## Скриншоты для README
+
+Отдельно от `test/` лежит генератор витрины — `tool/screenshots/render_screenshots.dart`.
+Он монтирует реальные экраны в точной теме приложения и рендерит PNG в
+`docs/screenshots/`:
+
+```bash
+flutter test tool/screenshots/render_screenshots.dart
+```
+
+Файл вынесен из `test/`, поэтому обычный `flutter test` его не запускает.
 
 ## История разборов (снимки прошлых коммитов)
 
 Всё ниже — разборы падений, сделанные когда-то на коммитах `8925a78` и
 `0cfb334`. Это **история, а не текущее состояние**: после этих снимков в
 репозиторий вошли исправления, и заново эти разборы не перепроверялись. Числа и
-списки падений здесь могут расходиться с текущими (199 тестов, падений нет).
+списки падений здесь могут расходиться с текущими (210 тестов, падений нет).
 
 ### Снимок на коммите `0cfb334`
 
@@ -40,7 +65,7 @@ flutter test      →  +87 / -16   (103 проверки)
 `flutter analyze` чистый. На том снимке падали 16 тестов — ниже разбор на то, что
 падало до этого коммита, а что появилось вместе с новым кодом. (Позже был ещё
 один снимок: «All tests passed! (115)» — он тоже не совпадает с текущим набором
-из 199 тестов.)
+из 210 тестов.)
 
 ### Как проверялось
 

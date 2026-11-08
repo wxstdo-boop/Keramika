@@ -9,11 +9,11 @@ Keramika — Flutter-приложение с нативным Android-слоем
 ```
 ┌─────────────────────────────────────────────┐
 │  Presentation (lib/screens, lib/widgets)    │
-│  21 файл · 49 компонентов                   │
+│  24 экрана · 56 UI-компонентов              │
 └───────────────┬─────────────────────────────┘
                 │  вызовы сервисов
 ┌───────────────▼─────────────────────────────┐
-│  Services (lib/services) — 23 штуки         │
+│  Services (lib/services) — 29 штук          │
 │  данные · уведомления · ИИ · обновления     │
 └───────┬───────────────────────────┬─────────┘
         │                           │
@@ -40,6 +40,7 @@ Keramika — Flutter-приложение с нативным Android-слоем
 | `task.dart` | Задача: приоритет, дедлайн, повторение |
 | `reality_check.dart` | Проверка честности перед собой |
 | `app_timer.dart` | Таймер фокуса |
+| `changelog_entry.dart` | Запись журнала «Что нового» (версия, дата, пункты) |
 
 ### 2. Сервисы — `lib/services/`
 
@@ -52,7 +53,7 @@ Keramika — Flutter-приложение с нативным Android-слоем
 | `notification_service.dart` | Локальные уведомления, каналы, точные триггеры |
 | `alarm_scheduler.dart` | Планирование и перепланирование срабатываний |
 | `alarm_service.dart` | CRUD будильников |
-| `update_service.dart` | Проверка GitHub Releases, скачивание APK, SHA-256 |
+| `update_service.dart` | Проверка GitHub Releases, скачивание APK, SHA-256, живой журнал «Что нового» |
 | `installer.dart` | Установка скачанного APK |
 | `habit_service.dart` | CRUD привычек, стрики |
 | `task_service.dart` | CRUD задач |
@@ -70,20 +71,34 @@ Keramika — Flutter-приложение с нативным Android-слоем
 
 ### 3. Экраны — `lib/screens/`
 
-Крупнейшие Dart-файлы проекта: `lib/services/ai_guide_service.dart` (около 145 КиБ),
-`lib/screens/settings_screen.dart` (около 143 КиБ) и `lib/main.dart` (около 94 КиБ).
+Крупнейшие Dart-файлы проекта: `lib/l10n/translations.dart` (около 171 КиБ),
+`lib/screens/settings_screen.dart` (около 153 КиБ) и
+`lib/services/ai_guide_service.dart` (около 144 КиБ).
 Экран настроек и экран PIN уже вынесены в отдельные компоненты, а чат Ады
 разделён на `ai_guide_bubbles.dart` и `ai_guide_floating.dart`.
 
 ### 4. Виджеты — `lib/widgets/`
 
-49 компонентов. Отдельный интерес представляет «слой плавности»:
+56 UI-компонентов. Отдельный интерес представляет «слой плавности»:
 `page_spring.dart`, `press_splat.dart`, `smooth_typing.dart`,
 `rolling_counter.dart`, `smooth_tooltip.dart`, `section_pill.dart`,
 `stained_glass.dart`. Это то, чем приложение отличается от обычного
 Material-приложения.
 
-### 5. Оверлей — `lib/overlay/`
+### 5. Тема, токены и движение — `lib/theme/`, `lib/utils/`
+
+- `lib/theme/app_theme.dart` — единственный построитель темы. Раньше он жил
+  приватным методом в `main.dart`; вынесен наружу, чтобы тесты и генератор
+  скриншотов строили РОВНО ту же тему, что и приложение.
+- `lib/utils/design_tokens.dart` — шкалы `Radii`, `Spacing`, `Motion`,
+  `Weights`. Новые значения берутся из шкалы, а не «на глаз»: раньше по
+  проекту гуляли 26 разных радиусов и десяток кривых.
+- `lib/utils/motion_prefs.dart` — одна точка правды для «убрать анимации»
+  (`MotionPrefs.shouldReduceMotion`) и миксин `MotionAwareRepeat`, которым
+  вечные декоративные петли (блики, стая птиц, дыхание свечения) слушают
+  тумблер и останавливают контроллеры сразу при смене.
+
+### 6. Оверлей — `lib/overlay/`
 
 `ada_overlay.dart` — окно поверх других приложений. `overlay_bridge.dart`
 определяет интерфейс, `overlay_bridge_io.dart` реализует его для Android,

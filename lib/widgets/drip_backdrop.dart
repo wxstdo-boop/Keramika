@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
+import '../utils/motion_prefs.dart';
+
 /// Живой фон окна KID: редкие мягкие пятна, которые стекают ОТ фирменной
 /// капсулы KID вниз, к медальону ПИНа — то есть живут в одной вертикальной
 /// колонне, а не «дождём» по всему экрану.
@@ -93,7 +95,7 @@ class DripBackdrop extends StatefulWidget {
 }
 
 class _DripBackdropState extends State<DripBackdrop>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   late final AnimationController _ctrl;
   late List<_Drip> _drips;
   final Map<int, Shader> _blobs = {};
@@ -116,8 +118,9 @@ class _DripBackdropState extends State<DripBackdrop>
   void initState() {
     super.initState();
     _drips = _buildDrips();
-    _ctrl = AnimationController(vsync: this, duration: widget.duration)
-      ..repeat();
+    _ctrl = ambientRepeat(
+      AnimationController(vsync: this, duration: widget.duration),
+    );
     _seenPulses = widget.controller?.pulses ?? 0;
   }
 

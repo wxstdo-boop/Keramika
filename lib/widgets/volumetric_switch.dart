@@ -27,6 +27,11 @@ class VolumetricSwitch extends StatelessWidget {
   final ValueChanged<bool>? onChanged;
   final Color? activeColor;
 
+  /// Подпись для TalkBack. Если не задана — переключатель озвучивается как
+  /// «переключатель, вкл/выкл» без названия; для важных настроек (вибрация,
+  /// «убрать анимации») её стоит задавать.
+  final String? semanticLabel;
+
   /// Масштаб трека/шайбы. 1.0 — стандартный (54×32). В плотных списках
   /// уголка разработчика берём крупнее — переключатель «объёмнее» и по
   /// нему комфортнее попадать пальцем.
@@ -37,6 +42,7 @@ class VolumetricSwitch extends StatelessWidget {
     required this.value,
     this.onChanged,
     this.activeColor,
+    this.semanticLabel,
     this.scale = 1.0,
   });
 
@@ -83,15 +89,20 @@ class VolumetricSwitch extends StatelessWidget {
     final onTop = trackTop;
     final onBottom = active;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onChanged == null
-          ? null
-          : () {
-              Haptics.select();
-              onChanged!(!value);
-            },
-      child: AnimatedContainer(
+    return Semantics(
+      container: true,
+      toggled: value,
+      enabled: onChanged != null,
+      label: semanticLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onChanged == null
+            ? null
+            : () {
+                Haptics.select();
+                onChanged!(!value);
+              },
+        child: AnimatedContainer(
         // Заливка/свечение трека. ПЛАВНОСТЬ ДЕРЖИТСЯ НА ОДНОМ ДОЛЖНОСТИ:
         // трек, шайба и ядро должны ехать ОДНАКОВО (одна длительность +
         // одна кривая). Раньше трек шёл 500 мс easeInOutCubic, а ядро —
@@ -280,6 +291,7 @@ class VolumetricSwitch extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

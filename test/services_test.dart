@@ -655,6 +655,68 @@ void main() {
     });
   });
 
+  group('Changelog from releases', () {
+    test('срезает "by @user in <url>" и markdown-ссылки из пунктов', () {
+      const body = '''
+## What's Changed
+* Fix task shelves by @wxstdo-boop in https://github.com/x/y/pull/1
+* [Improve](https://example.com) lock screen by @someone in https://x/y/pull/2
+* Plain bullet without author
+''';
+      expect(UpdateService.parseReleaseNotes(body), [
+        'Fix task shelves',
+        'Improve lock screen',
+        'Plain bullet without author',
+      ]);
+    });
+
+    test('выбрасывает таблицу SHA-256, заголовки и Full Changelog', () {
+      const body = '''
+## SHA-256 суммы
+
+Ассеты проверяются по SHA-256 при автообновлении.
+
+| Файл | SHA-256 |
+|------|---------|
+| app.apk | abc123 |
+
+**Full Changelog**: https://github.com/x/y/compare/a...b
+''';
+      expect(UpdateService.parseReleaseNotes(body), isEmpty);
+    });
+
+    test('собирает запись релиза: версия, дата, пункты', () {
+      final entry = UpdateService.parseRelease({
+        'tag_name': 'v1.6.104+45176',
+        'published_at': '2026-11-08T12:34:56Z',
+        'body': "* Add a live changelog by @wxstdo-boop in https://x/y/pull/9\n",
+      });
+      expect(entry, isNotNull);
+      expect(entry!.version, '1.6.104');
+      expect(entry.date, '2026-11-08');
+      expect(entry.changes, ['Add a live changelog']);
+    });
+
+    test('пустое тело не оставляет запись без пунктов', () {
+      final entry = UpdateService.parseRelease({
+        'tag_name': 'v1.6.104+45176',
+        'published_at': '2026-11-08T00:00:00Z',
+        'body': '## SHA-256 суммы\n\n| Файл | SHA-256 |\n',
+      });
+      expect(entry!.changes, ['Обновление 1.6.104']);
+    });
+
+    test('без тега записи нет', () {
+      expect(UpdateService.parseRelease({'tag_name': ''}), isNull);
+    });
+
+    test('имена версий сравниваются по числам, а не строками', () {
+      expect(UpdateService.compareVersionNames('1.6.10', '1.6.9'), 1);
+      expect(UpdateService.compareVersionNames('1.6.9', '1.6.10'), -1);
+      expect(UpdateService.compareVersionNames('1.6.104', '1.6.104'), 0);
+    });
+  });
+
   group('Ada undo', () {
     test('локальный парсер создаёт привычку, undo удаляет её', () async {
       await resetHabits();

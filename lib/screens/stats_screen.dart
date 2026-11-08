@@ -2,13 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
+import '../utils/motion_prefs.dart';
 import '../services/reality_check_service.dart';
 import '../services/habit_service.dart';
 import '../services/task_service.dart';
 import '../services/completion_log_service.dart';
 import '../l10n/translations.dart';
 
-// import '../utils/smooth_refresh.dart'; (removed, no longer used)
 
 class RealityCheckStatsScreen extends StatefulWidget {
   const RealityCheckStatsScreen({super.key});
@@ -19,7 +19,7 @@ class RealityCheckStatsScreen extends StatefulWidget {
 }
 
 class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   final _rcSvc = RealityCheckService();
   final _habitSvc = HabitService();
   final _taskSvc = TaskService();
@@ -35,10 +35,12 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     _habitSvc.load();
     _taskSvc.load();
     _logSvc.load().then((_) => _logSvc.recordToday());
-    _glitchCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat();
+    _glitchCtrl = ambientRepeat(
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2600),
+      ),
+    );
   }
 
   @override

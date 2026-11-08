@@ -1170,7 +1170,7 @@ class _PinMedallion extends StatefulWidget {
 }
 
 class _PinMedallionState extends State<_PinMedallion>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   /// Цикл 7200 мс: скважина проворачивается на четверть оборота ТУДА и на
   /// четверть ОБРАТНО за первые 86 % цикла, потом коротко отдыхает. Обе
   /// границы — начало и конец гребка — стоят ровно на нулевом угле, поэтому
@@ -1204,11 +1204,13 @@ class _PinMedallionState extends State<_PinMedallion>
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 7200),
-      value: _lastPhase,
-    )..repeat();
+    _pulse = ambientRepeat(
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 7200),
+        value: _lastPhase,
+      ),
+    );
   }
 
   @override

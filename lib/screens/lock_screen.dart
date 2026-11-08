@@ -7,6 +7,7 @@ import '../services/new_year_event_service.dart';
 import '../services/pin_service.dart';
 import '../l10n/translations.dart';
 import '../utils/jank_probe.dart';
+import '../utils/motion_prefs.dart';
 import '../widgets/brand_emblem.dart';
 
 part 'lock_screen_widgets.dart';
@@ -34,7 +35,8 @@ class _LockScreenState extends State<LockScreen>
         // стаканчик), и второй `createTicker` ронял экран в отладочной
         // сборке — из-за этого падали и диалог выхода, и его локализация.
         with
-        TickerProviderStateMixin {
+        TickerProviderStateMixin,
+        MotionAwareRepeat {
   final _pin = <int>[];
   String? _error;
   String? _confirmPin;
@@ -70,10 +72,12 @@ class _LockScreenState extends State<LockScreen>
       vsync: this,
       duration: const Duration(milliseconds: 620),
     );
-    _glassLoop = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3600),
-    )..repeat();
+    _glassLoop = ambientRepeat(
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 3600),
+      ),
+    );
     if (!widget.isSetting) {
       PinService.hasPin().then((has) {
         if (!has && widget.onUnlock != null) {

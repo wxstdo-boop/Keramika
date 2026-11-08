@@ -15,6 +15,7 @@ import '../l10n/translations.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../widgets/volumetric_switch.dart';
 import '../utils/ambient_loop.dart';
+import '../utils/motion_prefs.dart';
 import '../utils/android_settings.dart' show openFullScreenNotifSettings;
 import '../utils/page_transitions.dart';
 import '../utils/markdown_text.dart' show sanitizeTextForWrap;
@@ -986,7 +987,7 @@ class _TimerPulse extends StatefulWidget {
 }
 
 class _TimerPulseState extends State<_TimerPulse>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   // Пульс 1.00 → 1.04 за 700 мс: [AmbientVsync] оставляет ему ~20 fps. При
   // таком малом масштабе разница глазом не видна, зато активный таймер не
   // перерисовывает список будильников 60 раз в секунду (замер с телефона:
@@ -1015,14 +1016,24 @@ class _TimerPulseState extends State<_TimerPulse>
   @override
   void initState() {
     super.initState();
+    watchMotion();
     if (widget.active) _ctrl.repeat();
+  }
+
+  @override
+  void onMotionChanged() {
+    if (widget.active && !MotionPrefs.shouldReduceMotion) {
+      if (!_ctrl.isAnimating) _ctrl.repeat();
+    } else if (_ctrl.isAnimating) {
+      _ctrl.stop();
+    }
   }
 
   @override
   void didUpdateWidget(_TimerPulse oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.active && !_ctrl.isAnimating) {
-      _ctrl.repeat();
+      if (!MotionPrefs.shouldReduceMotion) _ctrl.repeat();
     } else if (!widget.active && _ctrl.isAnimating) {
       _ctrl.stop();
       _ctrl.value = 0;

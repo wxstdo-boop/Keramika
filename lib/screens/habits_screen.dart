@@ -14,6 +14,7 @@ import '../widgets/press_splat.dart' show PressSplat;
 import '../widgets/blood_speck.dart' show BloodSpeck, BloodSpeckPainter;
 import '../widgets/press_scale.dart';
 import '../utils/page_transitions.dart';
+import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
 import '../widgets/smooth_hover.dart';
 import '../widgets/drag_proxy.dart';
@@ -2150,7 +2151,7 @@ class _PerfBirdFlock extends StatefulWidget {
 }
 
 class _PerfBirdFlockState extends State<_PerfBirdFlock>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 11000),
@@ -2159,7 +2160,17 @@ class _PerfBirdFlockState extends State<_PerfBirdFlock>
   @override
   void initState() {
     super.initState();
-    if (widget.active) _ctrl.repeat();
+    watchMotion();
+    if (widget.active && !MotionPrefs.shouldReduceMotion) _ctrl.repeat();
+  }
+
+  @override
+  void onMotionChanged() {
+    if (widget.active && !MotionPrefs.shouldReduceMotion) {
+      if (!_ctrl.isAnimating) _ctrl.repeat();
+    } else if (_ctrl.isAnimating) {
+      _ctrl.stop();
+    }
   }
 
   @override
@@ -2167,7 +2178,7 @@ class _PerfBirdFlockState extends State<_PerfBirdFlock>
     super.didUpdateWidget(oldWidget);
     if (widget.active == oldWidget.active) return;
     if (widget.active) {
-      _ctrl.repeat();
+      if (!MotionPrefs.shouldReduceMotion) _ctrl.repeat();
     } else {
       _ctrl.stop();
     }

@@ -18,7 +18,6 @@ import '../widgets/nutrition_trends.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/rolling_counter.dart';
 
-// import '../utils/smooth_refresh.dart'; (removed, no longer used)
 
 /// Какое из числовых полей редактирует встроенная клавиатура.
 enum _PadField { calories, water }

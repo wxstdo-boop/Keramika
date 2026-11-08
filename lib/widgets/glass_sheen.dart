@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import '../utils/motion_prefs.dart';
+
 /// Бегущий блик по «стеклу» капсулы/карточки: световая полоса входит слева,
 /// проходит по диагонали и уходит справа, затем цикл повторяется.
 ///
@@ -40,13 +42,15 @@ class GlassSheen extends StatefulWidget {
 }
 
 class _GlassSheenState extends State<GlassSheen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   late final AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: widget.period)..repeat();
+    _ctrl = ambientRepeat(
+      AnimationController(vsync: this, duration: widget.period),
+    );
   }
 
   @override
@@ -110,14 +114,16 @@ class GentleFloat extends StatefulWidget {
 }
 
 class _GentleFloatState extends State<GentleFloat>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   late final AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: widget.period)
-      ..repeat(reverse: true);
+    _ctrl = ambientRepeat(
+      AnimationController(vsync: this, duration: widget.period),
+      reverse: true,
+    );
   }
 
   @override

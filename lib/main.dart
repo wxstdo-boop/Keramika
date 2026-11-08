@@ -25,6 +25,8 @@ import 'services/notification_service.dart';
 import 'services/alarm_black_box.dart';
 import 'services/alarm_scheduler.dart';
 import 'services/haptics.dart';
+import 'theme/app_theme.dart';
+import 'utils/motion_prefs.dart';
 import 'models/alarm.dart';
 import 'services/alarm_service.dart';
 import 'services/reality_check_service.dart';
@@ -853,9 +855,14 @@ Future<_StartupState> _loadStartupState() async {
   final fontFamily = SettingsService.loadFontFamily();
   // Прогреваем живые флаги режимов до первого Home-кадра:
   // кнопка BERSERK и карточки не ждут открытия настроек.
+  // Вибрация и «убрать анимации» тоже читаются ДО первого кадра: плеск
+  // кнопок не должен успеть дать один лишний отклик, а декоративные петли —
+  // один лишний виток, если человек их выключил.
   final modes = Future.wait<void>([
     SettingsService.loadPerfectionism(),
     SettingsService.loadBerserk(),
+    SettingsService.loadHaptics().then((v) => Haptics.enabled = v),
+    SettingsService.loadReduceMotion().then((v) => MotionPrefs.enabled.value = v),
   ]);
 
   await Future.wait<void>([
@@ -1654,166 +1661,16 @@ class KeramikaAppState extends State<KeramikaApp>
     // cacheKey включает _fontFamily, чтобы при переключении шрифта тема
     // пересобиралась с новым шрифтом (иначе остаётся закэшированная тема
     // со старым шрифтом — Caveat не переключался).
-    final appFontFamily = _fontFamily == 'caveat' ? 'Caveat' : null;
     final cacheKey = '${scheme.hashCode}|$isGrokStyle|$_fontFamily';
     final cached = isDark ? _darkThemeCache : _lightThemeCache;
     final cachedKey = isDark ? _darkThemeCacheKey : _lightThemeCacheKey;
     if (cached != null && cachedKey == cacheKey) return cached;
 
-    final built = ThemeData(
-      useMaterial3: true,
-      colorScheme: scheme,
-      // Вибро-отклик на тап по каждой кнопке/плитке/вкладке: Flutter по
-      // умолчанию не вибрирует на кнопках, а на HyperOS системная отдача
-      // подавлена. Плеск = только целевое нажатие, скролл не срабатывает.
-      splashFactory: const TapHapticsSplash(InkSparkle.splashFactory),
-      // ШРИФТ ЗАДАН В САМОЙ ТЕМЕ: ThemeData(fontFamily:) задаёт его как
-      // базовый для ВСЕЙ иерархии — DefaultTextStyle, Text из theme.textTheme,
-      // Material-виджеты (AppBar, капсулы, кнопки) и т.д. Это гарантирует,
-      // что Caveat применится везде, а не только в виджетах, вытягивающих
-      // стиль из textTheme. При обычном шрифте — null (системный Roboto).
-      fontFamily: appFontFamily,
-      // Лёгкая цветокоррекция «приятнее глазу» без смены палитр: чуть
-      // больше воздуха в тексте, мягче тени и скругления карточек,
-      // деликатный размытый фон вместо сплошного — глаза меньше устают.
-      // Базовый textTheme: слегка крупнее стандарта, чтобы компенсировать
-      // малую x-высоту Caveat (глобальный TextScaler больше не используем —
-      // он не доходил до части виджетов). Здесь размеры применяются
-      // безусловно.
-      textTheme: Typography.material2021(platform: TargetPlatform.android).black
-          .apply(
-            bodyColor: scheme.onSurface,
-            displayColor: scheme.onSurface,
-            // fontFamily ВО ВСЕХ стилях сразу (apply применяет его ко
-            // всему TextTheme): иначе часть стилей (headline, display и
-            // т.п.) остаётся с явным Roboto из .black и Caveat выглядит
-            // «не подстроенным». При обычном шрифте — null, остаётся
-            // системный Roboto. AnimatedTheme не интерполирует строку
-            // fontFamily — смена мгновенная.
-            fontFamily: appFontFamily,
-          )
-          .copyWith(
-            // Для Caveat размеры чуть больше: у него маленькая x-высота,
-            // иначе текст выглядит мельче Roboto. Обычный (не Caveat)
-            // шрифт чуть уменьшен: в разделах (будильники/привычки/РП/
-            // задачи) текст плотнее, слова не «уезжают» на новую строку
-            // и не оставляют пустых мест при переносе.
-            titleMedium: TextStyle(
-              fontSize: appFontFamily == null ? 16 : 21,
-              fontWeight: FontWeight.w600,
-            ),
-            titleSmall: TextStyle(
-              fontSize: appFontFamily == null ? 14 : 19,
-              fontWeight: FontWeight.w600,
-            ),
-            // Время будильника (headlineSmall по умолчанию 24 — крупнее,
-            // чем остальные разделы; на обычном шрифте чуть меньше).
-            headlineSmall: TextStyle(
-              fontSize: appFontFamily == null ? 22 : 26,
-              fontWeight: FontWeight.w700,
-            ),
-            bodyLarge: TextStyle(
-              fontSize: appFontFamily == null ? 13 : 18,
-              fontWeight: FontWeight.w500,
-            ),
-            bodyMedium: TextStyle(
-              fontSize: appFontFamily == null ? 11 : 16,
-              fontWeight: FontWeight.w500,
-            ),
-            bodySmall: TextStyle(
-              fontSize: appFontFamily == null ? 10 : 15,
-              fontWeight: FontWeight.w500,
-            ),
-            labelSmall: TextStyle(
-              fontSize: appFontFamily == null ? 9 : 14,
-              fontWeight: FontWeight.w500,
-            ),
-            labelMedium: TextStyle(
-              fontSize: appFontFamily == null ? 11 : 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-      scaffoldBackgroundColor: scheme.surface,
-      appBarTheme: const AppBarTheme(
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        backgroundColor: Colors.transparent,
-      ),
-      cardTheme: CardThemeData(
-        elevation: 1,
-        color: scheme.surfaceContainerLow,
-        shadowColor: scheme.shadow.withValues(alpha: isDark ? 0.30 : 0.12),
-        surfaceTintColor: scheme.primary.withValues(
-          alpha: isDark ? 0.03 : 0.025,
-        ),
-        shape: isGrokStyle
-            ? const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(12)),
-              )
-            : const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(24)),
-              ),
-      ),
-      // Цветокоррекция: единый мягкий стиль для всех диалогов и боттом-
-      // шитов (светлее/воздушнее, скругление как у карточек) — без смены
-      // цветовых тем.
-      dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainerLow,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(isGrokStyle ? 16 : 28),
-        ),
-      ),
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: scheme.surfaceContainerLow,
-        modalBackgroundColor: scheme.surfaceContainerLow,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(isGrokStyle ? 16 : 28),
-          ),
-        ),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          shape: isGrokStyle
-              ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-              : RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        ),
-      ),
-      // Тултипы (долгое зажатие кнопок — «Ада», «Будильники» и т.п.):
-      // ЕДИНЫЙ стиль для ВСЕХ — как у плавного тултипа таблетки разделов:
-      // светлая плашка на светлой теме, тёмная на тёмной, с мягкой обводкой.
-      // Никакой тёмной «спеллчек»-плашки поверх светлого интерфейса.
-      tooltipTheme: TooltipThemeData(
-        decoration: BoxDecoration(
-          color: isDark
-              ? scheme.surfaceContainerHigh
-              : scheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.6),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        textStyle: TextStyle(
-          color: scheme.onSurface,
-          fontSize: 13,
-          height: 1.25,
-          fontWeight: FontWeight.w500,
-        ),
-        waitDuration: const Duration(milliseconds: 350),
-        showDuration: const Duration(seconds: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      ),
-      textSelectionTheme: const TextSelectionThemeData(),
+    final built = buildKeramikaTheme(
+      scheme,
+      isDark: isDark,
+      isGrokStyle: isGrokStyle,
+      fontFamily: _fontFamily,
     );
     if (isDark) {
       _darkThemeCache = built;

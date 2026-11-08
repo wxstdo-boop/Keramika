@@ -18,6 +18,11 @@ class Haptics {
     'com.wetidom.keramika/haptics',
   );
 
+  /// Включена ли вибрация. Выключатель в настройках гасит ВСЕ отклики —
+  /// и прямые вызовы, и плеск кнопок ([TapHapticsSplash]). По умолчанию
+  /// включена: тактильная отдача — часть характера интерфейса.
+  static bool enabled = true;
+
   static DateTime? _lastFire;
 
   /// Лёгкий «клик» — выбор, отметка галочки.
@@ -33,7 +38,7 @@ class Haptics {
   static Future<void> heavy() => _invoke('heavy');
 
   static Future<void> _invoke(String kind) async {
-    if (kIsWeb) return;
+    if (kIsWeb || !enabled) return;
     // Глобальный троттл: TapHapticsSplash бьёт на появлении плеска (tap-down),
     // а виджеты зовут Haptics сами на tap-up — без окна подавления один тап
     // давал бы двойную вибрацию.

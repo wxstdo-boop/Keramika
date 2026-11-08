@@ -2,6 +2,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 
+import '../utils/motion_prefs.dart';
+
 /// «Метель» — подарочная тема 12-го дня ивента: северное сияние по снегу.
 ///
 /// Это ТОТ же приём, что и пятна MUTILATED: слой лежит поверх контента,
@@ -28,7 +30,7 @@ class MetelAurora extends StatefulWidget {
 }
 
 class _MetelAuroraState extends State<MetelAurora>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, MotionAwareRepeat {
   late final AnimationController _ctrl;
   late final List<_Band> _bands;
   late final List<_Flake> _flakes;
@@ -111,11 +113,12 @@ class _MetelAuroraState extends State<MetelAurora>
       );
     });
     _cache.bands = _bands;
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 12),
-    )..addListener(_syncPhase);
-    _ctrl.repeat();
+    _ctrl = ambientRepeat(
+      AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 12),
+      )..addListener(_syncPhase),
+    );
   }
 
   void _syncPhase() {

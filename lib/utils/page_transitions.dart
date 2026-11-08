@@ -1,5 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'motion_prefs.dart';
+
+/// Длительность перехода с учётом «убрать анимации».
+///
+/// Когда движение выключено (системный запрос или тумблер в настройках),
+/// переход схлопывается в ноль: смена экрана происходит мгновенно, без
+/// пролёта и масштаба. Раньше переходы шли всегда, даже когда человек прямо
+/// просил систему их убрать.
+Duration _routeDuration(Duration d) =>
+    MotionPrefs.shouldReduceMotion ? Duration.zero : d;
+
 /// Сколько длится закрытие [slideUpRoute] (обратная анимация).
 ///
 /// Нужен вызывающей стороне: `await Navigator.push(...)` возвращается в
@@ -18,8 +29,8 @@ Route<T> slideUpRoute<T>(Widget page) {
     // Имя роута = тип страницы: по нему jank-проба подписывает кадры
     // (см. lib/utils/jank_probe.dart).
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: const Duration(milliseconds: 380),
-    reverseTransitionDuration: slideUpReverseDuration,
+    transitionDuration: _routeDuration(const Duration(milliseconds: 380)),
+    reverseTransitionDuration: _routeDuration(slideUpReverseDuration),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -58,8 +69,8 @@ const Duration lockRouteReverseDuration = Duration(milliseconds: 340);
 Route<T> lockRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: lockRouteReverseDuration,
-    reverseTransitionDuration: lockRouteReverseDuration,
+    transitionDuration: _routeDuration(lockRouteReverseDuration),
+    reverseTransitionDuration: _routeDuration(lockRouteReverseDuration),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -97,8 +108,8 @@ Route<T> homeEntryRoute<T>(Widget page) {
     // на первом кадре после сплэша этот build неизбежен — растянутая
     // проявка размазывает его по кадрам, поэтому переход не читается
     // «толчком», а наплывает.
-    transitionDuration: const Duration(milliseconds: 340),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionDuration: _routeDuration(const Duration(milliseconds: 340)),
+    reverseTransitionDuration: _routeDuration(const Duration(milliseconds: 220)),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
@@ -114,8 +125,8 @@ Route<T> homeEntryRoute<T>(Widget page) {
 Route<T> fadeRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: const Duration(milliseconds: 300),
-    reverseTransitionDuration: const Duration(milliseconds: 200),
+    transitionDuration: _routeDuration(const Duration(milliseconds: 300)),
+    reverseTransitionDuration: _routeDuration(const Duration(milliseconds: 200)),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
@@ -143,8 +154,8 @@ Route<T> fadeRoute<T>(Widget page) {
 Route<T> slideSideRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: const Duration(milliseconds: 300),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionDuration: _routeDuration(const Duration(milliseconds: 300)),
+    reverseTransitionDuration: _routeDuration(const Duration(milliseconds: 220)),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
