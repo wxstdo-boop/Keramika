@@ -406,6 +406,10 @@ class _AlarmsScreenState extends State<AlarmsScreen>
         : 8.0 + kSectionPillSlotHeight;
     return ReorderableListView.builder(
       scrollController: _pillCtrl,
+      // Медленнее штатного автоскролла (по умолчанию 50 → ~1000 px/с):
+      // 18 → ~360 px/с — при подтаскивании карточки к кромке список едет
+      // спокойно и плавно, а не «улетает» рывком.
+      autoScrollerVelocityScalar: 18,
       // Явный AlwaysScrollable, как в привычках (habits_screen.dart:641).
       // Глобальная физика приложения — голый BouncingScrollPhysics
       // (main.dart:894), а он при контенте короче вьюпорта вообще не

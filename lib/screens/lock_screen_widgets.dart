@@ -486,153 +486,180 @@ Future<void> _showExitDialog(
     // отсюда и жёлтые подчёркивания. Material возвращает тексту стиль темы.
     pageBuilder: (ctx, _, _) => Material(
       type: MaterialType.transparency,
-      child: Container(
-        // Компактная «шайбочка», а не широченная карточка: стеклянная
-        // колба слева, короткий текст, пара кнопок в столбик. Узкий
-        // профиль — окно не «засыпает» экран, а лишь мягко приглушает его.
-        width: 232,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          // Стеклянное основание в цвет темы: тёмная — сероватая, светлая
-          // — тёплая. Текст читается за счёт blur-бэкдропа и обводки.
-          color: isDark
-              ? cs.surfaceContainerHigh.withValues(alpha: 0.55)
-              : cs.surfaceContainerLowest.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(24),
-          // Красивая полупрозрачная обводка в акцентный цвет темы:
-          // rose → розовая, peach → персиковая, grok → её акцент.
-          border: Border.all(
-            color: cs.primary.withValues(alpha: isDark ? 0.35 : 0.38),
-            width: 1.5,
-          ),
-          boxShadow: [
-            // Мягкое свечение акцентного цвета вокруг окна.
-            BoxShadow(
-              color: cs.primary.withValues(alpha: isDark ? 0.18 : 0.20),
-              blurRadius: 24,
-              spreadRadius: 0,
+      // Center обязателен: маршрут даёт контенту жёсткие ограничения во
+      // весь экран, и без центрирования `width: 232` игнорировался — шайба
+      // растягивалась, а её скруглённая обводка рисовалась у самых кромок
+      // («полосы/дыры» сверху). Center отдаёт шайбе её собственный размер.
+      child: Center(
+        child: Container(
+          // Компактная «шайбочка», а не широченная карточка: стеклянная
+          // колба слева, короткий текст, пара кнопок в столбик. Узкий
+          // профиль — окно не «засыпает» экран, а лишь мягко приглушает его.
+          width: 232,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            // Стеклянное основание в цвет темы: тёмная — сероватая, светлая
+            // — тёплая. Текст читается за счёт blur-бэкдропа и обводки.
+            color: isDark
+                ? cs.surfaceContainerHigh.withValues(alpha: 0.55)
+                : cs.surfaceContainerLowest.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(24),
+            // Красивая полупрозрачная обводка в акцентный цвет темы:
+            // rose → розовая, peach → персиковая, grok → её акцент.
+            border: Border.all(
+              color: cs.primary.withValues(alpha: isDark ? 0.35 : 0.38),
+              width: 1.5,
             ),
-            // Дополнительная тень на тёмной теме — контраст к стеклу.
-            if (isDark)
+            boxShadow: [
+              // Мягкое свечение акцентного цвета вокруг окна.
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.30),
-                blurRadius: 12,
+                color: cs.primary.withValues(alpha: isDark ? 0.18 : 0.20),
+                blurRadius: 24,
                 spreadRadius: 0,
               ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Стакан слева (смягчённый ореол из того же цвета): колба
-            // «вжата» в стекло шайбы, читается при любом фоне.
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        cs.primary.withValues(alpha: isDark ? 0.16 : 0.20),
-                        cs.primary.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 1.0],
-                    ),
-                  ),
+              // Дополнительная тень на тёмной теме — контраст к стеклу.
+              if (isDark)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.30),
+                  blurRadius: 12,
+                  spreadRadius: 0,
                 ),
-                _AnimatedGlass(
-                  loop: glassLoop,
-                  color: cs.primary,
-                  isDark: isDark,
-                  size: 28,
-                ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            // Текст и кнопки справа: название чуть крупнее, тираж — мельче,
-            // кнопки — компактный столбик. Всё в один узкий блок.
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Стакан слева (смягчённый ореол из того же цвета): колба
+              // «вжата» в стекло шайбы, читается при любом фоне.
+              Stack(
+                alignment: Alignment.center,
                 children: [
-                  Text(
-                    Translations.t('exitConfirmTitle', context),
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                      height: 1.3,
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          cs.primary.withValues(alpha: isDark ? 0.16 : 0.20),
+                          cs.primary.withValues(alpha: 0.0),
+                        ],
+                        stops: const [0.0, 1.0],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    Translations.t('exitConfirmBody', context),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurfaceVariant,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Компактные кнопки в один ряд: Cancel приглушённый,
-                  // Выйти — акцентом. Узкая шайба: ряд влезает без переноса.
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: Text(
-                          Translations.t('cancel', context),
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: cs.error.withValues(alpha: 0.55),
-                            width: 1.4,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
-                          ),
-                        ),
-                        onPressed: () {
-                          // Обратный проход (glassMs) должен успеть отыграть:
-                          // SystemNavigator.pop() убивает Activity в том же
-                          // кадре, и «стекло» обрывается на середине.
-                          Navigator.of(ctx).pop();
-                          Future<void>.delayed(
-                            const Duration(milliseconds: glassMs + 40),
-                            SystemNavigator.pop,
-                          );
-                        },
-                        child: Text(
-                          Translations.t('exit', context),
-                          style: TextStyle(
-                            color: cs.error,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
+                  _AnimatedGlass(
+                    loop: glassLoop,
+                    color: cs.primary,
+                    isDark: isDark,
+                    size: 28,
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              // Текст и кнопки справа: название чуть крупнее, тираж — мельче,
+              // кнопки — компактный столбик. Всё в один узкий блок.
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      Translations.t('exitConfirmTitle', context),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      Translations.t('exitConfirmBody', context),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Компактные кнопки в один ряд: Cancel приглушённый,
+                    // Выйти — акцентом. Шайба узкая (232 px), а подписи
+                    // локализованные: у кнопок срезаны штатные паддинги и
+                    // минимальная ширина (64 px у Material), а сам ряд лежит
+                    // в FittedBox(scaleDown) — при крупном системном шрифте
+                    // он мягко ужимается, а не переполняет колонку.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(0, 32),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => Navigator.pop(ctx),
+                              child: Text(
+                                Translations.t('cancel', context),
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                side: BorderSide(
+                                  color: cs.error.withValues(alpha: 0.55),
+                                  width: 1.4,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                              ),
+                              onPressed: () {
+                                // Обратный проход (glassMs) должен успеть отыграть:
+                                // SystemNavigator.pop() убивает Activity в том же
+                                // кадре, и «стекло» обрывается на середине.
+                                Navigator.of(ctx).pop();
+                                Future<void>.delayed(
+                                  const Duration(milliseconds: glassMs + 40),
+                                  SystemNavigator.pop,
+                                );
+                              },
+                              child: Text(
+                                Translations.t('exit', context),
+                                style: TextStyle(
+                                  color: cs.error,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     ),

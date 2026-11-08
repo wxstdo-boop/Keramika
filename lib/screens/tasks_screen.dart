@@ -506,6 +506,10 @@ class _TasksScreenState extends State<TasksScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverReorderableList(
         itemCount: list.length,
+        // Медленнее штатного автоскролла (по умолчанию 50 → ~1000 px/с):
+        // 18 → ~360 px/с. При подтаскивании карточки к кромке список едет
+        // спокойно и предсказуемо, а не «улетает» рывком.
+        autoScrollerVelocityScalar: 18,
         proxyDecorator: (child, index, animation) =>
             _taskDragProxy(child, theme, animation),
         onReorderItem: (oldLocal, newLocal) {

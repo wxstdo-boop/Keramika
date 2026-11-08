@@ -235,6 +235,17 @@ class _SectionPillState extends State<SectionPill>
   double _dragSmooth = 0;
   double _dragGrabOffset = 0;
 
+  /// Последняя «принятая» X-координата пальца (px по дорожке). Дедзона:
+  /// микросдвиги меньше [_dragDeadzone] игнорируются, поэтому дрожание руки
+  /// при удержании не будит тикер и не двигает карусель.
+  double _dragFingerX = 0;
+
+  /// Дедзона пальца, px по дорожке таблетки (~304 px). На дорожке камень
+  /// занимает 1/4, а на экране — целую страницу (~1080 px), поэтому даже
+  /// 1 px дрожания пальца даёт ~4 px хода экрана. 3 px глушат дрожание руки,
+  /// но осознанный сдвиг проходят почти без задержки.
+  static const double _dragDeadzone = 3.0;
+
   /// Ближайший раздел на прошлом кадре — по нему звучит хаптик, когда палец
   /// пересекает границу раздела.
   int _dragNearest = -1;
@@ -358,6 +369,8 @@ class _SectionPillState extends State<SectionPill>
         ? _trackWidth / 2
         : (_dragPage / (count - 1)) * span + stoneW / 2;
     _dragGrabOffset = stoneCenter - details.localPosition.dx;
+    // Стартовая точка дедзоны — фактический палец (с учётом захвата).
+    _dragFingerX = details.localPosition.dx + _dragGrabOffset;
     _dragNearest = _dragPage.round();
     sectionDragPage.value = _dragPage;
     // Кадровый резистанс стартует: камень начинает догонять палец
@@ -376,7 +389,14 @@ class _SectionPillState extends State<SectionPill>
     // (~1080 px) — 74 px пальцем уносили контент на целый экран, и движение
     // читалось рывком «не в ту сторону». Здесь жест и содержимое живут в
     // одних долях.
-    final x = details.localPosition.dx + _dragGrabOffset;
+    final rawX = details.localPosition.dx + _dragGrabOffset;
+    // Дедзона: пока палец не отошёл от последней принятой точки дальше
+    // [_dragDeadzone], ничего не пересчитываем — ни цель камня, ни тягу.
+    // Так дрожание руки при удержании не будит кадровый тикер и не двигает
+    // keep-alive экраны («если долго задерживать, экраны начинает дёргать»).
+    if ((rawX - _dragFingerX).abs() < _dragDeadzone) return;
+    _dragFingerX = rawX;
+    final x = rawX;
     final stoneW = _trackWidth / count;
     final span = _trackWidth - stoneW;
     final frac = span <= 0

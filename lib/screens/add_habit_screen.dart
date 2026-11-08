@@ -960,6 +960,13 @@ class _TypeCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Выбранная капсула — сочная «стеклянная» плашка: градиент от оттенка
+    // акцента к контейнерному цвету, чёткая кромка и мягкий ореол. Раньше был
+    // плоский containerColor — на тёмной теме он читался как мутная плита,
+    // а акцентная обводка alpha 0.6 «размывала» форму. Невыбранная — тихая
+    // нейтральная с деликатной обводкой, чтобы пара читалась как выбор, а не
+    // как две разноцветные кнопки.
+    final topTint = Color.lerp(containerColor, color, isDark ? 0.28 : 0.20)!;
     return PressScale(
       pressedScale: 0.97,
       duration: const Duration(milliseconds: 320),
@@ -971,19 +978,27 @@ class _TypeCapsule extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            color: selected ? containerColor : cs.surfaceContainerHighest,
+            gradient: selected
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [topTint, containerColor],
+                  )
+                : null,
+            color: selected ? null : cs.surfaceContainerHighest,
             border: Border.all(
               color: selected
-                  ? color.withValues(alpha: 0.6)
+                  ? color.withValues(alpha: isDark ? 0.85 : 0.70)
                   : cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.45),
-              width: selected ? 1.4 : 1,
+              width: selected ? 1.6 : 1,
             ),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: color.withValues(alpha: isDark ? 0.30 : 0.18),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+                      color: color.withValues(alpha: isDark ? 0.42 : 0.22),
+                      blurRadius: 14,
+                      spreadRadius: -4,
+                      offset: const Offset(0, 4),
                     ),
                   ]
                 : null,

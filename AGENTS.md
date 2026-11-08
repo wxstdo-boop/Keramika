@@ -39,6 +39,20 @@ from `test/section_pill_transition_test.dart`.
 с `pumpAndSettle()` тоже виснут — анимации там бесконечные (`repeat()`),
 крути время дискретными `pump(Duration)`.
 
+## Версии пакетов и build-system
+
+- `compileSdk` задан в ДВУХ местах и должен совпадать: `android/app/build.gradle.kts`
+  и `android/build.gradle.kts` (там же `flutter.compileSdkVersion` для плагинов).
+- `flutter_local_notifications` 23 требует `compileSdk 37`; его же тянут
+  плагины (`file_picker` и т.п.). AGP под 37: **9.1.1** (9.0.1 не тянет),
+  ему нужен **Gradle ≥ 9.3.1**. CI на JDK 17 запускает их без правок.
+- `dynamic_color` держим на **1.9.x**: 2.x ушёл на пакет `material_ui`
+  (второй `ColorScheme`) и несовместим с Flutter 3.47.5.
+- `flutter_secure_storage` 11 поднял minSdk до 23 и мигрирует алгоритм
+  шифрования сам; ключ в Keystore не теряем (`resetOnError=false`).
+- Локальная проверка сборки: JDK 17 (не 21) + Android SDK в `/workspace`,
+  `android/key.properties` + `keystore.jks` (оба в `.gitignore`).
+
 ## CI (GitHub Actions): грабли, на которые уже наступали
 
 Релизы собирает `.github/workflows/ship.yml` (push в `main`) и `release.yml`

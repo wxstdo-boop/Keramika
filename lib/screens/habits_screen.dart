@@ -1104,16 +1104,23 @@ class _HabitsScreenState extends State<HabitsScreen>
       final viewport = pos.viewportDimension;
       final y = _dragProxyY.value;
       if (y == null) return;
-      const edge = 120.0;
+      const edge = 140.0;
       final bottom = viewport - edge;
-      double delta = 0;
+      // Глубина захода пальца в кромочную зону, -1..1.
+      double t = 0;
       if (y > bottom) {
-        delta = (y - bottom).clamp(0.0, edge);
+        t = ((y - bottom) / edge).clamp(0.0, 1.0);
       } else if (y < edge) {
-        delta = -(edge - y).clamp(0.0, edge);
+        t = -((edge - y) / edge).clamp(0.0, 1.0);
       }
-      if (delta == 0) return;
-      final target = (pos.pixels + delta * 0.55).clamp(
+      if (t == 0) return;
+      // Квадратичный разгон от кромки: у самой кромки список еле ползёт, глубже
+      // — ускоряется, но остаётся заметно медленнее прежнего. Раньше шаг был
+      // линейным (delta * 0.55) и доходил до ~4000 px/с — список «улетал»
+      // рывками. Теперь потолок ~700 px/с: тянуть карточку к краю спокойнее и
+      // предсказуемее.
+      final step = 11.0 * t * t.abs();
+      final target = (pos.pixels + step).clamp(
         pos.minScrollExtent,
         pos.maxScrollExtent,
       );
