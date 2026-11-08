@@ -1,0 +1,38 @@
+Keramika est un réveil libre et open source qui ne vous laisse pas vous rendormir. Alarmes, tâches, habitudes, suivi nutritionnel et assistant IA intégré réunis dans une seule application Material You.
+
+DES ALARMES QUI FONCTIONNENT VRAIMENT
+- Alarmes exactes via SCHEDULE_EXACT_ALARM et un service de premier plan qui maintient le processus en vie
+- Tâches de réveil : associez une tâche à accomplir pour éteindre l'alarme
+- Survit au redémarrage — les alarmes sont replanifiées automatiquement
+- Intent plein écran : l'alarme s'affiche par-dessus l'écran de verrouillage
+- Cinq sonneries intégrées : classique, par défaut, numérique, douce, nature
+
+TÂCHES ET HABITUDES
+- Tâches avec priorité, échéance et règles de répétition
+- Habitudes avec séries et objectifs quotidiens ou totaux
+- Vérifications de réalité — une question honnête : « êtes-vous en train de vous mentir ? »
+- Glisser pour supprimer, glisser pour réordonner, animations élastiques
+
+NUTRITION
+- Repas, objectifs de macronutriments et tendances sur 30 jours
+- Anneaux de progression pour chaque objectif
+
+CONFIDENTIALITÉ
+- Verrouillage par code PIN et écran de verrouillage de l'application
+- Exportez toutes vos données dans un seul fichier
+
+ADA — L'ASSISTANTE IA
+Ada comprend le langage naturel :
+- « mets une alarme à 7 h en semaine »
+- « rappelle-moi demain à 18 h 30 d'acheter du lait »
+- « compte combien de calories j'ai mangées »
+Elle crée, modifie et supprime alarmes, tâches, habitudes, vérifications et repas, et peut annuler sa dernière action. Ada s'exécute dans une petite fenêtre par-dessus les autres applications et peut fonctionner sur des fournisseurs de modèles publics gratuits, sans compte de votre part. Votre clé d'API, si vous en ajoutez une, reste uniquement sur l'appareil.
+
+SYSTÈME
+- Mises à jour intégrées (absentes de la version F-Droid, qui est mise à jour par F-Droid) : vérifie les releases GitHub, contrôle le SHA-256 et installe l'APK par-dessus l'ancien en conservant vos données
+- Couleurs dynamiques Material You et thème sombre
+- Localisation : anglais, russe, français
+
+Keramika est sous licence MIT. Aucune publicité, aucun traqueur, aucun Google Play Services.
+
+Nécessite Android 8.0 (API 26) ou version ultérieure.

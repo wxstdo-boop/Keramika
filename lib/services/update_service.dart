@@ -14,6 +14,13 @@ import '../models/changelog_entry.dart';
 const String kUpdateRepoOwner = 'wxstdo-boop';
 const String kUpdateRepoName = 'Keramika';
 
+/// Включено ли самообновление. F-Droid/IzzyOnDroid переподписывают APK своим
+/// ключом, поэтому GitHub-APK поверх такой сборки не встанет — в этих сборках
+/// самообновление выключено через `--dart-define=KERAMIKA_NO_SELF_UPDATE=true`.
+const bool kSelfUpdateEnabled = !bool.fromEnvironment(
+  'KERAMIKA_NO_SELF_UPDATE',
+);
+
 /// Описание доступного обновления из последнего GitHub-релиза.
 class UpdateInfo {
   const UpdateInfo({

@@ -272,6 +272,56 @@ arm64). Приложение сравнивает сначала `versionName` (
   озвучиваются, а не читаются как «кнопка». `tooltip`, а не `label` — чтобы
   не дублировать подпись там, где у ребёнка уже есть текст/`Semantics.label`.
 
+## Публикация в F-Droid / IzzyOnDroid
+
+Полная инструкция — `docs/publishing-fdroid.md`. Ключевое, чтобы не наступать
+на грабли повторно:
+
+- **Рецепт сборки** лежит в `fdroid/metadata/com.wetidom.keramika.yml`. Это
+  копия того, что уходит в MR в `fdroid/fdroiddata`; структуру проверить можно
+  `python3 -c "from fdroidserver import metadata; ..."` или `fdroid lint` внутри
+  клона fdroiddata (в пустом каталоге lint ругается на категории — конфиг пуст).
+- **F-Droid собирает универсальный APK** (`build/app/outputs/flutter-apk/app-release.apk`),
+  а не `--split-per-abi`. Причина: Flutter при сплите прибавляет к `versionCode`
+  `1000 * индекс ABI` (arm=1000, arm64=2000, x64=4000 — см.
+  `FlutterPluginConstants.ABI_VERSION`), и APK перестаёт совпадать по номеру с
+  тем, что ждёт F-Droid. Универсальный APK сохраняет `versionCode` из pubspec.
+- **`flutter.sdk` в `android/local.properties`.** `android/settings.gradle.kts`
+  читает его и падает без него. `flutter build` пишет файл сам, но F-Droid-сборке
+  безопаснее добавить явно: `echo "flutter.sdk=$$flutter$$" >> android/local.properties`
+  в prebuild.
+- **Подпись.** `android/app/build.gradle.kts` жёстко требует release-keystore и
+  намеренно падает без `key.properties` (см. AGENTS «Пустые секреты подписи»:
+  молчаливая debug-подпись ломает автообновление). Поэтому рецепт ПЕРЕД сборкой
+  подменяет конфиг на debug: `sed -i -e
+  's/signingConfigs.getByName("release")/signingConfigs.getByName("debug")/'`.
+  F-Droid всё равно переподписывает APK своим ключом — свой keystore ему не нужен.
+- **Самообновление выключено в F-Droid-сборке** через
+  `--dart-define=KERAMIKA_NO_SELF_UPDATE=true` → `kSelfUpdateEnabled = false`.
+  Флаг обязан гасить ОБА места: таблетку обновления в Настройках И тихую
+  ежедневную проверку `UpdateService.instance.silentDailyCheck()` в `main.dart`.
+  Забыть второе легко — тогда F-Droid-сборка молча ходит в GitHub API.
+- **AntiFeature `NonFreeNet`.** Ада ходит к сторонним бесплатным LLM-провайдерам
+  (OpenRouter, Poolside и др. в `lib/services/ai_guide_service.dart`). F-Droid
+  это допускает как Anti-Feature (предупреждение), но не блокирует включение.
+- **IzzyOnDroid приложение с Адой НЕ примет.** Их App Inclusion Policy прямо
+  запрещает фронтенды к LLM и «vibe-coded» приложения. Раздают они бинарники
+  разработчика, так что для подачи туда нужна отдельная сборка БЕЗ Ады. Начинать
+  с IzzyOnDroid бессмысленно — сначала F-Droid.
+- **Fastlane-метаданные** в `fastlane/metadata/android/{en-US,ru,fr}/`: title,
+  short_description, full_description, icon (512×512), phoneScreenshots,
+  changelogs/`<versionCode>`. Их читают и F-Droid, и IzzyOnDroid. Лимиты:
+  `short_description` ≤ 80 символов и БЕЗ точки в конце, changelog ≤ 500.
+- **Порядок подачи.** `fastlane/` приезжает отдельным коммитом, а не в релизном,
+  поэтому рецепт обязан указывать `commit:` на коммит, где `fastlane/` уже есть.
+  Сейчас рецепт смотрит на `v1.6.106+45178` — там метаданных НЕТ. Порядок:
+  сначала пуш в `main` (новый релиз с `fastlane/`), потом обновить `commit:` и
+  `version*` в рецепте, и только затем MR в `fdroiddata`.
+- **Скриншоты** рисуются из кода: `flutter test tool/screenshots/render_screenshots.dart`
+  (в CI не гоняется). Складывает PNG в `docs/screenshots/` и
+  `fastlane/.../phoneScreenshots/`.
+
+
 ## Кузница (Forge) — ИИ-агент внутри приложения
 
 Раздел «Кузница» (`lib/screens/forge_screen.dart`) — ЧАТ с ИИ-агентом,

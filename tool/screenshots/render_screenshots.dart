@@ -8,7 +8,8 @@
 //
 // Запуск (нужен Flutter SDK и настоящие шрифты — см. AGENTS.md):
 //   flutter test tool/screenshots/render_screenshots.dart
-// PNG кладутся в docs/screenshots/.
+// PNG кладутся в docs/screenshots/ (витрина README) и в
+// fastlane/metadata/android/en-US/images/phoneScreenshots/ (F-Droid/IzzyOnDroid).
 //
 // Файл лежит вне test/, поэтому обычный `flutter test` его не подхватывает.
 //
@@ -251,6 +252,12 @@ void main() {
       return data!.buffer.asUint8List();
     });
     File('docs/screenshots/$name.png').writeAsBytesSync(bytes!);
+    final fastlane = Directory(
+      'fastlane/metadata/android/en-US/images/phoneScreenshots',
+    );
+    if (fastlane.existsSync()) {
+      File('${fastlane.path}/$name.png').writeAsBytesSync(bytes);
+    }
   }
 
   void phone(WidgetTester tester) {

@@ -1,0 +1,38 @@
+Keramika is a free and open-source alarm clock that will not let you go back to sleep. It bundles alarms, tasks, habits, nutrition tracking and a built-in AI assistant in one Material You app.
+
+ALARMS THAT ACTUALLY WORK
+- Exact alarms via SCHEDULE_EXACT_ALARM and a foreground service that keeps the process alive
+- Wake tasks: attach a task you must complete to switch the alarm off
+- Survives a reboot — alarms are rescheduled automatically
+- Full-screen intent so the alarm shows above the lock screen
+- Five built-in sounds: classic, default, digital, gentle, nature
+
+TASKS AND HABITS
+- Tasks with priority, due date and repeat rules
+- Habits with streaks and daily or total goals
+- Reality checks — an honest "are you lying to yourself?" prompt
+- Swipe to delete, drag to reorder, springy animations
+
+NUTRITION
+- Meals, macro goals and 30-day trends
+- Ring progress for every goal
+
+PRIVACY
+- PIN lock and an app lock screen
+- Export all your data as a single file
+
+ADA — THE AI ASSISTANT
+Ada understands plain speech:
+- "set an alarm for 7 am on weekdays"
+- "remind me tomorrow at 18:30 to buy milk"
+- "count how many calories I ate"
+She creates, edits and deletes alarms, tasks, habits, checks and meals, and can undo her last action. Ada works in a small window above other apps, and can run on free public model providers with no account of your own. Your API key, if you add one, is stored only on the device.
+
+SYSTEM
+- In-app updates (not in the F-Droid build — F-Droid updates it): checks GitHub Releases, verifies SHA-256 and installs the APK over the old one, keeping your data
+- Material You dynamic colours plus a dark theme
+- Localisation: English, Russian, French
+
+Keramika is MIT-licensed. It contains no ads, no trackers and no Google Play Services.
+
+Requires Android 8.0 (API 26) or newer.

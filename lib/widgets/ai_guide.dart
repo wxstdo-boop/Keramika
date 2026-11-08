@@ -1364,6 +1364,7 @@ class _AiChatBodyState extends State<_AiChatBody>
                   behavior: HitTestBehavior.opaque,
                   onTap: _cycleAvatar,
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Строка 1: «Ада, ничего не надо».
@@ -1379,30 +1380,27 @@ class _AiChatBodyState extends State<_AiChatBody>
                       // Переключается плавно при смене провайдера.
                       // Стрик переехал в подсказку пустого чата (мельче
                       // и красивее) — в шапке осталась только модель.
-                      Flexible(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
-                          switchInCurve: Curves.easeOut,
-                          switchOutCurve: Curves.easeIn,
-                          transitionBuilder: (child, animation) =>
-                              FadeTransition(
-                                opacity: animation,
-                                child: SizeTransition(
-                                  sizeFactor: animation,
-                                  alignment: AlignmentDirectional.topStart,
-                                  child: child,
-                                ),
-                              ),
-                          child: ModelLabel(
-                            key: const ValueKey('model_label_stable'),
-                            label: _modelLabel,
-                            details: AiGuideService.providerTrace.value.join(
-                              '\n',
-                            ),
-                            textStyle: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 400),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: SizeTransition(
+                            sizeFactor: animation,
+                            alignment: AlignmentDirectional.topStart,
+                            child: child,
+                          ),
+                        ),
+                        child: ModelLabel(
+                          key: const ValueKey('model_label_stable'),
+                          label: _modelLabel,
+                          details: AiGuideService.providerTrace.value.join(
+                            '\n',
+                          ),
+                          textStyle: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),

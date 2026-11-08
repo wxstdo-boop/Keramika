@@ -1,0 +1,6 @@
+- First public release
+- Alarms with wake tasks, reboot survival and full-screen intent
+- Tasks and habits with streaks, reality checks
+- Nutrition tracking with macro rings and 30-day trends
+- Ada, a built-in AI assistant (uses third-party model providers over the network)
+- Material You dynamic colour, dark theme, English / Russian / French

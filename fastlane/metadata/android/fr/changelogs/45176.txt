@@ -1,0 +1,6 @@
+- Première version publique
+- Alarmes avec tâches de réveil, survie au redémarrage et intent plein écran
+- Tâches et habitudes avec séries, vérifications de réalité
+- Suivi nutritionnel avec anneaux de macros et tendances sur 30 jours
+- Ada, assistante IA intégrée (utilise des fournisseurs de modèles tiers via le réseau)
+- Couleurs dynamiques Material You, thème sombre, anglais / russe / français

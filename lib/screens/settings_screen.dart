@@ -1674,7 +1674,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                         color: theme.colorScheme.primary,
                       ),
                       const SizedBox(width: 8),
-                      const UpdatePill(),
+                      // В F-Droid-сборке самообновление выключено (магазин
+                      // переподписывает APK своим ключом) — таблетку не показываем.
+                      if (kSelfUpdateEnabled) const UpdatePill(),
                     ],
                   ),
                 ),

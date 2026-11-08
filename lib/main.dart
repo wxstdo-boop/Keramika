@@ -1074,7 +1074,10 @@ Future<void> _startApp() async {
   JankProbe.start();
   // Тихая проверка обновлений раз в сутки (БЕЗ диалогов): если на GitHub есть
   // релиз новее, таблетка в Настройках сразу предложит обновиться.
-  unawaited(UpdateService.instance.silentDailyCheck());
+  // В сборке для F-Droid самообновление выключено — проверку не запускаем.
+  if (kSelfUpdateEnabled) {
+    unawaited(UpdateService.instance.silentDailyCheck());
+  }
   // Повторный edge-to-edge ПОСЛЕ первого кадра — на MIUI/HyperOS вызов  // до runApp не применяется (Flutter сбрасывает системный UI при старте).
   // Без него сверху остаётся чёрная квадратная полоса статус-бара, и
   // верхние углы экрана не закруглены при оттягивании крайних разделов.
