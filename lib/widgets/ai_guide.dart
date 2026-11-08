@@ -164,6 +164,10 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
           message: Translations.t('aiGuide', context, 'AI guide'),
           preferredAbove: true,
           child: GestureDetector(
+            // Opaque: тапабельна вся плитка 42 px, а не только аватар 26 px.
+            // Без этого палец, попавший на стекло рядом с аватаром, не
+            // открывал чат — «кнопка не срабатывает».
+            behavior: HitTestBehavior.opaque,
             onTap: () => showAiGuideChat(context),
             child: Center(child: const LiveAdaAvatar(size: 26)),
           ),

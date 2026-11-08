@@ -17,6 +17,14 @@ class SwipeToDelete extends StatefulWidget {
   /// границах, чтобы красная плашка не «заезжала» за боковые края.
   final double horizontalInset;
 
+  /// Доля ширины карточки, после которой свайп считается «осознанным» и
+  /// открывает подтверждение удаления. Поднято с дефолтных 0.40: списки
+  /// живут внутри горизонтальной карусели разделов, и лёгкий боковой сдвиг
+  /// (попытка свайпнуть раздел, случайное касание при скролле) на 40 %
+  /// ширины уже выдёргивал диалог удаления — «свайпы удаляют везде».
+  /// 0.60 требует явного, длинного свайпа, но не мешает осознанному.
+  final double dismissThreshold;
+
   const SwipeToDelete({
     super.key,
     required this.dismissKey,
@@ -26,6 +34,7 @@ class SwipeToDelete extends StatefulWidget {
     this.movementDuration,
     this.borderRadius = 20,
     this.horizontalInset = 0,
+    this.dismissThreshold = 0.6,
   });
 
   @override
@@ -53,14 +62,20 @@ class _SwipeToDeleteState extends State<SwipeToDelete> {
       // «схлопывается» мягко, а не исчезает рывком.
       resizeDuration: const Duration(milliseconds: 340),
       direction: DismissDirection.endToStart,
+      // Порог «осознанного» свайпа (см. [dismissThreshold]).
+      dismissThresholds: <DismissDirection, double>{
+        DismissDirection.endToStart: widget.dismissThreshold,
+      },
       confirmDismiss: widget.confirmDismiss,
       onDismissed: widget.onDismissed,
       onUpdate: (d) => _progress.value = d.progress,
       background: ValueListenableBuilder<double>(
         valueListenable: _progress,
         builder: (context, p, _) {
-          // Фон виден, только когда карточку реально тянут (>8% свайпа).
-          final opacity = ((p - 0.08) / 0.92).clamp(0.0, 1.0);
+          // Фон виден, только когда карточку реально тянут: раньше красная
+          // плашка «УДАЛИТЬ» проявлялась уже с 8 % сдвига и мигала при
+          // каждом случайном касании. 20 % — заметный, но осознанный жест.
+          final opacity = ((p - 0.20) / 0.80).clamp(0.0, 1.0);
           final inset = widget.horizontalInset;
           return Opacity(
             opacity: opacity,

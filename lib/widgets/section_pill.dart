@@ -421,11 +421,17 @@ class _SectionPillState extends State<SectionPill>
     // по этой величины камень будет ПЛАВНО затухать (см. _releasing в
     // билдере), а не резким броском «складываться» в форму, когда живая
     // пружина долетает до угла.
+    //
+    // Берём [_dragSmooth], а НЕ [_dragPage]: под пальцем камень едет с
+    // лёгким логарифмическим отставанием, и на быстром жесте цель пальца
+    // успевает уехать вперёд. Снапшот волны от цели не совпадал с формой,
+    // которую реально видит глаз, — в первый кадр отпускания таблетка
+    // дёргалась («резкий возврат формы»). Фиксируем ровно то, что на экране.
     _releasing = true;
-    _releaseWave = _waveAt(_dragPage, count);
+    _releaseWave = _waveAt(_dragSmooth, count);
     _lastWave = _releaseWave;
     _startEdgeSettle();
-    final target = _dragPage.round().clamp(0, count - 1);
+    final target = _dragSmooth.round().clamp(0, count - 1);
     // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт
     // пружина Home, которая стартует с текущей страницы PageView.
     sectionDragPage.value = null;
@@ -480,7 +486,15 @@ class _SectionPillState extends State<SectionPill>
     // «зафиксированная волна» с замороженным settle=0 висела до следующего
     // жеста — растянутая таблетка резко «складывалась» разом. Гасим, когда
     // есть что гасить: крайняя тяга ИЛИ зафиксированная волна.
-    if (!_dragging && _edgePull == 0 && _releaseWave <= 0.02) return;
+    if (!_dragging && _edgePull == 0 && _releaseWave <= 0.02) {
+      // Гасить нечего: возвращаем форму на живую формулу, иначе флаг
+      // [_releasing] остался бы висеть до следующего жеста и держал форму
+      // на устаревшем снапшоте.
+      _releasing = false;
+      _releaseWave = 0;
+      _lastWave = 0;
+      return;
+    }
     _releasePull = _edgePull;
     _edgeSettle
       ..stop()

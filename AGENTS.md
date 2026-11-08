@@ -9,7 +9,7 @@ flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\
 No Flutter and no Android SDK are preinstalled, and the sandbox can be wiped
 mid-session. Recipe that works here (pin the version — the project needs
 Dart >= 3.12, so 3.35.x is too old). Install the SDK under `/workspace`, NOT
-under `/home/openhands`: a mid-session sandbox wipe clears `/home` and `/tmp`
+under the home directory: a mid-session sandbox wipe clears `/home` and `/tmp`
 but keeps `/workspace`, so a `/workspace` SDK survives and only needs
 `export PATH` again:
 

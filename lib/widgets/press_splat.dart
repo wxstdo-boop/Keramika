@@ -430,6 +430,11 @@ class _OrganicFabState extends State<OrganicFab>
                 child: Semantics(
                   button: true,
                   child: GestureDetector(
+                    // Opaque: без него GestureDetector ловит тап только по
+                    // самому глифу (26 px), а вся плитка 56 px остаётся
+                    // мёртвой зоной — палец бьёт мимо значка, и «плюс не
+                    // срабатывает». Теперь тапабельна ВСЯ плитка.
+                    behavior: HitTestBehavior.opaque,
                     onLongPress: widget.onLongPress,
                     onTap: widget.onTap,
                     child: Icon(

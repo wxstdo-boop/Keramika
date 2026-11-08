@@ -10,7 +10,7 @@
     <a href="https://github.com/wxstdo-boop/Keramika/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/wxstdo-boop/Keramika/ci.yml?label=CI&color=%232ea44f" /></a>
     <a href="https://github.com/wxstdo-boop/Keramika/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wxstdo-boop/Keramika?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=%23c2185b" /></a>
     <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
-    <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.35%2B-02569a?logo=flutter&logoColor=white" />
+    <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.47.5-02569a?logo=flutter&logoColor=white" />
     <img alt="Dart" src="https://img.shields.io/badge/Dart-3.12-0175C2?logo=dart&logoColor=white" />
     <img alt="Android" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" />
     <img alt="License" src="https://img.shields.io/badge/license-MIT-2ea44f" />
@@ -128,11 +128,11 @@ lib/
 ├── main.dart          Точка входа, тема, навигация, startup
 ├── l10n/              Переводы (ru/en/fr) и провайдер локали
 ├── models/            Alarm, Habit, Task, RealityCheck, AppTimer, WakeTask
-├── screens/           21 файл: экраны и их компоненты
-├── services/          23 сервиса: данные, уведомления, ИИ, обновления
+├── screens/           24 файла: экраны и их компоненты
+├── services/          29 сервисов: данные, уведомления, ИИ, обновления
 ├── overlay/           Оверлей Ады + мост (io / web)
 ├── utils/             Иконки, анимации, снэкбары, локализация системных диалогов
-└── widgets/           49 UI-компонентов
+└── widgets/           55 UI-компонентов
 
 android/app/src/main/kotlin/com/wetidom/keramika/
 ├── MainActivity.kt             Точка входа Android
@@ -157,7 +157,7 @@ fsync-ом каждые 10 секунд. На web `dart:io` недоступен
 ### Стек
 | Слой | Что используется |
 |---|---|
-| UI | Flutter 3.35+, Material 3, `dynamic_color` для Material You |
+| UI | Flutter 3.47.5, Material 3, `dynamic_color` для Material You |
 | Состояние | `ChangeNotifier` + `ValueNotifier`, без внешних пакетов |
 | Хранилище | JSON-файлы + `shared_preferences` |
 | Уведомления | `flutter_local_notifications`, `timezone` |
@@ -173,12 +173,13 @@ fsync-ом каждые 10 секунд. На web `dart:io` недоступен
 flutter test --concurrency=1
 ```
 
-21 тестовый файл, 121 тест: стрики привычек, анимации чипов и тултипов, счётчик,
-слайдер-пикер, логика ворк-леда, локализация диалогов, смоук-тест.
+33 тестовых файла, 199 тестов: стрики привычек, анимации чипов и тултипов,
+счётчик, слайдер-пикер, логика ворк-леда, локализация диалогов, смоук-тест.
 
-> По состоянию на 2026-10-18 в CI (Flutter 3.47.5, как в `.github/workflows/ci.yml`)
-> `flutter analyze` чистый, `flutter test --concurrency=1` — 121 тест, все проходят,
-> падений нет. Подробности — в разделе [Состояние тестов](docs/TESTS.md).
+> По состоянию на 2026-11-03 в CI (Flutter 3.47.5, как в `.github/workflows/ci.yml`)
+> `flutter analyze` чистый, `flutter test` — 199 тестов, 3 пропущено (ручные,
+> требуют сети), падений нет. Подробности — в разделе
+> [Состояние тестов](docs/TESTS.md).
 
 ---
 

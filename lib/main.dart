@@ -1266,6 +1266,17 @@ class KeramikaAppState extends State<KeramikaApp>
   /// должен выкидывать на замок. Раньше запирало мгновенно на любом уходе.
   DateTime? _backgroundedAt;
 
+  /// Когда последний раз перепланировали уведомления на возврате из фона.
+  /// Полный обход будильников/напоминаний/проверок — это десятки platform-
+  /// каналов на каждый канал, и на слабом телефоне он приходился ровно на
+  /// первый видимый кадр после возврата: экран «мигал» и дёргался. Частые
+  /// возвраты (свернул/развернул, посмотрел уведомление) в пределах
+  /// [kResumeRescheduleGrace] больше не перепланируют — порядок взведённых
+  /// будильников за пару минут не меняется.
+  DateTime? _lastResumeReschedule;
+
+  static const Duration kResumeRescheduleGrace = Duration(seconds: 45);
+
   /// Сколько можно не вводить PIN после ухода в фон. Три минуты — компромисс:
   /// быстрый возврат не раздражает, а забытый на столе телефон сам запирается.
   static const Duration kRelockGrace = Duration(minutes: 3);
@@ -1599,7 +1610,19 @@ class KeramikaAppState extends State<KeramikaApp>
         if (awayMs >= kRelockGrace.inMilliseconds) _goLock();
       }
       HabitService().normalizeIfDayChanged();
-      rescheduleAllNotifications();
+      // Тяжёлая перепланировка — НЕ на первый видимый кадр: сначала даём
+      // кадру отрисоваться (addPostFrameCallback), и только если с прошлого
+      // раза прошло больше [kResumeRescheduleGrace]. Иначе десятки
+      // platform-вызовов приходились ровно на кадр возврата и экран мигал.
+      final now = DateTime.now();
+      final last = _lastResumeReschedule;
+      if (last == null ||
+          now.difference(last) >= kResumeRescheduleGrace) {
+        _lastResumeReschedule = now;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(rescheduleAllNotifications());
+        });
+      }
       // Ада-трекинг: догоняем пропущенный отчёт (приложение лежало в фоне)
       // и перезаводим таймер на ближайшие 08:00/21:00.
       unawaited(_adaTrackTick());

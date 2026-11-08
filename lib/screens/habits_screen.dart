@@ -259,6 +259,7 @@ class _HabitsScreenState extends State<HabitsScreen>
     // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
     sectionAddActions[widget.pillIndex] = _addHabit;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
+    _dragProxyY.addListener(_onDragProxyY);
     // Данные уже загружены в main() до первого кадра — показываем их
     // СРАЗУ, без ожидания повторного load() (иначе после Splash раздел
     // привычек мигает: кадр пустоты → резкое появление списка).
@@ -451,6 +452,8 @@ class _HabitsScreenState extends State<HabitsScreen>
   @override
   void dispose() {
     _dayTimer?.cancel();
+    _stopDragAutoScroll();
+    _dragProxyY.removeListener(_onDragProxyY);
     sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.removeListener(_syncPillOffset);
@@ -903,7 +906,7 @@ class _HabitsScreenState extends State<HabitsScreen>
           _service.reorder(oldGlobal, newGlobal);
         },
         proxyDecorator: (child, index, animation) =>
-            buildDragProxy(child, theme, animation),
+            buildDragProxy(child, theme, animation, trackY: _dragProxyY),
         itemBuilder: (context, i) => RepaintBoundary(
           key: ValueKey('${idPrefix}_${list[i].id}'),
           child: _buildHabitCard(context, theme, list, _FlatIndexSource(i)),
@@ -1081,6 +1084,57 @@ class _HabitsScreenState extends State<HabitsScreen>
   /// Глобальная Y-позиция drag-прокси (null — драга нет): заголовки секций
   /// мягко «расступаются», пока карточка проходит сквозь них.
   final ValueNotifier<double?> _dragProxyY = ValueNotifier<double?>(null);
+
+  /// Автоскролл длинного списка во время драга.
+  ///
+  /// Встроенный в [ReorderableListView] автоскролл здесь не работает:
+  /// внутренний список стоит на `NeverScrollableScrollPhysics` (скроллит
+  /// внешний `SingleChildScrollView`), а SDK честно отказывается автоскроллить
+  /// scrollable, который сам запрещает прокрутку. Из-за этого при перетаскивании
+  /// к нижней кромке список не докручивался и карточку нельзя было уронить
+  /// последней — «драг не докидывает последние». Крутим внешний контроллер
+  /// сами, пока палец держится у кромки.
+  Timer? _dragAutoScroll;
+
+  void _startDragAutoScroll() {
+    _dragAutoScroll ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_pillCtrl.hasClients) return;
+      final pos = _pillCtrl.position;
+      final viewport = pos.viewportDimension;
+      final y = _dragProxyY.value;
+      if (y == null) return;
+      const edge = 120.0;
+      final bottom = viewport - edge;
+      double delta = 0;
+      if (y > bottom) {
+        delta = (y - bottom).clamp(0.0, edge);
+      } else if (y < edge) {
+        delta = -(edge - y).clamp(0.0, edge);
+      }
+      if (delta == 0) return;
+      final target = (pos.pixels + delta * 0.55).clamp(
+        pos.minScrollExtent,
+        pos.maxScrollExtent,
+      );
+      if ((target - pos.pixels).abs() < 0.5) return;
+      pos.jumpTo(target);
+    });
+  }
+
+  void _stopDragAutoScroll() {
+    _dragAutoScroll?.cancel();
+    _dragAutoScroll = null;
+  }
+
+  /// Прокси появился/уехал: пока драг идёт — держим автоскролл включённым,
+  /// на отпускании (Y → null) гасим.
+  void _onDragProxyY() {
+    if (_dragProxyY.value == null) {
+      _stopDragAutoScroll();
+    } else {
+      _startDragAutoScroll();
+    }
+  }
 
   DateTime? _lastHabitTap;
 
