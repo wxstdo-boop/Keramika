@@ -455,27 +455,66 @@ Future<void> _showExitDialog(
   // Одна длительность на вход и на выход — её же ждёт задержка перед
   // SystemNavigator.pop() в кнопке «Выйти».
   const glassMs = 380;
+  // Фон под окном замораживаем на всё время жизни диалога: размывающая
+  // завеса тогда пересчитывает статичную картинку, а не гоняется за
+  // медальоном каждый кадр. Снимаем флаг по закрытии — фон оживает ровно
+  // когда маршрут окна полностью снят (см. whenComplete ниже).
+  lockBackgroundFrozen.value = true;
   await showGeneralDialog<Object?>(
     context: context,
     // Завеса прозрачная, а не чёрная: барьер не участвует в анимации
     // маршрута — вспыхивает и гаснет мгновенно, и фон «чернеет».
-    // Приглушение рисует сам transitionBuilder — в цвете темы, вместе с
-    // blur и карточкой, симметрично в обе стороны. Тапы по ПИН-экрану
-    // всё так же перехватывают барьер (barrierDismissible: false).
+    // Приглушение и размытие рисует сам transitionBuilder — в цвете темы,
+    // вместе с шайбой, симметрично в обе стороны. Тапы по ПИН-экрану
+    // всё так же перехватывает барьер (barrierDismissible: false).
     barrierDismissible: false,
     barrierColor: Colors.transparent,
-    // Анимация: только сама шайба мягко всплывает (opacity + лёгкий
-    // масштаб). НИ ПОЛНОЭКРАННОГО затемнения, НИ blur-окна: раньше «фон
-    // и обводка во весь экран» (затемняющий слой + шов размытия по периметру)
-    // читались грязно. Шайба — само по себе, поверх PИH-экрана.
+    // Анимация: фон мягко размывается и приглушается, а поверх него шайба
+    // всплывает (opacity + лёгкий масштаб). Раньше «фон и обводка во весь
+    // экран» (мгновенный затемняющий слой + шов размытия по периметру)
+    // читались грязно; теперь размытие нарастает той же кривой, что и
+    // появление шайбы, — фон уходит в расфокус плавно, без вспышки.
     transitionDuration: const Duration(milliseconds: glassMs),
+    // Анимация — в transitionBuilder, ОДНИМ слоем на весь маршрут:
+    //   1) полный экран мягко РАЗМЫВАЕТСЯ (BackdropFilter по живому
+    //      ПИН-экрану) и приглушается завесой в цвете темы;
+    //   2) поверх — сама шайба, чуть «выпрыгивающая» масштабом.
+    // Завеса лежит ОТДЕЛЬНЫМ слоем Stack и НЕ масштабируется вместе с
+    // шайбой: иначе по кромкам экрана осталась бы неразмытая рамка.
+    //
+    // Оптимизация: sigma размытия и альфа завесы — одна и та же кривая от
+    // `animation`, лишних слушателей/сетСтейтов нет; при «убрать анимации»
+    // размытие выключается совсем (завеса остаётся), а BackdropFilter
+    // строится только пока завеса реально видна (backT > 0.001) — в покое
+    // и в конце закрытия размывающего слоя в дереве нет.
     transitionBuilder: (context, animation, secondaryAnimation, child) {
-      // Одна симметричная кривая на оба хода. Считаем вручную — без
-      // CurvedAnimation (не навешивать лишний слушатель на кадр).
-      final t = Curves.easeOutBack.transform(animation.value);
-      return Opacity(
-        opacity: Curves.easeInOutCubic.transform(animation.value),
-        child: Transform.scale(scale: 0.9 + 0.10 * t, child: child),
+      final reduce = MotionPrefs.shouldReduceMotion;
+      final backT = reduce
+          ? 1.0
+          : Curves.easeOutCubic.transform(animation.value);
+      final blurSigma = reduce ? 0.0 : 12.0 * backT;
+      final popT = Curves.easeOutBack.transform(animation.value);
+      Widget dim = ColoredBox(
+        color: (isDark ? Colors.black : cs.surface).withValues(
+          alpha: (isDark ? 0.42 : 0.34) * backT,
+        ),
+      );
+      if (blurSigma > 0.001) {
+        dim = BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+          child: dim,
+        );
+      }
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (backT > 0.001)
+            Positioned.fill(child: IgnorePointer(child: ClipRect(child: dim))),
+          Opacity(
+            opacity: Curves.easeInOutCubic.transform(animation.value),
+            child: Transform.scale(scale: 0.9 + 0.10 * popT, child: child),
+          ),
+        ],
       );
     },
     // Material(type: transparency) обязателен: без него showGeneralDialog
@@ -663,7 +702,7 @@ Future<void> _showExitDialog(
         ),
       ),
     ),
-  );
+  ).whenComplete(() => lockBackgroundFrozen.value = false);
 }
 
 /// Маленький стаканчик из шапки диалога — единственное, что здесь

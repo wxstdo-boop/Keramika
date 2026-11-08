@@ -194,7 +194,14 @@ class _HomeScreenState extends State<HomeScreen>
     // только когда сдвиг заметен по пикселям (>= 0.5 px): хвост
     // «уезжает» незаметно, и дёрганье при удержании исчезает.
     if ((pos.pixels - target).abs() < 0.5) return;
-    pos.jumpTo(target);
+    // jumpToWithoutSettling, а НЕ jumpTo: `jumpTo` заканчивается
+    // `goBallistic(0.0)`, и `PageScrollPhysics` тут же заводит пружину к
+    // БЛИЖАЙШЕЙ странице — карусель «доводит себя сама», споря с пальцем, а
+    // под удержанием это читалось как подёргивание экранов. Здесь карусель
+    // ведёт ТОЛЬКО палец (через таблетку), а доводку по углам на отпускании
+    // делает пружина Home (_pageSpring / sectionTabTap).
+    // ignore: deprecated_member_use
+    pos.jumpToWithoutSettling(target);
   }
 
   @override

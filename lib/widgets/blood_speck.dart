@@ -36,26 +36,25 @@ class BloodSpeckPainter extends CustomPainter {
       final center = Offset(size.width * s[0], size.height * s[1]);
       final r = size.height * s[2];
       final density = s[3];
-      // На тёмной теме подложка полупрозрачнее — пятна чуть гаснут (×0.85),
-      // но ЧИТАЮТСЯ: на глухом тёмном фоне слабый контраст выглядел как
-      // «грязное пятно», теперь подтёки заметны, но не «кричат».
-      final scale = (isDark ? 0.85 : 1.0) * opacity;
+      // На тёмной теме подложка полупрозрачнее — пятна чуть гаснут (×0.72),
+      // но ЧИТАЮТСЯ.
+      final scale = (isDark ? 0.72 : 1.0) * opacity;
       final dryPaint = Paint()
-        ..color = _dry.withValues(alpha: (isDark ? 0.62 : 0.46) * density * scale);
+        ..color = _dry.withValues(alpha: (isDark ? 0.55 : 0.46) * density * scale);
       canvas.drawCircle(center, r, dryPaint);
       // Подтёк вправо-вниз — «кровь растеклась».
       canvas.drawCircle(
         center + Offset(r * 1.5, r * 0.45),
         r * 0.6,
         Paint()
-          ..color = _dry.withValues(alpha: (isDark ? 0.46 : 0.34) * density * scale),
+          ..color = _dry.withValues(alpha: (isDark ? 0.40 : 0.34) * density * scale),
       );
       // Светлое мокрое ядрышко (блик на крови).
       canvas.drawCircle(
         center - Offset(r * 0.3, r * 0.34),
         r * 0.42,
         Paint()
-          ..color = _wet.withValues(alpha: (isDark ? 0.40 : 0.28) * density * scale),
+          ..color = _wet.withValues(alpha: (isDark ? 0.30 : 0.28) * density * scale),
       );
     }
   }
@@ -83,13 +82,12 @@ class BloodSpeck {
         end: Alignment.bottomRight,
         colors: isDark
             ? [
-                // Тёмная тема: раньше заливка была почти прозрачной (0.20–0.34)
-                // и на тёмном фоне бейдж читался как глухая «грязная» плита.
-                // Подняли плотность: сочное «виноградное стекло» с ясным
-                // переходом от светлой кромки к тёмному дну.
-                const Color(0xFFF06A74).withValues(alpha: 0.44 * opacity),
-                const Color(0xFF9A0F1B).withValues(alpha: 0.66 * opacity),
-                const Color(0xFF56060E).withValues(alpha: 0.60 * opacity),
+                // На тёмной теме — сильно прозрачное «виноградное стекло»:
+                // бейдж лишь слегка подкрашивает фон, не превращаясь в
+                // плотную тёмную плиту. Пятна крови читаются, но не «давят».
+                const Color(0xFFE86A72).withValues(alpha: 0.12 * opacity),
+                const Color(0xFF8E0E18).withValues(alpha: 0.20 * opacity),
+                const Color(0xFF4A050C).withValues(alpha: 0.15 * opacity),
               ]
             : [
                 const Color(0xFFC0202C).withValues(alpha: 0.62 * opacity),
@@ -103,21 +101,9 @@ class BloodSpeck {
         color: (isDark
                 ? const Color(0xFFFFA2A8)
                 : const Color(0xFFE0525C))
-            .withValues(alpha: (isDark ? 0.36 : 0.40) * opacity),
+            .withValues(alpha: (isDark ? 0.22 : 0.40) * opacity),
         width: 1,
       ),
-      // Мягкий винный ореол: на тёмной теме бейдж отделяется от фона и
-      // «светится» благородным вином, а не сливается в тёмное пятно.
-      boxShadow: isDark
-          ? [
-              BoxShadow(
-                color: const Color(0xFF8E0E18).withValues(alpha: 0.42 * opacity),
-                blurRadius: 12,
-                spreadRadius: -3,
-                offset: const Offset(0, 3),
-              ),
-            ]
-          : null,
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show ImageFilter;
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,14 @@ import '../utils/motion_prefs.dart';
 import '../widgets/brand_emblem.dart';
 
 part 'lock_screen_widgets.dart';
+
+/// Пока поверх ПИН-экрана открыт диалог выхода, фоновые бесконечные циклы
+/// (пульс медальона) замораживаются. Иначе `BackdropFilter` размытия обязан
+/// пересчитывать фон каждый кадр — медальон живёт в своём `RepaintBoundary`,
+/// и его перерисовка меняет композитную текстуру под фильтром. С заморозкой
+/// фон под размытием становится статичным: фильтр считает картинку один раз
+/// и переиспользует её, и появление окна читается плавно, без просадки кадра.
+final ValueNotifier<bool> lockBackgroundFrozen = ValueNotifier<bool>(false);
 
 class LockScreen extends StatefulWidget {
   final bool isSetting;

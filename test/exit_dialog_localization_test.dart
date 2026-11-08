@@ -23,6 +23,9 @@ void main() {
     SharedPreferences.setMockInitialValues({'app_pin': '1234'});
     await initPrefs();
     PinService.resetCacheForTesting();
+    // Глобальный флаг заморозки фона — сбрасываем между тестами, чтобы
+    // упавший тест не «замораживал» фон следующему.
+    lockBackgroundFrozen.value = false;
   });
 
   /// Поднять PIN-экран в нужной локали и открыть стеклянный диалог выхода.
@@ -108,5 +111,31 @@ void main() {
     expect(find.text('Annuler'), findsOneWidget);
     expect(find.text('exitConfirmTitle'), findsNothing);
     expect(find.text('exitConfirmBody'), findsNothing);
+  });
+
+  testWidgets('фон под диалогом замораживается и оживает по закрытии', (
+    WidgetTester tester,
+  ) async {
+    // Пока окно открыто, размывающая завеса обязана считать СТАТИЧНЫЙ фон:
+    // флаг заморозки поднят (иначе BackdropFilter гоняется за медальоном
+    // каждый кадр). После закрытия флаг снимается — фон снова живёт.
+    expect(lockBackgroundFrozen.value, isFalse);
+
+    await openExitDialog(tester, 'ru');
+    expect(
+      lockBackgroundFrozen.value,
+      isTrue,
+      reason: 'на время диалога фоновые циклы заморожены',
+    );
+
+    await tester.tap(find.text('Отмена'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(
+      lockBackgroundFrozen.value,
+      isFalse,
+      reason: 'по закрытии окна фон размораживается',
+    );
+    expect(tester.takeException(), isNull);
   });
 }

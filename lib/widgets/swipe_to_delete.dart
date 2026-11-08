@@ -53,9 +53,15 @@ class _SwipeToDeleteState extends State<SwipeToDelete>
   /// карточка «придерживается», компенсируя жёсткий сдвиг [Dismissible].
   final ValueNotifier<double> _lag = ValueNotifier<double>(0);
 
-  /// Доля, которую сглаженное значение проходит к цели за кадр (~60 Гц).
-  /// Меньше — мягче и «тяжелее», но с большей задержкой за пальцем.
-  static const double _follow = 0.34;
+  /// Доля, которую сглаженное значение проходит к цели за кадр (~60 Гц) при
+  /// ОСОЗНАННОМ свайпе. Меньше — мягче и «тяжелее», но с большей задержкой
+  /// за пальцем.
+  static const double _followDrag = 0.34;
+
+  /// Догон при ВОЗВРАТЕ (цель едет назад к нулю после отпускания). Заметно
+  /// меньше, чем [_followDrag]: карточка не отщёлкивает обратно, а медленно и
+  /// мягко вплывает в слот — «отпустило и вернулось», без рывка на финише.
+  static const double _followReturn = 0.20;
 
   late final Ticker _ticker = createTicker(_tick);
 
@@ -98,10 +104,17 @@ class _SwipeToDeleteState extends State<SwipeToDelete>
   void _tick(Duration _) {
     final target = _raw.value;
     final current = _smooth.value;
-    final next = current + (target - current) * _follow;
+    // Возврат (цель едет НАЗАД, к нулю) идёт мягче осознанного свайпа: у
+    // самого конца фильтр с малым коэффициентом бесконечно долго «доползает»,
+    // поэтому порог фиксации на возврате крупнее — иначе хвост висел бы
+    // заметно. Осознанный свайп (цель растёт) держит точность.
+    final returning = target < current;
+    final follow = returning ? _followReturn : _followDrag;
+    final next = current + (target - current) * follow;
     _smooth.value = next;
     _lag.value = target - next;
-    if ((target - next).abs() < 0.0004) {
+    final settle = returning ? 0.0022 : 0.0004;
+    if ((target - next).abs() < settle) {
       _smooth.value = target;
       _lag.value = 0;
       _ticker.stop();
@@ -115,11 +128,13 @@ class _SwipeToDeleteState extends State<SwipeToDelete>
         final width = constraints.maxWidth;
         return Dismissible(
           key: widget.dismissKey,
-          // 320мс вместо 200: возврат карточки после отпускания плавнее,
-          // не «отщёлкивает» резко (линейная анимация Dismissible).
+          // 460мс вместо 320: возврат карточки после отпускания идёт
+          // медленнее и мягче. Вместе с асимметричным фильтром (см.
+          // [_followReturn]) карточка не «отщёлкивает» обратно, а плавно
+          // вплывает в слот — без дёрганья на финише.
           movementDuration:
               widget.movementDuration ??
-              const Duration(milliseconds: 320),
+              const Duration(milliseconds: 460),
           // Сжатие высоты строки при удалении тоже плавное — карточка
           // «схлопывается» мягко, а не исчезает рывком.
           resizeDuration: const Duration(milliseconds: 340),

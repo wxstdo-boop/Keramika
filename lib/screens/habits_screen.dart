@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/scheduler.dart' show Ticker;
 import '../models/habit.dart';
 import '../services/habit_service.dart';
 import '../services/settings_service.dart';
@@ -1095,43 +1096,59 @@ class _HabitsScreenState extends State<HabitsScreen>
   /// к нижней кромке список не докручивался и карточку нельзя было уронить
   /// последней — «драг не докидывает последние». Крутим внешний контроллер
   /// сами, пока палец держится у кромки.
-  Timer? _dragAutoScroll;
+  ///
+  /// Двигаем на КАЖДОМ КАДРЕ (Ticker), а не `Timer.periodic`: таймер тикает
+  /// по своим 16 мс, не совпадая с кадрами, и каждый тик резко прыгал
+  /// `jumpTo` — подтормаживание и «ступеньки». Кадровый тик берёт реальное
+  /// время кадра и двигает позицию на `скорость × dt` — ровное скольжение.
+  Ticker? _dragAutoScroll;
+
+  /// Доля кромочной зоны, за которой включается автоскролл.
+  static const double _autoScrollEdge = 150.0;
+
+  /// Пиковая скорость у самой кромки, px/с. Умеренная: тянуть карточку к
+  /// краю спокойно и предсказуемо, без «улёта».
+  static const double _autoScrollPeak = 620.0;
 
   void _startDragAutoScroll() {
-    _dragAutoScroll ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
-      if (!_pillCtrl.hasClients) return;
-      final pos = _pillCtrl.position;
-      final viewport = pos.viewportDimension;
-      final y = _dragProxyY.value;
-      if (y == null) return;
-      const edge = 140.0;
-      final bottom = viewport - edge;
-      // Глубина захода пальца в кромочную зону, -1..1.
-      double t = 0;
-      if (y > bottom) {
-        t = ((y - bottom) / edge).clamp(0.0, 1.0);
-      } else if (y < edge) {
-        t = -((edge - y) / edge).clamp(0.0, 1.0);
-      }
-      if (t == 0) return;
-      // Квадратичный разгон от кромки: у самой кромки список еле ползёт, глубже
-      // — ускоряется, но остаётся заметно медленнее прежнего. Раньше шаг был
-      // линейным (delta * 0.55) и доходил до ~4000 px/с — список «улетал»
-      // рывками. Теперь потолок ~700 px/с: тянуть карточку к краю спокойнее и
-      // предсказуемее.
-      final step = 11.0 * t * t.abs();
-      final target = (pos.pixels + step).clamp(
-        pos.minScrollExtent,
-        pos.maxScrollExtent,
-      );
-      if ((target - pos.pixels).abs() < 0.5) return;
-      pos.jumpTo(target);
-    });
+    _dragAutoScroll ??= createTicker(_onDragAutoScrollTick)..start();
   }
 
+  void _onDragAutoScrollTick(Duration elapsed) {
+    if (!_pillCtrl.hasClients) return;
+    final pos = _pillCtrl.position;
+    final viewport = pos.viewportDimension;
+    final y = _dragProxyY.value;
+    if (y == null) return;
+    final bottom = viewport - _autoScrollEdge;
+    // Глубина захода пальца в кромочную зону, -1..1.
+    double t = 0;
+    if (y > bottom) {
+      t = ((y - bottom) / _autoScrollEdge).clamp(0.0, 1.0);
+    } else if (y < _autoScrollEdge) {
+      t = -((_autoScrollEdge - y) / _autoScrollEdge).clamp(0.0, 1.0);
+    }
+    if (t == 0) return;
+    // Квадратичный разгон от кромки: у самой кромки список еле ползёт, глубже
+    // — ускоряется. Мгновенная скорость (px/с), интегрируется по dt кадра.
+    final dt = (elapsed - _lastAutoScrollTick).inMicroseconds / 1e6;
+    _lastAutoScrollTick = elapsed;
+    if (dt <= 0) return;
+    final velocity = _autoScrollPeak * t * t.abs();
+    final target = (pos.pixels + velocity * dt).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    if ((target - pos.pixels).abs() < 0.01) return;
+    pos.jumpTo(target);
+  }
+
+  Duration _lastAutoScrollTick = Duration.zero;
+
   void _stopDragAutoScroll() {
-    _dragAutoScroll?.cancel();
+    _dragAutoScroll?.dispose();
     _dragAutoScroll = null;
+    _lastAutoScrollTick = Duration.zero;
   }
 
   /// Прокси появился/уехал: пока драг идёт — держим автоскролл включённым,
