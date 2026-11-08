@@ -154,7 +154,10 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
     // одинаково заметно.
     return PressScale(
       pressedScale: 0.90,
-      duration: const Duration(milliseconds: 200),
+      // Те же 260/360, что у плюса: обе кнопки одной семьи обязаны
+      // отзываться на палец одинаково — медленно и мягко.
+      duration: const Duration(milliseconds: 260),
+      releaseDuration: const Duration(milliseconds: 360),
       child: GlassFabTile(
         size: 42,
         child: SmoothTooltip(

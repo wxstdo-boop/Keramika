@@ -66,13 +66,11 @@ Route<T> lockRoute<T>(Widget page) {
         parent: animation,
         curve: Curves.easeInOutCubic,
       );
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.985, end: 1.0).animate(curved),
-          child: child,
-        ),
-      );
+      // Только fade — БЕЗ масштаба. Масштаб на весь экран ПИН-экрана
+      // (медальон с бесконечным циклом + стеклянный витраж) заставлял GPU
+      // каждый кадр перефильтровывать большой слой, и разблокировка
+      // («после ввода пинкода») читалась лагом. Чистая проявка дешёвая.
+      return FadeTransition(opacity: curved, child: child);
     },
   );
 }
@@ -95,8 +93,12 @@ Route<T> lockRoute<T>(Widget page) {
 Route<T> homeEntryRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: const Duration(milliseconds: 280),
-    reverseTransitionDuration: const Duration(milliseconds: 200),
+    // 340 мс вместо 280: длиннее и мягче. Дом монтирует сразу 4 экрана, и
+    // на первом кадре после сплэша этот build неизбежен — растянутая
+    // проявка размазывает его по кадрам, поэтому переход не читается
+    // «толчком», а наплывает.
+    transitionDuration: const Duration(milliseconds: 340),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(

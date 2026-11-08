@@ -363,7 +363,9 @@ class _OrganicFabState extends State<OrganicFab>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 300),
+    // Пятнышки проявляются мягче и дольше: 420 мс вместо 300 — под пальцем
+    // они «набухают» постепенно, а не вспыхивают.
+    duration: const Duration(milliseconds: 420),
   );
   Timer? _release;
 
@@ -376,7 +378,7 @@ class _OrganicFabState extends State<OrganicFab>
     _release?.cancel();
     // Небольшая задержка: пятнышки успевают «проявиться» под пальцем и
     // гаснут уже после отпускания — плавно, без щелчка.
-    _release = Timer(const Duration(milliseconds: 110), () {
+    _release = Timer(const Duration(milliseconds: 150), () {
       if (mounted) _c.reverse();
     });
   }
@@ -410,7 +412,11 @@ class _OrganicFabState extends State<OrganicFab>
             // настроек): плюс и Ада уменьшаются одинаково заметно.
             PressScale(
               pressedScale: 0.90,
-              duration: const Duration(milliseconds: 200),
+              // Зажатие стало медленнее и мягче (260 мс вместо 200), а
+              // отпускание — заметно плавнее (360 мс), чтобы возврат не
+              // читался щелчком. Кнопка «дышит» под пальцем.
+              duration: const Duration(milliseconds: 260),
+              releaseDuration: const Duration(milliseconds: 360),
               child: GlassFabTile(
                 size: widget.size,
                 extraLayer: CustomPaint(

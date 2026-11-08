@@ -1261,6 +1261,15 @@ class KeramikaAppState extends State<KeramikaApp>
   /// запирать приложение.
   bool _relockPending = false;
 
+  /// Момент ухода в фон. Пока с него прошло меньше [kRelockGrace], возврат
+  /// в приложение НЕ требует PIN: короткий взгляд в уведомления/на часы не
+  /// должен выкидывать на замок. Раньше запирало мгновенно на любом уходе.
+  DateTime? _backgroundedAt;
+
+  /// Сколько можно не вводить PIN после ухода в фон. Три минуты — компромисс:
+  /// быстрый возврат не раздражает, а забытый на столе телефон сам запирается.
+  static const Duration kRelockGrace = Duration(minutes: 3);
+
   /// Подпись последнего применённого системного UI-стиля (яркость +
   /// цвет статуса-бара). Платформ-вызов `setSystemUIOverlayStyle` дёшев,
   /// но в первые кадры после сплэша лишних platform-каналов — как раз
@@ -1566,6 +1575,7 @@ class KeramikaAppState extends State<KeramikaApp>
           !_locked &&
           PinService.hasPinSync()) {
         _relockPending = true;
+        _backgroundedAt = DateTime.now();
       }
       return;
     }
@@ -1578,7 +1588,15 @@ class KeramikaAppState extends State<KeramikaApp>
       // (_wakeScreenShowing), системные экраны — тоже (флаг выше).
       if (_relockPending) {
         _relockPending = false;
-        _goLock();
+        // Грейс-период: если вернулись раньше [kRelockGrace], PIN не
+        // спрашиваем — просто продолжаем с того же места. Флаг всё равно
+        // снимаем, иначе следующий уход посчитает время от старой метки.
+        final away = _backgroundedAt;
+        _backgroundedAt = null;
+        final awayMs = away == null
+            ? kRelockGrace.inMilliseconds
+            : DateTime.now().difference(away).inMilliseconds;
+        if (awayMs >= kRelockGrace.inMilliseconds) _goLock();
       }
       HabitService().normalizeIfDayChanged();
       rescheduleAllNotifications();

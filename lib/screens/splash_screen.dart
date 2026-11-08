@@ -315,23 +315,27 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                             Positioned.fill(
                               child: IgnorePointer(
+                                // Блик лежит ОДНИМ слоем под RepaintBoundary
+                                // и клипается ВНУТРИ пейнтера
+                                // (canvas.clipRRect). Раньше здесь стоял
+                                // виджет ClipRRect: он делает saveLayer на
+                                // каждый кадр блика, а блик перерисовывается
+                                // каждый кадр — на слабом GPU это лишний
+                                // полноэкранный слой. Клип на канвасе
+                                // saveLayer не создаёт.
                                 child: RepaintBoundary(
                                   child: AnimatedBuilder(
                                     animation: _shine,
-                                    builder: (context, _) => ClipRRect(
-                                      borderRadius: BorderRadius.circular(
-                                        _kRadius,
-                                      ),
-                                      child: CustomPaint(
-                                        painter: _GlassSweepPainter(
-                                          t: _shine.value,
-                                          // На светлой теме белое ядро по
-                                          // белому кольцу не видно ВООБЩЕ —
-                                          // поэтому яркость задаётся темой,
-                                          // а тёмные кромки полосы делают
-                                          // блик читаемым на любом фоне.
-                                          strength: isDark ? 0.78 : 1.10,
-                                        ),
+                                    builder: (context, _) => CustomPaint(
+                                      painter: _GlassSweepPainter(
+                                        t: _shine.value,
+                                        radius: _kRadius,
+                                        // На светлой теме кровавое ядро по
+                                        // белому кольцу читается слабо —
+                                        // поэтому яркость задаётся темой,
+                                        // а тёмная кромка полосы делает блик
+                                        // читаемым на любом фоне.
+                                        strength: isDark ? 0.78 : 1.10,
                                       ),
                                     ),
                                   ),
@@ -522,11 +526,26 @@ class _ShineText extends StatelessWidget {
 class _GlassSweepPainter extends CustomPainter {
   final double t;
 
-  /// Верхняя точка яркости: на тёмном стекле белый блик читается сильнее,
+  /// Радиус скругления плиты: блик клипается по нему ПРЯМО на канвасе
+  /// (`canvas.clipRRect`), чтобы не платить за виджетный `ClipRRect`
+  /// (он создаёт saveLayer на каждый кадр).
+  final double radius;
+
+  /// Верхняя точка яркости: на тёмном стекле блик читается сильнее,
   /// поэтому темой задаётся разная глубина.
   final double strength;
 
-  const _GlassSweepPainter({required this.t, required this.strength});
+  /// Цвет блика — фирменная «кровь», та же, что у подписи POWERED BY LARAF
+  /// (см. [_ShineText]). Белый блик по белой плите в светлой теме почти не
+  /// читался; кровавая полоса видна и на белом, и на тёмном, и перекликается
+  /// с подписью — ава и текст блестят ОДНИМ материалом.
+  static const Color _blood = Color(0xFFB3121F);
+
+  const _GlassSweepPainter({
+    required this.t,
+    required this.strength,
+    required this.radius,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -545,6 +564,13 @@ class _GlassSweepPainter extends CustomPainter {
         -diagonal * 1.05 + Curves.easeInOutSine.transform(t) * diagonal * 2.1;
 
     canvas.save();
+    // Клип по скруглению плиты на канвасе, а не виджетом: saveLayer не нужен.
+    canvas.clipRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Radius.circular(radius),
+      ),
+    );
     canvas.translate(size.width / 2, size.height / 2);
     canvas.rotate(angle);
 
@@ -588,30 +614,41 @@ class _GlassSweepPainter extends CustomPainter {
       );
     }
 
-    // 1. Тёмный контактный кант — узкий и впереди ядра.
+    // 1. Тёмный контактный кант — узкий и впереди ядра. Единственная
+    //    НЕкрасная полоса: без него кровавое ядро на белой плите сливалось
+    //    бы с фоном и блик «не показывался».
     band(
       cx - diagonal * 0.11,
       diagonal * 0.12,
-      (0.12 * env * 255).round(),
+      (0.14 * env * 255).round(),
       dark: true,
     );
-    // 2. Широкое слабое гало — мягкая подсветка вокруг искры.
-    band(cx, diagonal * 0.30, (0.16 * env * 255).round());
-    // 3. Узкое яркое ядро с крутыми скатами (плато в середине).
+    // 2. Широкое слабое гало — мягкая кровавая подсветка вокруг искры.
+    band(cx, diagonal * 0.30, (0.20 * env * 255).round(), color: _blood);
+    // 3. Узкое ядро с крутыми скатами — плотная кровь (плато в середине).
     band(
       cx,
       diagonal * 0.11,
-      (0.98 * env * 255).round(),
+      (0.88 * env * 255).round(),
+      color: _blood,
       stops: const [0.0, 0.42, 0.5, 0.58, 1.0],
     );
-    // 4. Тонкая почти белая «нить» по центру — остриё блеска.
-    band(cx, diagonal * 0.022, 255, color: Colors.white);
+    // 4. Тонкая «нить» по центру — остриё блеска. Чуть высветленная кровь
+    //    (не белая): держит остриё читаемым, оставаясь красной.
+    band(
+      cx,
+      diagonal * 0.022,
+      (0.95 * env * 255).round(),
+      color: Color.lerp(_blood, Colors.white, 0.28)!,
+    );
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_GlassSweepPainter oldDelegate) =>
-      oldDelegate.t != t || oldDelegate.strength != strength;
+      oldDelegate.t != t ||
+      oldDelegate.strength != strength ||
+      oldDelegate.radius != radius;
 }
 
 /// Разбитое стекло поверх плиты авы: скол расходится из точки удара.

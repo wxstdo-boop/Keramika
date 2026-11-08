@@ -8,14 +8,17 @@ flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\
 
 No Flutter and no Android SDK are preinstalled, and the sandbox can be wiped
 mid-session. Recipe that works here (pin the version — the project needs
-Dart >= 3.12, so 3.35.x is too old):
+Dart >= 3.12, so 3.35.x is too old). Install the SDK under `/workspace`, NOT
+under `/home/openhands`: a mid-session sandbox wipe clears `/home` and `/tmp`
+but keeps `/workspace`, so a `/workspace` SDK survives and only needs
+`export PATH` again:
 
 ```
-mkdir -p /home/openhands/sdk && cd /home/openhands/sdk
+mkdir -p /workspace/sdk_tmp && cd /workspace/sdk_tmp
 curl -sL -o f.tar.xz https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.5-stable.tar.xz
 tar xf f.tar.xz && rm f.tar.xz
-export PATH="/home/openhands/sdk/flutter/bin:$PATH"
-git config --global --add safe.directory /home/openhands/sdk/flutter
+export PATH="/workspace/sdk_tmp/flutter/bin:$PATH"
+git config --global --add safe.directory /workspace/sdk_tmp/flutter
 ```
 
 Then `flutter pub get && flutter analyze && flutter test`. Android SDK/Java are

@@ -83,7 +83,10 @@ class _AnimatedFabRowState extends State<AnimatedFabRow>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 520),
+    // Появление стало МЕДЛЕННЕЕ и мягче: 640 мс вместо 520. Длинный ход с
+    // easeOutCubic читается как «доплытие», а не как быстрый попомоп рядом с
+    // контентом сразу после сплэша.
+    duration: const Duration(milliseconds: 640),
     value: 0,
   );
   // Небольшая пауза перед «доплытием»: FAB появляется не в первый же
@@ -144,12 +147,12 @@ class _AnimatedFabRowState extends State<AnimatedFabRow>
       child: widget.child,
       builder: (context, child) {
         // Тяжёлое плавное появление: не просто fade+slide, а ещё
-        // объёмный scale (0.92→1.0) и глубокий подъём. Кривая easeOutCubic
-        // даёт мягкое «доплытие» без рывка в конце; 520 мс + 120 мс
+        // объёмный scale (0.90→1.0) и глубокий подъём. Кривая easeOutCubic
+        // даёт мягкое «доплытие» без рывка в конце; 640 мс + 120 мс
         // пауза делают появление «тяжеловесным», но плавным.
         final t = Curves.easeOutCubic.transform(_controller.value);
-        final scale = 0.92 + 0.08 * t;
-        final lift = 0.6 * (1 - t);
+        final scale = 0.90 + 0.10 * t;
+        final lift = 0.85 * (1 - t);
         return IgnorePointer(
           ignoring: !widget.visible.value,
           child: Opacity(
