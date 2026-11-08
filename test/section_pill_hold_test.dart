@@ -77,4 +77,49 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('отпускание растянутого камня возвращает форму плавно', (
+    tester,
+  ) async {
+    await pumpPill(tester);
+    double stoneWidth() {
+      final r = tester.getRect(
+        find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_GlassStone',
+        ),
+      );
+      return r.width;
+    }
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(SectionPill)),
+    );
+    await tester.pump();
+    // Долгая тяга к правому краю — камень заметно растянут.
+    for (var i = 0; i < 20; i++) {
+      await gesture.moveBy(const Offset(18, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final stretched = stoneWidth();
+    await gesture.up();
+    // Первый кадр после отпускания: форма не должна схлопнуться скачком.
+    await tester.pump(const Duration(milliseconds: 16));
+    final first = stoneWidth();
+    expect(
+      first,
+      greaterThan(stretched * 0.9),
+      reason: 'растяжка не должна пропадать в первом же кадре '
+          '(раньше захваченная тяга обнулялась на статусе forward)',
+    );
+    // И дальше ширина только уменьшается — форма «расслабляется» плавно.
+    var prev = first;
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 32));
+      final w = stoneWidth();
+      expect(w, lessThanOrEqualTo(prev + 0.01));
+      prev = w;
+    }
+    expect(prev, lessThan(first), reason: 'форма всё же возвращается к покою');
+    await tester.pumpAndSettle();
+  });
 }
