@@ -24,7 +24,7 @@ subprojects {
 subprojects {
     plugins.withId("com.android.library") {
         extensions.configure<com.android.build.gradle.BaseExtension>("android") {
-            compileSdkVersion(36)
+            compileSdkVersion(37)
         }
         // Some plugins (flutter: file_picker 13 -> android_file_picker 2.1.1)
         // read the `flutter` extension DURING CONFIGURATION:
@@ -38,7 +38,7 @@ subprojects {
             extensions.add(
                 "flutter",
                 mapOf<String, Any>(
-                    "compileSdkVersion" to 36,
+                    "compileSdkVersion" to 37,
                     "minSdkVersion" to 21,
                 ),
             )

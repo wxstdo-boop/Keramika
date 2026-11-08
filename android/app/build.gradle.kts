@@ -13,7 +13,7 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "com.wetidom.keramika"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
