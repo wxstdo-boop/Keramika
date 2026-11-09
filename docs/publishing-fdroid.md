@@ -138,15 +138,82 @@ Codeberg) со ссылкой на APK-релиз. Лимит на APK — 30 М
 
 ### Важная зависимость порядка
 
-`fastlane/` добавляется в репозиторий **отдельным коммитом**, а не в релизном.
-Значит рецепт должен указывать на коммит, где `fastlane/` уже есть. Если
-подать рецепт на текущий тег `v1.6.106+45178` (метаданных там нет), F-Droid
-возьмёт описания из пустого места. Поэтому порядок такой:
+`fastlane/` и флаг `KERAMIKA_NO_SELF_UPDATE` живут в коде на `main`, а рецепт
+обязан указывать `commit:` на коммит, где они уже есть. Поэтому порядок такой:
 
-1. Сначала релиз, который содержит `fastlane/` (любой следующий пуш в `main`).
+1. Сначала релиз, который содержит `fastlane/` и флаг (любой пуш в `main`).
 2. Потом в рецепте обновить `commit:`, `versionName`, `versionCode`,
    `CurrentVersion`, `CurrentVersionCode` на этот тег.
 3. И только затем MR в `fdroiddata`.
+
+Сейчас рецепт смотрит на `v1.6.109+45181` (commit `dac2435`), и это
+актуальный релиз — расхождения нет. После каждого нового релиза шаг 2
+повторять, иначе CI-гейт `fdroid checkupdates --auto` упадёт на diff.
+
+## Готовый пакет подачи (осталось только отправить)
+
+Всё, что нужно F-Droid, уже лежит в репозитории и проверено. Подача требует
+аккаунта GitLab — его у агента нет, поэтому ниже готовый текст, который надо
+вставить руками.
+
+### Вариант A (рекомендуется для первого раза) — RFP-issue
+
+Открыть новое issue: https://gitlab.com/fdroid/rfp/-/issues/new
+
+**Title:** `Keramika (com.wetidom.keramika)`
+
+**Description:**
+
+```markdown
+### App information
+- Name: Keramika
+- Package ID: com.wetidom.keramika
+- Source: https://github.com/wxstdo-boop/Keramika
+- License: MIT
+- Categories: Alarm Clock, Habit Tracker, Task
+
+### Description
+A privacy-friendly offline alarm clock, habit tracker, task list and focus
+timer in one Flutter app. Optional AI assistant "Ada" is disabled by default
+and talks to third-party model providers (declared as the NonFreeNet
+anti-feature). Everything else works fully offline.
+
+### Build
+A ready metadata file is provided at
+https://github.com/wxstdo-boop/Keramika/blob/main/fdroid/metadata/com.wetidom.keramika.yml
+It is validated against fdroiddata CI: `fdroid lint` clean,
+`fdroid rewritemeta` canonical, `fdroid checkupdates --auto` resolves
+v1.6.109+45181 with no diff.
+
+Build notes:
+- Flutter app, built with srclib `flutter@3.47.5`.
+- Needs Android SDK `platforms;android-37.0` and `build-tools;36.0.0`
+  (AGP 9.1.1 default), installed in prebuild via sdkmanager.
+- NDK 28.2.13676358.
+- F-Droid build disables self-update with `--dart-define=KERAMIKA_NO_SELF_UPDATE=true`
+  and strips `REQUEST_INSTALL_PACKAGES`, so no in-app APK installation.
+- Signing config is removed automatically by fdroidserver; no keystore needed.
+```
+
+### Вариант B — сразу merge request
+
+Форк https://gitlab.com/fdroid/fdroiddata, ветка `com.wetidom.keramika`,
+скопировать рецепт в `metadata/com.wetidom.keramika.yml`, закоммитить и открыть
+MR по шаблону (шаблон обязателен — ревьюеры просят его заполнять).
+
+**Title:** `New app: com.wetidom.keramika`
+
+**MR description:** тот же текст, что в варианте A.
+
+### Что спросят ревьюеры (заготовленные ответы)
+
+- **Почему `NonFreeNet`?** Ада — необязательная ИИ-помощница, ходит к
+  сторонним бесплатным провайдерам (OpenRouter, Poolside). Приложение работает
+  офлайн, антифича указана честно. Не блокирует включение.
+- **`REQUEST_INSTALL_PACKAGES`?** В F-Droid-сборке самообновление выключено,
+  разрешение вырезается в prebuild — оно не используется.
+- **`third_party/`?** Два форка плагинов лежат в репозитории обычными файлами
+  (не submodules), собираются из исходников — F-Droid это устраивает.
 
 ## Продвижение: что реально работает
 
