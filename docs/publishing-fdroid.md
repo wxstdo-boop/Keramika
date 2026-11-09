@@ -146,9 +146,9 @@ Codeberg) со ссылкой на APK-релиз. Лимит на APK — 30 М
    `CurrentVersion`, `CurrentVersionCode` на этот тег.
 3. И только затем MR в `fdroiddata`.
 
-Сейчас рецепт смотрит на `v1.6.109+45181` (commit `dac2435`), и это
-актуальный релиз — расхождения нет. После каждого нового релиза шаг 2
-повторять, иначе CI-гейт `fdroid checkupdates --auto` упадёт на diff.
+Сейчас рецепт смотрит на последний релиз, и расхождения нет. После каждого
+нового релиза шаг 2 повторять, иначе CI-гейт `fdroid checkupdates --auto`
+упадёт на diff.
 
 ## Готовый пакет подачи (осталось только отправить)
 
@@ -185,8 +185,8 @@ anti-feature). Everything else works fully offline.
 A ready metadata file is provided at
 https://github.com/wxstdo-boop/Keramika/blob/main/fdroid/metadata/com.wetidom.keramika.yml
 It is validated against fdroiddata CI: `fdroid lint` clean,
-`fdroid rewritemeta` canonical, `fdroid checkupdates --auto` resolves
-v1.6.109+45181 with no diff.
+`fdroid rewritemeta` canonical, `fdroid checkupdates --auto` resolves the
+latest release with no diff.
 
 Build notes:
 - Flutter app, built with srclib `flutter@3.47.5`.
