@@ -17,11 +17,27 @@ class HabitTaskIconList {
   static List<IconData>? _pickerCached;
 
   static List<IconData> _buildPicker() {
+    // Визуальные близнецы: РАЗНЫЕ codePoint, но один и тот же контур глифа
+    // (сверено по контурам MaterialIcons, а не на глаз). В сетке оставляем
+    // первый — иначе человек видит две одинаковые иконки подряд.
     final skip = <int>{
-      // Визуальные дубли: та же форма, что и у соседа, но другой codePoint.
-      Icons.electric_bolt_outlined.codePoint, // ~ bolt_outlined
-      Icons.work_outlined.codePoint, // ~ work_outline
-      Icons.favorite_border_outlined.codePoint, // ~ favorite_outline
+      // ~ favorite_outline / favorite_border_outlined (тот же контур)
+      Icons.favorite_border_outlined.codePoint,
+      Icons.favorite_outline_outlined.codePoint,
+      // ~ bolt_outlined
+      Icons.electric_bolt_outlined.codePoint,
+      // ~ work_outline
+      Icons.work_outlined.codePoint,
+      // ~ palette_outlined
+      Icons.color_lens_outlined.codePoint,
+      // ~ directions_transit_outlined
+      Icons.directions_subway_outlined.codePoint,
+      // ~ terrain_outlined
+      Icons.landscape_outlined.codePoint,
+      // ~ restaurant_menu_outlined
+      Icons.local_dining_outlined.codePoint,
+      // ~ access_time_outlined
+      Icons.schedule_outlined.codePoint,
     };
     final seen = <int>{};
     final out = <IconData>[];
@@ -493,6 +509,40 @@ class HabitTaskIconList {
     Icons.currency_lira_outlined,
     Icons.currency_yuan_outlined,
     Icons.atm_outlined,
+    Icons.water_drop,
+    Icons.medication,
+    Icons.brush,
+    Icons.music_note,
+    Icons.savings,
+    Icons.eco,
+    Icons.shopping_cart,
+    Icons.flight_takeoff,
+    Icons.local_florist,
+    Icons.wb_sunny,
+    Icons.coffee,
+    Icons.lunch_dining,
+    Icons.pool,
+    Icons.spa,
+    Icons.psychology,
+    Icons.volunteer_activism,
+    Icons.cleaning_services,
+    Icons.monitor_heart,
+    Icons.bedtime,
+    Icons.school,
+    Icons.work_history,
+    Icons.attach_money,
+    Icons.percent,
+    Icons.forest,
+    Icons.cake,
+    Icons.restaurant,
+    Icons.local_cafe,
+    Icons.sports_esports,
+    Icons.movie,
+    Icons.palette,
+    Icons.draw,
+    Icons.edit_note,
+    Icons.event_available,
+
   ];
 }
 

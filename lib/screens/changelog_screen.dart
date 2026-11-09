@@ -79,7 +79,13 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
           child: _loading
               ? const _ChangelogSkeleton(key: ValueKey('changelog_loading'))
               : ListView(
-                  key: const ValueKey('changelog_list'),
+                  // Ключ зависит от содержимого: когда список обновляется
+                  // (refresh или новый релиз), AnimatedSwitcher кросс-фейдит
+                  // старый и новый списки, а не подменяет их одним кадром.
+                  key: ValueKey(
+                    'changelog_list_${entries.length}_'
+                    '${entries.isEmpty ? '' : entries.first.version}',
+                  ),
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(Spacing.md),
                   children: [
