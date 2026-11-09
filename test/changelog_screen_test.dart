@@ -25,7 +25,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byKey(const ValueKey('changelog_list')), findsOneWidget);
+    // Ключ списка теперь зависит от содержимого (чтобы AnimatedSwitcher
+    // кросс-фейдил обновление), поэтому проверяем по типу, а не по фикс. ключу.
+    expect(find.byType(ListView), findsWidgets);
     expect(find.text('1.6.72'), findsOneWidget);
     expect(find.text('1.6.71'), findsOneWidget);
     expect(find.byType(Card), findsWidgets);

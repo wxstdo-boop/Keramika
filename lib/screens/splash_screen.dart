@@ -112,12 +112,15 @@ class _SplashScreenState extends State<SplashScreen>
       parent: _controller,
       curve: const Interval(0.80, 1.0, curve: Curves.easeIn),
     );
-    // Заранее прогреваем кэш логотипа: первый кадр после сплэша
-    // не «мигает» и не показывает пустое место. PrcacheImage сам
-    // отработает, когда у него будет MediaQuery.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      precacheImage(const AssetImage('assets/keramika.png'), context);
-    });
+    // Заранее прогреваем кэш логотипа — но ТОЛЬКО если декод в main() не
+    // удался: `preDecodedLogo` уже готов к первому кадру, а повторный
+    // `precacheImage` декодировал бы картинку ЕЩЁ РАЗ прямо во время
+    // въезда сплэша и давал бы спайк кадра (то самое «подлагивание»).
+    if (preDecodedLogo == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        precacheImage(const AssetImage('assets/keramika.png'), context);
+      });
+    }
     // Переходим на главную сразу после окончания анимации: 1950 мс, когда
     // кросс-фейд стартует, пока человечек ещё догасает — переход читается
     // одним движением, а не «пауза → смена кадра».
@@ -471,23 +474,47 @@ class _ShineText extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: shine,
+      // Базовый слой — обычный текст: он статичен, поэтому лежит в `child`
+      // и НЕ пересобирается на каждом кадре блика.
       child: Text(text, style: style),
       builder: (context, base) => Stack(
         alignment: Alignment.center,
         children: [
           base!,
-          Positioned.fill(
-            child: ShaderMask(
-              shaderCallback: (rect) => _band(rect, shine.value),
-              blendMode: BlendMode.srcIn,
-              // Тот же стиль без изменений: srcIn берёт отсюда только альфу
-              // глифов, а метрики обязаны совпасть с базовой строкой.
-              child: Text(text, style: style),
+          // Полоса рисуется ВТОРЫМ текстом с шейдером прямо в `foreground`:
+          // вне полосы градиент прозрачен, и сквозь него виден базовый слой.
+          // Раньше здесь стоял ShaderMask — он заводит saveLayer на весь
+          // прямоугольник подписи КАЖДЫЙ кадр блика; шейдер на глифах
+          // композитит без отдельного слоя.
+          Text(
+            text,
+            style: style.copyWith(
+              foreground: Paint()
+                ..shader = _band(
+                  Offset.zero & _size(style),
+                  shine.value,
+                ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Кэш габарита строки: [build] пересобирается КАЖДЫЙ кадр блика, а layout
+  /// текста в кадре — это лишняя работа. Текст и стиль за жизнь виджета не
+  /// меняются, поэтому меряем один раз и переиспользуем прямоугольник шейдера.
+  static final Map<Object, Size> _sizeCache = <Object, Size>{};
+
+  Size _size(TextStyle style) {
+    final key = Object.hash(text, style.fontSize, style.fontFamily);
+    final cached = _sizeCache[key];
+    if (cached != null) return cached;
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return _sizeCache[key] = tp.size;
   }
 
   /// Полоса: кровавые кромки → светлое ядро → кровавые кромки. Оба конца
@@ -600,14 +627,21 @@ class _PaintSplatPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (t <= 0 || t >= 1) return;
-    // Степень 1.35: пятна набухают и опадают резче, чем разлив, — читается
-    // как короткая вспышка брызг, а не долгое растекание.
-    final env = math.pow(math.sin(math.pi * t), 1.35).toDouble() * strength;
+    if (t <= 0) return;
+    // Пятна появляются и ОСТАЮТСЯ: раньше огибающая sin(π·t) гасила их к
+    // t=1, и брызги «высыхали» на глазах — к концу сплэша плита снова была
+    // чистой. Теперь яркость только нарастает (easeOut к 1.0), а вспышка
+    // «удара кистью» — короткий довесок сверху, который гаснет, оставляя
+    // пятно на месте. t=1 — полная, но не финальная точка: сплэш уходит
+    // раньше, чем [t] доходит до 1, поэтому в кадре пятна всегда плотные.
+    final settle = Curves.easeOutCubic.transform(t.clamp(0.0, 1.0));
+    final flash = math.pow(math.sin(math.pi * t), 1.35).toDouble();
+    final env = (0.72 * settle + 0.28 * flash) * strength;
     if (env <= 0.004) return;
 
-    // Разлёт: кляксы растут быстро и чуть перерастают цель (easeOutBack).
-    final grow = Curves.easeOutBack.transform(t);
+    // Разлёт: кляксы растут быстро и чуть перерастают цель (easeOutBack),
+    // затем оседают к своему размеру — к концу хода пятно стоит на месте.
+    final grow = Curves.easeOutBack.transform(t.clamp(0.0, 1.0));
     final short = size.shortestSide;
 
     canvas.save();

@@ -455,21 +455,26 @@ Future<void> _showExitDialog(
   // Одна длительность на вход и на выход — её же ждёт задержка перед
   // SystemNavigator.pop() в кнопке «Выйти».
   const glassMs = 380;
-  // Фон замораживаем СРАЗУ: циклы перестают тратить кадры, а снимок берётся
-  // из последнего отрисованного слоя (в нём фон уже есть).
-  lockBackgroundFrozen.value = true;
-  // Снимок снимаем В ФОНЕ: окно открывается мгновенно, а размытая копия
-  // проявляется, как только готова (обычно через кадр-два). Ждать её перед
-  // показом нельзя — на слабом устройстве это читалось бы как залипание
-  // кнопки «Выйти».
-  final backdrop = ValueNotifier<ui.Image?>(null);
-  var closed = false;
-  _captureBlurredBackdrop().then((img) {
-    // Окно могли успеть закрыть, пока снимок снимался: снимок уже некому
-    // показать — отдаём его сборщику мусора.
-    if (closed || img == null) return;
-    backdrop.value = img;
-  });
+  // Снимок берём СИНХРОННО и сразу: готовый размытый растр лежит в нотифаере
+  // до первого кадра окна, поэтому фон уходит в расфокус ВМЕСТЕ с появлением
+  // шайбы, а не «догоняет» его через кадр-два (раньше асинхронный снимок
+  // приходил с опозданием, и размытие читалось рывком).
+  final backdrop = ValueNotifier<ui.Image?>(_captureBlurredBackdrop());
+  // Фон замораживаем НЕ мгновенно, а когда размытая копия уже полностью
+  // накрыла ПИН-экран (конец въезда окна). Если остановить цикл медальона
+  // прямо в момент тапа, вращение «ключа» обрывается на виду — виден рывок.
+  // Под полностью непрозрачной копией остановка не видна, а кадры цикл
+  // перестаёт тратить ровно тогда, когда это уже безопасно.
+  var frozen = false;
+  final freezeTimer = Timer(
+    MotionPrefs.shouldReduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: glassMs),
+    () {
+      frozen = true;
+      lockBackgroundFrozen.value = true;
+    },
+  );
   await showGeneralDialog<Object?>(
     context: context,
     // Завеса прозрачная, а не чёрная: барьер не участвует в анимации
@@ -741,12 +746,14 @@ Future<void> _showExitDialog(
       ),
     ),
   ).whenComplete(() {
-    closed = true;
     // Растр намеренно НЕ освобождаем вручную: последний кадр закрытия ещё
     // может его дорисовать, а `dispose` на живом изображении роняет кадр
     // («Cannot clone a disposed image»). Отдаём картинку сборщику мусора —
     // она уйдёт, как только её отпустит дерево.
-    lockBackgroundFrozen.value = false;
+    freezeTimer.cancel();
+    // Размораживаем только если заморозили: иначе могли бы запустить цикл,
+    // который и не останавливали (закрытие раньше конца въезда).
+    if (frozen) lockBackgroundFrozen.value = false;
   });
 }
 
@@ -765,13 +772,19 @@ Future<void> _showExitDialog(
 /// вдвое на экран это те же 12 логических пикселей размытия, что и раньше.
 /// Возвращает `null`, если снимок не удался (тогда окно покажется на одном
 /// затемнении — без размытия, но и без ошибки).
-Future<ui.Image?> _captureBlurredBackdrop() async {
+///
+/// Снимок и размытие делаются СИНХРОННО ([toImageSync] / [Picture.toImageSync]):
+/// асинхронные `toImage`/`Picture.toImage` — это GPU-readback, который
+/// стопорит растровый поток ровно в момент открытия окна, и переход читался
+/// как рывок на старте анимации. Синхронные версии отдают кадр из уже
+/// отрисованного слоя без ожидания и без просадки.
+ui.Image? _captureBlurredBackdrop() {
   try {
     // Снимок берётся из последнего ОТРИСОВАННОГО растра слоя: к моменту тапа
     // по «Выйти» фон уже нарисован, лишний кадр не нужен.
     final obj = lockBackgroundKey.currentContext?.findRenderObject();
     if (obj is! RenderRepaintBoundary) return null;
-    final src = await obj.toImage(pixelRatio: 0.5);
+    final src = obj.toImageSync(pixelRatio: 0.5);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     // sigma задана в пикселях ПОЛОВИННОГО растра: 6 × 2 = 12 логических —
@@ -782,7 +795,7 @@ Future<ui.Image?> _captureBlurredBackdrop() async {
       ui.Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
     );
     final picture = recorder.endRecording();
-    final blurred = await picture.toImage(src.width, src.height);
+    final blurred = picture.toImageSync(src.width, src.height);
     // Отдаём исходники, оставляем только результат.
     src.dispose();
     picture.dispose();
@@ -1366,10 +1379,25 @@ class _PinMedallionState extends State<_PinMedallion>
         value: _lastPhase,
       ),
     );
+    // Пока поверх ПИН-экрана открыт диалог выхода, медальон заморожен:
+    // его цикл — самая дорогая перерисовка под окном, а под размытой копией
+    // фона он всё равно не виден. Без этого слушателя флаг [lockBackgroundFrozen]
+    // был мёртвым объявлением, и GPU честно крутил цикл вхолостую.
+    lockBackgroundFrozen.addListener(_onFreezeChanged);
+  }
+
+  void _onFreezeChanged() {
+    if (!mounted) return;
+    if (lockBackgroundFrozen.value) {
+      _pulse.stop();
+    } else if (!MotionPrefs.shouldReduceMotion && !_pulse.isAnimating) {
+      _pulse.repeat();
+    }
   }
 
   @override
   void dispose() {
+    lockBackgroundFrozen.removeListener(_onFreezeChanged);
     _lastPhase = _pulse.value;
     _pulse.dispose();
     super.dispose();

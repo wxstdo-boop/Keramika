@@ -201,7 +201,7 @@ class UpdateService {
   /// Результат кэшируется в памяти на [_changelogTtl]: повторное открытие
   /// экрана не дёргает сеть и рисуется мгновенно.
   Future<List<ChangelogEntry>?> fetchChangelog({
-    int limit = 20,
+    int limit = 50,
     bool force = false,
   }) async {
     final now = DateTime.now();

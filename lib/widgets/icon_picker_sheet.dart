@@ -39,9 +39,10 @@ class IconPickerSheet extends StatelessWidget {
             height: 4,
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              // Ручка в акценте темы, а не серым: на кровавой/розовой теме
-              // серая полоска выпадала из палитры шита.
-              color: theme.colorScheme.primary.withValues(alpha: 0.45),
+              // Ручка — полупрозрачная КРАСНАЯ, а не серым и не акцентом
+              // темы: на кровавой/розовой теме серая полоска выпадала из
+              // палитры шита, а primary на «зелёной» теме давал не тот цвет.
+              color: const Color(0xFFB3121F).withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
