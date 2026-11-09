@@ -3,32 +3,27 @@
 Branch: `perf/whole-app-opt`  
 Backup: `backup/perf-before-2026-11-09`
 
-## Done in this branch
+## Done
 
-### Splash (`lib/screens/splash_screen.dart`)
-- Cache splat blob Paths across shine frames
-- Skip CustomPaint when shine t≈0/1
-- Hoist AnimatedBuilder child for shine layer
-- FilterQuality.medium for 94px logo
-- Path steps 30→24 on tiny blobs
+### Splash
+- Cache splat blob Paths, skip idle shine frames, medium filter, path steps 30→24
 
-### Routes (`lib/utils/page_transitions.dart`)
-- Removed ScaleTransition from `slideUpRoute` (slide+fade only)
+### Routes
+- Removed ScaleTransition from slideUpRoute
 
-### Ambient loops (`lib/utils/ambient_loop.dart`)
-- Default `everyFrames` 3→4 (~15 fps decorative ticks)
+### Ambient
+- Default everyFrames 3→4
 
-## Still open (next commits)
+### Lock
+- AmbientVsync on glass decorative loop
 
-1. **Home** — narrow RC toggle rebuild (avoid full setState if possible)
-2. **Habits / Alarms / Tasks** — audit any remaining non-builder lists
-3. **Settings** — split ListenableBuilder scopes
-4. **Lock + Ada overlay** — ensure continuous painters use AmbientVsync
-5. **JSON+AES** — never encrypt on slider preview frames
+### Ada overlay (patch)
+- AmbientVsync on typing-bubble dots
+
+## Open
+1. Settings ListenableBuilder scopes
+2. JSON/AES not on slider preview frames (audit)
+3. Any remaining continuous CustomPaint without AmbientVsync
 
 ## Measure
-
-JankProbe log on device:
-`/sdcard/Android/data/com.wetidom.keramika/files/perf/keramika_jank.txt`
-
-Budget 16.6ms at 60Hz. Watch `build=` vs `raster=`.
+JankProbe: `/sdcard/Android/data/com.wetidom.keramika/files/perf/keramika_jank.txt`
