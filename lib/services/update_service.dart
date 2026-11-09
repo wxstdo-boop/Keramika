@@ -276,9 +276,16 @@ class UpdateService {
   /// `* текст by @автор in <ссылка>`) плюс наша таблица SHA-256. Таблицу,
   /// заголовки и служебную строку «Full Changelog» отбрасываем, из пунктов
   /// срезаем `by @… in …` и markdown-ссылки.
+  ///
+  /// «Умнее» здесь значит: пункты не повторяются (один и тот же текст мог
+  /// приехать и из коммита, и из авто-заметок), служебные коммиты
+  /// (`release:`, `Merge`, `ci:`, `chore:`, …) не показываются человеку, а
+  /// markdown-акценты и хвостовая пунктуация снимаются — список читается
+  /// как заметки, а не как сырой `git log`.
   @visibleForTesting
   static List<String> parseReleaseNotes(String body) {
     final out = <String>[];
+    final seen = <String>{};
     for (var line in body.split('\n')) {
       line = line.trim();
       if (line.isEmpty) continue;
@@ -298,11 +305,37 @@ class UpdateService {
         RegExp(r'\[([^\]]+)\]\([^)]*\)'),
         (m) => m.group(1)!,
       );
+      // Markdown-акценты: **жирный**, *курсив*, `код` → чистый текст.
+      text = text.replaceAllMapped(
+        RegExp(r'\*\*(.+?)\*\*'),
+        (m) => m.group(1)!,
+      );
+      text = text.replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1)!);
+      text = text.replaceAll('`', '');
       text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      // Хвостовая точка/запятая/точка с запятой в списке лишняя.
+      text = text.replaceAll(RegExp(r'[.;,]+$'), '').trim();
       if (text.isEmpty) continue;
+      // Служебный коммит (бамп релиза, мерж, CI, тесты, сборка, линт) —
+      // не для человека, в «Что нового» ему не место.
+      if (_isInternalNote(text)) continue;
+      // Дубликаты не показываем.
+      if (!seen.add(text.toLowerCase())) continue;
       out.add(text);
     }
     return out;
+  }
+
+  /// Служебный ли пункт: релизный бамп, мерж, CI, тесты, сборка, линт,
+  /// зависимости. Такие коммиты полезны в истории, но в «Что нового» они
+  /// только шумят.
+  static bool _isInternalNote(String text) {
+    return RegExp(
+      r'^(release:|merge\b|revert\b|chore[:(]|ci[:(]|build[:(]|test[:(]|'
+      r'docs[:(]|wip\b|fixup!|bump\b|deps[:(]|style[:(]|refactor[:(]|'
+      r'lint\b|format\b)',
+      caseSensitive: false,
+    ).hasMatch(text.trim());
   }
 
   Future<String?> download(

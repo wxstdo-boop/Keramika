@@ -472,49 +472,64 @@ class _ShineText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: shine,
-      // Базовый слой — обычный текст: он статичен, поэтому лежит в `child`
-      // и НЕ пересобирается на каждом кадре блика.
-      child: Text(text, style: style),
-      builder: (context, base) => Stack(
-        alignment: Alignment.center,
-        children: [
-          base!,
-          // Полоса рисуется ВТОРЫМ текстом с шейдером прямо в `foreground`:
-          // вне полосы градиент прозрачен, и сквозь него виден базовый слой.
-          // Раньше здесь стоял ShaderMask — он заводит saveLayer на весь
-          // прямоугольник подписи КАЖДЫЙ кадр блика; шейдер на глифах
-          // композитит без отдельного слоя.
-          Text(
-            text,
-            style: style.copyWith(
-              foreground: Paint()
-                ..shader = _band(
-                  Offset.zero & _size(style),
-                  shine.value,
-                ),
-            ),
+    final (base, shineTp) = _spans(MediaQuery.textScalerOf(context));
+    final size = base.size;
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: shine,
+        builder: (context, _) => CustomPaint(
+          size: size,
+          painter: _ShineTextPainter(
+            base: base,
+            shine: shineTp,
+            band: _band(Offset.zero & size, shine.value),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  /// Кэш габарита строки: [build] пересобирается КАЖДЫЙ кадр блика, а layout
+  /// Кэш РАСКЛАДОК строки: [build] пересобирается КАЖДЫЙ кадр блика, а layout
   /// текста в кадре — это лишняя работа. Текст и стиль за жизнь виджета не
-  /// меняются, поэтому меряем один раз и переиспользуем прямоугольник шейдера.
-  static final Map<Object, Size> _sizeCache = <Object, Size>{};
+  /// меняются, поэтому раскладываем строку ОДИН раз и переиспользуем оба
+  /// `TextPainter` (базовый и бликовый). Раньше здесь были `Text`-виджеты:
+  /// они пересобирали span и перекладывали строку на каждом кадре блика —
+  /// на слабом GPU это и читалось как «сплэш лагает».
+  static final Map<Object, (TextPainter, TextPainter)> _spansCache =
+      <Object, (TextPainter, TextPainter)>{};
 
-  Size _size(TextStyle style) {
-    final key = Object.hash(text, style.fontSize, style.fontFamily);
-    final cached = _sizeCache[key];
+  /// Базовый и бликовый пейнтеры строки. У бликового в стиль зашит `foreground`
+  /// Paint, чей шейдер меняется каждый кадр БЕЗ пересборки span: layout от
+  /// шейдера не зависит, поэтому `TextPainter.paint` рисует без повторного
+  /// layout.
+  (TextPainter, TextPainter) _spans(TextScaler scaler) {
+    final key = Object.hash(
+      text,
+      style.fontSize,
+      style.fontFamily,
+      style.color,
+      style.letterSpacing,
+      style.fontWeight,
+      scaler,
+    );
+    final cached = _spansCache[key];
     if (cached != null) return cached;
-    final tp = TextPainter(
+    final base = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
     )..layout();
-    return _sizeCache[key] = tp.size;
+    final shine = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: style.copyWith(foreground: Paint()),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout();
+    final pair = (base, shine);
+    _spansCache[key] = pair;
+    return pair;
   }
 
   /// Полоса: кровавые кромки → светлое ядро → кровавые кромки. Оба конца
@@ -543,6 +558,34 @@ class _ShineText extends StatelessWidget {
       stops: const [0.0, 0.26, 0.5, 0.74, 1.0],
     ).createShader(rect);
   }
+}
+
+/// Рисует подпись «POWERED BY LARAF» двумя готовыми раскладками: базовой
+/// строкой и её же копией с шейдером-полосой. Layout не пересчитывается —
+/// оба `TextPainter` приходят из кэша [_ShineText._spans], меняется только
+/// шейдер блика, поэтому кадр блика стоит ровно один `paint`.
+class _ShineTextPainter extends CustomPainter {
+  final TextPainter base;
+  final TextPainter shine;
+  final Shader band;
+
+  const _ShineTextPainter({
+    required this.base,
+    required this.shine,
+    required this.band,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    base.paint(canvas, Offset.zero);
+    final paint = shine.text!.style!.foreground!;
+    paint.shader = band;
+    shine.paint(canvas, Offset.zero);
+  }
+
+  @override
+  bool shouldRepaint(_ShineTextPainter old) =>
+      old.band != band || old.base != base || old.shine != shine;
 }
 
 /// Брызги краски на «стекле» карточки логотипа.

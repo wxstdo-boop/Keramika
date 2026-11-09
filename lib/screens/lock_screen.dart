@@ -32,6 +32,15 @@ final GlobalKey lockBackgroundKey = GlobalKey();
 /// фон всё равно закрыт размытой копией.
 final ValueNotifier<bool> lockBackgroundFrozen = ValueNotifier<bool>(false);
 
+/// Заранее снятый и размытый фон для окна выхода.
+///
+/// Заполняется, пока пользователь ещё только тянется к «Выйти» (см.
+/// `_prewarmExitBackdrop`): к моменту тапа растр уже готов, и само нажатие не
+/// делает тяжёлой работы. Раньше снимок делался прямо в тапе — синхронный
+/// `toImageSync` строил сцену и копировал кадр на UI-потоке в момент нажатия,
+/// из-за чего открытие окна дёргалось, а вся прога проседала.
+final ValueNotifier<ui.Image?> lockExitBackdrop = ValueNotifier<ui.Image?>(null);
+
 class LockScreen extends StatefulWidget {
   final bool isSetting;
   final String? existingPin;
@@ -222,7 +231,7 @@ class _LockScreenState extends State<LockScreen>
     // (`_resolving`), «Выйти» больше не работает: unlock уже начался, и
     // диалог выхода поверх дома или повторный выход не должны всплывать.
     if (_resolving || _initializing) return;
-    await _showExitDialog(context, _glassLoop);
+    await _showExitDialog(context, _glassLoop, lockExitBackdrop);
   }
 
   String get _phaseKey =>
