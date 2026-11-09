@@ -55,6 +55,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 420));
   }
 
+  /// Как [openExitDialog], но даёт РЕАЛЬНО доиграть снятию фона: `toImage`
+  /// и `picture.toImage` не резолвятся в fake-async, поэтому их прокручиваем
+  /// в `runAsync`.
+  Future<void> openExitDialogRealAsync(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.75;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      LocaleProvider(
+        locale: const Locale('ru'),
+        child: const MaterialApp(home: LockScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
+
+    await tester.tap(find.byIcon(Icons.logout_rounded));
+    await tester.runAsync(() async {
+      // Даём снимку сняться и размыться по-настоящему.
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 420));
+  }
+
   testWidgets('ru: строки диалога выхода приходят из переводов', (
     WidgetTester tester,
   ) async {
@@ -135,6 +161,28 @@ void main() {
       lockBackgroundFrozen.value,
       isFalse,
       reason: 'по закрытии окна фон размораживается',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('размытие фона — заранее снятый снимок, а не BackdropFilter', (
+    WidgetTester tester,
+  ) async {
+    // Ключевое: в кадре анимации НЕ должно быть BackdropFilter. Он считает
+    // размытие каждый кадр по живому дереву — отсюда дрожание текста и
+    // подторм. Вместо него — готовый размытый растр (RawImage), который в
+    // кадре лишь меняет прозрачность.
+    await openExitDialogRealAsync(tester);
+
+    expect(
+      find.byType(BackdropFilter),
+      findsNothing,
+      reason: 'живой BackdropFilter под окном недопустим — он и дрожит, и тормозит',
+    );
+    expect(
+      find.byType(RawImage),
+      findsWidgets,
+      reason: 'размытый снимок фона должен присутствовать',
     );
     expect(tester.takeException(), isNull);
   });

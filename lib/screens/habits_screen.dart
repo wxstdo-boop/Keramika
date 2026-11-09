@@ -700,7 +700,12 @@ class _HabitsScreenState extends State<HabitsScreen>
   }
 
   List<_PerfPlaque> _todaysPlaques() {
-    final rng = Random(_perfSeed());
+    // Подборка меняется раз в час (по _perfSeed), а build вызывается на
+    // каждый скролл/пересборку — перемешивать список заново каждый кадр
+    // бессмысленно. Кэшируем результат до смены «часа».
+    final seed = _perfSeed();
+    if (_perfCacheSeed == seed && _perfCache != null) return _perfCache!;
+    final rng = Random(seed);
     final shuffled = List<_PerfPlaque>.from(_perfPlaques);
     for (int i = shuffled.length - 1; i > 0; i--) {
       final j = rng.nextInt(i + 1);
@@ -710,8 +715,12 @@ class _HabitsScreenState extends State<HabitsScreen>
     }
     // Каждый день 4-6 карточек вместо 3 — более глубокий рандом.
     final count = min(shuffled.length, rng.nextInt(3) + 4);
-    return shuffled.sublist(0, count);
+    _perfCacheSeed = seed;
+    return _perfCache = shuffled.sublist(0, count);
   }
+
+  int? _perfCacheSeed;
+  List<_PerfPlaque>? _perfCache;
 
   /// «Час» подборки перфекционизма: день + час. Меняется раз в час — по этому
   /// же числу анимируется смена карточек (кросс-фейд), поэтому подборка не
@@ -1118,6 +1127,14 @@ class _HabitsScreenState extends State<HabitsScreen>
     if (!_pillCtrl.hasClients) return;
     final pos = _pillCtrl.position;
     final viewport = pos.viewportDimension;
+    // Отметку времени двигаем ДО ранних выходов: пока палец стоит в середине
+    // списка, тикер всё равно крутится каждый кадр, и если не обновлять
+    // `_lastAutoScrollTick`, то в момент входа пальца в кромочную зону
+    // накопившийся `dt` (всё время с начала драга) даёт один гигантский шаг —
+    // список скачком улетает к `maxScrollExtent`. Это и читалось как «дёргает
+    // или вовсе стопорится» у низа.
+    final dt = (elapsed - _lastAutoScrollTick).inMicroseconds / 1e6;
+    _lastAutoScrollTick = elapsed;
     final y = _dragProxyY.value;
     if (y == null) return;
     final bottom = viewport - _autoScrollEdge;
@@ -1131,8 +1148,6 @@ class _HabitsScreenState extends State<HabitsScreen>
     if (t == 0) return;
     // Квадратичный разгон от кромки: у самой кромки список еле ползёт, глубже
     // — ускоряется. Мгновенная скорость (px/с), интегрируется по dt кадра.
-    final dt = (elapsed - _lastAutoScrollTick).inMicroseconds / 1e6;
-    _lastAutoScrollTick = elapsed;
     if (dt <= 0) return;
     final velocity = _autoScrollPeak * t * t.abs();
     final target = (pos.pixels + velocity * dt).clamp(

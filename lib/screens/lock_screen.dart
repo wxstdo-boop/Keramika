@@ -1,8 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' as ui;
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import '../services/new_year_event_service.dart';
 import '../services/pin_service.dart';
@@ -13,12 +14,21 @@ import '../widgets/brand_emblem.dart';
 
 part 'lock_screen_widgets.dart';
 
+/// Ключ на корне ПИН-экрана. По нему диалог выхода берёт СНИМОК фона и
+/// размывает его ОДИН раз — вместо живого `BackdropFilter`.
+///
+/// Почему так: `BackdropFilter` обязан читать бэкдроп и считать размытие на
+/// КАЖДОМ кадре анимации окна. Под фильтром живёт анимированный фон (пятна,
+/// пульс медальона) и текст — поэтому blur «плавал», текст дрожал, а кадр
+/// проседал. Снимок снимает эту работу целиком: растр берётся один раз,
+/// размывается один раз, а в кадре остаётся лишь менять прозрачность готовой
+/// картинки. Вид тот же, стоимость — почти ноль.
+final GlobalKey lockBackgroundKey = GlobalKey();
+
 /// Пока поверх ПИН-экрана открыт диалог выхода, фоновые бесконечные циклы
-/// (пульс медальона) замораживаются. Иначе `BackdropFilter` размытия обязан
-/// пересчитывать фон каждый кадр — медальон живёт в своём `RepaintBoundary`,
-/// и его перерисовка меняет композитную текстуру под фильтром. С заморозкой
-/// фон под размытием становится статичным: фильтр считает картинку один раз
-/// и переиспользует её, и появление окна читается плавно, без просадки кадра.
+/// (пульс медальона) замораживаются: снимок фона должен быть статичным, иначе
+/// кадр снятия поймает движение. Плюс это честно экономит кадры — под окном
+/// фон всё равно закрыт размытой копией.
 final ValueNotifier<bool> lockBackgroundFrozen = ValueNotifier<bool>(false);
 
 class LockScreen extends StatefulWidget {
@@ -232,7 +242,11 @@ class _LockScreenState extends State<LockScreen>
     // ли. _initializing по-прежнему гасит выход на ПИН, пока проверка
     // не завершилась.
     return Scaffold(
-      body: Container(
+      body: RepaintBoundary(
+        // Ключ нужен диалогу выхода: он берёт с этого слоя снимок фона и
+        // размывает его один раз (см. [lockBackgroundKey]).
+        key: lockBackgroundKey,
+        child: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
@@ -453,6 +467,7 @@ class _LockScreenState extends State<LockScreen>
               ),
             ),
           ),
+        ),
         ),
       ),
     );

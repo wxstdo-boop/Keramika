@@ -6,17 +6,27 @@ import '../l10n/translations.dart';
 /// [borderRadius] matches the radius of the card being swiped, so the red
 /// background lines up with the card corners. Defaults to 20, which is the
 /// radius used by most cards in the app.
+///
+/// [opacity] запекается ПРЯМО В ЦВЕТА, а не навешивается сверху через
+/// `Opacity`. Виджет `Opacity` каждый кадр заводит `saveLayer` — на слабом GPU
+/// это лишняя композитная работа ровно там, где палец двигает плашку. Альфа в
+/// градиенте и в цветах текста/иконки даёт тот же вид без слоя.
 Widget animatedDeleteBackground(
   BuildContext context, {
   double borderRadius = 20,
+  double opacity = 1.0,
 }) {
+  final a = opacity.clamp(0.0, 1.0);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(borderRadius),
-      gradient: const LinearGradient(
+      gradient: LinearGradient(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
-        colors: [Color(0xFFFF5252), Color(0xFFFF1744)],
+        colors: [
+          const Color(0xFFFF5252).withValues(alpha: a),
+          const Color(0xFFFF1744).withValues(alpha: a),
+        ],
       ),
     ),
     alignment: Alignment.centerRight,
@@ -24,12 +34,16 @@ Widget animatedDeleteBackground(
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+        Icon(
+          Icons.delete_outline,
+          color: Colors.white.withValues(alpha: a),
+          size: 24,
+        ),
         const SizedBox(width: 8),
         Text(
           Translations.deleteOf(context),
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: a),
             fontWeight: FontWeight.w700,
             fontSize: 14,
           ),

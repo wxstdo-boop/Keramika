@@ -126,4 +126,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(dismissed, isTrue, reason: 'осознанный свайп удаляет карточку');
   });
+
+  testWidgets('возврат домой идёт без удара на финише', (tester) async {
+    // Слабое потягивание (не дотянули до порога) — карточка обязана вернуться
+    // плавно и остановиться БЕЗ скачка. Прежний экспоненциальный фильтр копил
+    // «хвост» и в конце приклеивал карточку скачком — это читалось как удар.
+    await pumpCard(tester);
+    final start = tester.getTopLeft(find.text('card'));
+    final gesture = await tester.startGesture(tester.getCenter(find.text('card')));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-90, 0));
+    await tester.pump();
+    // Пауза без движения перед отпусканием: скорость пальца к моменту `up`
+    // падает до нуля, поэтому Dismissible не флингнет, а именно ПОВЕРНЁТ
+    // карточку назад — ровно тот сценарий, где раньше бил «удар».
+    await tester.pump(const Duration(milliseconds: 250));
+    await gesture.up();
+
+    final samples = <double>[];
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      samples.add(dx(tester, start));
+    }
+
+    // Ход возврата обязан быть МОНОТОННЫМ (без «кивка» наружу) и без скачков:
+    // раньше остаток «приклеивался» одним прыжком — это и читалось как удар.
+    var maxStep = 0.0;
+    for (var i = 1; i < samples.length; i++) {
+      final step = samples[i] - samples[i - 1];
+      if (step > maxStep) maxStep = step;
+      expect(
+        step,
+        greaterThanOrEqualTo(-0.01),
+        reason: 'на возврате карточка не должна отскакивать назад (кивок)',
+      );
+    }
+    // Пружина в разгоне проходит ~2 % ширины за кадр — это плавно. «Удар» же
+    // был бы скачком в разы больше, поэтому 3 % ширины надёжно ловят регресс.
+    expect(
+      maxStep,
+      lessThan(0.03 * 400),
+      reason: 'возврат не должен прыгать кадром — это и есть «удар» на финише',
+    );
+    // И карточка реально вернулась домой.
+    expect(samples.last.abs(), lessThan(1.0));
+  });
 }

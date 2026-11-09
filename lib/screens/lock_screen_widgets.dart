@@ -455,11 +455,21 @@ Future<void> _showExitDialog(
   // Одна длительность на вход и на выход — её же ждёт задержка перед
   // SystemNavigator.pop() в кнопке «Выйти».
   const glassMs = 380;
-  // Фон под окном замораживаем на всё время жизни диалога: размывающая
-  // завеса тогда пересчитывает статичную картинку, а не гоняется за
-  // медальоном каждый кадр. Снимаем флаг по закрытии — фон оживает ровно
-  // когда маршрут окна полностью снят (см. whenComplete ниже).
+  // Фон замораживаем СРАЗУ: циклы перестают тратить кадры, а снимок берётся
+  // из последнего отрисованного слоя (в нём фон уже есть).
   lockBackgroundFrozen.value = true;
+  // Снимок снимаем В ФОНЕ: окно открывается мгновенно, а размытая копия
+  // проявляется, как только готова (обычно через кадр-два). Ждать её перед
+  // показом нельзя — на слабом устройстве это читалось бы как залипание
+  // кнопки «Выйти».
+  final backdrop = ValueNotifier<ui.Image?>(null);
+  var closed = false;
+  _captureBlurredBackdrop().then((img) {
+    // Окно могли успеть закрыть, пока снимок снимался: снимок уже некому
+    // показать — отдаём его сборщику мусора.
+    if (closed || img == null) return;
+    backdrop.value = img;
+  });
   await showGeneralDialog<Object?>(
     context: context,
     // Завеса прозрачная, а не чёрная: барьер не участвует в анимации
@@ -476,40 +486,55 @@ Future<void> _showExitDialog(
     // появление шайбы, — фон уходит в расфокус плавно, без вспышки.
     transitionDuration: const Duration(milliseconds: glassMs),
     // Анимация — в transitionBuilder, ОДНИМ слоем на весь маршрут:
-    //   1) полный экран мягко РАЗМЫВАЕТСЯ (BackdropFilter по живому
-    //      ПИН-экрану) и приглушается завесой в цвете темы;
+    //   1) полный экран мягко РАЗМЫВАЕТСЯ (готовый снимок фона) и
+    //      приглушается завесой в цвете темы;
     //   2) поверх — сама шайба, чуть «выпрыгивающая» масштабом.
     // Завеса лежит ОТДЕЛЬНЫМ слоем Stack и НЕ масштабируется вместе с
     // шайбой: иначе по кромкам экрана осталась бы неразмытая рамка.
     //
-    // Оптимизация: sigma размытия и альфа завесы — одна и та же кривая от
-    // `animation`, лишних слушателей/сетСтейтов нет; при «убрать анимации»
-    // размытие выключается совсем (завеса остаётся), а BackdropFilter
-    // строится только пока завеса реально видна (backT > 0.001) — в покое
-    // и в конце закрытия размывающего слоя в дереве нет.
+    // Оптимизация: снимок размыт ЗАРАНЕЕ (один раз, вне кадра), и в кадре
+    // анимации остаётся только менять его прозрачность — ни размытия, ни
+    // чтения бэкдропа. Лишних слушателей/сетСтейтов нет; при «убрать
+    // анимации» завеса появляется сразу; слой строится только пока он виден
+    // (backT > 0.001) — в покое и в конце закрытия его в дереве нет.
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       final reduce = MotionPrefs.shouldReduceMotion;
       final backT = reduce
           ? 1.0
           : Curves.easeOutCubic.transform(animation.value);
-      final blurSigma = reduce ? 0.0 : 12.0 * backT;
       final popT = Curves.easeOutBack.transform(animation.value);
-      Widget dim = ColoredBox(
-        color: (isDark ? Colors.black : cs.surface).withValues(
-          alpha: (isDark ? 0.42 : 0.34) * backT,
-        ),
+      final dimColor = (isDark ? Colors.black : cs.surface).withValues(
+        alpha: (isDark ? 0.42 : 0.34) * backT,
       );
-      if (blurSigma > 0.001) {
-        dim = BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-          child: dim,
-        );
-      }
       return Stack(
         fit: StackFit.expand,
         children: [
           if (backT > 0.001)
-            Positioned.fill(child: IgnorePointer(child: ClipRect(child: dim))),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ClipRect(
+                  child: ValueListenableBuilder<ui.Image?>(
+                    valueListenable: backdrop,
+                    builder: (context, image, _) => Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Размытый снимок проявляется той же кривой, что и
+                        // затемнение: фон уходит в расфокус плавно. Готовый
+                        // растр лишь МЕНЯЕТ ПРОЗРАЧНОСТЬ — ни размытия, ни
+                        // чтения бэкдропа в кадре, поэтому нет ни дрожания
+                        // текста под окном, ни просадки кадра.
+                        if (image != null)
+                          Opacity(
+                            opacity: backT.clamp(0.0, 1.0),
+                            child: RawImage(image: image, fit: BoxFit.cover),
+                          ),
+                        ColoredBox(color: dimColor),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Opacity(
             opacity: Curves.easeInOutCubic.transform(animation.value),
             child: Transform.scale(scale: 0.9 + 0.10 * popT, child: child),
@@ -702,7 +727,56 @@ Future<void> _showExitDialog(
         ),
       ),
     ),
-  ).whenComplete(() => lockBackgroundFrozen.value = false);
+  ).whenComplete(() {
+    closed = true;
+    // Растр намеренно НЕ освобождаем вручную: последний кадр закрытия ещё
+    // может его дорисовать, а `dispose` на живом изображении роняет кадр
+    // («Cannot clone a disposed image»). Отдаём картинку сборщику мусора —
+    // она уйдёт, как только её отпустит дерево.
+    lockBackgroundFrozen.value = false;
+  });
+}
+
+/// Снимает корень ПИН-экрана и возвращает УЖЕ РАЗМЫТЫЙ растр.
+///
+/// Раньше размытие жило в кадре (`BackdropFilter`): фильтр читал бэкдроп и
+/// считал blur на КАЖДОМ кадре анимации окна, а под ним двигались пятна и
+/// медальон — отсюда и дрожание текста, и просадка кадра. Здесь размытие
+/// делается РОВНО ОДИН раз, вне кадра, поэтому в анимации остаётся только
+/// прозрачность готовой картинки.
+///
+/// Растр берётся в ЛОГИЧЕСКИХ пикселях (`pixelRatio: 1.0`): на экране с DPR
+/// ~2.75 это в разы меньше по каждой стороне, а размытие всё равно гасит
+/// детали, так что разницы не видно — зато памяти и работы в разы меньше.
+/// Возвращает `null`, если снимок не удался (тогда окно покажется на одном
+/// затемнении — без размытия, но и без ошибки).
+Future<ui.Image?> _captureBlurredBackdrop() async {
+  try {
+    // Снимок берётся из последнего ОТРИСОВАННОГО растра слоя: к моменту тапа
+    // по «Выйти» фон уже нарисован, лишний кадр не нужен.
+    final obj = lockBackgroundKey.currentContext?.findRenderObject();
+    if (obj is! RenderRepaintBoundary) return null;
+    final src = await obj.toImage(pixelRatio: 1.0);
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    // sigma — в логических пикселях, ровно как было у прежнего
+    // BackdropFilter(sigma 12): вид тот же.
+    canvas.drawImage(
+      src,
+      ui.Offset.zero,
+      ui.Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+    );
+    final picture = recorder.endRecording();
+    final blurred = await picture.toImage(src.width, src.height);
+    // Отдаём исходники, оставляем только результат.
+    src.dispose();
+    picture.dispose();
+    return blurred;
+  } catch (_) {
+    // Снимок — украшение, а не обязательство: любая ошибка → окно на
+    // одном затемнении, без падения.
+    return null;
+  }
 }
 
 /// Маленький стаканчик из шапки диалога — единственное, что здесь
