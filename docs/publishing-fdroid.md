@@ -158,7 +158,10 @@ Codeberg) со ссылкой на APK-релиз. Лимит на APK — 30 М
 
 ### Вариант A (рекомендуется для первого раза) — RFP-issue
 
-Открыть новое issue: https://gitlab.com/fdroid/rfp/-/issues/new
+Открыть новое issue (заголовок уже подставлен, надо только войти и вставить
+описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Keramika%20(com.wetidom.keramika)
+
+Без подстановки: https://gitlab.com/fdroid/rfp/-/issues/new
 
 **Title:** `Keramika (com.wetidom.keramika)`
 
