@@ -24,6 +24,12 @@ git config --global --add safe.directory /workspace/sdk_tmp/flutter
 Then `flutter pub get && flutter analyze && flutter test`. Android SDK/Java are
 absent, so `flutter build apk` cannot run here — releases come from CI only.
 
+Note: a mid-session wipe can clear `/tmp` while the shell keeps running, so a
+`/tmp` file written by one command may be gone by the next. Keep scratch files
+under `/workspace` (e.g. `/workspace/project/.tmp_x`) and delete them when done.
+Also: a single shell command that is too long can get silently truncated — for
+long lists (icons, seed data) write a small script file and run it instead.
+
 Visual checks without a device: render widgets to PNG in a widget test via
 `RenderRepaintBoundary.toImage` + `ImageByteFormat.png`, write to `/tmp`, then
 inspect with Pillow (a plain `flutter test` works; screenshots are not needed).
