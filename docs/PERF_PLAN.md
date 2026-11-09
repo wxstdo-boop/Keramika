@@ -1,35 +1,34 @@
-# Performance plan (no visual changes)
+# Performance plan (no visual change)
 
+Branch: `perf/whole-app-opt`  
 Backup: `backup/perf-before-2026-11-09`
-Branch: `perf/whole-app-opt`
 
-## Done / ready
+## Done in this branch
 
-### Splash (`docs/patches/splash_perf.patch`)
-Apply:
-```bash
-git checkout perf/whole-app-opt
-git apply docs/patches/splash_perf.patch
-```
-
-- Cache splat blob Paths (shape independent of t)
-- Skip shine CustomPaint when t≈0/1
-- Hoist AnimatedBuilder child
+### Splash (`lib/screens/splash_screen.dart`)
+- Cache splat blob Paths across shine frames
+- Skip CustomPaint when shine t≈0/1
+- Hoist AnimatedBuilder child for shine layer
 - FilterQuality.medium for 94px logo
 - Path steps 30→24 on tiny blobs
 
-## Next (same rules: no visual change)
+### Routes (`lib/utils/page_transitions.dart`)
+- Removed ScaleTransition from `slideUpRoute` (slide+fade only)
 
-1. **Home** — verify keepAlive cost; avoid full setState on RC toggle if possible
-2. **Habits / Alarms / Tasks** — audit remaining non-builder lists; more RepaintBoundary on cards
-3. **Services** — batch notifyListeners; debounce preview saves (sliders already partially handled)
-4. **Settings** — split ListenableBuilder scopes (file is huge)
-5. **Lock + Ada overlay** — isolate continuous painters with AmbientVsync / boundaries
-6. **JSON+AES** — never encrypt on slider preview frames
+### Ambient loops (`lib/utils/ambient_loop.dart`)
+- Default `everyFrames` 3→4 (~15 fps decorative ticks)
 
-## How to measure
+## Still open (next commits)
 
-Use existing `JankProbe` on device:
+1. **Home** — narrow RC toggle rebuild (avoid full setState if possible)
+2. **Habits / Alarms / Tasks** — audit any remaining non-builder lists
+3. **Settings** — split ListenableBuilder scopes
+4. **Lock + Ada overlay** — ensure continuous painters use AmbientVsync
+5. **JSON+AES** — never encrypt on slider preview frames
+
+## Measure
+
+JankProbe log on device:
 `/sdcard/Android/data/com.wetidom.keramika/files/perf/keramika_jank.txt`
 
-Look at `build=` vs `raster=` over 16.6ms budget.
+Budget 16.6ms at 60Hz. Watch `build=` vs `raster=`.
