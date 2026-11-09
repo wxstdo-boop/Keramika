@@ -20,6 +20,7 @@ import '../utils/wide_dash_formatter.dart';
 import '../utils/wide_dash_controller.dart';
 import '../widgets/ada_avatars.dart';
 import '../widgets/model_label.dart';
+import '../utils/ambient_loop.dart';
 import '../widgets/smooth_typing.dart';
 
 /// Канал системного оверлея.
@@ -1507,7 +1508,7 @@ class _TypingBubble extends StatefulWidget {
 class _TypingBubbleState extends State<_TypingBubble>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
-    vsync: this,
+    vsync: AmbientVsync(this),
     duration: const Duration(milliseconds: 900),
   )..repeat();
 
