@@ -178,4 +178,35 @@ void main() {
     expect(fullscreenCalls, hasLength(1));
     expect(fullscreenCalls.single.method, 'requestUseFullScreenIntent');
   });
+
+  group('одноразовые будильники', () {
+    test('consumeFiredOneShots читает список прозвеневших', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            if (call.method == 'consumeFiredOneShots') {
+              return <int>[11, 22, 33];
+            }
+            return true;
+          });
+
+      final fired = await AlarmScheduler.consumeFiredOneShots();
+
+      if (!isAndroid()) {
+        expect(fired, isEmpty);
+        return;
+      }
+      expect(fired, [11, 22, 33]);
+      expect(calls.single.method, 'consumeFiredOneShots');
+    });
+
+    test('пустой список и сбой канала не роняют вызов', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async => null);
+      expect(await AlarmScheduler.consumeFiredOneShots(), isEmpty);
+
+      mockChannel(throwOnCall: true);
+      expect(await AlarmScheduler.consumeFiredOneShots(), isEmpty);
+    });
+  });
 }

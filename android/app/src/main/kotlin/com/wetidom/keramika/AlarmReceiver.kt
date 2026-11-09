@@ -130,6 +130,15 @@ class AlarmReceiver : BroadcastReceiver() {
             // задвоение будильника.
             if (repeatDays.isNotEmpty() && !isMissed) {
                 rescheduleNext(context, id, intent, hour, minute, repeatDays)
+            } else if (repeatDays.isEmpty() && !isMissed) {
+                // Одноразовый будильник отзвонил. Помечаем его прозвеневшим
+                // и убираем из манифеста загрузки: иначе Dart-перепланировка
+                // (и BootReceiver) сочтут его «ещё не наступившим» и взведут
+                // снова на завтра — «один раз» тихо становилось «каждый
+                // день». Dart гасит такие будильники по consumeFiredOneShots.
+                AlarmSchedulerPlugin.markOneShotFired(context, id)
+                AlarmSchedulerPlugin.removeManifestEntryFor(context, id)
+                AlarmLog.write(context, "ONESHOT FIRED id=$id removed from manifest")
             }
         } catch (e: Exception) {
             // Непойманное исключение отсюда убивает процесс, а вместе с ним и

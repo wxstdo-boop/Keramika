@@ -87,6 +87,14 @@ class AlarmForegroundService : Service() {
         val customPath = intent?.getStringExtra("custom_sound_path")
         val vibrate = intent?.getBooleanExtra("vibrate", true) ?: true
 
+        // Новое срабатывание при уже идущем звонке (повтор будильника,
+        // догон пропущенного, второй будильник в ту же минуту) — это
+        // ОДИН и тот же экземпляр сервиса, и `onStartCommand` придёт
+        // снова. Без сброса прежний MediaPlayer терял ссылку и продолжал
+        // играть рядом с новым: два звонка накладывались — «будильник
+        // двоит». Гасим прошлый звук/вибрацию ПЕРЕД стартом нового.
+        resetAudio()
+
         acquireWakeLock()
         playLoop(soundName, customPath)
         if (vibrate) startVibrationLoop()
@@ -94,6 +102,53 @@ class AlarmForegroundService : Service() {
         // Страховка от «забыли выключить»: телефон не должен звонить вечно.
         handler.postDelayed({ stopEverything() }, MAX_RING_MS)
         return START_NOT_STICKY
+    }
+
+    /**
+     * Гасит звук и вибрацию текущего звонка, НЕ трогая foreground-статус
+     * сервиса и приёмник остановки. Нужен при перезапуске звонка
+     * (`onStartCommand` пришёл повторно): иначе старый плеер остаётся
+     * играть без ссылки на него, и два звонка накладываются.
+     */
+    private fun resetAudio() {
+        handler.removeCallbacksAndMessages(null)
+        vibrating = false
+        try {
+            player?.stop()
+        } catch (_: Exception) {}
+        try {
+            player?.release()
+        } catch (_: Exception) {}
+        player = null
+        try {
+            ringtone?.stop()
+        } catch (_: Exception) {}
+        ringtone = null
+        cancelVibration()
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {}
+        wakeLock = null
+    }
+
+    /**
+     * Отменяет вибрацию ТЕМ ЖЕ экземпляром, на котором она запускалась
+     * (см. [stopEverything]): на API 31+ `startVibrationLoop` крутит её через
+     * `VibratorManager.defaultVibrator`, и отмена через устаревший
+     * `VIBRATOR_SERVICE` на мультивибраторных HyperOS/MIUI брала «другой»
+     * мотор — циклическая вибрация продолжала гудеть после выключения.
+     */
+    @Suppress("DEPRECATION")
+    private fun cancelVibration() {
+        try {
+            val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager)
+                    .defaultVibrator
+            } else {
+                getSystemService(VIBRATOR_SERVICE) as Vibrator
+            }
+            vib.cancel()
+        } catch (_: Exception) {}
     }
 
     private fun startRingingForeground(intent: Intent?) {
@@ -299,21 +354,7 @@ class AlarmForegroundService : Service() {
             ringtone?.stop()
         } catch (_: Exception) {}
         ringtone = null
-        // FIX (вибрация не гаснет на API 31+): отменять вибрацию надо тем же
-        // экземпляром, на котором она запускалась. startVibrationLoop на API 31+
-        // крутит её через VibratorManager.defaultVibrator, а cancel через
-        // deprecated VIBRATOR_SERVICE на мультивибраторных HyperOS/MIUI брал
-        // «другой» мотор — и циклическая вибрация (postDelayed, VIBRATE_CYCLE_MS)
-        // продолжала гудеть до MAX_RING_MS после выключения будильника.
-        @Suppress("DEPRECATION")
-        try {
-            val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-            } else {
-                getSystemService(VIBRATOR_SERVICE) as Vibrator
-            }
-            vib.cancel()
-        } catch (_: Exception) {}
+        cancelVibration()
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}

@@ -89,6 +89,27 @@ class AlarmScheduler {
     }
   }
 
+  /// Ключи (`id.hashCode`) одноразовых будильников, которые уже прозвенели.
+  /// Список читается и ОЧИЩАЕТСЯ нативной стороной: каждая запись выдаётся
+  /// ровно один раз, поэтому повторный вызов не «погасит» будильник,
+  /// который пользователь включил заново.
+  ///
+  /// Нужно, чтобы «один раз» оставалось «один раз»: перепланировка считает
+  /// ближайшее будущее время и без этого взводила бы отзвонивший будильник
+  /// на следующий день.
+  static Future<List<int>> consumeFiredOneShots() async {
+    if (!_isAndroid) return const [];
+    try {
+      final result = await _channel.invokeMethod<List<Object?>>(
+        'consumeFiredOneShots',
+      );
+      if (result == null) return const [];
+      return result.whereType<int>().toList();
+    } catch (e) {
+      return const [];
+    }
+  }
+
   /// Запрашивает системное разрешение на полноэкранные уведомления
   /// (USE_FULL_SCREEN_INTENT, Android 14+). Без него fullScreenIntent
   /// тихо деградирует в обычное уведомление в шторке — будильник

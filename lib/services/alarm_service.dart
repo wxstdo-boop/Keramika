@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/alarm.dart';
+import 'alarm_scheduler.dart';
 import 'json_file.dart';
 import 'prefs.dart';
 
@@ -117,5 +118,33 @@ class AlarmService extends ChangeNotifier {
 
   Future<void> forceSave() async {
     await _save();
+  }
+
+  /// Гасит ОДНОРАЗОВЫЕ будильники, которые уже прозвенели.
+  ///
+  /// Нативная сторона помечает сработавший одноразовый будильник
+  /// (`AlarmScheduler.consumeFiredOneShots` — список читается и очищается
+  /// ровно один раз). Такой будильник нужно выключить, иначе перепланировка
+  /// на старте/возврате из фона снова взведёт его на ближайшее будущее
+  /// время — «поставить один раз» тихо превращалось в «звонит каждый день».
+  ///
+  /// Возвращает число погашенных будильников. Безопасно вызывать когда
+  /// угодно: на не-Android и при пустом списке это no-op.
+  Future<int> disarmFiredOneShots() async {
+    final fired = await AlarmScheduler.consumeFiredOneShots();
+    if (fired.isEmpty) return 0;
+    final keys = fired.toSet();
+    var changed = 0;
+    for (final a in _alarms) {
+      if (a.enabled && a.repeatDays.isEmpty && keys.contains(a.id.hashCode)) {
+        a.enabled = false;
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      notifyListeners();
+      await _save();
+    }
+    return changed;
   }
 }

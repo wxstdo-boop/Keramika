@@ -233,6 +233,40 @@ arm64). Приложение сравнивает сначала `versionName` (
 `versionCode`. Скачанный APK сверяется по SHA-256 из `digest` релиза —
 если `digest` нет, обновление отменяется с `FormatException`.
 
+## Будильники: инварианты срабатывания
+
+Путь будильника: Dart `notification_service.scheduleAlarm` →
+`AlarmSchedulerPlugin.scheduleAlarmClock` (setAlarmClock) → `AlarmReceiver`
+(звонок через `AlarmForegroundService` + уведомление + экран задачи) →
+`WakeTaskScreen` → `stopAlarmSound`. Догон после перезагрузки — `BootReceiver`
+нативно из манифеста `alarm_manifest` (SharedPreferences, пишет плагин).
+
+- **Одноразовый будильник не воскресает.** При срабатывании `AlarmReceiver`
+  зовёт `AlarmSchedulerPlugin.markOneShotFired` + `removeManifestEntryFor`,
+  а Dart на старте/возврате из фона гасит такие будильники через
+  `AlarmService.disarmFiredOneShots` (канал `consumeFiredOneShots` — читается
+  и очищается ровно один раз). Без этого «поставить один раз» превращалось
+  в «звонит каждый день»: и Dart-перепланировка, и `BootReceiver` считали
+  отзвонивший будильник «ещё не наступившим» и взводили его на завтра.
+  Тот же инвариант в запасном пути плагина: `matchDateTimeComponents` =
+  `null` при пустых `repeatDays` (раньше был `DateTimeComponents.time` —
+  ежедневный повтор).
+- **Один звонок за раз.** `AlarmForegroundService.onStartCommand` при уже
+  идущем звонке обязан сперва погасить прошлый звук (`resetAudio`): прежний
+  `MediaPlayer` терял ссылку и продолжал играть рядом с новым — два звонка
+  накладывались, «будильник двоит». Сброс вибрации идёт тем же экземпляром
+  (`cancelVibration`, `VibratorManager.defaultVibrator`), что и старт.
+- **Двойной показ экрана задачи гасится флагом** `_wakeScreenShowing`:
+  cold-start (`_AlarmBootHost` как домашний экран) и hot (`onNewAlarmPayload`
+  → `_handleNotificationTap`) не должны открыть `WakeTaskScreen` дважды.
+- **Двойное закрытие гасится `_finished`** в `WakeTaskScreen._finish`:
+  авто-закрытие (1 с после решения) и ручной «Выключить» идут одновременно —
+  второй `pop`/`stopAlarmSound` ронял экран.
+- **Перепланировка на старте/возврате** (`rescheduleAllNotifications`)
+  сперва гасит прозвеневшие одноразовые, потом взводит включённые.
+- Диагностика — чёрный ящик `alarm_fire_log.txt` (пишут и `AlarmLog.kt`, и
+  `AlarmBlackBox`), читается через adb без root.
+
 ## Витрина и «Что нового»
 
 - **Скриншоты в README генерируются тестом**, не снимаются руками:
@@ -254,7 +288,7 @@ arm64). Приложение сравнивает сначала `versionName` (
 - **Числа в README/docs должны совпадать с реальностью.** Считаем:
   `find test -name '*.dart' | wc -l` — файлы, `flutter test` — число тестов,
   `find lib/services -name '*.dart' | wc -l` — сервисы. Расходились уже
-  дважды (199→210 тестов, 33→35 файлов, 49→56 компонентов).
+  дважды (199→234 теста, 33→39 файлов, 49→56 компонентов).
 
 ## Токены дизайна и движение
 

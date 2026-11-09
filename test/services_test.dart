@@ -9,6 +9,7 @@ import 'package:keramika/main.dart' show buildBackupPayload;
 import 'package:keramika/models/habit.dart';
 import 'package:keramika/models/task.dart';
 import 'package:keramika/services/ai_guide_service.dart';
+import 'package:keramika/services/alarm_service.dart';
 import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/habit_service.dart';
 import 'package:keramika/services/nutrition_service.dart';
@@ -746,6 +747,89 @@ void main() {
       expect(UpdateService.compareVersionNames('1.6.10', '1.6.9'), 1);
       expect(UpdateService.compareVersionNames('1.6.9', '1.6.10'), -1);
       expect(UpdateService.compareVersionNames('1.6.104', '1.6.104'), 0);
+    });
+  });
+
+  group('Одноразовый будильник не воскресает', () {
+    // Канал планировщика: на не-Android AlarmScheduler молча выходит, поэтому
+    // подменяем его и включаем Android-ветку, чтобы проверить сам разбор
+    // списка прозвеневших.
+    const schedulerChannel = MethodChannel(
+      'com.wetidom.keramika/alarm_scheduler',
+    );
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(schedulerChannel, null);
+    });
+
+    Map<String, Object?> alarmJson({
+      required String id,
+      required List<int> repeatDays,
+      bool enabled = true,
+    }) => {
+      'id': id,
+      'hour': 7,
+      'minute': 30,
+      'repeatDays': repeatDays,
+      'label': 'Будильник',
+      'enabled': enabled,
+      'pinned': false,
+      'taskType': 'none',
+      'vibrate': true,
+      'soundName': 'Default',
+      'customSoundPath': null,
+      'notes': '',
+    };
+
+    Future<void> seed(List<Map<String, Object?>> alarms) async {
+      await JsonFile.write('alarms', jsonEncode(alarms));
+      await AlarmService().load();
+    }
+
+    test('прозвеневший одноразовый гасится, повторяющийся не трогаем', () async {
+      await seed([
+        alarmJson(id: 'once', repeatDays: const []),
+        alarmJson(id: 'daily', repeatDays: const [1, 2, 3, 4, 5, 6, 7]),
+      ]);
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(schedulerChannel, (call) async {
+            if (call.method == 'consumeFiredOneShots') {
+              return <int>['once'.hashCode];
+            }
+            return true;
+          });
+
+      final disarmed = await AlarmService().disarmFiredOneShots();
+
+      expect(disarmed, 1);
+      expect(AlarmService().getById('once')!.enabled, isFalse);
+      expect(AlarmService().getById('daily')!.enabled, isTrue);
+    });
+
+    test('повторный вызов не гасит будильник, включённый заново', () async {
+      await seed([alarmJson(id: 'once', repeatDays: const [])]);
+
+      var consumed = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(schedulerChannel, (call) async {
+            if (call.method == 'consumeFiredOneShots') {
+              // Нативная сторона очищает список: второй раз он пуст.
+              final out = consumed ? <int>[] : <int>['once'.hashCode];
+              consumed = true;
+              return out;
+            }
+            return true;
+          });
+
+      expect(await AlarmService().disarmFiredOneShots(), 1);
+      // Пользователь включил будильник обратно — старый ключ не должен
+      // погасить его снова.
+      await AlarmService().toggle('once');
+      expect(AlarmService().getById('once')!.enabled, isTrue);
+      expect(await AlarmService().disarmFiredOneShots(), 0);
+      expect(AlarmService().getById('once')!.enabled, isTrue);
     });
   });
 

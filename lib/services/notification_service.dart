@@ -706,6 +706,14 @@ class NotificationService extends ChangeNotifier {
         : null;
 
     if (await AlarmScheduler.isAvailable()) {
+      // Гасим возможный «хвост» запасного пути плагина по тому же id:
+      // иначе одноразовый будильник, поставленный запасным путём (когда
+      // нативный AlarmManager был недоступен), остаётся в очереди
+      // flutter_local_notifications и звенит ВМЕСТЕ с нативным — «будильник
+      // сработал дважды». Нативные id и id плагина совпадают (id.hashCode).
+      try {
+        await _plugin.cancel(id: alarm.id.hashCode);
+      } catch (_) {}
       final ok = await AlarmScheduler.scheduleAlarmClock(
         id: alarm.id.hashCode,
         title: title,
@@ -791,10 +799,15 @@ class NotificationService extends ChangeNotifier {
         tzScheduled,
         details,
         payload: 'alarm:${alarm.id}',
-        matchDateTimeComponents:
-            alarm.repeatDays.length == 7 || alarm.repeatDays.isEmpty
-            ? DateTimeComponents.time
-            : DateTimeComponents.dayOfWeekAndTime,
+        // Одноразовый будильник (repeatDays пуст) НЕ должен повторяться
+        // ежедневно: `DateTimeComponents.time` превращал «поставить один
+        // раз» в «звонит каждый день». Повторяем только те, у кого дни
+        // заданы (все 7 — по времени, иначе по дню недели и времени).
+        matchDateTimeComponents: alarm.repeatDays.isEmpty
+            ? null
+            : (alarm.repeatDays.length == 7
+                  ? DateTimeComponents.time
+                  : DateTimeComponents.dayOfWeekAndTime),
       );
       return true;
     } catch (e) {

@@ -692,6 +692,12 @@ Future<void> _scheduleAdaTrackingNotifs() async {
 Future<void> rescheduleAllNotifications() async {
   final alarmSvc = AlarmService();
   await alarmSvc.load();
+  // СНАЧАЛА гасим одноразовые будильники, которые уже прозвенели: иначе
+  // цикл ниже взведёт их заново на ближайшее будущее время, и «один раз»
+  // превратится в «звонит каждый день».
+  try {
+    await alarmSvc.disarmFiredOneShots();
+  } catch (_) {}
   var armed = 0;
   var failed = 0;
   for (final a in alarmSvc.alarms) {

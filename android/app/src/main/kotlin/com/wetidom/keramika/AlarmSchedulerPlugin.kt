@@ -28,9 +28,54 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
         const val MANIFEST_KEY = "alarm_manifest"
         const val PREFS_NAME = "keramika_schedule"
 
+        /** Ключ списка прозвеневших одноразовых будильников (id.hashCode). */
+        const val FIRED_ONESHOT_KEY = "fired_one_shots"
+
         fun registerWith(engine: FlutterEngine, context: Context) {
             val channel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
             channel.setMethodCallHandler(AlarmSchedulerPlugin(context))
+        }
+
+        /**
+         * Отмечает одноразовый будильник прозвеневшим. Зовёт [AlarmReceiver]
+         * в момент срабатывания (repeatDays пуст). Dart читает список через
+         * `consumeFiredOneShots` и гасит такие будильники — иначе «один раз»
+         * превращалось в «каждый день»: перепланировка считает ближайшее
+         * будущее время и взводит будильник заново.
+         */
+        fun markOneShotFired(context: Context, code: Int) {
+            try {
+                val prefs = context.applicationContext
+                    .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val raw = prefs.getString(FIRED_ONESHOT_KEY, null)
+                val arr = if (raw != null) JSONArray(raw) else JSONArray()
+                for (i in 0 until arr.length()) {
+                    if (arr.optInt(i, -1) == code) return
+                }
+                arr.put(code)
+                prefs.edit().putString(FIRED_ONESHOT_KEY, arr.toString()).apply()
+            } catch (_: Exception) {}
+        }
+
+        /**
+         * Убирает будильник из манифеста загрузки (статически — из
+         * [AlarmReceiver], где экземпляра плагина нет). Зовётся, когда
+         * одноразовый будильник отзвонил: держать его в манифесте значит
+         * дать BootReceiver взвести его заново после перезагрузки.
+         */
+        fun removeManifestEntryFor(context: Context, code: Int) {
+            try {
+                val prefs = context.applicationContext
+                    .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val raw = prefs.getString(MANIFEST_KEY, null) ?: return
+                val arr = JSONArray(raw)
+                val keep = JSONArray()
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    if (o.optInt("code", -1) != code) keep.put(o)
+                }
+                prefs.edit().putString(MANIFEST_KEY, keep.toString()).apply()
+            } catch (_: Exception) {}
         }
     }
 
@@ -54,6 +99,12 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
             // чтобы Dart-перепланировка могла ДОКАЗАТЬ постановку: молчащий
             // будильник — это либо «мы не поставили», либо «система убрала».
             "nextAlarmTime" -> result.success(alarmManager.nextAlarmTime())
+            // Ключи ОДНОРАЗОВЫХ будильников, которые уже прозвенели. Их
+            // записывает AlarmReceiver в момент срабатывания. Читаем и
+            // очищаем: Dart гасит такие будильники, иначе «один раз» тихо
+            // превращается в «каждый день» (Dart-перепланировка считает
+            // ближайшее будущее время и взводит будильник заново).
+            "consumeFiredOneShots" -> result.success(consumeFiredOneShots())
             else -> result.notImplemented()
         }
     }
@@ -261,6 +312,25 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
             }
             prefs.edit().putString(MANIFEST_KEY, keep.toString()).apply()
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Читает и очищает список прозвеневших одноразовых будильников.
+     * Возвращает ключи (id.hashCode) — Dart гасит их в модели.
+     */
+    private fun consumeFiredOneShots(): List<Int> {
+        return try {
+            val raw = prefs.getString(FIRED_ONESHOT_KEY, null) ?: return emptyList()
+            val arr = JSONArray(raw)
+            val out = ArrayList<Int>(arr.length())
+            for (i in 0 until arr.length()) {
+                out.add(arr.getInt(i))
+            }
+            prefs.edit().remove(FIRED_ONESHOT_KEY).apply()
+            out
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     // Map Dart sound names to Android raw resource names

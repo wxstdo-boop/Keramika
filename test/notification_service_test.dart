@@ -222,6 +222,83 @@ void main() {
     expect(args['body'], contains('Задача'));
   });
 
+  test('одноразовый будильник в запасном пути не повторяется ежедневно', () async {
+    // Нативный AlarmManager недоступен → идём запасным путём плагина
+    // (zonedSchedule). Именно здесь одноразовый будильник раньше получал
+    // повтор «каждый день» и превращался в ежедневный.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(schedulerChannel, (call) async {
+          nativeCalls.add(call);
+          switch (call.method) {
+            case 'isAlarmClockApiAvailable':
+              return false;
+            case 'canScheduleExactAlarms':
+            case 'isIgnoringBatteryOptimizations':
+              return true;
+            case 'nextAlarmTime':
+              return 0;
+            default:
+              return true;
+          }
+        });
+
+    final service = NotificationService();
+    await service.scheduleAlarm(makeAlarm(repeatDays: const []));
+
+    if (!isAndroid()) return;
+    final zoned = pluginCalls.where((c) => c.method == 'zonedSchedule').toList();
+    expect(zoned, isNotEmpty, reason: 'Запасной путь не сработал');
+    final args = Map<Object?, Object?>.from(zoned.first.arguments as Map);
+    // Ключа повтора нет вовсе — будильник сработает ровно один раз.
+    expect(args.containsKey('matchDateTimeComponents'), isFalse);
+  });
+
+  test('повторяющийся будильник в запасном пути повторяется по дням', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(schedulerChannel, (call) async {
+          nativeCalls.add(call);
+          switch (call.method) {
+            case 'isAlarmClockApiAvailable':
+              return false;
+            case 'canScheduleExactAlarms':
+            case 'isIgnoringBatteryOptimizations':
+              return true;
+            case 'nextAlarmTime':
+              return 0;
+            default:
+              return true;
+          }
+        });
+
+    final service = NotificationService();
+    await service.scheduleAlarm(makeAlarm(repeatDays: const [1, 2, 3, 4, 5]));
+
+    if (!isAndroid()) return;
+    final zoned = pluginCalls.where((c) => c.method == 'zonedSchedule').toList();
+    expect(zoned, isNotEmpty, reason: 'Запасной путь не сработал');
+    final args = Map<Object?, Object?>.from(zoned.first.arguments as Map);
+    // dayOfWeekAndTime — повтор по конкретным дням недели.
+    expect(args['matchDateTimeComponents'], 1);
+  });
+
+  test('нативный путь гасит «хвост» запасного пути по тому же id', () async {
+    // Если будильник когда-то был поставлен запасным путём (плагин), а потом
+    // ставится нативно, старая запись в flutter_local_notifications должна
+    // быть снята — иначе она прозвенит вместе с нативным («сработал дважды»).
+    final service = NotificationService();
+    await service.scheduleAlarm(makeAlarm());
+
+    if (!isAndroid()) return;
+    final cancels = pluginCalls.where((c) => c.method == 'cancel').toList();
+    expect(
+      cancels,
+      isNotEmpty,
+      reason: 'Нативная постановка не сняла запасную запись плагина',
+    );
+    final args = Map<Object?, Object?>.from(cancels.last.arguments as Map);
+    expect(args['id'], 'alarm-test-1'.hashCode);
+  });
+
   test('выключенный переключатель не даёт поставить будильник', () async {
     final service = NotificationService();
     await service.setEnabled(false, requestPermission: false);
