@@ -1,4 +1,4 @@
-name: Apply splash perf patch
+name: Apply perf patches
 
 on:
   workflow_dispatch:
@@ -17,21 +17,34 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Apply patch and push
+      - name: Apply patches and push
         run: |
           set -e
-          if git apply --check docs/patches/splash_perf.patch; then
-            git apply docs/patches/splash_perf.patch
-          else
-            echo "Patch already applied or conflict"
-            git apply --3way docs/patches/splash_perf.patch || true
-          fi
           git config user.name "perf-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/screens/splash_screen.dart
+
+          apply_one() {
+            local patch="$1"
+            if [ ! -f "$patch" ]; then
+              echo "Missing $patch"
+              return 0
+            fi
+            if git apply --check "$patch" 2>/dev/null; then
+              git apply "$patch"
+              echo "Applied $patch"
+            else
+              echo "Skip or conflict: $patch"
+              git apply --3way "$patch" || true
+            fi
+          }
+
+          apply_one docs/patches/splash_perf.patch
+          apply_one docs/patches/lock_perf.patch
+
+          git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "perf(splash): cache splat paths, skip idle shine frames, medium filter"
+          git commit -m "perf: apply splash + lock patches (AmbientVsync, splat cache)"
           git push origin HEAD:perf/whole-app-opt
