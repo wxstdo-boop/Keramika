@@ -40,11 +40,12 @@ jobs:
 
           apply_one docs/patches/splash_perf.patch
           apply_one docs/patches/lock_perf.patch
+          apply_one docs/patches/ada_typing_perf.patch
 
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "perf: apply splash + lock patches (AmbientVsync, splat cache)"
+          git commit -m "perf: apply pending patches (splash/lock/ada typing)"
           git push origin HEAD:perf/whole-app-opt
