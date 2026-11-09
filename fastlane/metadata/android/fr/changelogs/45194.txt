@@ -1,0 +1,3 @@
+- Les mises à jour s'installent via une session PackageInstaller, l'app étant
+  déclarée propriétaire de ses propres mises à jour
+- Divers correctifs et finitions
