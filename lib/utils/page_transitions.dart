@@ -21,9 +21,9 @@ const Duration slideUpReverseDuration = Duration(milliseconds: 240);
 
 /// Плавный переход снизу вверх (для горизонтальных списков).
 ///
-/// Заметный, но лёгкий: страница поднимается снизу с лёгким «подскоком»
-/// масштаба и fade — окно (будильник/задача) открывается ощутимо, но без
-/// тяжёлых эффектов (blur/saveLayer) — кадры на Redmi Note 12 не роняются.
+/// Заметный, но лёгкий: страница поднимается снизу с fade — без масштаба.
+/// ScaleTransition на тяжёлых экранах (add alarm/habit) заставлял GPU
+/// перефильтровывать весь слой каждый кадр перехода.
 Route<T> slideUpRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     // Имя роута = тип страницы: по нему jank-проба подписывает кадры
@@ -37,6 +37,9 @@ Route<T> slideUpRoute<T>(Widget page) {
         parent: animation,
         curve: Curves.easeOutCubic,
       );
+      // Без ScaleTransition: масштаб на тяжёлых экранах (add alarm/habit)
+      // заставляет GPU перефильтровывать весь слой каждый кадр перехода.
+      // Slide + fade достаточно читаются и дешевле.
       return SlideTransition(
         position: Tween<Offset>(
           begin: const Offset(0, 0.12),
@@ -44,11 +47,7 @@ Route<T> slideUpRoute<T>(Widget page) {
         ).animate(curved),
         child: FadeTransition(
           opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.97, end: 1.0).animate(curved),
-            alignment: Alignment.bottomCenter,
-            child: child,
-          ),
+          child: child,
         ),
       );
     },
@@ -60,12 +59,9 @@ const Duration lockRouteReverseDuration = Duration(milliseconds: 340);
 
 /// Переход к PIN-экрану и обратно — СИММЕТРИЧНЫЙ кросс-фейд.
 ///
-/// Раньше блокировка «въезжала» снизу ([slideUpRoute]): домашний экран
-/// уезжал вверх, а на разблокировке (в сплэш) шёл уже другой переход —
-/// вход и выход выглядели как два разных жеста, и «замок» читался рывком.
-/// Здесь одна и та же мягкая проявка в обе стороны (время вперёд = время
-/// назад) плюс едва заметный масштаб: экран будто наплывает на место, без
-/// движения вверх-вниз. Без blur/saveLayer — дёшево для слабого GPU.
+/// Только fade — БЕЗ масштаба. Масштаб на весь экран ПИН-экрана
+/// (медальон с бесконечным циклом + стеклянный витраж) заставлял GPU
+/// каждый кадр перефильтровывать большой слой.
 Route<T> lockRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
@@ -77,10 +73,6 @@ Route<T> lockRoute<T>(Widget page) {
         parent: animation,
         curve: Curves.easeInOutCubic,
       );
-      // Только fade — БЕЗ масштаба. Масштаб на весь экран ПИН-экрана
-      // (медальон с бесконечным циклом + стеклянный витраж) заставлял GPU
-      // каждый кадр перефильтровывать большой слой, и разблокировка
-      // («после ввода пинкода») читалась лагом. Чистая проявка дешёвая.
       return FadeTransition(opacity: curved, child: child);
     },
   );
@@ -88,26 +80,12 @@ Route<T> lockRoute<T>(Widget page) {
 
 /// Лёгкий вход на ДОМАШНИЙ экран после сплэша/PIN.
 ///
-/// В отличие от [slideUpRoute] — НИКАКОГО движения: только мягкий
-/// crossfade с едва заметным масштабом. Дом содержит сразу 4 экрана
-/// (PageView + keepAlive), поэтому тяжёлый slide+scale на весь контент на
-/// первом кадре после сплэша выглядел как «подтормоз»: GPU
-/// перефильтровывал большой слой по кадру перехода.
-///
-/// Сделано ещё мягче: 320 мс и симметричная кривая [Curves.easeInOutCubic]
-/// (вход и выход с нулевой скоростью). Масштаб убран совсем — на слабом GPU
-/// он давал едва заметный «толчок» в первом кадре, а чистый кросс-фейд
-/// читается как одно плавное проявление.
-///
-/// Без blur/saveLayer (дорого на слабом GPU), без SlideTransition
-/// (полупрозрачный слайд «размазывал» текст).
+/// Только мягкий crossfade. Дом содержит сразу 4 экрана (PageView +
+/// keepAlive), поэтому тяжёлый slide+scale на весь контент на первом
+/// кадре после сплэша выглядел как «подтормоз».
 Route<T> homeEntryRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    // 340 мс вместо 280: длиннее и мягче. Дом монтирует сразу 4 экрана, и
-    // на первом кадре после сплэша этот build неизбежен — растянутая
-    // проявка размазывает его по кадрам, поэтому переход не читается
-    // «толчком», а наплывает.
     transitionDuration: _routeDuration(const Duration(milliseconds: 340)),
     reverseTransitionDuration: _routeDuration(const Duration(milliseconds: 220)),
     pageBuilder: (context, animation, secondaryAnimation) => page,
