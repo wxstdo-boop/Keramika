@@ -79,6 +79,46 @@ bool _wakeScreenShowing = false;
 /// кадра, и экран задачи становится домашним — сплэш и PIN не запускаются.
 String? _alarmBootPayload;
 
+/// Готовность данных к первому Home-кадру: пять сервисов + автосохранение.
+///
+/// Переход со сплэша ждёт этот Future ([_goHome]), чтобы Home монтировался
+/// уже с загруженными списками, а не мигал пустым состоянием.
+Future<void>? _dataReady;
+
+/// Читает с диска все пять сервисов и поднимает фоновые задачи старта.
+///
+/// Вынесено из [_startApp], чтобы переход на Home мог дождаться результата.
+Future<void> _loadStartupData() async {
+  try {
+    // Пять сервисов читают РАЗНЫЕ JsonFile-файлы (у каждого свой per-key lock),
+    // поэтому их загрузка безопасна и быстрее когда идёт ПАРАЛЛЕЛЬНО: раньше
+    // они шли строго друг за другом, и время = сумма disk-I/O + AES-декода
+    // пяти файлов, что на бюджетном железе складывалось в заметную паузу до
+    // первого домашнего кадра. Теперь время = только самый долгий из них.
+    await Future.wait<void>([
+      HabitService().load(),
+      TaskService().load(),
+      AlarmService().load(),
+      RealityCheckService().load(),
+      TimerService().load(),
+    ]);
+
+    // Дефолтные демо-записи убраны: пользователь добавляет привычки,
+    // задачи и будильники сам. Чистим остатки старых демо-данных,
+    // которые могли сохраниться на диск из прошлых билдов.
+    await _removeLegacyDemoData();
+    final autoSaveOn = await SettingsService.loadAutoSave();
+    if (autoSaveOn) startAutoSave();
+    final autoExportOn = await SettingsService.loadAutoExport();
+    if (autoExportOn) {
+      // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
+      await maybeCatchUpAutoExport();
+    }
+  } catch (error, stackTrace) {
+    _reportPersistenceFailure(error, stackTrace);
+  }
+}
+
 /// Читает payload будильника из нативного intent. Возвращает null, если
 /// приложение открыто не будильником.
 Future<String?> _readAlarmBootPayload() async {
@@ -1121,35 +1161,11 @@ Future<void> _startApp() async {
   Future.delayed(const Duration(milliseconds: 500), _rescheduleAllOnStart);
 
   // Автосохранение — загружаем данные ПЕРВЫМ ДЕЛОМ, потом стартуем таймер
-  // только если пользователь включал autosave.
-  try {
-    // Пять сервисов читают РАЗНЫЕ JsonFile-файлы (у каждого свой per-key lock),
-    // поэтому их загрузка безопасна и быстрее когда идёт ПАРАЛЛЕЛЬНО: раньше
-    // они шли строго друг за другом, и время = сумма disk-I/O + AES-декода
-    // пяти файлов, что на бюджетном железе складывалось в заметную паузу до
-    // первого домашнего кадра. Теперь время = только самый долгий из них.
-    await Future.wait<void>([
-      HabitService().load(),
-      TaskService().load(),
-      AlarmService().load(),
-      RealityCheckService().load(),
-      TimerService().load(),
-    ]);
-
-    // Дефолтные демо-записи убраны: пользователь добавляет привычки,
-    // задачи и будильники сам. Чистим остатки старых демо-данных,
-    // которые могли сохраниться на диск из прошлых билдов.
-    await _removeLegacyDemoData();
-    final autoSaveOn = await SettingsService.loadAutoSave();
-    if (autoSaveOn) startAutoSave();
-    final autoExportOn = await SettingsService.loadAutoExport();
-    if (autoExportOn) {
-      // Молча: бэкапим, только если час уже прошёл (приложение было закрыто).
-      await maybeCatchUpAutoExport();
-    }
-  } catch (error, stackTrace) {
-    _reportPersistenceFailure(error, stackTrace);
-  }
+  // только если пользователь включал autosave. Future сохраняем: переход на
+  // Home ждёт его (см. [_goHome]) — иначе на слабом железе сплэш заканчивался
+  // раньше загрузки, Home монтировался с пустыми сервисами и списки «мигали»
+  // пустым состоянием, пока данные не доедут.
+  _dataReady = _loadStartupData();
 
   // Флаг — уже обработали запуск от будильника, чтобы не открыть
   // WakeTaskScreen дважды (из getLaunchDetails и getAlarmPayload).
@@ -1263,6 +1279,10 @@ class KeramikaAppState extends State<KeramikaApp>
   late String _fontFamily;
   Key _appKey = UniqueKey();
   bool _locked = false;
+
+  /// Переход на Home уже запланирован (ждём [_dataReady]): не пушим дважды,
+  /// если [_goHome] вызван и сплэшем, и решением будильника.
+  bool _homeScheduled = false;
 
   /// Приложение ушло в фон (экран погас / свёрнуто) — при возврате нужно
   /// снова спросить PIN. Не ставим, если уходили в системный диалог/настройки
@@ -1415,15 +1435,37 @@ class KeramikaAppState extends State<KeramikaApp>
     if (_wakeScreenShowing) return;
     aiLockScreenVisible.value = false;
     final nav = navigatorKey.currentState;
-    if (nav != null) {
-      // Лёгкий кросс-фейд (без slide+scale на весь 4-экранный дом):
-      // тяжёлый [slideUpRoute] на большом PageView давал «подтормоз» на
-      // первом кадре после сплэша.
-      nav.pushAndRemoveUntil(
-        homeEntryRoute(const HomeScreen()),
-        (route) => false,
-      );
+    if (nav == null) return;
+    // Ждём готовности данных, чтобы Home смонтировался сразу со списками:
+    // на слабом железе сплэш заканчивался раньше загрузки, и разделы
+    // мелькали пустым состоянием до прихода данных (те самые «флики»).
+    // Сплэш уже погасил тяжёлую левитацию, так что ожидание почти незаметно.
+    final ready = _dataReady;
+    if (ready == null) {
+      _pushHome(nav);
+      return;
     }
+    // Ожидание асинхронное: повторный вызов (сплэш + решение будильника)
+    // не должен запушить Home дважды.
+    if (_homeScheduled) return;
+    _homeScheduled = true;
+    unawaited(
+      ready.whenComplete(() {
+        _homeScheduled = false;
+        if (!mounted) return;
+        _pushHome(nav);
+      }),
+    );
+  }
+
+  void _pushHome(NavigatorState nav) {
+    // Лёгкий кросс-фейд (без slide+scale на весь 4-экранный дом):
+    // тяжёлый [slideUpRoute] на большом PageView давал «подтормоз» на
+    // первом кадре после сплэша.
+    nav.pushAndRemoveUntil(
+      homeEntryRoute(const HomeScreen()),
+      (route) => false,
+    );
   }
 
   void _goSplash() {

@@ -523,10 +523,23 @@ Future<void> _showExitDialog(
                         // растр лишь МЕНЯЕТ ПРОЗРАЧНОСТЬ — ни размытия, ни
                         // чтения бэкдропа в кадре, поэтому нет ни дрожания
                         // текста под окном, ни просадки кадра.
+                        //
+                        // Прозрачность задаёт сам RawImage (множитель в
+                        // цвет отрисовки), а не виджет Opacity: Opacity на
+                        // весь экран заводит saveLayer на КАЖДОМ кадре
+                        // анимации, и именно это читалось как «вся прога
+                        // подтормаживает при выходе».
                         if (image != null)
-                          Opacity(
-                            opacity: backT.clamp(0.0, 1.0),
-                            child: RawImage(image: image, fit: BoxFit.cover),
+                          RawImage(
+                            image: image,
+                            fit: BoxFit.cover,
+                            // RawImage принимает Animation, а не число:
+                            // постоянная анимация на текущий backT — тот же
+                            // кадр без saveLayer, что и у Opacity, но без
+                            // лишнего слоя.
+                            opacity: AlwaysStoppedAnimation<double>(
+                              backT.clamp(0.0, 1.0),
+                            ),
                           ),
                         ColoredBox(color: dimColor),
                       ],
@@ -745,9 +758,11 @@ Future<void> _showExitDialog(
 /// делается РОВНО ОДИН раз, вне кадра, поэтому в анимации остаётся только
 /// прозрачность готовой картинки.
 ///
-/// Растр берётся в ЛОГИЧЕСКИХ пикселях (`pixelRatio: 1.0`): на экране с DPR
-/// ~2.75 это в разы меньше по каждой стороне, а размытие всё равно гасит
-/// детали, так что разницы не видно — зато памяти и работы в разы меньше.
+/// Растр берётся в ПОЛОВИНУ логических пикселей (`pixelRatio: 0.5`): на
+/// экране с DPR ~2.75 это в ~5 раз меньше по каждой стороне, а размытие всё
+/// равно гасит детали, так что разницы не видно — зато и снимок, и blur
+/// стоят вчетверо дешевле. Sigma задана как 6: при растягивании картинки
+/// вдвое на экран это те же 12 логических пикселей размытия, что и раньше.
 /// Возвращает `null`, если снимок не удался (тогда окно покажется на одном
 /// затемнении — без размытия, но и без ошибки).
 Future<ui.Image?> _captureBlurredBackdrop() async {
@@ -756,15 +771,15 @@ Future<ui.Image?> _captureBlurredBackdrop() async {
     // по «Выйти» фон уже нарисован, лишний кадр не нужен.
     final obj = lockBackgroundKey.currentContext?.findRenderObject();
     if (obj is! RenderRepaintBoundary) return null;
-    final src = await obj.toImage(pixelRatio: 1.0);
+    final src = await obj.toImage(pixelRatio: 0.5);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
-    // sigma — в логических пикселях, ровно как было у прежнего
-    // BackdropFilter(sigma 12): вид тот же.
+    // sigma задана в пикселях ПОЛОВИННОГО растра: 6 × 2 = 12 логических —
+    // ровно как было у прежнего BackdropFilter(sigma 12).
     canvas.drawImage(
       src,
       ui.Offset.zero,
-      ui.Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      ui.Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
     );
     final picture = recorder.endRecording();
     final blurred = await picture.toImage(src.width, src.height);
