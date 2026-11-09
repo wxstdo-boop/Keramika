@@ -313,7 +313,7 @@ class _LatestVersionState extends State<_LatestVersion>
 
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 520),
+    duration: const Duration(milliseconds: 620),
   )..forward();
 
   @override
@@ -336,21 +336,18 @@ class _LatestVersionState extends State<_LatestVersion>
         Positioned(
           left: 0,
           right: 0,
-          bottom: -3,
+          bottom: -4,
           child: AnimatedBuilder(
             animation: _ctrl,
             builder: (context, _) {
-              final t = Curves.easeOutCubic.transform(_ctrl.value);
-              return Align(
-                alignment: Alignment.centerLeft,
-                child: FractionallySizedBox(
-                  widthFactor: t,
-                  child: Container(
-                    height: 2.5,
-                    decoration: BoxDecoration(
-                      color: _blood.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+              // Прочерка слева направо: к моменту окончания контроллера
+              // волнистая линия нарисована целиком.
+              return SizedBox(
+                height: 5,
+                child: CustomPaint(
+                  painter: _WavyUnderlinePainter(
+                    progress: Curves.easeOutCubic.transform(_ctrl.value),
+                    color: _blood.withValues(alpha: 0.5),
                   ),
                 ),
               );
@@ -360,6 +357,52 @@ class _LatestVersionState extends State<_LatestVersion>
       ],
     );
   }
+}
+
+/// Волнистая «извилистая» линия под номером свежей версии.
+///
+/// Рисуется синусом с плавно убывающей амплитудой к концу: штрих начинается
+/// ровно, «дышит» волной в середине и мягко сходит на нет — красивее и
+/// живее прямого подчёркивания. [progress] (0..1) задаёт, какая доля линии
+/// уже прочерчена.
+class _WavyUnderlinePainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  _WavyUnderlinePainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0 || size.width <= 0) return;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    final midY = size.height / 2;
+    // Амплитуда волны — до 2 px: заметно «извилисто», но не мешает тексту.
+    const amp = 2.0;
+    final path = Path();
+    final steps = (size.width / 2).ceil().clamp(2, 400);
+    for (var i = 0; i <= steps; i++) {
+      final t = i / steps;
+      if (t > progress) break;
+      final x = size.width * t;
+      // Волна «живёт» в середине и сходит на нет к обоим краям.
+      final envelope = math.sin(math.pi * t);
+      final y = midY + amp * envelope * math.sin(t * math.pi * 6);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_WavyUnderlinePainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 /// Скелет загрузки: три «пустые» карточки-плашки с мягким пульсом.

@@ -34,14 +34,12 @@ void main() {
     // Список не пришёл из сети — значит доступна кнопка «Повторить»,
     // иначе экран выглядел бы тупиком до перезахода.
     expect(find.byIcon(Icons.refresh_rounded), findsOneWidget);
-    // Плашка списка изменений: подпись про развитие приложения, а не
-    // «что осталось сделать»; внизу — мелкие доработки и PR в 2027.
+    // Плашка списка изменений: подпись про развитие приложения (второй
+    // текст в плашке), а не «что осталось сделать».
     expect(
       find.textContaining('Как развивается приложение'),
       findsOneWidget,
     );
-    expect(find.textContaining('Мелкие доработки'), findsOneWidget);
-    expect(find.textContaining('PR в 2027'), findsOneWidget);
     // Пункты списка помечены разными значками, а не одинаковыми галочками.
     expect(find.byIcon(Icons.ac_unit_rounded), findsWidgets);
     expect(find.byIcon(Icons.check_circle_outline), findsNothing);

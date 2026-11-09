@@ -122,4 +122,41 @@ void main() {
     expect(prev, lessThan(first), reason: 'форма всё же возвращается к покою');
     await tester.pumpAndSettle();
   });
+
+  testWidgets('камень растягивается ПОД пальцем у края, не только на отпускании', (
+    tester,
+  ) async {
+    await pumpPill(tester);
+    double stoneWidth() {
+      final r = tester.getRect(
+        find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_GlassStone',
+        ),
+      );
+      return r.width;
+    }
+
+    // Покой в первом разделе — базовая ширина камня.
+    await tester.pump();
+    final rest = stoneWidth();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(SectionPill)),
+    );
+    await tester.pump();
+    // Тянем к правому краю, НЕ отпуская: камень должен растянуться уже под
+    // пальцем (жалоба «к углам не растягивается, только на отпускании»).
+    for (var i = 0; i < 24; i++) {
+      await gesture.moveBy(const Offset(16, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final underFinger = stoneWidth();
+    expect(
+      underFinger,
+      greaterThan(rest),
+      reason: 'под пальцем у края камень обязан растянуться, а не ждать отпускания',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
 }

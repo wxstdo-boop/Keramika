@@ -327,14 +327,24 @@ class UpdateService {
       // Хвостовая точка/запятая/точка с запятой в списке лишняя.
       text = text.replaceAll(RegExp(r'[.;,]+$'), '').trim();
       if (text.isEmpty) continue;
-      // Служебный коммит (бамп релиза, мерж, CI, тесты, сборка, линт) —
-      // не для человека, в «Что нового» ему не место.
+      // Первая буква — заглавная: в списке изменений пункты с маленькой
+      // буквы («поправил рывок…») читаются как обрывки сырого git log.
+      text = _capitalize(text);
       if (_isInternalNote(text)) continue;
       // Дубликаты не показываем.
       if (!seen.add(text.toLowerCase())) continue;
       out.add(text);
     }
     return out;
+  }
+
+  /// Первая буква пункта — заглавная, остальное не трогаем (аббревиатуры,
+  /// имена собственные и CamelCase-идентификаторы остаются как есть).
+  static String _capitalize(String text) {
+    if (text.isEmpty) return text;
+    final first = text[0];
+    final upper = first.toUpperCase();
+    return upper == first ? text : upper + text.substring(1);
   }
 
   /// Служебный ли пункт: релизный бамп, мерж, CI, тесты, сборка, линт,

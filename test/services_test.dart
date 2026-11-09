@@ -741,6 +741,19 @@ void main() {
       expect(entry!.changes, ['Обновление 1.6.104']);
     });
 
+    test('первая буква пункта — заглавная', () {
+      const body = '''
+* поправил рывок окна выхода
+* AnimatedStrikeText больше не пересчитывает layout
+* iv=0 остаётся корректным
+''';
+      expect(UpdateService.parseReleaseNotes(body), [
+        'Поправил рывок окна выхода',
+        'AnimatedStrikeText больше не пересчитывает layout',
+        'Iv=0 остаётся корректным',
+      ]);
+    });
+
     test('без тега записи нет', () {
       expect(UpdateService.parseRelease({'tag_name': ''}), isNull);
     });
