@@ -38,25 +38,54 @@ Widget buildDragProxy(
     StaggerIn.suppressEntrance = false;
     SmoothHover.dragProxyCount.value--;
   });
-  // ПРОКСИ СТАТИЧЕН, АНИМИРУЕТСЯ ТОЛЬКО МАСШТАБ.
+  // САМА КАРТОЧКА СТАТИЧНА, АНИМИРУЕТСЯ ТОЛЬКО МАСШТАБ И АЛЬФА КОЛЬЦА.
   //
   // Раньше тень, обводка и содержимое пересобирались и перерисовывались
   // КАЖДЫЙ кадр драга (Material.elevation + border + child в одном билдере
   // AnimatedBuilder). На слабом GPU размытая тень и обводка, перерисованные
   // 60 раз в секунду, и читались как «при драге подтормаживает».
   //
-  // Теперь всё оформление прокси (тень, обводка, карточка) собрано ОДИН раз
-  // в [RepaintBoundary] и передано как `child` — AnimatedBuilder на каждом
-  // кадре лишь меняет матрицу Transform.scale. Смена матрицы — операция
-  // композитора: готовый растр прокси просто переиспользуется, перерисовки
-  // нет. Масштаб и скольжение на место идут в одном темпе (easeOut), как и
-  // drop-анимация ReorderableListView.
+  // Теперь оформление карточки (тень, фон, содержимое) собрано ОДИН раз в
+  // [RepaintBoundary] и передано как `child` — AnimatedBuilder на каждом
+  // кадре лишь меняет матрицу Transform.scale и альфу кольца. Тяжёлое
+  // поддерево при этом НЕ пересобирается.
+  //
+  // Кольцо-выделение живёт ОТДЕЛЬНЫМ слоем поверх карточки: раньше оно было
+  // постоянным и «вспыхивало» мгновенно, а при отпускании гасло рывком —
+  // именно это читалось как «выделение неплавное». Теперь его альфа едет
+  // вместе с анимацией подъёма/возврата (0 → 0.45 → 0), поэтому и появление,
+  // и отпускание идут мягко. Сама карточка остаётся непрозрачной: на
+  // отпускании прокси скользит к своему месту, и просвечивающая живая
+  // карточка «двоилась» бы.
   final proxy = AnimatedBuilder(
     animation: animation,
     builder: (context, child) {
       final t = Curves.easeOut.transform(animation.value);
       final scale = 1.0 + 0.02 * t;
-      return Transform.scale(scale: scale, child: child);
+      final ringAlpha = 0.45 * animation.value;
+      return Transform.scale(
+        scale: scale,
+        child: Stack(
+          children: [
+            child!,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(borderRadius),
+                    border: Border.all(
+                      color: theme.colorScheme.primary.withValues(
+                        alpha: ringAlpha,
+                      ),
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     },
     child: RepaintBoundary(
       child: Material(
@@ -67,19 +96,7 @@ Widget buildDragProxy(
         borderRadius: BorderRadius.circular(borderRadius),
         color: theme.colorScheme.surface,
         clipBehavior: Clip.none,
-        child: Container(
-          // Обводка-«кольцо» ПОВЕРХ карточки (не участвует в layout, поэтому
-          // текст с мягким переносом не перетекает на другие строки).
-          // Постоянная — её анимация стоила перерисовки на каждом кадре.
-          foregroundDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(
-              color: theme.colorScheme.primary.withValues(alpha: 0.45),
-              width: 2,
-            ),
-          ),
-          child: child,
-        ),
+        child: child,
       ),
     ),
   );
@@ -93,10 +110,8 @@ Widget buildDragProxy(
 class _ProxyPositionReporter extends SingleChildRenderObjectWidget {
   final ValueNotifier<double?> notifier;
 
-  const _ProxyPositionReporter({
-    required this.notifier,
-    required Widget child,
-  }) : super(child: child);
+  const _ProxyPositionReporter({required this.notifier, required Widget child})
+    : super(child: child);
 
   @override
   RenderObject createRenderObject(BuildContext context) =>

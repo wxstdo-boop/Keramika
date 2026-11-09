@@ -890,15 +890,77 @@ class _HabitsScreenState extends State<HabitsScreen>
     );
   }
 
+  /// Бейдж победы над вредной привычкой — «Сегодня очищено».
+  ///
+  /// На светлой теме это прежняя «кровавая» таблетка (винный градиент +
+  /// подтёки). На тёмной она читалась как мутное пятно — «убого»: почти
+  /// прозрачный градиент гасил и подложку, и пятна. Поэтому на тёмной теме
+  /// бейдж оформлен как капсула типа «Вредная» из формы привычки: плотный
+  /// [ColorScheme.errorContainer], читаемый [ColorScheme.onErrorContainer]
+  /// и мягкая error-тень. Тот же визуальный язык, без «грязной» подложки.
+  Widget _erasedBadge(BuildContext context, ThemeData theme) {
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.check_circle_outline_rounded,
+          size: 15,
+          color: isDark ? cs.onErrorContainer : const Color(0xFFFFE1E3),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          Translations.t('todayErased', context, 'Сегодня очищено'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: isDark ? cs.onErrorContainer : const Color(0xFFFFEEF0),
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ],
+    );
+    return Padding(
+      key: const ValueKey('erased_badge'),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: isDark
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: cs.errorContainer,
+                  border: Border.all(
+                    color: cs.error.withValues(alpha: 0.55),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.error.withValues(alpha: 0.22),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                )
+              : BloodSpeck.decoration(theme),
+          child: isDark
+              ? content
+              : CustomPaint(painter: const BloodSpeckPainter(), child: content),
+        ),
+      ),
+    );
+  }
+
   /// Sliver-заголовок секции (Полезные/Вредные).
   Widget _sectionHeaderSliver(
     BuildContext context,
     ThemeData theme,
     String keyName,
     Color tint,
-  ) => SliverToBoxAdapter(
-    child: _sectionHeader(context, theme, keyName, tint),
-  );
+  ) => SliverToBoxAdapter(child: _sectionHeader(context, theme, keyName, tint));
 
   /// Зоны одной секции: закреплённые и незакреплённые — ФИЗИЧЕСКИ РАЗНЫЕ
   /// списки. Незакреплённую из нижней зоны в верхнюю перетащить нельзя
@@ -968,7 +1030,6 @@ class _HabitsScreenState extends State<HabitsScreen>
       ),
     );
   }
-
 
   Widget _sectionHeader(
     BuildContext context,
@@ -1274,9 +1335,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 // Текст в отмеченном состоянии — заметно
                                 // полупрозрачный (а не просто другой оттенок):
                                 // прозрачность едет вместе с линией.
-                                struckColor: theme
-                                    .colorScheme
-                                    .onSurfaceVariant
+                                struckColor: theme.colorScheme.onSurfaceVariant
                                     .withValues(alpha: 0.42),
                                 strikeColor: Colors.red.shade500.withValues(
                                   alpha: 0.9,
@@ -1310,23 +1369,20 @@ class _HabitsScreenState extends State<HabitsScreen>
                                 // полупрозрачная подложка primaryContainer.
                                 if (habit.reminderTime != null)
                                   Padding(
-                                    padding:
-                                        const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.only(right: 6),
                                     child: Container(
-                                      key: const ValueKey(
-                                        'remind_all_chip',
-                                      ),
+                                      key: const ValueKey('remind_all_chip'),
                                       width: 26,
                                       height: 26,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: theme.colorScheme
+                                        color: theme
+                                            .colorScheme
                                             .primaryContainer
                                             .withValues(alpha: 0.18),
                                       ),
                                       child: Icon(
-                                        Icons
-                                            .notifications_active_outlined,
+                                        Icons.notifications_active_outlined,
                                         size: 17,
                                         color: theme.colorScheme.primary,
                                       ),
@@ -1334,8 +1390,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                   ),
                                 Column(
                                   mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.end,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     // Кнопка раскрытия есть только если
                                     // реально есть что показывать: заметки
@@ -1349,15 +1404,15 @@ class _HabitsScreenState extends State<HabitsScreen>
                                         cornerRipple: true,
                                         icon: Icons.keyboard_arrow_down,
                                         rotation:
-                                            (_expandedNotes[habit.id] ??
-                                            false)
-                                        ? 3.14159 // пи — стрелка вверх
-                                        : 0,
-                                        color: (_expandedNotes[habit.id] ??
-                                                    false)
+                                            (_expandedNotes[habit.id] ?? false)
+                                            ? 3.14159 // пи — стрелка вверх
+                                            : 0,
+                                        color:
+                                            (_expandedNotes[habit.id] ?? false)
                                             ? theme.colorScheme.primary
-                                            : theme.colorScheme
-                                                .onSurfaceVariant,
+                                            : theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
                                         onPressed: () => setState(
                                           () => _expandedNotes[habit.id] =
                                               !(_expandedNotes[habit.id] ??
@@ -1367,8 +1422,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                     const SizedBox(height: 2),
                                     _compactIconButton(
                                       icon: Icons.edit_outlined,
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant,
+                                      color: theme.colorScheme.onSurfaceVariant,
                                       onPressed: () => _editHabit(habit),
                                     ),
                                   ],
@@ -1450,63 +1504,7 @@ class _HabitsScreenState extends State<HabitsScreen>
                                   ),
                                 )
                               : habit.doneToday
-                              ? Padding(
-                                  key: const ValueKey('erased_badge'),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    // Таблетка-победа с «кровавыми» пятнышками
-                                    // (как было): винный градиент + живые
-                                    // подтёки + светлая кромка. На тёмной теме
-                                    // стала БОЛЕЕ ПОЛУПРОЗРАЧНОЙ и аккуратной
-                                    // — лёгкое «виноградное стекло», а не глухая
-                                    // тёмная плита, которая давила на глаза.
-                                    child: AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 320,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 7,
-                                      ),
-                                      decoration: BloodSpeck.decoration(theme),
-                                      child: CustomPaint(
-                                        painter: BloodSpeckPainter(
-                                          isDark: theme.brightness ==
-                                              Brightness.dark,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons
-                                                  .check_circle_outline_rounded,
-                                              size: 15,
-                                              color: const Color(0xFFFFE1E3),
-                                            ),
-                                            const SizedBox(width: 7),
-                                            Text(
-                                              Translations.t(
-                                                'todayErased',
-                                                context,
-                                                'Сегодня очищено',
-                                              ),
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                color: const Color(0xFFFFEEF0),
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 0.4,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                )
+                              ? _erasedBadge(context, theme)
                               : const SizedBox.shrink(
                                   key: ValueKey('streak_empty'),
                                 ),
@@ -1627,7 +1625,7 @@ class _HabitsScreenState extends State<HabitsScreen>
   /// Оформление таблетки «Сегодня очищено» — аккуратный стеклянный бейдж
   /// в фирменном оттенке текущей темы (не «кровавый»): тонкая полупрозрачная
   /// заливка + светлая кромка + лёгкий внутренний блик сверху. Бейдж
-    /// Ряд дней недели: активные дни привычки подсвечены компактными кружками.
+  /// Ряд дней недели: активные дни привычки подсвечены компактными кружками.
   Widget _daysRow(Habit habit, ThemeData theme, BuildContext context) {
     if (habit.activeDays.isEmpty) return const SizedBox.shrink();
     final names = Translations.dayNames(context);
@@ -1811,8 +1809,10 @@ class _HabitsScreenState extends State<HabitsScreen>
                 // живой, и вечный repeat() жег кадры впустую.
                 child: ValueListenableBuilder<int>(
                   valueListenable: sectionCurrentIndex,
-                  builder: (context, idx, _) =>
-                      _PerfBirdFlock(key: const ValueKey('perf_birds'), active: idx == 1),
+                  builder: (context, idx, _) => _PerfBirdFlock(
+                    key: const ValueKey('perf_birds'),
+                    active: idx == 1,
+                  ),
                 ),
               ),
             ),

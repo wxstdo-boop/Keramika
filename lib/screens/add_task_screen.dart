@@ -418,9 +418,22 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
                 const Spacer(),
                 AnimatedSwitcher(
+                  key: const ValueKey('due_label'),
                   duration: const Duration(milliseconds: 220),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
+                  // Подпись прижата к ПРАВОМУ краю. По умолчанию AnimatedSwitcher
+                  // центрирует детей в Stack, а ширина «Сегодня» и «12.11»
+                  // разная — при смене текста правый край уезжал, это и читалось
+                  // как «дёргает вправо». Прижимаем содержимое вправо: правый
+                  // край неподвижен, меняется только левый.
+                  layoutBuilder: (currentChild, previousChildren) => Stack(
+                    alignment: Alignment.centerRight,
+                    children: [
+                      ...previousChildren,
+                      ?currentChild,
+                    ],
+                  ),
                   // Только КРОССФЕЙД: раньше подпись въезжала справа
                   // (Offset(0.25, 0)) и читалась как «дёргает вправо».
                   transitionBuilder: (child, anim) =>
@@ -975,43 +988,47 @@ class _DeadlineChipState extends State<_DeadlineChip> {
           duration: const Duration(milliseconds: 130),
           curve: Curves.easeOutCubic,
           child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            // Отдача — только «вдавливание» (AnimatedScale ниже), без
-            // подсветки фона: цветовая заливка читалась как «просто фон»,
-            // а не как отклик на нажатие.
-            color: selected ? cs.primary : cs.surfaceContainerHighest,
-            border: Border.all(
-              color: selected
-                  ? cs.primary
-                  : cs.outlineVariant.withValues(alpha: 0.6),
-              width: 1.2,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.icon != null) ...[
-                Icon(
-                  widget.icon,
-                  size: 14,
-                  color: selected ? cs.onPrimary : cs.onSurfaceVariant,
-                ),
-                const SizedBox(width: 5),
-              ],
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? cs.onPrimary : cs.onSurfaceVariant,
-                ),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              // Отдача — только «вдавливание» (AnimatedScale ниже), без
+              // подсветки фона: цветовая заливка читалась как «просто фон»,
+              // а не как отклик на нажатие.
+              color: selected ? cs.primary : cs.surfaceContainerHighest,
+              border: Border.all(
+                color: selected
+                    ? cs.primary
+                    : cs.outlineVariant.withValues(alpha: 0.6),
+                width: 1.2,
               ),
-            ],
-          ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.icon != null) ...[
+                  Icon(
+                    widget.icon,
+                    size: 14,
+                    color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                ],
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    // Вес ПОСТОЯННЫЙ. Раньше выбранный чип становился жирнее
+                    // (w500→w700) и ШИРЕ — соседи по Wrap сдвигались вправо,
+                    // это и читалось как «дёргается вправо» при смене срока.
+                    // Выбор показываем цветом и обводкой, а не набором веса.
+                    fontWeight: FontWeight.w600,
+                    color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

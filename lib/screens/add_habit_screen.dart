@@ -153,6 +153,15 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     if (result != null) setState(() => _iconCodePoint = result);
   }
 
+  /// Смена типа привычки. Поле заметок теперь существует постоянно (скрыто
+  /// при «вредной»), поэтому при уходе в «вредную» снимаем фокус — иначе
+  /// клавиатура остаётся висеть над невидимым полем.
+  void _setType(String type) {
+    if (type == _habitType) return;
+    if (type == 'bad') FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _habitType = type);
+  }
+
   void _showNotesDialog() {
     final ctrl = WideDashController(text: _statusCtrl.text);
     showDialog(
@@ -278,7 +287,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                       color: theme.colorScheme.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.50),
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.50,
+                        ),
                         width: 2,
                       ),
                     ),
@@ -394,7 +405,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         color: theme.colorScheme.primary,
                         containerColor: theme.colorScheme.primaryContainer,
                         onSelectedColor: theme.colorScheme.onPrimaryContainer,
-                        onTap: () => setState(() => _habitType = 'good'),
+                        onTap: () => _setType('good'),
                       ),
                       const SizedBox(width: 8),
                       _TypeCapsule(
@@ -403,7 +414,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                         color: theme.colorScheme.error,
                         containerColor: theme.colorScheme.errorContainer,
                         onSelectedColor: theme.colorScheme.onErrorContainer,
-                        onTap: () => setState(() => _habitType = 'bad'),
+                        onTap: () => _setType('bad'),
                       ),
                     ],
                   ),
@@ -446,73 +457,87 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Заметки и статус скрыты для вредного типа — но переключение
-              // между типами теперь плавное: блок заметок появляется и
-              // исчезает с fade+size анимацией, чтобы пользователь видел
-              // чёткий визуальный отклик при смене «полезная ↔ вредная».
-              AnimatedSwitcher(
+              // Заметки скрыты для вредного типа, но смена типа плавная:
+              // блок мягко сжимается/раскрывается, давая чёткий отклик.
+              //
+              // Раньше смена типа шла через AnimatedSwitcher: он на 280 мс
+              // держал ОБА поддерева (уходящее и приходящее) — а это два
+              // Card + два TextField (minLines: 5) + два SmoothTyping с
+              // тикером. Каждый кадр пересчитывались оба тяжёлых поддерева
+              // (SizeTransition делает layout по обеим ветвям) — это и
+              // читалось как «заметка убирается/появляется с лагом».
+              //
+              // Теперь заметка существует в единственном экземпляре, а
+              // раскрытие/сжатие едет по одной кривой (ClipRect +
+              // Align.heightFactor + Opacity + лёгкий подъём). Никаких
+              // дублей — анимация гладкая даже на слабом устройстве.
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(
+                  begin: _habitType == 'good' ? 1.0 : 0.0,
+                  end: _habitType == 'good' ? 1.0 : 0.0,
+                ),
                 duration: const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: SizeTransition(
-                    sizeFactor: animation,
+                curve: Curves.easeInOutCubic,
+                builder: (context, t, child) => ClipRect(
+                  key: const ValueKey('notes_reveal'),
+                  child: Align(
                     alignment: Alignment.topCenter,
-                    child: child,
+                    heightFactor: t,
+                    child: Opacity(
+                      opacity: t,
+                      child: IgnorePointer(
+                        ignoring: t == 0,
+                        child: Transform.translate(
+                          offset: Offset(0, (1.0 - t) * -12),
+                          child: child,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                child: _habitType == 'good'
-                    ? Column(
-                        key: const ValueKey('good_notes'),
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Card(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: SmoothTyping(
-                                controller: _notesCtrl,
-                                builder: (style) => TextField(
-                                  style: style,
-                                  cursorOpacityAnimates: true,
-                                  magnifierConfiguration:
-                                      TextMagnifierConfiguration.disabled,
-                                  controller: _notesCtrl,
-                                  contextMenuBuilder:
-                                      minimalContextMenuBuilder,
-                                  maxLength: 500,
-                                  inputFormatters: [WideDashFormatter()],
-                                  enableSuggestions: false,
-                                  autocorrect: false,
-                                  minLines: 5,
-                                  maxLines: 12,
-                                  buildCounter: smoothCharCounterBuilder,
-                                  keyboardType: TextInputType.multiline,
-                                  textInputAction: TextInputAction.newline,
-                                  decoration: InputDecoration(
-                                    labelText: Translations.t('notes', context),
-                                    prefixIcon: const Icon(
-                                      Icons.notes_outlined,
-                                    ),
-                                    border: const OutlineInputBorder(),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Card(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: SmoothTyping(
+                          controller: _notesCtrl,
+                          builder: (style) => TextField(
+                            style: style,
+                            cursorOpacityAnimates: true,
+                            magnifierConfiguration:
+                                TextMagnifierConfiguration.disabled,
+                            controller: _notesCtrl,
+                            contextMenuBuilder: minimalContextMenuBuilder,
+                            maxLength: 500,
+                            inputFormatters: [WideDashFormatter()],
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            minLines: 5,
+                            maxLines: 12,
+                            buildCounter: smoothCharCounterBuilder,
+                            keyboardType: TextInputType.multiline,
+                            textInputAction: TextInputAction.newline,
+                            decoration: InputDecoration(
+                              labelText: Translations.t('notes', context),
+                              prefixIcon: const Icon(Icons.notes_outlined),
+                              border: const OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                        ],
-                      )
-                    : const SizedBox.shrink(
-                        key: ValueKey('bad_no_notes'),
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
               Card(
                 shape: RoundedRectangleBorder(
@@ -844,8 +869,9 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                                             ),
                                       ),
                                       onChanged: (v) => setState(
-                                        () =>
-                                            _reminderText = v.isEmpty ? null : v,
+                                        () => _reminderText = v.isEmpty
+                                            ? null
+                                            : v,
                                       ),
                                     ),
                                   ),
@@ -938,7 +964,6 @@ class _DayChip extends StatelessWidget {
     );
   }
 }
-
 
 class _TypeCapsule extends StatelessWidget {
   const _TypeCapsule({
