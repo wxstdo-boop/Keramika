@@ -26,6 +26,28 @@ class SettingsService {
   static const _keyTaskNotes = 'task_quick_notes_mode';
   static const _settingsFile = 'app_settings';
 
+  /// Startup used to read + decrypt this same file once per getter (eight
+  /// times, serialized by the per-key lock), and every settings toggle did
+  /// another full read before writing. Keep one decrypted copy instead.
+  /// Validity is tied to the store generation and the key's write revision,
+  /// so a backup import, a recovery store swap or a test reset cannot leave
+  /// a stale cache behind.
+  ///
+  /// Deliberately no shared "in-flight" future: an abandoned read (a widget
+  /// disposed mid-load, or real file I/O started inside a widget test's
+  /// fake-async zone) would never complete and would then block every later
+  /// getter forever. [preload] removes the startup read burst instead.
+  static Map<String, dynamic>? _cache;
+  static int _cacheGeneration = -1;
+  static int _cacheRevision = -1;
+
+  /// One disk read before the parallel startup getter burst. Every getter
+  /// afterwards resolves from the in-memory copy: no lock, no decrypt and
+  /// no decode on the UI isolate.
+  static Future<void> preload() async {
+    await _loadSettings();
+  }
+
   /// Безопасное чтение bool из SharedPreferences: принимает true/false
   /// (bool) и 0/1 (int), иначе возвращает [defaultValue].
   static bool _bool(dynamic v, bool defaultValue) => v is bool
@@ -35,13 +57,41 @@ class SettingsService {
       : defaultValue;
 
   static Future<Map<String, dynamic>> _loadSettings() async {
+    final generation = JsonFile.storeGeneration;
+    final revision = JsonFile.revisionOf(_settingsFile);
+    final cached = _cache;
+    if (cached != null &&
+        _cacheGeneration == generation &&
+        _cacheRevision == revision) {
+      // save* methods mutate the returned map — never hand out the cache.
+      return Map<String, dynamic>.from(cached);
+    }
+
+    final map = await _readSettings();
+    // A write that landed while we were reading would make `map` stale; in
+    // that case publish nothing and let the next getter re-read.
+    if (JsonFile.revisionOf(_settingsFile) == revision &&
+        JsonFile.storeGeneration == generation) {
+      _cache = Map<String, dynamic>.from(map);
+      _cacheGeneration = generation;
+      _cacheRevision = revision;
+    } else {
+      _cache = null;
+    }
+    return map;
+  }
+
+  static Future<Map<String, dynamic>> _readSettings() async {
     final raw = await JsonFile.read(_settingsFile);
-    if (raw == null || raw.isEmpty) return {};
+    if (raw == null || raw.isEmpty) return <String, dynamic>{};
     return Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
 
   static Future<void> _saveSettings(Map<String, dynamic> map) async {
     await JsonFile.write(_settingsFile, jsonEncode(map));
+    // `JsonFile.write` can merge concurrent edits, so re-read the
+    // authoritative document rather than trusting the map we just sent.
+    _cache = null;
   }
 
   static Future<String> loadThemeMode() async {

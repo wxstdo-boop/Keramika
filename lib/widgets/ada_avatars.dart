@@ -164,13 +164,23 @@ void setAdaAvatarVariant(int index) {
 /// shared_preferences кэширует значение в памяти каждого движка, поэтому
 /// пишем состояние в ФАЙЛ (JsonFile читает с диска) — другой движок увидит
 /// изменение опросом, без хрупкого канала сообщений.
+const _adaSyncKey = 'ada_sync_state';
+
+/// Штамп файла, к которому относится [_syncCache]. Оба движка опрашивают
+/// состояние каждые 0.7 с; полный `JsonFile.read` (блокировка файла, чтение,
+/// AES-GCM, jsonDecode) на каждом тике в двух изолятах — постоянная нагрузка
+/// на главный поток. Один `stat()` ничего не стоит, а文件内容 меняется лишь
+/// по действию пользователя.
+String? _syncStamp;
+Map<String, dynamic> _syncCache = <String, dynamic>{};
+
 Future<void> writeAdaSyncState({
   int? avatar,
   String? model,
   int? historyRev,
 }) async {
   try {
-    final raw = await JsonFile.read('ada_sync_state');
+    final raw = await JsonFile.read(_adaSyncKey);
     final map = (raw != null && raw.isNotEmpty)
         ? (jsonDecode(raw) as Map<String, dynamic>)
         : <String, dynamic>{};
@@ -178,16 +188,30 @@ Future<void> writeAdaSyncState({
     if (model != null && model.isNotEmpty) map['model'] = model;
     if (historyRev != null) map['historyRev'] = historyRev;
     map['ts'] = DateTime.now().millisecondsSinceEpoch;
-    await JsonFile.writeWithSnapshot('ada_sync_state', jsonEncode(map), raw);
+    await JsonFile.writeWithSnapshot(_adaSyncKey, jsonEncode(map), raw);
+    // Своя же запись изменила файл — кэш больше не соответствует штампу.
+    _syncStamp = null;
   } catch (_) {}
 }
 
 /// Читает синхронизированное состояние ({'avatar': int?, 'model': String?}).
 Future<Map<String, dynamic>> readAdaSyncState() async {
   try {
-    final raw = await JsonFile.read('ada_sync_state');
-    if (raw == null || raw.isEmpty) return <String, dynamic>{};
-    return jsonDecode(raw) as Map<String, dynamic>;
+    final before = await JsonFile.fileStamp(_adaSyncKey);
+    if (before != null && before == _syncStamp) return _syncCache;
+
+    final raw = await JsonFile.read(_adaSyncKey);
+    final map = (raw == null || raw.isEmpty)
+        ? <String, dynamic>{}
+        : jsonDecode(raw) as Map<String, dynamic>;
+
+    // Если файл изменился прямо во время чтения (другой движок успел
+    // записать или сработала миграция plaintext), кэш НЕ публикуем:
+    // следующий тик обязательно перечитает актуальное состояние.
+    final after = await JsonFile.fileStamp(_adaSyncKey);
+    _syncCache = map;
+    _syncStamp = (before == after) ? after : null;
+    return map;
   } catch (_) {
     return <String, dynamic>{};
   }

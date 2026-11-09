@@ -4,11 +4,39 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show compute, kDebugMode, kIsWeb, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'prefs.dart';
+
+/// Parsing a whole document just to validate it can cost a frame on the UI
+/// isolate (chat histories and completion logs grow to hundreds of KB).
+/// Keeping the check in a top-level function lets [compute] move it off the
+/// UI isolate for large payloads. Returns `null` for valid JSON, otherwise
+/// the parser's error text so the caller can still report the cause.
+String? _jsonValidationError(String value) {
+  try {
+    jsonDecode(value);
+    return null;
+  } catch (error) {
+    return error.toString();
+  }
+}
+
+/// What a clean [JsonFile.writeWithSnapshot] left on disk. `size` and
+/// `modifiedUs` are `null` on web, where the store lives in the same isolate
+/// and no second engine can change the file behind our back. Microsecond
+/// resolution matters: two engines can rewrite a same-length JSON document
+/// within one millisecond, and a coarser stamp would hide that change.
+class _CleanWrite {
+  const _CleanWrite(this.value, {this.size, this.modifiedUs});
+
+  final String value;
+  final int? size;
+  final int? modifiedUs;
+}
 
 class JsonFileException implements Exception {
   const JsonFileException(this.message, [this.cause]);
@@ -51,12 +79,99 @@ class JsonFile {
   static Directory? _dir;
   static Future<SecretKey>? _keyFuture;
 
+  /// The documents directory is created once per store, not on every read and
+  /// every write. `Directory.create` is idempotent but is still a real
+  /// filesystem call on the hot path (each `read`/`write` used to do it three
+  /// times). Keyed by the [Directory] instance so switching to a recovery
+  /// store automatically invalidates the cache.
+  static Directory? _createdDir;
+
+  /// Exact document + file stamp most recently persisted by
+  /// [writeWithSnapshot] without a merge. Lets the periodic auto-save skip a
+  /// full read/decrypt/merge/encode cycle when the in-memory state has not
+  /// changed.
+  static final Map<String, _CleanWrite> _lastCleanWrite =
+      <String, _CleanWrite>{};
+
+  /// Monotonic counter per key, bumped after every successful write/remove.
+  /// Callers that memoize a decrypted document (settings, cross-engine sync)
+  /// use it to notice writes made directly through [JsonFile] from elsewhere.
+  static final Map<String, int> _revisions = <String, int>{};
+  static int revisionOf(String key) => _revisions[key] ?? 0;
+
+  /// Bumped whenever the underlying store is swapped (startup, backup
+  /// recovery, tests). Readers that memoize decrypted documents use it to
+  /// know their cache belongs to a different store.
+  static int storeGeneration = 0;
+
+  /// Cheap change token for a key: one `stat()`, no lock, no decrypt.
+  /// Polling code compares it to the stamp of the document it already holds
+  /// and only calls [read] when the file actually moved. Returns `null` on
+  /// web (no second engine there) or when the key has no file.
+  static Future<String?> fileStamp(String key) async {
+    if (kIsWeb) return null;
+    try {
+      final dir = await _directory;
+      final stat = await File('${dir.path}/$key.json').stat();
+      if (stat.type != FileSystemEntityType.file) return null;
+      return '${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Above this size, validating JSON on the UI isolate is more expensive
+  /// than an isolate round-trip.
+  static const int _isolateValidationThreshold = 32 * 1024;
+
   static Future<Directory> get _directory async {
     _dir ??= await getApplicationDocumentsDirectory();
     return _dir!;
   }
 
+  static Future<void> _ensureDirectory() async {
+    final dir = await _directory;
+    if (identical(_createdDir, dir)) return;
+    await dir.create(recursive: true);
+    _createdDir = dir;
+  }
+
+  /// One `stat()` instead of read + decrypt + JSON parse. If the stamp moved,
+  /// another engine touched this key, so the caller must take the full merge
+  /// path rather than trusting the in-memory no-op shortcut.
+  static Future<bool> _unchangedOnDisk(String key, _CleanWrite cached) async {
+    if (cached.size == null) return true;
+    try {
+      final dir = await _directory;
+      final stat = await File('${dir.path}/$key.json').stat();
+      return stat.type == FileSystemEntityType.file &&
+          stat.size == cached.size &&
+          stat.modified.microsecondsSinceEpoch == cached.modifiedUs;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Returns `null` when the stamp cannot be taken, in which case no fast
+  /// path is cached at all.
+  static Future<_CleanWrite?> _cleanWriteStamp(String key, String value) async {
+    if (kIsWeb) return _CleanWrite(value);
+    try {
+      final dir = await _directory;
+      final stat = await File('${dir.path}/$key.json').stat();
+      if (stat.type != FileSystemEntityType.file) return null;
+      return _CleanWrite(
+        value,
+        size: stat.size,
+        modifiedUs: stat.modified.microsecondsSinceEpoch,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> initialize() async {
+    storeGeneration++;
     if (globalPrefs.getBool(_recoveryModeKey) == true) {
       await _useRecoveryStore();
       if (globalPrefs.getBool(_recoveryCompleteKey) != true) {
@@ -67,7 +182,10 @@ class JsonFile {
     } else {
       _activeSecureStorage = _secureStorage;
       _dir = null;
+      _createdDir = null;
     }
+    _lastCleanWrite.clear();
+    _revisions.clear();
     await _encryptionKey();
   }
 
@@ -99,7 +217,9 @@ class JsonFile {
     await _useRecoveryStore();
     _keyFuture = null;
     _observed.clear();
-    await (await _directory).create(recursive: true);
+    _lastCleanWrite.clear();
+    _revisions.clear();
+    await _ensureDirectory();
     await _encryptionKey();
   }
 
@@ -110,11 +230,15 @@ class JsonFile {
   }
 
   static Future<void> _useRecoveryStore() async {
+    storeGeneration++;
     final documents = await getApplicationDocumentsDirectory();
     // `v1` is the store used by earlier recovery builds.
     final generation = globalPrefs.getString(_recoveryGenerationKey) ?? 'v1';
     _recoverySecureStorage = _recoveryStorageFor(generation);
     _dir = Directory('${documents.path}/keramika_recovery_$generation');
+    _createdDir = null;
+    _lastCleanWrite.clear();
+    _revisions.clear();
     _activeSecureStorage = _recoverySecureStorage;
   }
 
@@ -138,10 +262,14 @@ class JsonFile {
 
   @visibleForTesting
   static void resetForTesting() {
+    storeGeneration++;
     _dir = null;
+    _createdDir = null;
     _keyFuture = null;
     _observed.clear();
     _queues.clear();
+    _lastCleanWrite.clear();
+    _revisions.clear();
   }
 
   static Future<SecretKey> _encryptionKey() =>
@@ -221,7 +349,7 @@ class JsonFile {
       if (kIsWeb) return await action();
 
       final dir = await _directory;
-      await dir.create(recursive: true);
+      await _ensureDirectory();
       final handle = await File(
         '${dir.path}/.$key.lock',
       ).open(mode: FileMode.append);
@@ -276,12 +404,40 @@ class JsonFile {
     required bool hasBase,
     required bool updateObserved,
   }) async {
-    try {
-      jsonDecode(value);
-    } catch (error) {
+    // Auto-save re-serialises every service on a timer. When this is exactly
+    // the document we already persisted cleanly, the whole lock + read +
+    // decrypt + merge + encode cycle cannot change anything on disk, so skip
+    // it instead of burning main-isolate time several times a minute.
+    // Only snapshot writers take this path: plain `write()` callers rely on
+    // `_observed` and must still go through the lock. A single `stat()` keeps
+    // the shortcut honest when the overlay engine wrote the same key.
+    final cached = _lastCleanWrite[key];
+    if (!updateObserved && cached != null && cached.value == value) {
+      if (await _unchangedOnDisk(key, cached)) return value;
+      _lastCleanWrite.remove(key);
+    }
+    if (updateObserved) _lastCleanWrite.remove(key);
+
+    // Debug/test builds keep validation local: `compute` would only add an
+    // isolate round-trip there and makes test failures harder to attribute.
+    final offloadValidation =
+        !kDebugMode && !kIsWeb && value.length > _isolateValidationThreshold;
+    String? validationError;
+    if (offloadValidation) {
+      try {
+        validationError = await compute(_jsonValidationError, value);
+      } catch (_) {
+        // An engine without a usable background isolate (e.g. a spare
+        // overlay engine) must still be able to save, just on this isolate.
+        validationError = _jsonValidationError(value);
+      }
+    } else {
+      validationError = _jsonValidationError(value);
+    }
+    if (validationError != null) {
       throw JsonFileException(
         'Refusing to store invalid JSON for "$key"',
-        error,
+        validationError,
       );
     }
 
@@ -298,7 +454,23 @@ class JsonFile {
         resolved = _mergeConcurrentJson(key, base, value, current);
       }
 
-      if (current != resolved) await _persistPlainLocked(key, resolved);
+      final changedOnDisk = current != resolved;
+      if (changedOnDisk) await _persistPlainLocked(key, resolved);
+      if (changedOnDisk) _revisions[key] = (_revisions[key] ?? 0) + 1;
+      if (!updateObserved) {
+        // A merge or a conflict leaves the caller's snapshot behind, so do
+        // not cache: the next write has to go through the full path again.
+        if (externalChange || resolved != value) {
+          _lastCleanWrite.remove(key);
+        } else {
+          final stamp = await _cleanWriteStamp(key, value);
+          if (stamp == null) {
+            _lastCleanWrite.remove(key);
+          } else {
+            _lastCleanWrite[key] = stamp;
+          }
+        }
+      }
       if (updateObserved) {
         // Readers in the same engine may still hold an older in-memory copy.
         // Their explicit snapshot writes remain protected by their own base.
@@ -313,14 +485,20 @@ class JsonFile {
     if (kIsWeb) {
       raw = globalPrefs.getString(key);
     } else {
+      // The caller always holds the per-key lock, which already guarantees
+      // the directory exists. One `exists()` instead of two, and only one
+      // read of the primary file.
       final dir = await _directory;
-      await dir.create(recursive: true);
       final file = File('${dir.path}/$key.json');
-      final backup = File('${file.path}.bak');
-      if (!await file.exists() && await backup.exists()) {
-        await backup.rename(file.path);
+      if (await file.exists()) {
+        raw = await file.readAsString();
+      } else {
+        final backup = File('${file.path}.bak');
+        if (await backup.exists()) {
+          await backup.rename(file.path);
+          raw = await file.readAsString();
+        }
       }
-      if (await file.exists()) raw = await file.readAsString();
     }
     if (raw == null) return null;
 
@@ -372,7 +550,6 @@ class JsonFile {
     }
 
     final dir = await _directory;
-    await dir.create(recursive: true);
     final target = File('${dir.path}/$key.json');
     final temp = File(
       '${target.path}.$pid.${DateTime.now().microsecondsSinceEpoch}.tmp',
@@ -438,6 +615,8 @@ class JsonFile {
       if (await backup.exists()) await backup.delete();
     }
     _observed[key] = null;
+    _lastCleanWrite.remove(key);
+    _revisions[key] = (_revisions[key] ?? 0) + 1;
   });
 
   static String _canonical(dynamic value) {

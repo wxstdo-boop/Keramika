@@ -310,18 +310,27 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     return fromPrefs;
   }
 
-  out['habits'] = await readWithFallback('habits');
-  out['tasks'] = await readWithFallback('tasks');
-  out['task_categories'] = await readWithFallback('task_categories');
-  out['alarms'] = await readWithFallback('alarms');
-  out['app_timers'] = await readWithFallback('app_timers');
-  out['reality_check_data'] = await readWithFallback('reality_check_data');
-  out['nutrition_meals'] = await readWithFallback('nutrition_meals');
-  out['ai_chat_history'] = await readWithFallback('ai_chat_history');
-  out['ai_pinned_messages'] = await readWithFallback('ai_pinned_messages');
-  out['ada_sync_state'] = await readWithFallback('ada_sync_state');
-  out['completion_log'] = await readWithFallback('completion_log');
-  out['ny_event_2027'] = await readWithFallback('ny_event_2027');
+  // Разные ключи = разные per-key lock'и, поэтому чтения безопасны
+  // параллельно: раньше 13 дисковых операций складывались в одну длинную
+  // паузу, которая при hourly auto-export попадала прямо на кадр скролла.
+  const fileKeys = <String>[
+    'habits',
+    'tasks',
+    'task_categories',
+    'alarms',
+    'app_timers',
+    'reality_check_data',
+    'nutrition_meals',
+    'ai_chat_history',
+    'ai_pinned_messages',
+    'ada_sync_state',
+    'completion_log',
+    'ny_event_2027',
+  ];
+  final values = await Future.wait<String?>(fileKeys.map(readWithFallback));
+  for (var i = 0; i < fileKeys.length; i++) {
+    out[fileKeys[i]] = values[i];
+  }
 
   // Old RC format: данные лежали в 'reality_checks' (имя списка) и в
   // отдельных prefs-ключах. Если нового файла нет — собираем пакет из старых.
@@ -895,6 +904,11 @@ Future<_StartupState> _loadStartupState() async {
     return notificationService.getLaunchDetails();
   });
   final hasPin = PinService.hasPin();
+  // Одно чтение/расшифровка настроек до пачки геттеров: раньше восемь
+  // параллельных геттеров вставали в очередь к одному и тому же файловому
+  // lock'у и читали диск восемь раз подряд. После preload все они берут
+  // готовую копию из памяти — на времени до первого кадра это заметно.
+  await SettingsService.preload();
   final theme = SettingsService.loadThemeMode();
   final lang = SettingsService.loadLanguageCode();
   final peachDark = SettingsService.loadPeachDark();
