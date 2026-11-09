@@ -39,6 +39,21 @@ const double kSectionRefreshEdgeOffset = kSectionPillSlotHeight - 6 - 34;
 double adaTopKeepout(double statusBarHeight) =>
     statusBarHeight + kToolbarHeight + kSectionPillSlotHeight;
 
+/// Непрерывный знак величины: у нуля проходит через НОЛЬ, а не
+/// перескакивает −1→1 кадром.
+///
+/// `double.sign` разрывен в нуле, поэтому величина, у которой он берётся,
+/// «щёлкает» на смене знака. В таблетке разделов это ломало якорь растяжки
+/// ровно на порогах раздела (там, где тяга пересекает ноль) — камень
+/// дёргался в углах. Здесь переход плавный по smoothstep: нулевая
+/// производная на обоих концах, насыщение при |x| ≥ [full].
+double smoothSign(double x, {double full = 0.18}) {
+  if (x == 0) return 0;
+  final t = (x.abs() / full).clamp(0.0, 1.0);
+  final s = t * t * (3.0 - 2.0 * t);
+  return x.isNegative ? -s : s;
+}
+
 // ── Общий стейт таблетки разделов ──────────────────────────────────────
 // Таблетка живёт в Home НАД PageView (обычный поток, не поверх контента):
 // при переключении разделов она остаётся на месте, а листается только
@@ -234,6 +249,9 @@ class _SectionPillState extends State<SectionPill>
   double _dragSmooth = 0;
   double _dragGrabOffset = 0;
 
+  /// Отметка времени прошлого кадра резистанса — по ней считается dt.
+  Duration _lastSmoothElapsed = Duration.zero;
+
   /// Последняя «принятая» X-координата пальца (px по дорожке). Дедзона:
   /// микросдвиги меньше [_dragDeadzone] игнорируются, поэтому дрожание руки
   /// при удержании не будит тикер и не двигает карусель.
@@ -309,14 +327,19 @@ class _SectionPillState extends State<SectionPill>
   /// а Home jumpTo читает keep-alive экраны — отсюда «под удержанием
   /// дёргает экраны / доводит». При каждом новом dragUpdate тикер
   /// перезапускается (см. [_dragUpdate]).
-  void _onSmoothTick(Duration _) {
+  void _onSmoothTick(Duration elapsed) {
     if (!_dragging) {
       _smoothTicker.stop();
       return;
     }
-    // Коэффициент 0.30 на кадр (~60 fps): камень мягко отстаёт от пальца,
-    // но уже не «плывёт» с заметной задержкой (0.18 читалось как тормоз).
-    _dragSmooth += (_dragPage - _dragSmooth) * 0.30;
+    // Шаг сглаживания считается по РЕАЛЬНОМУ времени кадра, а не «за кадр»:
+    // фиксированные 0.30/кадр на 120 Гц догоняли вдвое быстрее, чем на 60 Гц —
+    // камень и экраны ехали с разной скоростью на разных экранах («дёргано»).
+    // Приводим коэффициент к базовым 16.7 мс: dt-инвариант.
+    final dtMs = (elapsed - _lastSmoothElapsed).inMicroseconds / 1000.0;
+    _lastSmoothElapsed = elapsed;
+    final k = dtMs <= 0 ? 0.30 : (1.0 - math.pow(1.0 - 0.30, dtMs / 16.7));
+    _dragSmooth += (_dragPage - _dragSmooth) * k;
     final diff = (_dragPage - _dragSmooth).abs();
     if (diff < 0.0005) {
       // Дошёл — фиксируем ровно на цели и остановили тикер: палец застыл,
@@ -378,7 +401,9 @@ class _SectionPillState extends State<SectionPill>
     _dragNearest = _dragPage.round();
     sectionDragPage.value = _dragPage;
     // Кадровый резистанс стартует: камень начинает догонять палец
-    // логарифмически на каждом кадре.
+    // логарифмически на каждом кадре. Метку времени сбрасываем — у
+    // перезапущенного тикера отсчёт начинается с нуля.
+    _lastSmoothElapsed = Duration.zero;
     _smoothTicker.start();
   }
 
@@ -423,7 +448,12 @@ class _SectionPillState extends State<SectionPill>
     // [_onSmoothTick]), новый сдвиг пальца обязан его разбудить — иначе
     // «зажать и пошевелить» не двигало бы камень (тикер был уже
     // остановлен и не писал sectionDragPage).
-    if (!_smoothTicker.isActive) _smoothTicker.start();
+    if (!_smoothTicker.isActive) {
+      // Перезапуск: у тикера отсчёт elapsed идёт с нуля — метку времени тоже
+      // обнуляем, иначе первый кадр посчитает отрицательный dt.
+      _lastSmoothElapsed = Duration.zero;
+      _smoothTicker.start();
+    }
     // Направление «резинки» НЕПРЕРЫВНОЕ (см. stretchDir в
     // _buildStoneRow): знак _edgePull — под пальцем, знак _releasePull
     // (затухающий по _edgeSettle) — в полёте. Дискретный гистерезис
@@ -677,15 +707,16 @@ class _SectionPillState extends State<SectionPill>
         final wave = _releasing
             ? _releaseWave * (1.0 - settle)
             : _lastWave;
+        // Signed-тяга камня: под пальцем — чистая _edgePull, после отпускания
+        // — захваченная _releasePull, затухающая по settle.
         final stretch = _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
-        // НЕПРЕРЫВНОЕ направление растяжки (заменяет дискретный
-        // _anchorSide): под пальцем — знак _edgePull, в полёте — знак
-        // _releasePull, затухающий по settle. Полностью гладкое, без
-        // рывков 1→0→-1 у углов (сам источник «дёргает в углу»).
-        final stretchDir = _dragging
-            ? _edgePull.sign.toDouble().clamp(-1.0, 1.0)
-            : _releasePull.sign.toDouble().clamp(-1.0, 1.0) * (1.0 - settle);
+        // НЕПРЕРЫВНОЕ направление растяжки (заменяет дискретный _anchorSide):
+        // знак тяги через [smoothSign] — у нуля он проходит через НОЛЬ, а не
+        // перескакивает −1→1 кадром. Прежний `_edgePull.sign` давал рывок
+        // якоря ровно на порогах раздела (тяга пересекает 0) — то самое
+        // «дёргано в углах».
+        final stretchDir = smoothSign(stretch);
         // ОБЪЁМНЫЙ СЛОЙ: «резинка» (wave) — наливка/растяжение выбранной
         // вкладки по ходу к СЛЕДУЮЩЕЙ секции. Под пальцем амплитуда ~0.85,
         // в свободном полёте — 1.0 (см. выше). Это и есть то самое

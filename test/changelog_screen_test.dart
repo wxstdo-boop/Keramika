@@ -34,6 +34,43 @@ void main() {
     // Список не пришёл из сети — значит доступна кнопка «Повторить»,
     // иначе экран выглядел бы тупиком до перезахода.
     expect(find.byIcon(Icons.refresh_rounded), findsOneWidget);
+    // Плашка списка изменений: подпись про развитие приложения, а не
+    // «что осталось сделать»; внизу — мелкие доработки и PR в 2027.
+    expect(
+      find.textContaining('Как развивается приложение'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Мелкие доработки'), findsOneWidget);
+    expect(find.textContaining('PR в 2027'), findsOneWidget);
+    // Пункты списка помечены разными значками, а не одинаковыми галочками.
+    expect(find.byIcon(Icons.ac_unit_rounded), findsWidgets);
+    expect(find.byIcon(Icons.check_circle_outline), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ChangelogScreen: подчёркивание под свежей версией', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      LocaleProvider(
+        locale: const Locale('ru'),
+        child: const MaterialApp(home: ChangelogScreen()),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+    // Самая свежая версия — первая в списке, и именно у неё есть полоса
+    // подчёркивания (в остальных карточках версия — обычный Text).
+    final latest = find.text('1.6.72');
+    expect(latest, findsOneWidget);
+    expect(
+      find.ancestor(
+        of: latest,
+        matching: find.byType(Stack),
+      ),
+      findsWidgets,
+    );
     expect(tester.takeException(), isNull);
   });
 }

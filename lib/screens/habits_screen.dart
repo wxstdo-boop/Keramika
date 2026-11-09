@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
-import 'package:flutter/scheduler.dart' show Ticker;
 import '../models/habit.dart';
 import '../services/habit_service.dart';
 import '../services/settings_service.dart';
@@ -261,7 +260,6 @@ class _HabitsScreenState extends State<HabitsScreen>
     // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
     sectionAddActions[widget.pillIndex] = _addHabit;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
-    _dragProxyY.addListener(_onDragProxyY);
     // Данные уже загружены в main() до первого кадра — показываем их
     // СРАЗУ, без ожидания повторного load() (иначе после Splash раздел
     // привычек мигает: кадр пустоты → резкое появление списка).
@@ -454,8 +452,6 @@ class _HabitsScreenState extends State<HabitsScreen>
   @override
   void dispose() {
     _dayTimer?.cancel();
-    _stopDragAutoScroll();
-    _dragProxyY.removeListener(_onDragProxyY);
     sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
     _pillCtrl.removeListener(_syncPillOffset);
@@ -815,158 +811,163 @@ class _HabitsScreenState extends State<HabitsScreen>
   }
 
   /// Тело списка привычек: либо один список, либо две секции Полезные/Вредные.
+  ///
+  /// Список — [CustomScrollView] из ЛЕНИВЫХ sliver'ов (как в задачах):
+  /// строятся и раскладываются только видимые карточки. Раньше здесь был
+  /// `SingleChildScrollView` + `Column`, который раскладывал СРАЗУ все
+  /// карточки на каждом кадре прокрутки — на длинном списке медленный скролл
+  /// читался как «экраны дёргаются».
   Widget _buildBody(BuildContext context, ThemeData theme, List<Habit> sorted) {
     final goodHabits = sorted.where((h) => h.type == 'good').toList();
     final badHabits = sorted.where((h) => h.type != 'good').toList();
     final splitSections = goodHabits.isNotEmpty && badHabits.isNotEmpty;
 
-    return SingleChildScrollView(
+    final slivers = <Widget>[
+      // Полоса «борьбы с неидеальным» раскрывается плавно (и на старте
+      // синхронно уже присутствует — без резкого впрыгивания и мигания
+      // после сплэша). Верхний слот под таблетку разделов — её же padding.
+      SliverPadding(
+        padding: const EdgeInsets.only(top: kSectionPillSlotHeight),
+        sliver: SliverToBoxAdapter(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _perfectionismMode
+                ? _buildPerfectionismStrip(context, theme)
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ),
+      if (splitSections) ...[
+        _sectionHeaderSliver(context, theme, 'habitsSectionGood', Colors.green),
+        ..._zoneSlivers(context, theme, goodHabits, sorted),
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+        _sectionHeaderSliver(context, theme, 'habitsSectionBad', Colors.red),
+        ..._zoneSlivers(context, theme, badHabits, sorted),
+      ] else
+        ..._zoneSlivers(context, theme, sorted, sorted),
+      const SliverToBoxAdapter(child: SizedBox(height: 8)),
+    ];
+
+    final scroll = CustomScrollView(
+      key: const ValueKey('list'),
       controller: _pillCtrl,
-      padding: const EdgeInsets.fromLTRB(16, kSectionPillSlotHeight, 16, 0),
       // AlwaysScrollable: потягивание для RefreshIndicator работает даже
       // при коротком списке — иначе жест «хватается» только у самого
       // края и при отпускании список дёргается.
       physics: const AlwaysScrollableScrollPhysics(),
-      child: Column(
-        children: [
-          // Плавная смена раскладки при закрепе/открепе: контент мягко гаснет
-          // (фейд + лёгкий «подъезд») и так же мягко проявляется уже в новом
-          // порядке. Последовательно, а не двумя раскладками сразу —
-          // никакого «двоения» привычки.
-          AnimatedBuilder(
-            animation: _pinFade,
-            builder: (context, child) {
-              final t = Curves.easeOutCubic.transform(_pinFade.value);
-              return Opacity(
-                opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - t) * 12 * _pinDir),
-                  child: child,
-                ),
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Полоса «борьбы с неидеальным» раскрывается плавно (и на
-                // старте синхронно уже присутствует — без резкого впрыгива-
-                // ния и мигания после сплэша).
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 320),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: _perfectionismMode
-                      ? _buildPerfectionismStrip(context, theme)
-                      : const SizedBox.shrink(),
-                ),
-                splitSections
-                    ? _buildSectionedList(
-                        context,
-                        theme,
-                        sorted,
-                        goodHabits,
-                        badHabits,
-                      )
-                    : _buildFlatList(context, theme, sorted),
-              ],
-            ),
+      scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
+      // Внешний отступ 16 по бокам — как был у SingleChildScrollView:
+      // карточки (свой padding 12) стоят в 28 px от края, полоса
+      // перфекционизма и заголовки секций — в 16.
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverMainAxisGroup(slivers: slivers),
+        ),
+      ],
+    );
+
+    // Плавная смена раскладки при закрепе/открепе: список мягко гаснет
+    // (фейд + лёгкий «подъезд») и так же мягко проявляется уже в новом
+    // порядке. Обёртка вокруг скролла, а не вокруг списка карточек: со
+    // sliver'ами промежуточный box-слой не нужен.
+    return AnimatedBuilder(
+      animation: _pinFade,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(_pinFade.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * 12 * _pinDir),
+            child: child,
           ),
-        ],
+        );
+      },
+      child: scroll,
+    );
+  }
+
+  /// Sliver-заголовок секции (Полезные/Вредные).
+  Widget _sectionHeaderSliver(
+    BuildContext context,
+    ThemeData theme,
+    String keyName,
+    Color tint,
+  ) => SliverToBoxAdapter(
+    child: _sectionHeader(context, theme, keyName, tint),
+  );
+
+  /// Зоны одной секции: закреплённые и незакреплённые — ФИЗИЧЕСКИ РАЗНЫЕ
+  /// списки. Незакреплённую из нижней зоны в верхнюю перетащить нельзя
+  /// в принципе — это разные sliver'ы, drag-прокси не пересекает границу.
+  /// Внутри зоны порядок меняется.
+  List<Widget> _zoneSlivers(
+    BuildContext context,
+    ThemeData theme,
+    List<Habit> habits,
+    List<Habit> sorted,
+  ) {
+    final pinned = habits.where((h) => h.pinned).toList();
+    final unpinned = habits.where((h) => !h.pinned).toList();
+    final out = <Widget>[];
+    if (pinned.isNotEmpty) {
+      out.add(_zoneSliver(context, theme, pinned, sorted));
+    }
+    if (pinned.isNotEmpty && unpinned.isNotEmpty) {
+      out.add(const SliverToBoxAdapter(child: SizedBox(height: 8)));
+    }
+    if (unpinned.isNotEmpty) {
+      out.add(_zoneSliver(context, theme, unpinned, sorted));
+    }
+    return out;
+  }
+
+  /// Одна переставляемая зона: ленивый [SliverReorderableList]. Локальный
+  /// индекс зоны переводится в глобальный через [sorted] — так reorder
+  /// сохраняет порядок и в секциях, и при закрепе.
+  Widget _zoneSliver(
+    BuildContext context,
+    ThemeData theme,
+    List<Habit> list,
+    List<Habit> sorted,
+  ) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      sliver: SliverReorderableList(
+        itemCount: list.length,
+        // Медленнее штатного автоскролла (по умолчанию 50): при подтаскивании
+        // карточки к кромке список едет спокойно, а не «улетает» рывком.
+        autoScrollerVelocityScalar: 18,
+        proxyDecorator: (child, index, animation) =>
+            buildDragProxy(child, theme, animation, trackY: _dragProxyY),
+        onReorderItem: (oldLocal, newLocal) {
+          // Локальный индекс (в зоне) → глобальный (в полном списке), чтобы
+          // reorder сохранял порядок и внутри секции, и при закрепе.
+          final oldGlobal = sorted.indexOf(list[oldLocal]);
+          if (oldGlobal < 0) return;
+          int newGlobal;
+          if (newLocal >= list.length) {
+            newGlobal = sorted.indexOf(list.last) + 1;
+            if (newGlobal > sorted.length) newGlobal = sorted.length;
+          } else {
+            newGlobal = sorted.indexOf(list[newLocal]);
+            if (newGlobal < 0) newGlobal = oldGlobal;
+          }
+          if (newGlobal == oldGlobal) return;
+          _service.reorder(oldGlobal, newGlobal);
+        },
+        itemBuilder: (context, i) => KeyedSubtree(
+          key: ValueKey('habit_${list[i].id}'),
+          child: RepaintBoundary(
+            child: _buildHabitCard(context, theme, list, i),
+          ),
+        ),
       ),
     );
   }
 
-  /// Закреплённые и незакреплённые — ФИЗИЧЕСКИ РАЗНЫЕ списки (два
-  /// ReorderableListView в одном Column). Незакреплённую из нижнего списка
-  /// в верхнюю (pinned) зону перетащить невозможно в принципе — это разные
-  /// списки, drag-прокси не пересекает границу. Внутри каждой зоны порядок
-  /// можно менять.
-  Widget _buildFlatList(
-    BuildContext context,
-    ThemeData theme,
-    List<Habit> habits,
-  ) {
-    final pinned = habits.where((h) => h.pinned).toList();
-    final unpinned = habits.where((h) => !h.pinned).toList();
-
-    Widget zoneList(
-      List<Habit> list, {
-      required int base,
-      required String idPrefix,
-    }) {
-      if (list.isEmpty) return const SizedBox.shrink();
-      return ReorderableListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        // Clip.none: перетаскиваемая карточка НЕ аппаратно обрезается по
-        // границе своего списка — при выезде за границу зоны (например,
-        // над строкой-заголовком секции или вверх в pinned-зону) прокси
-        // проходит через неё плавно, без резкого исчезновения на границе.
-        clipBehavior: Clip.none,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: list.length,
-        scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
-        buildDefaultDragHandles: false,
-        onReorderItem: (oldLocal, newLocal) {
-          // Перевод локального индекса зоны в глобальный (base = сдвиг).
-          // Reorder внутри зоны: не-pinned физически не могут попасть в
-          // pinned-зону (отдельный список), guard в service — защита.
-          final oldGlobal = base + oldLocal;
-          final newGlobal = base + newLocal.clamp(0, list.length - 1);
-          if (newGlobal == oldGlobal) return;
-          _service.reorder(oldGlobal, newGlobal);
-        },
-        proxyDecorator: (child, index, animation) =>
-            buildDragProxy(child, theme, animation, trackY: _dragProxyY),
-        itemBuilder: (context, i) => RepaintBoundary(
-          key: ValueKey('${idPrefix}_${list[i].id}'),
-          child: _buildHabitCard(context, theme, list, _FlatIndexSource(i)),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        zoneList(pinned, base: 0, idPrefix: 'item_habit_pinned'),
-        if (pinned.isNotEmpty && unpinned.isNotEmpty) const SizedBox(height: 8),
-        zoneList(unpinned, base: pinned.length, idPrefix: 'item_habit'),
-      ],
-    );
-  }
-
-  /// Две независимые секции с собственными ReorderableListView. Возвращаются
-  /// в общем Column — пользователь видит один непрерывный список «Полезные»,
-  /// затем — «Вредные». Reorder внутри секции переводится в глобальные
-  /// индексы через [SectionIndexSource] и идёт в [HabitService.reorder].
-  Widget _buildSectionedList(
-    BuildContext context,
-    ThemeData theme,
-    List<Habit> sorted,
-    List<Habit> goodHabits,
-    List<Habit> badHabits,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader(context, theme, 'habitsSectionGood', Colors.green),
-        _sectionReorderable(
-          context: context,
-          theme: theme,
-          habits: goodHabits,
-          sorted: sorted,
-        ),
-        const SizedBox(height: 12),
-        _sectionHeader(context, theme, 'habitsSectionBad', Colors.red),
-        _sectionReorderable(
-          context: context,
-          theme: theme,
-          habits: badHabits,
-          sorted: sorted,
-        ),
-      ],
-    );
-  }
 
   Widget _sectionHeader(
     BuildContext context,
@@ -1025,156 +1026,9 @@ class _HabitsScreenState extends State<HabitsScreen>
     );
   }
 
-  /// Удобный мини-список (без скролла — внешний ListView владеет прокруткой),
-  /// но с поддержкой drag-handle и onReorder, идентичной полному
-  /// ReorderableListView. Используем встроенный [ReorderableListView]
-  /// с [shrinkWrap: true] в обёртке, отключая собственный скролл.
-  Widget _sectionReorderable({
-    required BuildContext context,
-    required ThemeData theme,
-    required List<Habit> habits,
-    required List<Habit> sorted,
-  }) {
-    if (habits.isEmpty) return const SizedBox.shrink();
-    // Физическое разделение pinned/unpinned: два отдельных списка,
-    // незакреплённую нельзя перетащить в pinned-зону.
-    final pinnedHabits = habits.where((h) => h.pinned).toList();
-    final unpinnedHabits = habits.where((h) => !h.pinned).toList();
-    final pBase = pinnedHabits.isNotEmpty
-        ? sorted.indexOf(pinnedHabits.first)
-        : 0;
-    final uBase = unpinnedHabits.isNotEmpty
-        ? sorted.indexOf(unpinnedHabits.first)
-        : 0;
-
-    Widget zone(List<Habit> list, int base, String prefix) {
-      if (list.isEmpty) return const SizedBox.shrink();
-      return ReorderableListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        // Clip.none: перетаскиваемая карточка НЕ аппаратно обрезается по
-        // границе своего списка — при выезде за границу зоны (например,
-        // над строкой-заголовком секции или вверх в pinned-зону) прокси
-        // проходит через неё плавно, без резкого исчезновения на границе.
-        clipBehavior: Clip.none,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: list.length,
-        scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
-        buildDefaultDragHandles: false,
-        onReorderItem: (oldLocal, newLocal) {
-          final oldGlobal = base + oldLocal;
-          final newGlobal = base + newLocal.clamp(0, list.length - 1);
-          if (newGlobal == oldGlobal) return;
-          _service.reorder(oldGlobal, newGlobal);
-        },
-        proxyDecorator: (child, index, animation) =>
-            buildDragProxy(child, theme, animation, trackY: _dragProxyY),
-        itemBuilder: (context, i) => RepaintBoundary(
-          key: ValueKey('${prefix}_${list[i].id}'),
-          child: _buildHabitCard(
-            context,
-            theme,
-            list,
-            _SectionIndexSource(i, list),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        zone(pinnedHabits, pBase, 'sec_pinned'),
-        if (pinnedHabits.isNotEmpty && unpinnedHabits.isNotEmpty)
-          const SizedBox(height: 8),
-        zone(unpinnedHabits, uBase, 'sec_unpinned'),
-      ],
-    );
-  }
-
   /// Глобальная Y-позиция drag-прокси (null — драга нет): заголовки секций
   /// мягко «расступаются», пока карточка проходит сквозь них.
   final ValueNotifier<double?> _dragProxyY = ValueNotifier<double?>(null);
-
-  /// Автоскролл длинного списка во время драга.
-  ///
-  /// Встроенный в [ReorderableListView] автоскролл здесь не работает:
-  /// внутренний список стоит на `NeverScrollableScrollPhysics` (скроллит
-  /// внешний `SingleChildScrollView`), а SDK честно отказывается автоскроллить
-  /// scrollable, который сам запрещает прокрутку. Из-за этого при перетаскивании
-  /// к нижней кромке список не докручивался и карточку нельзя было уронить
-  /// последней — «драг не докидывает последние». Крутим внешний контроллер
-  /// сами, пока палец держится у кромки.
-  ///
-  /// Двигаем на КАЖДОМ КАДРЕ (Ticker), а не `Timer.periodic`: таймер тикает
-  /// по своим 16 мс, не совпадая с кадрами, и каждый тик резко прыгал
-  /// `jumpTo` — подтормаживание и «ступеньки». Кадровый тик берёт реальное
-  /// время кадра и двигает позицию на `скорость × dt` — ровное скольжение.
-  Ticker? _dragAutoScroll;
-
-  /// Доля кромочной зоны, за которой включается автоскролл.
-  static const double _autoScrollEdge = 150.0;
-
-  /// Пиковая скорость у самой кромки, px/с. Умеренная: тянуть карточку к
-  /// краю спокойно и предсказуемо, без «улёта».
-  static const double _autoScrollPeak = 620.0;
-
-  void _startDragAutoScroll() {
-    _dragAutoScroll ??= createTicker(_onDragAutoScrollTick)..start();
-  }
-
-  void _onDragAutoScrollTick(Duration elapsed) {
-    if (!_pillCtrl.hasClients) return;
-    final pos = _pillCtrl.position;
-    final viewport = pos.viewportDimension;
-    // Отметку времени двигаем ДО ранних выходов: пока палец стоит в середине
-    // списка, тикер всё равно крутится каждый кадр, и если не обновлять
-    // `_lastAutoScrollTick`, то в момент входа пальца в кромочную зону
-    // накопившийся `dt` (всё время с начала драга) даёт один гигантский шаг —
-    // список скачком улетает к `maxScrollExtent`. Это и читалось как «дёргает
-    // или вовсе стопорится» у низа.
-    final dt = (elapsed - _lastAutoScrollTick).inMicroseconds / 1e6;
-    _lastAutoScrollTick = elapsed;
-    final y = _dragProxyY.value;
-    if (y == null) return;
-    final bottom = viewport - _autoScrollEdge;
-    // Глубина захода пальца в кромочную зону, -1..1.
-    double t = 0;
-    if (y > bottom) {
-      t = ((y - bottom) / _autoScrollEdge).clamp(0.0, 1.0);
-    } else if (y < _autoScrollEdge) {
-      t = -((_autoScrollEdge - y) / _autoScrollEdge).clamp(0.0, 1.0);
-    }
-    if (t == 0) return;
-    // Квадратичный разгон от кромки: у самой кромки список еле ползёт, глубже
-    // — ускоряется. Мгновенная скорость (px/с), интегрируется по dt кадра.
-    if (dt <= 0) return;
-    final velocity = _autoScrollPeak * t * t.abs();
-    final target = (pos.pixels + velocity * dt).clamp(
-      pos.minScrollExtent,
-      pos.maxScrollExtent,
-    );
-    if ((target - pos.pixels).abs() < 0.01) return;
-    pos.jumpTo(target);
-  }
-
-  Duration _lastAutoScrollTick = Duration.zero;
-
-  void _stopDragAutoScroll() {
-    _dragAutoScroll?.dispose();
-    _dragAutoScroll = null;
-    _lastAutoScrollTick = Duration.zero;
-  }
-
-  /// Прокси появился/уехал: пока драг идёт — держим автоскролл включённым,
-  /// на отпускании (Y → null) гасим.
-  void _onDragProxyY() {
-    if (_dragProxyY.value == null) {
-      _stopDragAutoScroll();
-    } else {
-      _startDragAutoScroll();
-    }
-  }
 
   DateTime? _lastHabitTap;
 
@@ -1190,18 +1044,17 @@ class _HabitsScreenState extends State<HabitsScreen>
     setState(() {});
   }
 
-  /// Карточка привычки. Используется и в плоском списке (Flat),
-  /// и в секционном (Section). Получает [source] — объект, который
-  /// знает, какой использовать drag-handle (по i в общем списке
-  /// для flat, по локальному i в списке секции для section).
+  /// Карточка привычки в зоне списка. [index] — позиция в ЭТОЙ зоне
+  /// (локальная), её же использует drag-ручка: зона — отдельный
+  /// [SliverReorderableList], поэтому локальный индекс и есть drag-индекс.
   Widget _buildHabitCard(
     BuildContext context,
     ThemeData theme,
     List<Habit> habits,
-    IndexSource source,
+    int index,
   ) {
-    final habit = habits[source.localIndex(context, habits)];
-    final dragIndex = source.dragIndex(context, habits);
+    final habit = habits[index];
+    final dragIndex = index;
     // RepaintBoundary изолирует карточку: при скролле список двигается
     // готовой текстурой, а не перерисовывает каждую карточку каждый кадр.
     final inner = SwipeToDelete(
@@ -2132,41 +1985,6 @@ class _HabitDragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ReorderableDelayedDragStartListener(index: index, child: child);
-  }
-}
-
-/// Абстракция «какой индекс использовать для карточки»: для плоского списка
-/// локальный и drag-индекс совпадают; для секции это локальный индекс
-/// внутри секции.
-abstract class IndexSource {
-  int localIndex(BuildContext context, List<Habit> habits);
-  int dragIndex(BuildContext context, List<Habit> habits);
-}
-
-class _FlatIndexSource implements IndexSource {
-  final int index;
-  const _FlatIndexSource(this.index);
-
-  @override
-  int localIndex(BuildContext context, List<Habit> habits) => index;
-
-  @override
-  int dragIndex(BuildContext context, List<Habit> habits) => index;
-}
-
-class _SectionIndexSource implements IndexSource {
-  final int index;
-  final List<Habit> sectionHabits;
-  const _SectionIndexSource(this.index, this.sectionHabits);
-
-  @override
-  int localIndex(BuildContext context, List<Habit> habits) => index;
-
-  @override
-  int dragIndex(BuildContext context, List<Habit> habits) {
-    final habit = sectionHabits[index];
-    final global = habits.indexOf(habit);
-    return global < 0 ? index : global;
   }
 }
 

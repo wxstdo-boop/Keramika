@@ -727,6 +727,8 @@ void main() {
       expect(entry, isNotNull);
       expect(entry!.version, '1.6.104');
       expect(entry.date, '2026-11-08');
+      // Точное время релиза (UTC, HH:MM) — показывается рядом с датой.
+      expect(entry.time, '12:34');
       expect(entry.changes, ['Add a live changelog']);
     });
 

@@ -263,11 +263,22 @@ class UpdateService {
     if (version.isEmpty) return null;
     final published = (json['published_at'] as String?) ?? '';
     final date = published.length >= 10 ? published.substring(0, 10) : '';
+    // Точное время релиза (UTC, HH:MM) — показывается рядом с датой в
+    // «Что нового»: у авторелизов одной датой несколько выпусков подряд,
+    // и по одному дню их не различить.
+    final time = published.length >= 16
+        ? published.substring(11, 16)
+        : '';
     final changes = parseReleaseNotes((json['body'] as String?) ?? '');
     if (changes.isEmpty) {
       changes.add('Обновление $version');
     }
-    return ChangelogEntry(version: version, date: date, changes: changes);
+    return ChangelogEntry(
+      version: version,
+      date: date,
+      time: time,
+      changes: changes,
+    );
   }
 
   /// Вытаскивает из тела релиза человекочитаемые пункты.

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../l10n/translations.dart';
+import 'press_scale.dart';
 import 'stained_glass.dart';
 
 /// Стиль текста тултипа — один и тот же для замера и для отрисовки,
@@ -718,12 +719,16 @@ class BackButtonTooltip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SmoothTooltip(
-      message: Translations.t('back', context, 'Назад'),
-      preferredAbove: false,
-      child: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded),
-        onPressed: () => Navigator.of(context).pop(),
+    return PressScale(
+      pressedScale: 0.90,
+      duration: const Duration(milliseconds: 200),
+      child: SmoothTooltip(
+        message: Translations.t('back', context, 'Назад'),
+        preferredAbove: false,
+        child: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
     );
   }

@@ -8,6 +8,19 @@ import '../models/changelog_entry.dart';
 import '../services/update_service.dart';
 import '../utils/design_tokens.dart';
 
+/// Набор значков для пунктов «Что нового». Иконки чередуются по кругу —
+/// список не выглядит частоколом одинаковых галочек. Снежинка оставлена
+/// как один из многих, а не единственный вариант.
+const List<IconData> _changeIcons = [
+  Icons.ac_unit_rounded,
+  Icons.auto_awesome_rounded,
+  Icons.bolt_rounded,
+  Icons.palette_rounded,
+  Icons.rocket_launch_rounded,
+  Icons.tune_rounded,
+  Icons.brush_rounded,
+];
+
 /// Экран «Что нового».
 ///
 /// Список берётся из живых GitHub-релизов ([UpdateService.fetchChangelog]),
@@ -96,7 +109,11 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
                     for (var i = 0; i < entries.length; i++)
                       StaggerIn(
                         index: i,
-                        child: _buildCard(theme, entries[i]),
+                        child: _buildCard(
+                          theme,
+                          entries[i],
+                          isLatest: i == 0,
+                        ),
                       ),
                   ],
                 ),
@@ -131,8 +148,15 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
             ),
           ),
           const SizedBox(height: Spacing.xxs),
+          // Плашка — это СПИСОК ИЗМЕНЕНИЙ, а не «что осталось сделать»:
+          // подпись рассказывает, как приложение развивается от релиза
+          // к релизу, а не перечисляет внутренние планы.
           Text(
-            Translations.t('patchTodos', context, 'Remaining to do — autosave'),
+            Translations.t(
+              'patchDeveloping',
+              context,
+              'How the app is developing — release by release',
+            ),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onPrimaryContainer.withValues(
                 alpha: 0.8,
@@ -144,7 +168,19 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
     );
   }
 
-  Widget _buildCard(ThemeData theme, ChangelogEntry entry) {
+  /// Карточка одного релиза.
+  ///
+  /// [isLatest] — самая свежая версия: её номер мягко подчёркивается
+  /// полупрозрачной красной полосой (плавно «прочерчивается» при появлении),
+  /// чтобы свежий выпуск читался с первого взгляда.
+  Widget _buildCard(ThemeData theme, ChangelogEntry entry, {bool isLatest = false}) {
+    // Дата и точное время — через запятую: у авторелизов одной датой
+    // выходит по нескольку выпусков подряд, и по одному дню их не различить.
+    final stamp = [
+      entry.date,
+      if (entry.time.isNotEmpty) entry.time,
+    ].where((s) => s.isNotEmpty).join(', ');
+
     return Card(
       margin: const EdgeInsets.only(bottom: Spacing.md),
       shape: RoundedRectangleBorder(
@@ -158,17 +194,20 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
           children: [
             Row(
               children: [
-                Text(
-                  entry.version,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: Weights.bold,
-                  ),
-                ),
-                const Spacer(),
-                if (entry.date.isNotEmpty)
+                if (isLatest)
+                  _LatestVersion(version: entry.version)
+                else
                   Text(
-                    entry.date,
+                    entry.version,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: Weights.bold,
+                    ),
+                  ),
+                const Spacer(),
+                if (stamp.isNotEmpty)
+                  Text(
+                    stamp,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -176,23 +215,25 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
               ],
             ),
             const SizedBox(height: Spacing.sm),
-            ...entry.changes.map(
-              (c) => Padding(
+            for (var j = 0; j < entry.changes.length; j++)
+              Padding(
                 padding: const EdgeInsets.only(bottom: Spacing.xs),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Значок у каждого пункта СВОЙ (циклический набор):
+                    // список не выглядит частоколом одинаковых галочек,
+                    // а читается живым перечислением.
                     Icon(
-                      Icons.check_circle_outline,
+                      _changeIcons[j % _changeIcons.length],
                       size: 18,
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(c)),
+                    Expanded(child: Text(entry.changes[j])),
                   ],
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -247,6 +288,78 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
       ],
     ),
   ];
+}
+
+/// Номер САМОЙ СВЕЖЕЙ версии с мягким подчёркиванием.
+///
+/// Красная полупрозрачная полоса «прочерчивается» слева направо при
+/// появлении карточки (scaleX 0→1, easeOutCubic) и остаётся под номером.
+/// Рисуется ПОД текстом (Stack + Positioned), поэтому не сдвигает строку
+/// и не влияет на соседнюю дату.
+class _LatestVersion extends StatefulWidget {
+  final String version;
+
+  const _LatestVersion({required this.version});
+
+  @override
+  State<_LatestVersion> createState() => _LatestVersionState();
+}
+
+class _LatestVersionState extends State<_LatestVersion>
+    with SingleTickerProviderStateMixin {
+  /// Тот же «кровавый», что у подписи LARAF: свежий релиз помечен тем же
+  /// фирменным акцентом, что и сплэш.
+  static const Color _blood = Color(0xFFB3121F);
+
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  )..forward();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.titleMedium?.copyWith(
+      color: theme.colorScheme.primary,
+      fontWeight: Weights.bold,
+    );
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Text(widget.version, style: style),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: -3,
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (context, _) {
+              final t = Curves.easeOutCubic.transform(_ctrl.value);
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: t,
+                  child: Container(
+                    height: 2.5,
+                    decoration: BoxDecoration(
+                      color: _blood.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Скелет загрузки: три «пустые» карточки-плашки с мягким пульсом.

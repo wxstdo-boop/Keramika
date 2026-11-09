@@ -9,9 +9,17 @@ class ChangelogEntry {
     required this.version,
     required this.date,
     required this.changes,
+    this.time = '',
   });
 
   final String version;
+
+  /// Дата релиза, `YYYY-MM-DD` (как приходит из GitHub).
   final String date;
+
+  /// Точное время релиза, `HH:MM` (UTC). Пустое, если в теле релиза времени
+  /// не было — тогда показываем только дату.
+  final String time;
+
   final List<String> changes;
 }

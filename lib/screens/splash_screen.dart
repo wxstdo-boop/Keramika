@@ -472,37 +472,45 @@ class _ShineText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (base, shineTp) = _spans(MediaQuery.textScalerOf(context));
-    final size = base.size;
+    final scaler = MediaQuery.textScalerOf(context);
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: shine,
-        builder: (context, _) => CustomPaint(
-          size: size,
-          painter: _ShineTextPainter(
-            base: base,
-            shine: shineTp,
-            band: _band(Offset.zero & size, shine.value),
-          ),
-        ),
+        builder: (context, _) {
+          final base = _baseSpan(scaler);
+          final size = base.size;
+          // Бликовый слой строится НА КАЖДОМ кадре заново: `ui.Paragraph`
+          // копирует стиль в натив при постройке, и подмена `Paint.shader`
+          // после `layout()` не видна движку — полоса просто не рисовалась
+          // («блик пропал»). Поэтому шейдер задаётся ДО раскладки, а кэшируется
+          // только базовая строка: текст короткий, повторный layout в кадре
+          // дешевле, чем отсутствующий блик.
+          final shineTp = TextPainter(
+            text: TextSpan(
+              text: text,
+              style: style.copyWith(
+                foreground: Paint()
+                  ..shader = _band(Offset.zero & size, shine.value),
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+            textScaler: scaler,
+          )..layout();
+          return CustomPaint(
+            size: size,
+            painter: _ShineTextPainter(base: base, shine: shineTp),
+          );
+        },
       ),
     );
   }
 
-  /// Кэш РАСКЛАДОК строки: [build] пересобирается КАЖДЫЙ кадр блика, а layout
-  /// текста в кадре — это лишняя работа. Текст и стиль за жизнь виджета не
-  /// меняются, поэтому раскладываем строку ОДИН раз и переиспользуем оба
-  /// `TextPainter` (базовый и бликовый). Раньше здесь были `Text`-виджеты:
-  /// они пересобирали span и перекладывали строку на каждом кадре блика —
-  /// на слабом GPU это и читалось как «сплэш лагает».
-  static final Map<Object, (TextPainter, TextPainter)> _spansCache =
-      <Object, (TextPainter, TextPainter)>{};
+  /// Кэш РАСКЛАДКИ базовой строки: текст и стиль за жизнь виджета не
+  /// меняются, а [build] пересобирается КАЖДЫЙ кадр блика — раскладываем
+  /// базовую строку ОДИН раз и переиспользуем `TextPainter`.
+  static final Map<Object, TextPainter> _baseCache = <Object, TextPainter>{};
 
-  /// Базовый и бликовый пейнтеры строки. У бликового в стиль зашит `foreground`
-  /// Paint, чей шейдер меняется каждый кадр БЕЗ пересборки span: layout от
-  /// шейдера не зависит, поэтому `TextPainter.paint` рисует без повторного
-  /// layout.
-  (TextPainter, TextPainter) _spans(TextScaler scaler) {
+  TextPainter _baseSpan(TextScaler scaler) {
     final key = Object.hash(
       text,
       style.fontSize,
@@ -512,24 +520,15 @@ class _ShineText extends StatelessWidget {
       style.fontWeight,
       scaler,
     );
-    final cached = _spansCache[key];
+    final cached = _baseCache[key];
     if (cached != null) return cached;
     final base = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
       textScaler: scaler,
     )..layout();
-    final shine = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: style.copyWith(foreground: Paint()),
-      ),
-      textDirection: TextDirection.ltr,
-      textScaler: scaler,
-    )..layout();
-    final pair = (base, shine);
-    _spansCache[key] = pair;
-    return pair;
+    _baseCache[key] = base;
+    return base;
   }
 
   /// Полоса: кровавые кромки → светлое ядро → кровавые кромки. Оба конца
@@ -561,31 +560,22 @@ class _ShineText extends StatelessWidget {
 }
 
 /// Рисует подпись «POWERED BY LARAF» двумя готовыми раскладками: базовой
-/// строкой и её же копией с шейдером-полосой. Layout не пересчитывается —
-/// оба `TextPainter` приходят из кэша [_ShineText._spans], меняется только
-/// шейдер блика, поэтому кадр блика стоит ровно один `paint`.
+/// строкой и её же копией с шейдером-полосой.
 class _ShineTextPainter extends CustomPainter {
   final TextPainter base;
   final TextPainter shine;
-  final Shader band;
 
-  const _ShineTextPainter({
-    required this.base,
-    required this.shine,
-    required this.band,
-  });
+  const _ShineTextPainter({required this.base, required this.shine});
 
   @override
   void paint(Canvas canvas, Size size) {
     base.paint(canvas, Offset.zero);
-    final paint = shine.text!.style!.foreground!;
-    paint.shader = band;
     shine.paint(canvas, Offset.zero);
   }
 
   @override
   bool shouldRepaint(_ShineTextPainter old) =>
-      old.band != band || old.base != base || old.shine != shine;
+      old.base != base || old.shine != shine;
 }
 
 /// Брызги краски на «стекле» карточки логотипа.

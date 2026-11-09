@@ -80,14 +80,34 @@ class _SmoothHoverState extends State<SmoothHover>
     super.dispose();
   }
 
-  void _onEnter(PointerEnterEvent _) => _ctrl.forward();
-  void _onExit(PointerExitEvent _) => _ctrl.reverse();
+  void _onEnter(PointerEnterEvent _) {
+    if (!mounted) return;
+    _ctrl.forward();
+  }
+
+  void _onExit(PointerExitEvent _) {
+    if (!mounted) return;
+    _ctrl.reverse();
+  }
+
   void _onDown(PointerDownEvent _) {
+    if (!mounted) return;
     if (!_ctrl.isAnimating && _ctrl.value == 0) _ctrl.forward();
   }
 
-  void _onUp(PointerUpEvent _) => _ctrl.reverse();
-  void _onCancel(PointerCancelEvent _) => _ctrl.reverse();
+  // Карточка может быть размонтирована (список пересобрался, например при
+  // reorder) МЕЖДУ down и up: pointer-событие всё ещё доходит до слушателя,
+  // а контроллер уже уничтожен — `reverse()` после `dispose()` роняет
+  // приложение ассертом. Поэтому выход/отпускание проверяют mounted.
+  void _onUp(PointerUpEvent _) {
+    if (!mounted) return;
+    _ctrl.reverse();
+  }
+
+  void _onCancel(PointerCancelEvent _) {
+    if (!mounted) return;
+    _ctrl.reverse();
+  }
 
   @override
   Widget build(BuildContext context) {
