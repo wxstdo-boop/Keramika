@@ -1,0 +1,3 @@
+- Toucher la notification d'une alarme ouvre sa tâche
+- Arrêter une sonnerie n'affecte que cette alarme
+- Finitions du fond du geste de retour

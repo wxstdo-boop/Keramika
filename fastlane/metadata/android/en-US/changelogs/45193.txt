@@ -1,0 +1,3 @@
+- Tapping an alarm notification opens the task it belongs to
+- Stopping an alarm ring only affects that one alarm
+- Swipe-back gesture background polish
