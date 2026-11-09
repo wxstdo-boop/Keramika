@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import '../widgets/stagger_in.dart';
 import '../l10n/translations.dart';
@@ -8,9 +9,9 @@ import '../models/changelog_entry.dart';
 import '../services/update_service.dart';
 import '../utils/design_tokens.dart';
 
-/// Набор значков для пунктов «Что нового». Иконки чередуются по кругу —
-/// список не выглядит частоколом одинаковых галочек. Снежинка оставлена
-/// как один из многих, а не единственный вариант.
+/// Набор значков для пунктов «Что нового». Значок у каждого пункта СВОЙ и
+/// смещается от карточки к карточке (см. [ChangelogScreen._buildCard]):
+/// снежинка остаётся одним из многих, а не лицом каждого релиза.
 const List<IconData> _changeIcons = [
   Icons.ac_unit_rounded,
   Icons.auto_awesome_rounded,
@@ -19,7 +20,19 @@ const List<IconData> _changeIcons = [
   Icons.rocket_launch_rounded,
   Icons.tune_rounded,
   Icons.brush_rounded,
+  Icons.insights_rounded,
+  Icons.speed_rounded,
+  Icons.emoji_objects_rounded,
+  Icons.architecture_rounded,
+  Icons.water_drop_rounded,
+  Icons.eco_rounded,
+  Icons.sailing_rounded,
+  Icons.nightlight_round,
+  Icons.auto_fix_high_rounded,
 ];
+
+/// Фирменный «кровавый» акцент — тот же, что у свежего релиза и подписи.
+const Color _heartRed = Color(0xFFE53935);
 
 /// Экран «Что нового».
 ///
@@ -91,7 +104,11 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
           switchOutCurve: Curves.easeInCubic,
           child: _loading
               ? const _ChangelogSkeleton(key: ValueKey('changelog_loading'))
-              : ListView(
+              // ЛЕНИВЫЙ список: живых релизов бывает под сотню, и построение
+              // всех карточек одним кадром (ListView(children: […])) держало
+              // первый кадр экрана и «съедало» память. ListView.builder строит
+              // только видимое + запас, поэтому открытие остаётся мгновенным.
+              : ListView.builder(
                   // Ключ зависит от содержимого: когда список обновляется
                   // (refresh или новый релиз), AnimatedSwitcher кросс-фейдит
                   // старый и новый списки, а не подменяет их одним кадром.
@@ -101,21 +118,31 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
                   ),
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(Spacing.md),
-                  children: [
-                    _buildHeader(theme),
-                    const SizedBox(height: Spacing.md),
+                  // Индекс 0 — плашка-заголовок, дальше — карточки релизов.
+                  itemCount: entries.length + 1,
+                  itemBuilder: (context, i) {
+                    if (i == 0) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(theme),
+                          const SizedBox(height: Spacing.md),
+                        ],
+                      );
+                    }
+                    final card = i - 1;
                     // Карточки входят каскадом: длинный список проявляется
                     // мягко, а не возникает одним кадром.
-                    for (var i = 0; i < entries.length; i++)
-                      StaggerIn(
-                        index: i,
-                        child: _buildCard(
-                          theme,
-                          entries[i],
-                          isLatest: i == 0,
-                        ),
+                    return StaggerIn(
+                      index: card,
+                      child: _buildCard(
+                        theme,
+                        entries[card],
+                        cardIndex: card,
+                        isLatest: card == 0,
                       ),
-                  ],
+                    );
+                  },
                 ),
         ),
       ),
@@ -142,12 +169,24 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
         children: [
           // Заголовок плашки — сразу «Как развивается приложение» (без
           // отдельной строки «Список изменений»), а под ним мелким текстом
-          // план работ.
-          Text(
-            Translations.t(
-              'patchDeveloping',
-              context,
-              'How the app is developing',
+          // план работ. В конце заголовка — красное сердечко: приложение
+          // растёт «с любовью», тем же тёплым акцентом, что и свежий релиз.
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: Translations.t(
+                    'patchDeveloping',
+                    context,
+                    'How the app is developing',
+                  ),
+                ),
+                const TextSpan(text: '  '),
+                const TextSpan(
+                  text: '\u2764',
+                  style: TextStyle(color: _heartRed),
+                ),
+              ],
             ),
             style: theme.textTheme.titleMedium?.copyWith(
               color: theme.colorScheme.onPrimaryContainer,
@@ -165,6 +204,7 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
               color: theme.colorScheme.onPrimaryContainer.withValues(
                 alpha: 0.72,
               ),
+              fontStyle: FontStyle.italic,
             ),
           ),
         ],
@@ -174,10 +214,19 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
 
   /// Карточка одного релиза.
   ///
+  /// [cardIndex] — порядковый номер карточки в списке: он сдвигает набор
+  /// значков, поэтому у каждого релиза свой первый значок, а не один и тот же
+  /// на всех (иначе снежинка снова стала бы «лицом» всего списка).
+  ///
   /// [isLatest] — самая свежая версия: её номер мягко подчёркивается
   /// полупрозрачной красной полосой (плавно «прочерчивается» при появлении),
   /// чтобы свежий выпуск читался с первого взгляда.
-  Widget _buildCard(ThemeData theme, ChangelogEntry entry, {bool isLatest = false}) {
+  Widget _buildCard(
+    ThemeData theme,
+    ChangelogEntry entry, {
+    int cardIndex = 0,
+    bool isLatest = false,
+  }) {
     // Дата и точное время — через запятую: у авторелизов одной датой
     // выходит по нескольку выпусков подряд, и по одному дню их не различить.
     final stamp = [
@@ -185,60 +234,78 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
       if (entry.time.isNotEmpty) entry.time,
     ].where((s) => s.isNotEmpty).join(', ');
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: Spacing.md),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Radii.lg),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                if (isLatest)
-                  _LatestVersion(version: entry.version)
-                else
-                  Text(
-                    entry.version,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: Weights.bold,
+    return PressScale(
+      // «Отдача» карточки при зажатии: медленное и очень плавное уменьшение,
+      // маленькое по величине — карточка мягко «уходит» под палец и так же
+      // неспешно возвращается. Быстрый щелчок здесь читался бы дёшево.
+      pressedScale: 0.975,
+      duration: const Duration(milliseconds: 480),
+      releaseDuration: const Duration(milliseconds: 560),
+      curve: Curves.easeOutCubic,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: Spacing.md),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.lg),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (isLatest)
+                    _LatestVersion(version: entry.version)
+                  else
+                    Text(
+                      entry.version,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: Weights.bold,
+                      ),
                     ),
-                  ),
-                const Spacer(),
-                if (stamp.isNotEmpty)
-                  Text(
-                    stamp,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  const Spacer(),
+                  if (stamp.isNotEmpty)
+                    Text(
+                      stamp,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: Spacing.sm),
-            for (var j = 0; j < entry.changes.length; j++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Spacing.xs),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Значок у каждого пункта СВОЙ (циклический набор):
-                    // список не выглядит частоколом одинаковых галочек,
-                    // а читается живым перечислением.
-                    Icon(
-                      _changeIcons[j % _changeIcons.length],
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(entry.changes[j])),
-                  ],
-                ),
+                ],
               ),
-          ],
+              const SizedBox(height: Spacing.sm),
+              for (var j = 0; j < entry.changes.length; j++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Spacing.xs),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Значок у каждого пункта СВОЙ: набор смещён на номер
+                      // карточки, поэтому у каждого релиза свой первый значок
+                      // и список не выглядит частоколом одинаковых иконок.
+                      Icon(
+                        _changeIcons[(j + cardIndex) % _changeIcons.length],
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      // Текст заметки — курсивом: пункты читаются как живая
+                      // заметка автора, а не как протокол официального отчёта.
+                      Expanded(
+                        child: Text(
+                          entry.changes[j],
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ import 'package:keramika/services/haptics.dart';
 import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/prefs.dart';
 import 'package:keramika/services/settings_service.dart';
+import 'package:keramika/services/sounds.dart';
 import 'package:keramika/utils/motion_prefs.dart';
 
 /// Виджет с вечным декоративным циклом — минимальная обёртка вокруг
@@ -39,6 +40,7 @@ class _LoopingState extends State<_Looping>
 void main() {
   late Directory tmpDir;
   late List<String> hapticCalls;
+  late List<String> soundCalls;
 
   setUp(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -66,8 +68,23 @@ void main() {
             return null;
           },
         );
+    // [SystemSound] шлёт метод `SystemSound.play` на канал `flutter/platform`,
+    // который использует JSON-кодек. Перехватываем на бинарном уровне и
+    // раскодируем вызов его же кодеком — `setMockMethodCallHandler` тут не
+    // годится (он ждёт Standard-кодек и «портит» сообщение).
+    soundCalls = <String>[];
+    final platformChannel = SystemChannels.platform;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler(platformChannel.name, (message) async {
+          final call = platformChannel.codec.decodeMethodCall(message);
+          if (call.method == 'SystemSound.play') {
+            soundCalls.add(call.arguments as String);
+          }
+          return platformChannel.codec.encodeSuccessEnvelope(null);
+        });
     // Возвращаем флаги к значениям по умолчанию между тестами.
     Haptics.enabled = true;
+    Sounds.enabled = false;
     MotionPrefs.enabled.value = false;
   });
 
@@ -77,6 +94,8 @@ void main() {
           const MethodChannel('com.wetidom.keramika/haptics'),
           null,
         );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler(SystemChannels.platform.name, null);
     if (tmpDir.existsSync()) tmpDir.deleteSync(recursive: true);
   });
 
@@ -102,6 +121,22 @@ void main() {
     Haptics.enabled = true;
     await Haptics.select();
     expect(hapticCalls, ['select']);
+  });
+
+  test('настройка звуков переживает перезапуск, по умолчанию выключена', () async {
+    expect(await SettingsService.loadSounds(), isFalse);
+    await SettingsService.saveSounds(true);
+    expect(await SettingsService.loadSounds(), isTrue);
+  });
+
+  test('выключенные звуки молчат, включённые — играют', () async {
+    Sounds.enabled = false;
+    await Sounds.success();
+    expect(soundCalls, isEmpty);
+
+    Sounds.enabled = true;
+    await Sounds.click();
+    expect(soundCalls, ['SystemSoundType.click']);
   });
 
   test('shouldReduceMotion следует за тумблером', () {

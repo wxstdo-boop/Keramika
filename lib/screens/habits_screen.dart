@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import '../services/haptics.dart';
+import '../services/sounds.dart';
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 
@@ -1040,6 +1041,8 @@ class _HabitsScreenState extends State<HabitsScreen>
     }
     _lastHabitTap = now;
     await _service.toggle(habit.id);
+    // Мягкий звук отметки — парный к тактильной отдаче плеска кнопки.
+    Sounds.success();
     if (!mounted) return;
     setState(() {});
   }

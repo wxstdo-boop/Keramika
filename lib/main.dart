@@ -25,6 +25,7 @@ import 'services/notification_service.dart';
 import 'services/alarm_black_box.dart';
 import 'services/alarm_scheduler.dart';
 import 'services/haptics.dart';
+import 'services/sounds.dart';
 import 'theme/app_theme.dart';
 import 'utils/motion_prefs.dart';
 import 'models/alarm.dart';
@@ -970,13 +971,14 @@ Future<_StartupState> _loadStartupState() async {
   final fontFamily = SettingsService.loadFontFamily();
   // Прогреваем живые флаги режимов до первого Home-кадра:
   // кнопка BERSERK и карточки не ждут открытия настроек.
-  // Вибрация и «убрать анимации» тоже читаются ДО первого кадра: плеск
-  // кнопок не должен успеть дать один лишний отклик, а декоративные петли —
-  // один лишний виток, если человек их выключил.
+  // Вибрация, звуки и «убрать анимации» тоже читаются ДО первого кадра:
+  // плеск кнопок не должен успеть дать один лишний отклик, декоративные
+  // петли — один лишний виток, а звук — прозвучать до применения настройки.
   final modes = Future.wait<void>([
     SettingsService.loadPerfectionism(),
     SettingsService.loadBerserk(),
     SettingsService.loadHaptics().then((v) => Haptics.enabled = v),
+    SettingsService.loadSounds().then((v) => Sounds.enabled = v),
     SettingsService.loadReduceMotion().then((v) => MotionPrefs.enabled.value = v),
   ]);
 

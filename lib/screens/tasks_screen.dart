@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'dart:async';
 import '../services/haptics.dart';
+import '../services/sounds.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../models/task.dart';
 import '../services/task_service.dart';
@@ -215,6 +216,8 @@ class _TasksScreenState extends State<TasksScreen>
     _lastTaskTap = now;
     // Приятный тактильный отклик: лёгкий «клик» при отметке задачи.
     Haptics.select();
+    // Парный мягкий звук — если человек включил звуки в настройках.
+    Sounds.success();
     await _service.toggle(task.id);
     if (!mounted) return;
     try {

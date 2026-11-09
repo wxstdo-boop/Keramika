@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 
 import '../services/haptics.dart';
+import '../services/sounds.dart';
 import '../models/reality_check.dart';
 import '../main.dart';
 import '../services/reality_check_service.dart';
@@ -219,6 +220,8 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     _lastCheckTap = now;
     // Приятный тактильный отклик на отметку проверки.
     Haptics.light();
+    // Парный мягкий звук отметки.
+    Sounds.success();
     await _service.doCheck(check.id);
     final shouldCancel = _shouldCancelNotificationsToday();
     if (shouldCancel) {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import '../services/haptics.dart';
+import '../services/sounds.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -126,6 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _berserk = false;
   bool _taskNotes = false;
   bool _haptics = true;
+  bool _sounds = false;
   bool _reduceMotion = false;
   bool _permissionWarningDismissed = false;
   bool _grantPressed = false; // Состояние зажатия кнопки «Выдать»
@@ -196,6 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _loadBerserk(),
       _loadTaskNotes(),
       _loadHaptics(),
+      _loadSounds(),
       _loadReduceMotion(),
       _checkPermissionWarning(),
       _checkNotificationsEnabled(),
@@ -838,6 +841,19 @@ class _SettingsScreenState extends State<SettingsScreen>
     // Отклик на само включение: когда включаем — даём короткий клик, чтобы
     // человек сразу услышал/почувствовал, что стало иначе.
     if (value) Haptics.select();
+  }
+
+  Future<void> _loadSounds() async {
+    _sounds = await SettingsService.loadSounds();
+    Sounds.enabled = _sounds;
+  }
+
+  Future<void> _setSounds(bool value) async {
+    await SettingsService.saveSounds(value);
+    Sounds.enabled = value;
+    if (mounted) setState(() => _sounds = value);
+    // Отклик на само включение: короткий клик подтверждает, что звук жив.
+    if (value) Sounds.click();
   }
 
   Future<void> _loadReduceMotion() async {
@@ -2490,6 +2506,38 @@ class _SettingsScreenState extends State<SettingsScreen>
                     onChanged: _setHaptics,
                     activeColor: theme.colorScheme.primary,
                     semanticLabel: Translations.t('haptics', context),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              // «Звуки»: короткие системные отклики на подтверждениях.
+              // Выключены по умолчанию — звук навязчивее вибрации.
+              PressScale(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: Icon(
+                    Icons.volume_up_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(Translations.t('sounds', context)),
+                  subtitle: Text(
+                    Translations.t('soundsDesc', context),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: () async {
+                    final v = !_sounds;
+                    await _setSounds(v);
+                  },
+                  trailing: VolumetricSwitch(
+                    value: _sounds,
+                    onChanged: _setSounds,
+                    activeColor: theme.colorScheme.primary,
+                    semanticLabel: Translations.t('sounds', context),
                   ),
                 ),
               ),

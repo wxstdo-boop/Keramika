@@ -377,6 +377,25 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
   озвучиваются, а не читаются как «кнопка». `tooltip`, а не `label` — чтобы
   не дублировать подпись там, где у ребёнка уже есть текст/`Semantics.label`.
 
+## Звуковой дизайн
+
+- `lib/services/sounds.dart` — `Sounds` парный к `Haptics`: там тактильная
+  отдача, здесь короткий штатный `SystemSound` (`click`). Свои WAV-ассеты НЕ
+  нужны: `SystemSound` мгновенен, вписан в системную громкость «касаний».
+- **Выключены по умолчанию** (`Sounds.enabled = false`) — звук навязчивее
+  вибрации, его включает сам человек. Флаг читается ДО первого кадра
+  (`main.dart`, `Future.wait`), иначе отклик успеет прозвучать до применения
+  настройки. Тумблер — в настройках рядом с вибрацией (`settings_screen.dart`),
+  ключ `setting_sounds` в `SettingsService`.
+- Звук — только подтверждения (отметка задачи/привычки/проверки реальности,
+  само включение тумблера). Будильники и уведомления идут своим громким
+  каналом (`NotificationService`) — `Sounds` туда не лезет.
+- Тест звуков: `SystemSound` шлёт `SystemSound.play` на `flutter/platform` с
+  **JSON-кодеком**, поэтому `setMockMethodCallHandler` его «портит»
+  (`FormatException: Message corrupted`). Перехват — только бинарный:
+  `setMockMessageHandler(SystemChannels.platform.name, …)` с
+  `platformChannel.codec.decodeMethodCall(...)` (см. `preferences_test.dart`).
+
 ## Публикация в F-Droid / IzzyOnDroid
 
 Полная инструкция — `docs/publishing-fdroid.md`. Ключевое, чтобы не наступать

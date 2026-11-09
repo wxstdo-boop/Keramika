@@ -15,6 +15,7 @@ class SettingsService {
   static const _keyAutoSave = 'setting_auto_save';
   static const _keyDevMode = 'setting_dev_mode';
   static const _keyHaptics = 'setting_haptics';
+  static const _keySounds = 'setting_sounds';
   static const _keyReduceMotion = 'setting_reduce_motion';
   static const _keyDeveloperPrompt = 'developer_prompt';
   static const _keyAutoExport = 'setting_auto_export';
@@ -201,6 +202,20 @@ class SettingsService {
   static Future<void> saveHaptics(bool value) async {
     final map = await _loadSettings();
     map[_keyHaptics] = value;
+    await _saveSettings(map);
+  }
+
+  /// Подтверждающие звуки выключены по умолчанию: звук навязчивее вибрации,
+  /// его включает сам человек. Читается ДО первого кадра, чтобы ни один
+  /// отклик не успел прозвучать до применения настройки.
+  static Future<bool> loadSounds() async {
+    final map = await _loadSettings();
+    return _bool(map[_keySounds], false);
+  }
+
+  static Future<void> saveSounds(bool value) async {
+    final map = await _loadSettings();
+    map[_keySounds] = value;
     await _saveSettings(map);
   }
 
