@@ -290,12 +290,37 @@ arm64). Приложение сравнивает сначала `versionName` (
   читает его и падает без него. `flutter build` пишет файл сам, но F-Droid-сборке
   безопаснее добавить явно: `echo "flutter.sdk=$$flutter$$" >> android/local.properties`
   в prebuild.
-- **Подпись.** `android/app/build.gradle.kts` жёстко требует release-keystore и
-  намеренно падает без `key.properties` (см. AGENTS «Пустые секреты подписи»:
-  молчаливая debug-подпись ломает автообновление). Поэтому рецепт ПЕРЕД сборкой
-  подменяет конфиг на debug: `sed -i -e
-  's/signingConfigs.getByName("release")/signingConfigs.getByName("debug")/'`.
-  F-Droid всё равно переподписывает APK своим ключом — свой keystore ему не нужен.
+- **Подпись — руками НЕ трогать.** `android/app/build.gradle.kts` жёстко
+  ссылается на `signingConfigs.getByName("release")` и без `key.properties`
+  упал бы на `:app:packageRelease`. Но fdroidserver сам вызывает
+  `common.remove_signing_keys()` в `prepare_source` — это происходит ДО
+  `prebuild`, и он вырезает и блок `signingConfigs { ... }`, и строку
+  `signingConfig = ...` (проверено на этом `.kts`: сносит обе). После этого
+  release собирается неподписанным, а F-Droid подписывает APK своим ключом.
+  Никакой `sed` с подменой на debug в рецепте не нужен — раньше он был и
+  оказался лишним. `remove_signing_keys` понимает и Groovy, и Kotlin DSL.
+- **Снятие `REQUEST_INSTALL_PACKAGES`.** Разрешение объявлено в манифесте ради
+  самообновления, а в F-Droid-сборке оно выключено — оставлять его нельзя
+  (F-Droid помечает как «не используемое» и просит убрать). Рецепт вырезает
+  строку в prebuild: `sed -i -e '/REQUEST_INSTALL_PACKAGES/d'
+  android/app/src/main/AndroidManifest.xml`.
+- **Память Gradle.** `android/gradle.properties` подогнан под домашнюю машину
+  (`-Xmx1024m`, `workers.max=1`) — на buildserver этого мало, `assembleRelease`
+  умирает с «JVM garbage collector is thrashing» (та же болезнь, что ловили в
+  CI, см. «Память Gradle»). Рецепт в prebuild поднимает значения ровно как
+  CI-шаг: `jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:ReservedCodeCacheSize=256m
+  -XX:+UseParallelGC`, `workers.max=4`, `kotlin.daemon.jvmargs=-Xmx1g`. Дефолт
+  buildserver — 1 CPU / 2048 MB; трёхпроходный ретрай с меньшим heap спасает не
+  всегда, поэтому подъём обязателен.
+- **Build-tools и platform.** AGP 9.1.1 по умолчанию требует build-tools
+  **36.0.0** (не 33!) и `compileSdk 37` → нужен `platforms;android-37.0`.
+  В образе buildserver предустановлены только до `build-tools;33.0.0` и
+  `platforms;android-33`, поэтому prebuild обязан звать `sdkmanager
+  "platforms;android-37.0" "build-tools;36.0.0"`. Имена пакетов — именно с
+  `.0` у платформы (в fdroiddata так у 105 рецептов).
+- **Java на buildserver.** Образ на Debian trixie, `default-jdk-headless` =
+  **openjdk-21**. AGP 9 требует Java 17+ → `sudo` с установкой JDK в рецепте НЕ
+  нужен (в отличие от старых рецептов с `apt-get install openjdk-21`).
 - **Самообновление выключено в F-Droid-сборке** через
   `--dart-define=KERAMIKA_NO_SELF_UPDATE=true` → `kSelfUpdateEnabled = false`.
   Флаг обязан гасить ОБА места: таблетку обновления в Настройках И тихую
@@ -312,11 +337,32 @@ arm64). Приложение сравнивает сначала `versionName` (
   short_description, full_description, icon (512×512), phoneScreenshots,
   changelogs/`<versionCode>`. Их читают и F-Droid, и IzzyOnDroid. Лимиты:
   `short_description` ≤ 80 символов и БЕЗ точки в конце, changelog ≤ 500.
-- **Порядок подачи.** `fastlane/` приезжает отдельным коммитом, а не в релизном,
-  поэтому рецепт обязан указывать `commit:` на коммит, где `fastlane/` уже есть.
-  Сейчас рецепт смотрит на `v1.6.106+45178` — там метаданных НЕТ. Порядок:
-  сначала пуш в `main` (новый релиз с `fastlane/`), потом обновить `commit:` и
-  `version*` в рецепте, и только затем MR в `fdroiddata`.
+- **Порядок подачи.** Рецепт обязан указывать `commit:` на коммит, где уже есть
+  и `fastlane/`, и флаг `KERAMIKA_NO_SELF_UPDATE` в `update_service.dart` —
+  иначе сборка выйдет со старым кодом. Такой коммит — обычный пуш в `main`:
+  он же триггерит `ship.yml`, который бампает версию и выпускает релиз. Поэтому
+  порядок такой: (1) коммит с `fastlane/` + флагом уходит в `main`; (2) рецепт
+  указывает на него и на актуальные `versionName`/`versionCode`; (3) копия
+  рецепта — MR в `fdroiddata`. Нельзя ссылаться на коммит, которого нет на
+  GitHub: F-Droid клонирует именно его.
+- **`fdroid rewritemeta` — жёсткий гейт CI.** В fdroiddata есть job
+  `fdroid rewritemeta`, который переформатирует файл и требует НУЛЕВОЙ diff.
+  Поэтому рецепт держать строго в каноническом виде: ключи верхнего уровня
+  отсортированы (`AntiFeatures` идёт ПЕРВЫМ, затем `Categories`, `License`,
+  `AuthorName`, `SourceCode`, `IssueTracker`, `Changelog`), `UpdateCheckMode`
+  без кавычек, длинные строки автопереносятся с отступом. Проверить локально:
+  `python3 -c "from fdroidserver import metadata,rewritemeta as rw;
+  print(rw.proper_format(metadata.parse_metadata('metadata/com.wetidom.keramika.yml')))"`
+  — должно быть `True`.
+- **`fdroid checkupdates --auto` тоже гейт.** Job прогоняет автообновление и
+  падает, если появился diff. Значит `UpdateCheckData` и `AutoUpdateMode:
+  Version` должны РЕАЛЬНО резолвить версию из тегов, а `CurrentVersion`/
+  `CurrentVersionCode` — совпадать с последним тегом. Проверено на настоящих
+  тегах: `Tags ^v[0-9.]+\+[0-9]+$` + `UpdateCheckData: pubspec.yaml|
+  version:\s.+\+(\d+)|.|version:\s(.+)\+` дают `1.6.108 / 45180`.
+- **`fdroid lint` — тоже гейт** (см. выше про категории: в пустом каталоге он
+  ругается, потому что `config.yml` без `categories`). В клоне fdroiddata
+  проходит без замечаний.
 - **Скриншоты** рисуются из кода: `flutter test tool/screenshots/render_screenshots.dart`
   (в CI не гоняется). Складывает PNG в `docs/screenshots/` и
   `fastlane/.../phoneScreenshots/`.
