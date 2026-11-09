@@ -159,4 +159,54 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('растяжка нарастает без скачка в начале тяги', (tester) async {
+    await pumpPill(tester);
+    double stoneWidth() {
+      final r = tester.getRect(
+        find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_GlassStone',
+        ),
+      );
+      return r.width;
+    }
+
+    await tester.pump();
+    final base = stoneWidth();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(SectionPill)),
+    );
+    await tester.pump();
+
+    // Медленная тяга мелкими шагами: первый же шаг не должен «раздувать»
+    // камень. Прежняя квадратичная кривая волны давала +23 % ширины за первый
+    // пиксель тяги; сглаженная — около +12 %, поэтому порог 17 % ловит
+    // регресс, но не придирается к нормальному нарастанию.
+    var prev = base;
+    var maxStep = 0.0;
+    var firstStep = 0.0;
+    for (var i = 0; i < 20; i++) {
+      await gesture.moveBy(const Offset(5, 0));
+      for (var f = 0; f < 6; f++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final w = stoneWidth();
+      final step = w - prev;
+      if (i == 0) firstStep = step;
+      if (step > maxStep) maxStep = step;
+      prev = w;
+    }
+    expect(
+      firstStep,
+      lessThan(0.17 * base),
+      reason: 'первый шаг тяги не должен раздувать камень скачком',
+    );
+    expect(
+      maxStep,
+      lessThan(0.20 * base),
+      reason: 'растяжка нарастает плавно, без ступенек',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
 }

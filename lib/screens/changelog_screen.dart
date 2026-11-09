@@ -148,18 +148,30 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
             ),
           ),
           const SizedBox(height: Spacing.xxs),
-          // Плашка — это СПИСОК ИЗМЕНЕНИЙ, а не «что осталось сделать»:
-          // подпись рассказывает, как приложение развивается от релиза
-          // к релизу, а не перечисляет внутренние планы.
+          // Плашка — это СПИСОК ИЗМЕНЕНИЙ: сначала заголовок «Список
+          // изменений», затем подзаголовок «Как развивается приложение»,
+          // а под ним — мелким текстом план («Мелкие доработки, PR в 2027»).
           Text(
             Translations.t(
               'patchDeveloping',
               context,
-              'How the app is developing — release by release',
+              'How the app is developing',
+            ),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onPrimaryContainer,
+              fontWeight: Weights.semibold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            Translations.t(
+              'patchRoadmap',
+              context,
+              'Minor tweaks, PR in 2027',
             ),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onPrimaryContainer.withValues(
-                alpha: 0.8,
+                alpha: 0.72,
               ),
             ),
           ),

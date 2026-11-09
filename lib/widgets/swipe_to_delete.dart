@@ -130,12 +130,25 @@ class _SwipeToDeleteState extends State<SwipeToDelete>
     // Полунеявная схема Эйлера, чуть ПЕРЕдемпфированная (c = 2.1·√k): ход без
     // перелёта и без «хвоста».
     final c = 2.1 * math.sqrt(_stiffness);
+    final omega = math.sqrt(_stiffness);
     final targetDelta = target - _lastTarget;
     _lastTarget = target;
     // Разворот цели (палец пошёл назад) — гасим накопленный импульс, чтобы
     // пружина не пронесла его через разворот и не толкнула карточку наружу.
     if (targetDelta * _velocity < 0) _velocity = 0;
-    final accel = (target - current) * _stiffness - _velocity * c;
+    // FEED-FORWARD: при ОСОЗНАННОМ свайпе палец едет с ненулевой скоростью, и
+    // чистая пружина отставала бы от него на 2·v/ω (≈23 px на 400 px ширины) —
+    // красная кромка «плыла» за пальцем и догоняла его уже после остановки
+    // («скользит и тормозженно»). Подмешиваем к цели опережение по скорости
+    // пальца: установившееся отставание становится ≈ 0, а высокочастотное
+    // дрожание (короткие разнонаправленные дельты, скорость ~0) по-прежнему
+    // давится пружиной.
+    var eff = target;
+    if (targetDelta > 0) {
+      final lead = (targetDelta / dt) * (2.0 / omega);
+      eff = (target + lead).clamp(0.0, 1.0);
+    }
+    final accel = (eff - current) * _stiffness - _velocity * c;
     _velocity += accel * dt;
     var next = current + _velocity * dt;
 

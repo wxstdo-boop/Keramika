@@ -638,7 +638,8 @@ class Translations {
       'hidePassword': 'Hide code',
       'patchTodos':
           'Remaining to do — autosave and minor tweaks',
-      'patchDeveloping': 'How the app is developing — release by release',
+      'patchDeveloping': 'How the app is developing',
+      'patchRoadmap': 'Minor tweaks, PR in 2027',
       'changeSwipeUp': 'Swipe up on the home screen to refresh',
       'changeAdaGuide':
           'AI guide Ada — a mini chat that creates habits, tasks, alarms, reality checks and meals by itself',
@@ -1563,7 +1564,8 @@ class Translations {
       'hidePassword': 'Скрыть код',
       'patchTodos':
           'Осталось сделать — автосохранение и мелкие доработки',
-      'patchDeveloping': 'Как развивается приложение — от релиза к релизу',
+      'patchDeveloping': 'Как развивается приложение',
+      'patchRoadmap': 'Мелкие доработки, PR в 2027',
       'changeSwipeUp': 'Свайп вверх на главном экране для обновления',
       'changeAdaGuide':
           'ИИ-проводник Ада — мини-чат, который сам создаёт привычки, задачи, будильники, проверки реальности и приёмы пищи',
@@ -2492,7 +2494,8 @@ class Translations {
       'hidePassword': 'Masquer le code',
       'patchTodos':
           'À faire — sauvegarde automatique et petites améliorations',
-      'patchDeveloping': 'Comment l\'application évolue — de version en version',
+      'patchDeveloping': 'Comment l\'application évolue',
+      'patchRoadmap': 'Petites retouches, PR en 2027',
       'changeSwipeUp': 'Glissez vers le haut sur l\'accueil pour actualiser',
       'changeAdaGuide':
           'Guide IA Ada — un mini-chat qui crée lui-même habitudes, tâches, alarmes, vérifications de réalité et repas',

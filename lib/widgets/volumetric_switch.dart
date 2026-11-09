@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
 import '../services/haptics.dart';
 
-/// Переключатель-«стеклянная вмятина» — премиум-объём и плавный ход.
+/// Переключатель-«камень в желобке»: крупный, объёмный, с плавным ходом.
 ///
 /// ОДИН источник движения: трек, шайба и галочка считаются от одного
 /// [AnimationController] и одной кривой, поэтому все слои доезжают
-/// ОДНОВРЕМЕННО — раньше трек/шайба/ядро шли разными таймингами и
-/// переключатель читался «дёрганым».
+/// ОДНОВРЕМЕННО и ход читается цельным, а не «дёрганым».
 ///
 /// ТРЕК
-///   * выключен — спокойная «вмятина» в тон темы (не серая плитка);
-///   * включён — фирменный градиент с мягким свечением primary.
-///   * градиент и тени лерпятся по одному параметру t — фон «течёт», не скачет.
+///   * выключен — ровный нейтральный желобок в тон поверхности;
+///   * включён — сплошной фирменный цвет с мягким свечением.
+///   * цвет и тени лерпятся по одному параметру t — фон «течёт», не скачет.
 ///
 /// ШАЙБА
-///   * выпуклый белый шарик с мягкой контактной тенью, без «ядра»-точки;
+///   * плотный белый круг с мягкой контактной тенью (без радужных градиентов
+///     и световых полос — они читались как «грязь» на маленьком размере);
 ///   * во включённом проступает галочка фирменным цветом;
 ///   * при нажатии мягко «сплющивается» в овал — тактильный отклик;
 ///   * ход тягучий (easeInOutCubic) — докатывается, а не прыгает к краю.
 ///
-/// При переключении — короткий тактильный отклик. API прежний:
+/// При переключении — короткий тактильный отклик. API:
 /// [VolumetricSwitch(value:, onChanged:, activeColor:, scale:)].
 class VolumetricSwitch extends StatefulWidget {
   final bool value;
@@ -32,7 +32,7 @@ class VolumetricSwitch extends StatefulWidget {
   final String? semanticLabel;
 
   /// Масштаб трека/шайбы. 1.0 — базовый (54×32). Значение по умолчанию
-  /// поднято до 1.12: переключатель «объёмнее» и по нему комфортнее попадать
+  /// поднято до 1.15: переключатель «объёмнее» и по нему комфортнее попадать
   /// пальцем. В плотных списках уголка разработчика передают ещё крупнее.
   final double scale;
 
@@ -42,7 +42,7 @@ class VolumetricSwitch extends StatefulWidget {
     this.onChanged,
     this.activeColor,
     this.semanticLabel,
-    this.scale = 1.12,
+    this.scale = 1.15,
   });
 
   @override
@@ -67,8 +67,7 @@ class _VolumetricSwitchState extends State<VolumetricSwitch>
   );
 
   /// Палец на переключателе: шайба «сплющивается» в овал — тактильный
-  /// отклик, как у системных переключателей. Ход при этом не трогаем:
-  /// сплющивание живёт своей короткой анимацией.
+  /// отклик, как у системных переключателей.
   bool _pressed = false;
 
   void _setPressed(bool v) {
@@ -97,25 +96,11 @@ class _VolumetricSwitchState extends State<VolumetricSwitch>
     final active = widget.activeColor ?? scheme.primary;
     final k = widget.scale;
 
-    // Выключенный трек — в тон темы: подмешиваем primaryContainer, чтобы
-    // дорожка читалась как часть поверхности, а не «плавающая серая плитка».
+    // Выключенный желобок: нейтральная поверхность чуть темнее фона — читается
+    // как «пусто», а не как цветная каша. В тёмной теме чуть светлее фона.
     final trackOff = isDark
-        ? Color.lerp(
-            scheme.surfaceContainerHighest,
-            scheme.primaryContainer,
-            0.40,
-          )!
-        : Color.lerp(scheme.surfaceContainerHigh, scheme.primaryContainer, 0.30)!;
-    final offTop = isDark ? trackOff : Color.lerp(Colors.white, trackOff, 0.30)!;
-    final offBottom = isDark
-        ? Color.lerp(trackOff, Colors.black, 0.14)!
-        : Color.lerp(trackOff, Colors.black, 0.05)!;
-
-    // Включённый трек: градиент «стекло» — светлей у верха → primary внизу.
-    final onTop = isDark
-        ? Color.lerp(active, Colors.black, 0.25)!
-        : Color.lerp(Colors.white, active, 0.35)!;
-    final onBottom = active;
+        ? scheme.surfaceContainerHighest
+        : scheme.surfaceContainerHigh;
 
     // Шайба: при нажатии чуть шире и ниже — «сплющилась» под пальцем.
     final thumbW = 26 * k * (_pressed ? 1.14 : 1.0);
@@ -145,135 +130,76 @@ class _VolumetricSwitchState extends State<VolumetricSwitch>
               animation: _t,
               builder: (context, _) {
                 final t = _t.value;
-                // Утопленность сверху: всегда, но глубже в выключенном.
-                final topShadow = Color.lerp(
-                  Colors.black.withValues(alpha: isDark ? 0.35 : 0.18),
-                  Colors.black.withValues(alpha: 0.22),
-                  t,
-                )!;
-                // Свечение primary: 0 в выключенном → сильное во включённом.
-                final glow = active.withValues(alpha: 0.35 * t);
-
                 return Container(
                   width: 54 * k,
                   height: 32 * k,
                   padding: EdgeInsets.all(3 * k),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16 * k),
-                    // Градиент ВСЕГДА на месте, цвета лерпятся — фон «течёт».
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color.lerp(offTop, onTop, t)!,
-                        Color.lerp(offBottom, onBottom, t)!,
-                      ],
-                    ),
-                    // Список теней ВСЕГДА из двух позиций — длина не прыгает,
-                    // лерпятся только alpha/blur.
+                    // Цвет лерпится от нейтрального к фирменному по одному
+                    // параметру t — фон «течёт» вместе с шайбой, не скачет.
+                    color: Color.lerp(trackOff, active, t),
                     boxShadow: [
+                      // Лёгкая внутренняя тень сверху — желобок «утоплен».
                       BoxShadow(
-                        color: topShadow,
+                        color: Colors.black.withValues(
+                          alpha: (isDark ? 0.30 : 0.14) * (1.0 - t) + 0.16 * t,
+                        ),
                         blurRadius: 3 * k,
-                        spreadRadius: 0.5 * k,
-                        offset: Offset(0, -1.5 * k),
+                        spreadRadius: 0.4 * k,
+                        offset: Offset(0, -1.4 * k),
                       ),
+                      // Мягкое свечение фирменного цвета — только во включённом.
                       BoxShadow(
-                        color: glow,
-                        blurRadius: 14 * k,
+                        color: active.withValues(alpha: 0.32 * t),
+                        blurRadius: 13 * k,
                         spreadRadius: -2 * k,
                         offset: Offset.zero,
                       ),
                     ],
                   ),
-                  child: Stack(
-                    children: [
-                      // Днище-«дорожка»: тонкая светлая полоса снизу читается
-                      // как стеклянное дно вмятины.
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: FractionallySizedBox(
-                              heightFactor: 0.16,
-                              widthFactor: 0.72,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(6 * k),
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.transparent,
-                                      Colors.white.withValues(
-                                        alpha: isDark
-                                            ? 0.05 + 0.17 * t
-                                            : 0.28 - 0.06 * t,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                  child: Align(
+                    alignment: Alignment.lerp(
+                      Alignment.centerLeft,
+                      Alignment.centerRight,
+                      t,
+                    )!,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 140),
+                      curve: Curves.easeOut,
+                      width: thumbW,
+                      height: thumbH,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        // Плотный белый круг: в тёмной теме — чуть приглушён,
+                        // чтобы не слепить на тёмном треке.
+                        color: isDark
+                            ? const Color(0xFFF2F3F5)
+                            : Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.34 : 0.28,
                             ),
+                            blurRadius: 5 * k,
+                            spreadRadius: -0.5 * k,
+                            offset: Offset(0, 1.6 * k),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        // Галочка проступает вместе с ходом (Opacity от t):
+                        // состояние видно и без цвета, но не мелькает.
+                        child: Opacity(
+                          opacity: t,
+                          child: Icon(
+                            Icons.check_rounded,
+                            size: 16 * k,
+                            color: active,
                           ),
                         ),
                       ),
-                      // Шайба-«шарик»: белая сфера с контактной тенью и
-                      // проступающей галочкой. Ход считается от той же t —
-                      // шайба едет ровно как фон.
-                      Align(
-                        alignment: Alignment.lerp(
-                          Alignment.centerLeft,
-                          Alignment.centerRight,
-                          t,
-                        )!,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 140),
-                          curve: Curves.easeOut,
-                          width: thumbW,
-                          height: thumbH,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              center: const Alignment(-0.42, -0.46),
-                              radius: 1.35,
-                              colors: isDark
-                                  ? const [Color(0xFFE8E8EC), Color(0xFFB9BCC4)]
-                                  : const [Colors.white, Color(0xFFD9DAE0)],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(
-                                  alpha: isDark ? 0.28 : 0.30,
-                                ),
-                                blurRadius: 5 * k,
-                                spreadRadius: -0.5 * k,
-                                offset: Offset(0, 1.5 * k),
-                              ),
-                              // Световой ободок только в светлой теме: в
-                              // тёмной он читался «блестящей точкой».
-                              if (!isDark)
-                                BoxShadow(
-                                  color: Colors.white.withValues(alpha: 0.60),
-                                  blurRadius: 1 * k,
-                                  spreadRadius: -0.8 * k,
-                                  offset: Offset(0, -1 * k),
-                                ),
-                            ],
-                          ),
-                          child: Center(
-                            // Галочка проступает вместе с ходом (Opacity от t):
-                            // состояние видно и без цвета, но не мелькает.
-                            child: Opacity(
-                              opacity: t,
-                              child: Icon(
-                                Icons.check_rounded,
-                                size: 16 * k,
-                                color: active,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 );
               },
