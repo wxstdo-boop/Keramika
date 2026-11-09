@@ -10,6 +10,7 @@ import '../services/new_year_event_service.dart';
 import '../services/pin_service.dart';
 import '../l10n/translations.dart';
 import '../utils/jank_probe.dart';
+import '../utils/ambient_loop.dart';
 import '../utils/motion_prefs.dart';
 import '../widgets/brand_emblem.dart';
 
@@ -101,9 +102,11 @@ class _LockScreenState extends State<LockScreen>
       vsync: this,
       duration: const Duration(milliseconds: 620),
     );
+    // AmbientVsync режет тики декоративного цикла — на ПИН-экране continuous
+    // paint иначе жрёт raster budget в простое (см. jank_probe).
     _glassLoop = ambientRepeat(
       AnimationController(
-        vsync: this,
+        vsync: AmbientVsync(this),
         duration: const Duration(milliseconds: 3600),
       ),
     );
