@@ -1,4 +1,4 @@
-- Mises à jour fiables : l'APK s'installe via une session PackageInstaller,
-  Play Protect ne le bloque plus
+- Les mises à jour s'installent via une session PackageInstaller, le chemin
+  standard d'auto-mise à jour
 - Animations et transitions plus fluides
 - Divers correctifs et finitions
