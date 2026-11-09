@@ -54,7 +54,7 @@ Keramika — Flutter-приложение с нативным Android-слоем
 | `alarm_scheduler.dart` | Планирование и перепланирование срабатываний |
 | `alarm_service.dart` | CRUD будильников |
 | `update_service.dart` | Проверка GitHub Releases, скачивание APK, SHA-256, живой журнал «Что нового» |
-| `installer.dart` | Установка скачанного APK |
+| `installer.dart` | Установка скачанного APK через сессию PackageInstaller, приём и раздача итога установки |
 | `habit_service.dart` | CRUD привычек, стрики |
 | `task_service.dart` | CRUD задач |
 | `nutrition_service.dart` | Приёмы пищи, нормы, тренды |
@@ -178,6 +178,7 @@ SYSTEM_ALERT_WINDOW                    оверлей Ады
 FOREGROUND_SERVICE (+ specialUse)     процесс во время звонка
 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS  не усыплять будильники
 REQUEST_INSTALL_PACKAGES               автообновление
+ENFORCE_UPDATE_OWNERSHIP               доверенное самообновление (API 34+)
 VIBRATE                               тактильный отклик
 READ_EXTERNAL_STORAGE (maxSdk 32)     выбор файлов для экспорта
 ```

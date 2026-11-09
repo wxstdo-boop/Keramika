@@ -53,6 +53,8 @@ import 'utils/page_transitions.dart';
 import 'utils/snackbar.dart';
 import 'utils/jank_probe.dart';
 import 'services/update_service.dart';
+import 'services/installer.dart';
+import 'services/app_version.dart';
 
 final NotificationService notificationService = NotificationService();
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -197,6 +199,73 @@ void _reportPersistenceFailure(Object error, StackTrace stackTrace) {
 void stopAutoSave() {
   _autoSaveTimer?.cancel();
   _autoSaveTimer = null;
+}
+
+/// Показывает итог самообновления, когда он приходит.
+///
+/// Слушатель глобальный, а не в таблетке «Обновление»: после УСПЕШНОЙ
+/// установки Android подменяет процесс, и виджет, запустивший установку, уже
+/// не существует. Итог прилетает либо push-вызовом, либо pull-запросом при
+/// следующем запуске (см. Installer.listen) — оба пути приходят сюда.
+void _watchInstallOutcome() {
+  if (_watchingInstallOutcome) return;
+  _watchingInstallOutcome = true;
+  Installer.listen();
+  Installer.outcomes.listen((outcome) {
+    if (!outcome.isFailure && !outcome.isSuccess) return;
+    _showInstallOutcome(outcome);
+  });
+}
+
+bool _watchingInstallOutcome = false;
+
+/// Показывает итог, дожидаясь готовности дерева.
+///
+/// На старте результат может прийти ДО первого кадра (pull-запрос уходит
+/// сразу в listen), когда `navigatorKey.currentContext` ещё null. Поэтому
+/// не теряем его, а повторяем попытку в следующих кадрах — пока контекст не
+/// появится.
+void _showInstallOutcome(InstallOutcome outcome, [int attempt = 0]) {
+  final context = navigatorKey.currentContext;
+  if (context == null || !context.mounted) {
+    if (attempt < 120) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showInstallOutcome(outcome, attempt + 1),
+      );
+    }
+    return;
+  }
+  if (outcome.isSuccess) {
+    // Версия в «О приложении» берётся из манифеста — после обновления
+    // подтягиваем её ДО показа, иначе в тексте останется старая.
+    unawaited(
+      AppVersion.refresh().then((version) {
+        final ctx = navigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) return;
+        showBeautifulSnackBar(
+          ctx,
+          message: Translations.t(
+            'updateInstalled',
+            ctx,
+            'Обновлено до v{v}',
+          ).replaceAll('{v}', version),
+          icon: Icons.system_update_alt,
+        );
+      }),
+    );
+  } else {
+    showBeautifulSnackBar(
+      context,
+      message: Translations.t(
+        'updateInstallBlocked',
+        context,
+        'Система заблокировала обновление. Разрешите установку из этого источника и попробуйте снова.',
+      ),
+      icon: Icons.warning_amber_rounded,
+      iconColor: Colors.redAccent,
+      duration: const Duration(seconds: 6),
+    );
+  }
 }
 
 Timer? _autoExportTimer;
@@ -1123,6 +1192,10 @@ Future<void> _startApp() async {
   // В сборке для F-Droid самообновление выключено — проверку не запускаем.
   if (kSelfUpdateEnabled) {
     unawaited(UpdateService.instance.silentDailyCheck());
+    // Слушаем итог самообновления: успех показываем «обновлено», а отказ
+    // системы (Play Protect и т. п.) — понятной подсказкой. В F-Droid
+    // самообновления нет, поэтому и слушатель не нужен.
+    _watchInstallOutcome();
   }
   // Повторный edge-to-edge ПОСЛЕ первого кадра — на MIUI/HyperOS вызов  // до runApp не применяется (Flutter сбрасывает системный UI при старте).
   // Без него сверху остаётся чёрная квадратная полоса статус-бара, и

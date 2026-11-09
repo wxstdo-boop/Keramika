@@ -233,6 +233,43 @@ arm64). Приложение сравнивает сначала `versionName` (
 `versionCode`. Скачанный APK сверяется по SHA-256 из `digest` релиза —
 если `digest` нет, обновление отменяется с `FormatException`.
 
+### Доверенная установка: сессия PackageInstaller, а не ACTION_VIEW
+
+Установку APK запускает НЕ `Intent.ACTION_VIEW` через `FileProvider` (это
+общая «сайдлоад»-дорога, которую Play Protect не доверяет и блокирует
+диалогом «Приложение может быть небезопасно»). Вместо неё — сессия
+`PackageInstaller` (`MainActivity.installViaSession`):
+
+- `SessionParams(MODE_FULL_INSTALL)` + `setAppPackageName(packageName)` —
+  система видит, что приложение ставит само себя;
+- `setInstallReason(INSTALL_REASON_USER)`;
+- на API 31+ `setInstallScenario(INSTALL_SCENARIO_FAST)` и
+  `setRequireUserAction(USER_ACTION_REQUIRED)` (тихая установка без
+  `INSTALL_PACKAGES` всё равно недоступна — показываем системное
+  подтверждение, но как «доверенное»);
+- на API 34+ `setRequestUpdateOwnership(true)` + разрешение
+  `ENFORCE_UPDATE_OWNERSHIP` (protectionLevel `normal`, даётся
+  автоматически). Это и есть «быть владельцем своих обновлений»: система
+  не считает самообновление чужой установкой;
+- `commit()` с `PendingIntent` на `InstallResultReceiver`.
+
+Приёмник вызывается ДВАЖДЫ: сперва `STATUS_PENDING_USER_ACTION` с
+`EXTRA_INTENT` (системный экран «Установить?» — его обязан показать сам
+приёмник), затем настоящий итог. Результат буферизуется в
+`SharedPreferences` (`UpdaterBridge`), потому что после УСПЕШНОЙ установки
+Android подменяет процесс и Dart ещё не подписан. Доставка двухканальная:
+push-вызов `onInstallResult` и pull-метод `consumeInstallResult`
+(`Installer.listen()` + `Installer.outcomes`). Итог показывает глобальный
+слушатель в `main.dart` (`_watchInstallOutcome`), а не таблетка — виджет,
+запустивший установку, к моменту финала уже не существует.
+
+Грабли, на которые не наступать: FileProvider-путь не удалять «за
+ненадобностью» молча — он оставлен в манифесте неэкспортированным; при
+смене ключа подписи старый APK поверх нового не встанет (см. раздел про
+keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показывается как
+ошибка.
+
+
 ## Будильники: инварианты срабатывания
 
 Путь будильника: Dart `notification_service.scheduleAlarm` →
@@ -291,7 +328,7 @@ arm64). Приложение сравнивает сначала `versionName` (
 - **Числа в README/docs должны совпадать с реальностью.** Считаем:
   `find test -name '*.dart' | wc -l` — файлы, `flutter test` — число тестов,
   `find lib/services -name '*.dart' | wc -l` — сервисы. Расходились уже
-  дважды (199→234 теста, 33→39 файлов, 49→56 компонентов).
+  трижды (199→234→245 тестов, 33→39→42 файла, 49→56 компонентов).
 
 ## Токены дизайна и движение
 

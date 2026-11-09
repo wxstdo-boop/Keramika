@@ -3,6 +3,11 @@
     <!-- Установка скачанного APK (автообновление). Android 8+ покажет
          системный экран подтверждения — это и есть «предложение установить». -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Владелец собственных обновлений: с API 34 приложение объявляет себя
+         update owner (см. MainActivity.installViaSession), чтобы система
+         не считала самообновление недоверенной установкой. Разрешение
+         обычное (normal) — выдаётся автоматически, диалога нет. -->
+    <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
@@ -144,8 +149,18 @@
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:exported="false" />
 
-        <!-- FileProvider для установки скачанного APK: раздаёт content://
-             URI на файл в кэше приложения (см. res/xml/file_paths.xml). -->
+        <!-- Результат установки из сессии PackageInstaller (MainActivity.
+             installViaSession). Система присылает сюда статус по
+             PendingIntent — явному интенту на компонент, поэтому
+             intent-filter не нужен; exported=false закрывает приёмник от
+             чужих broadcast'ов. -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
+
+        <!-- FileProvider оставлен для совместимости: установка APK больше
+             через него не идёт (см. PackageInstaller-сессию), но он не
+             экспортирован и ничего не раздаёт без явного grantUriPermission. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

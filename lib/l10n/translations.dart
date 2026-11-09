@@ -46,6 +46,10 @@ class Translations {
           'Local data could not be read or saved. Existing files were not changed.',
       'updateHashMissing':
           'The release has no valid SHA-256 digest. Installation was cancelled.',
+      'updateInstalled': 'Updated to v{v}',
+      'updateInstallBlocked':
+          'The system blocked the update. Allow installs for this app and try again.',
+      'updateInstallCancelled': 'Update cancelled',
       'patchNotes': 'Patch notes',
       'soon': 'Soon',
       'noAlarms': 'No alarms yet',
@@ -966,6 +970,10 @@ class Translations {
           'Не удалось прочитать или сохранить локальные данные. Исходные файлы не изменены.',
       'updateHashMissing':
           'У релиза нет корректного SHA-256. Установка отменена.',
+      'updateInstalled': 'Обновлено до v{v}',
+      'updateInstallBlocked':
+          'Система заблокировала обновление. Разрешите установку из этого источника и попробуйте снова.',
+      'updateInstallCancelled': 'Обновление отменено',
       'patchNotes': 'Список изменений',
       'soon': 'Скоро',
       'noAlarms': 'Будильников пока нет',
@@ -1895,6 +1903,10 @@ class Translations {
           'Impossible de lire ou d’enregistrer les données locales. Les fichiers existants n’ont pas été modifiés.',
       'updateHashMissing':
           'La version ne fournit pas de SHA-256 valide. Installation annulée.',
+      'updateInstalled': 'Mis à jour vers v{v}',
+      'updateInstallBlocked':
+          'Le système a bloqué la mise à jour. Autorisez l’installation depuis cette source et réessayez.',
+      'updateInstallCancelled': 'Mise à jour annulée',
       'patchNotes': 'Notes de mise à jour',
       'soon': 'Bientôt',
       'noAlarms': 'Aucune alarme pour l’instant',

@@ -67,6 +67,10 @@ Neo Store, Droid-ify и других клиентах F-Droid.
   самообновление выключено, поэтому разрешение не используется по назначению.
   Можно предложить ревьюеру удалить его в рецепте (`sed -i '/REQUEST_INSTALL_PACKAGES/d'
   android/app/src/main/AndroidManifest.xml`), если это будет замечанием.
+  Вместе с ним в F-Droid-сборке не нужно и `ENFORCE_UPDATE_OWNERSHIP` (объявление
+  себя владельцем обновлений для `PackageInstaller`): вырезать оба —
+  `sed -i -e '/REQUEST_INSTALL_PACKAGES/d' -e '/ENFORCE_UPDATE_OWNERSHIP/d'
+  android/app/src/main/AndroidManifest.xml`.
 - **`third_party/`** — два локальных форка плагинов лежат прямо в репозитории
   (не git-submodules). F-Droid это устраивает: код доступен, собирается из
   исходников.
