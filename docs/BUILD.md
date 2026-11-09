@@ -7,7 +7,7 @@
 | Flutter | 3.47.5 (эта версия закреплена в CI) |
 | Dart | 3.12+ (тянется из Flutter) |
 | JDK | 17 или 21 |
-| Android SDK | compileSdk **36** |
+| Android SDK | compileSdk **37** |
 | Android device | API 26+ (Android 8.0) |
 
 Проверить окружение:

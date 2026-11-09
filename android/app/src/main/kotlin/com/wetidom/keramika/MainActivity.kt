@@ -868,11 +868,21 @@ class MainActivity : FlutterActivity() {
      *    приложение ВЛАДЕЛЬЦЕМ своих обновлений. Тогда для нас сохраняется
      *    быстрый путь без лишних напоминаний, а сторонний установщик
      *    обновить приложение уже не сможет;
+     *  * setRequireUserAction(USER_ACTION_NOT_REQUIRED) (API 31+) плюс
+     *    разрешение UPDATE_PACKAGES_WITHOUT_USER_ACTION просят систему НЕ
+     *    показывать подтверждение для обновления уже установленного
+     *    приложения (в AOSP PackageInstallerSession это ветка isSelfUpdate).
+     *    Условия строгие: только ОБНОВЛЕНИЕ, только API 34+ и достаточно
+     *    высокий targetSdk. Если они не выполнены, система присылает
+     *    STATUS_PENDING_USER_ACTION, и [InstallResultReceiver] показывает
+     *    системный экран как раньше — установка не ломается, просто требует
+     *    одного нажатия;
      *  * итог приходит не «файр-энд-форгет», а статусом в
      *    [InstallResultReceiver], поэтому сбой установки виден в интерфейсе.
      *
-     * Разрешение ENFORCE_UPDATE_OWNERSHIP в манифесте — обычное (normal):
-     * система выдаёт его автоматически, запрашивать у пользователя нечего.
+     * Разрешения ENFORCE_UPDATE_OWNERSHIP и
+     * UPDATE_PACKAGES_WITHOUT_USER_ACTION в манифесте — обычные (normal):
+     * система выдаёт их автоматически, запрашивать у пользователя нечего.
      */
     private fun installViaSession(file: File) {
         val installer = packageManager.packageInstaller
@@ -884,8 +894,14 @@ class MainActivity : FlutterActivity() {
         params.setInstallReason(PackageManager.INSTALL_REASON_USER)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             params.setInstallScenario(PackageManager.INSTALL_SCENARIO_FAST)
+            // Просим тихую установку: система сама решит, можно ли обойтись
+            // без подтверждения (AOSP PackageInstallerSession.
+            // computeUserActionRequirement). Если нельзя — пришлёт
+            // STATUS_PENDING_USER_ACTION, и [InstallResultReceiver] покажет
+            // системный экран. USER_ACTION_REQUIRED здесь был бы гарантией
+            // лишнего диалога на каждом обновлении.
             params.setRequireUserAction(
-                PackageInstaller.SessionParams.USER_ACTION_REQUIRED,
+                PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED,
             )
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

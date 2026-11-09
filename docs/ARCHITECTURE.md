@@ -156,11 +156,16 @@ PIN там хранится только как PBKDF2-HMAC-SHA-256 verifier с 
 
 | Файл | Роль |
 |---|---|
-| `MainActivity.kt` | Точка входа, инициализация плагинов, каналов уведомлений |
-| `AlarmReceiver.kt` | `BroadcastReceiver` на срабатывание будильника и на `BOOT_COMPLETED` |
+| `MainActivity.kt` | Точка входа, инициализация плагинов, каналов уведомлений, установка APK |
+| `AlarmSchedulerPlugin.kt` | Планирование `setAlarmClock`, манифест догона, `BootReceiver`-мост |
+| `AlarmReceiver.kt` | `BroadcastReceiver` на срабатывание будильника |
 | `AlarmForegroundService.kt` | Удержание процесса, пока звонок играет |
+| `BootReceiver.kt` | Перепланировка будильников после перезагрузки (из манифеста) |
+| `InstallResultReceiver.kt` | Итог установки из сессии `PackageInstaller` |
+| `ScreenReaderService.kt` | Сервис доступности (чтение экрана) |
+| `AlarmLog.kt` | Чёрный ящик срабатываний (`alarm_fire_log.txt`) |
 
-Третий сервис — `OverlayService` из форка `flutter_overlay_window`,
+Отдельно — `OverlayService` из форка `flutter_overlay_window`,
 объявлен с `foregroundServiceType="specialUse"`.
 
 ### Разрешения Android
@@ -179,6 +184,7 @@ FOREGROUND_SERVICE (+ specialUse)     процесс во время звонк�
 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS  не усыплять будильники
 REQUEST_INSTALL_PACKAGES               автообновление
 ENFORCE_UPDATE_OWNERSHIP               доверенное самообновление (API 34+)
+UPDATE_PACKAGES_WITHOUT_USER_ACTION    тихая самопереустановка (API 31+)
 VIBRATE                               тактильный отклик
 READ_EXTERNAL_STORAGE (maxSdk 32)     выбор файлов для экспорта
 ```
@@ -186,7 +192,7 @@ READ_EXTERNAL_STORAGE (maxSdk 32)     выбор файлов для экспо�
 ## Локализация
 
 `lib/l10n/translations.dart` — один файл со словарями `en`, `ru`, `fr`
-(148 КБ). Ключи лежат в одном месте, поэтому перевод нельзя рассыпать по
+(≈172 КБ). Ключи лежат в одном месте, поэтому перевод нельзя рассыпать по
 экранам. Рядом `locale_provider.dart` переключает язык в рантайме.
 
 Системные диалоги (например, отказ в разрешении) переводятся отдельно —

@@ -1,0 +1,4 @@
+- Trusted in-app updates: the APK now installs through a PackageInstaller
+  session, so Play Protect no longer treats it as a side-load and blocks it
+- Smoother animations and transitions across the app
+- Various fixes and polish

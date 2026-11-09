@@ -9,11 +9,10 @@
   <p>
     <a href="https://github.com/wxstdo-boop/Keramika/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/wxstdo-boop/Keramika/ci.yml?label=CI&color=%232ea44f" /></a>
     <a href="https://github.com/wxstdo-boop/Keramika/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wxstdo-boop/Keramika?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=%23c2185b" /></a>
-    <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
+    <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2ea44f" /></a>
     <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.47.5-02569a?logo=flutter&logoColor=white" />
     <img alt="Dart" src="https://img.shields.io/badge/Dart-3.12-0175C2?logo=dart&logoColor=white" />
     <img alt="Android" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" />
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-2ea44f" />
   </p>
 </div>
 
@@ -86,13 +85,19 @@
 - **Умеет отменять**: «Отменить» откатывает последнее действие («Привычка X удалена»)
 - Работает в **окошке поверх других приложений** — можно говорить с Адой, не
   открывая приложение
-- Несколько провайдеров на выбор (OpenRouter, Pollinations, Agnes и другие),
+- Несколько провайдеров на выбор (OpenRouter, Kilo, OVHcloud, Agnes и другие),
   ключ хранится только на устройстве
 - Аккуратно переживает ошибки сети и 4xx от провайдера
 
 ### 🛠 Система
 - **Автообновление** прямо из приложения: проверяет GitHub Releases, сверяет
-  SHA-256 и ставит APK поверх старого — данные (PIN, будильники) сохраняются
+  SHA-256 и ставит APK поверх старого — данные (PIN, будильники) сохраняются.
+  Установка идёт штатной сессией `PackageInstaller`: приложение объявляет себя
+  владельцем своих обновлений (`setRequestUpdateOwnership`) и просит систему
+  обойтись без подтверждения (`USER_ACTION_NOT_REQUIRED`). Когда условия
+  системы выполнены (это обновление уже установленного приложения, Android 14+
+  и свежий targetSdk), установка проходит тихо; иначе показывается обычный
+  системный экран «Установить?»
 - **«Что нового»** тянется из живых релизов, а не из зашитого списка: экран
   никогда не отстаёт от установленной версии
 - Material You: цвета тянутся из системной темы, есть тёмная тема
@@ -156,9 +161,14 @@ lib/
 └── widgets/           56 UI-компонентов
 
 android/app/src/main/kotlin/com/wetidom/keramika/
-├── MainActivity.kt             Точка входа Android
+├── MainActivity.kt             Точка входа Android, каналы плагинов
+├── AlarmSchedulerPlugin.kt     Планирование setAlarmClock, догон, манифест
 ├── AlarmReceiver.kt            Приём срабатывания будильника
-└── AlarmForegroundService.kt   Удержание процесса во время звонка
+├── AlarmForegroundService.kt   Удержание процесса во время звонка
+├── BootReceiver.kt             Перепланировка будильников после перезагрузки
+├── InstallResultReceiver.kt    Итог установки APK (сессия PackageInstaller)
+├── ScreenReaderService.kt      Доступность: чтение экрана
+└── AlarmLog.kt                 Чёрный ящик срабатываний (для диагностики)
 
 third_party/
 ├── flutter_overlay_window/      Форк: регистрирует плагины в оверлее Ады

@@ -1,0 +1,4 @@
+- Mises à jour fiables : l'APK s'installe via une session PackageInstaller,
+  Play Protect ne le bloque plus
+- Animations et transitions plus fluides
+- Divers correctifs et finitions
