@@ -294,7 +294,7 @@ class _SplashScreenState extends State<SplashScreen>
                                             width: 94,
                                             height: 94,
                                             fit: BoxFit.contain,
-                                            filterQuality: FilterQuality.high,
+                                            filterQuality: FilterQuality.medium,
                                           )
                                         : Image.asset(
                                             'assets/keramika.png',
@@ -302,7 +302,7 @@ class _SplashScreenState extends State<SplashScreen>
                                             height: 94,
                                             cacheWidth: 512,
                                             cacheHeight: 512,
-                                            filterQuality: FilterQuality.high,
+                                            filterQuality: FilterQuality.medium,
                                             isAntiAlias: true,
                                             fit: BoxFit.contain,
                                           ),
@@ -342,16 +342,21 @@ class _SplashScreenState extends State<SplashScreen>
                                 child: RepaintBoundary(
                                   child: AnimatedBuilder(
                                     animation: _shine,
-                                    builder: (context, _) => CustomPaint(
-                                      painter: _PaintSplatPainter(
-                                        t: _shine.value,
-                                        radius: _kRadius,
-                                        // На светлой теме кровавые пятна по
-                                        // белому читаются слабо — поэтому
-                                        // яркость задаётся темой.
-                                        strength: isDark ? 0.78 : 1.10,
-                                      ),
-                                    ),
+                                    child: const SizedBox.expand(),
+                                    builder: (context, child) {
+                                      final t = _shine.value;
+                                      if (t <= 0.001 || t >= 0.999) {
+                                        return child!;
+                                      }
+                                      return CustomPaint(
+                                        painter: _PaintSplatPainter(
+                                          t: t,
+                                          radius: _kRadius,
+                                          strength: isDark ? 0.78 : 1.10,
+                                        ),
+                                        child: child,
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
@@ -604,6 +609,10 @@ class _PaintSplatPainter extends CustomPainter {
   /// (см. [_ShineText]): ава и текст забрызганы одним материалом.
   static const Color _blood = Color(0xFFB3121F);
 
+  /// Кэш контуров клякс: форма зависит только от размера плиты и phase,
+  /// не от [t]. Без кэша 6×30 сегментов пересчитывались каждый кадр блика.
+  static final Map<int, Path> _blobPathCache = <int, Path>{};
+
   /// Кляксы: (доля x, доля y, доля радиуса, фаза формы). Разнесены по плите
   /// и мелкие — пятна читаются ОТДЕЛЬНЫМИ брызгами от удара кистью, а не
   /// одной лужей: крупное центральное пятно сливало соседей в кашу.
@@ -635,9 +644,16 @@ class _PaintSplatPainter extends CustomPainter {
   });
 
   /// Неровное пятно: полярный контур с двумя синусоидальными модуляциями.
+  /// Контур кэшируется по (квантованный радиус + phase): за проход блика
+  /// размер плиты не меняется, поэтому Path строится один раз, а не 60+ раз.
   Path _blob(Offset c, double r, double phase) {
+    final key = Object.hash((r * 1000).round(), (phase * 1000).round());
+    final cached = _blobPathCache[key];
+    if (cached != null) {
+      return cached.shift(c);
+    }
     final p = Path();
-    const steps = 30;
+    const steps = 24;
     for (var i = 0; i <= steps; i++) {
       final a = i / steps * math.pi * 2;
       final wob =
