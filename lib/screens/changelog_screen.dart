@@ -140,29 +140,21 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            Translations.t('patchNotes', context),
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
-              fontWeight: Weights.bold,
-            ),
-          ),
-          const SizedBox(height: Spacing.xxs),
-          // Плашка — это СПИСОК ИЗМЕНЕНИЙ: сначала заголовок «Список
-          // изменений», затем подзаголовок «Как развивается приложение»,
-          // а под ним — мелким текстом план («Мелкие доработки, PR в 2027»).
+          // Заголовок плашки — сразу «Как развивается приложение» (без
+          // отдельной строки «Список изменений»), а под ним мелким текстом
+          // план работ.
           Text(
             Translations.t(
               'patchDeveloping',
               context,
               'How the app is developing',
             ),
-            style: theme.textTheme.bodyMedium?.copyWith(
+            style: theme.textTheme.titleMedium?.copyWith(
               color: theme.colorScheme.onPrimaryContainer,
-              fontWeight: Weights.semibold,
+              fontWeight: Weights.bold,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: Spacing.xxs),
           Text(
             Translations.t(
               'patchRoadmap',

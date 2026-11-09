@@ -11,8 +11,10 @@ import 'package:keramika/widgets/section_pill.dart';
 /// палец вправо ведёт к ПОСЛЕДНЕМУ разделу (позиция = выбор, как в
 /// приоритете). На отпускании выбирается ближайший раздел.
 ///
-/// Жест стартует сразу от касания (`DragStartBehavior.down`) — отдельного
-/// «рывка за порог slop» не требуется.
+/// Жест использует `DragStartBehavior.start`: точка старта берётся в момент
+/// РАСПОЗНАВАНИЯ жеста (после touch-slop), а не в момент касания. Иначе
+/// первый же update приносил позицию «касание + slop», и камень прыгал на
+/// ~18 px в первом кадре — тот самый скачок при лёгкой тяге.
 ///
 /// Проверяем ИНВАРИАНТЫ, а не абсолютную геометрию: точный размер дорожки
 /// в тестовом дереве отличается от боевого, а вот направление, монотонность,
@@ -51,12 +53,22 @@ void main() {
     final gesture = await tester.startGesture(center);
     await tester.pump();
 
-    // Небольшой шаг вправо сдвигает камень относительно исходной позиции.
+    // Первый сдвиг за порог распознавания (touch-slop) камень НЕ двигает и
+    // НЕ прыгает: точка старта берётся здесь же, а не в точке касания.
     await gesture.moveBy(const Offset(30, 0));
     await tester.pump();
+    final atSlop = sectionDragPage.value;
+    expect(
+      atSlop ?? 0.0,
+      lessThan(0.05),
+      reason: 'на пороге распознавания камень ещё стоит — без скачка',
+    );
 
+    // Осознанный сдвиг дальше ведёт камень к последующим разделам.
+    await gesture.moveBy(const Offset(40, 0));
+    await tester.pump();
     final first = sectionDragPage.value;
-    expect(first, isNotNull, reason: 'жест стартует сразу, без порога slop');
+    expect(first, isNotNull, reason: 'после порога жест ведёт камень');
     expect(
       first!,
       greaterThan(0),
@@ -79,15 +91,15 @@ void main() {
     );
     await tester.pump();
 
-    // Камень догоняет палец логарифмически (resistance-тикер): после
-    // каждого шага даём 60 кадров на сходимость, и только потом сверяем
-    // монотонность.
+    // Камень ведётся напрямую за пальцем (без догоняющего тикера), поэтому
+    // монотонность проверяем сразу после каждого шага.
+    // Первый сдвиг лишь распознаёт жест (порог slop) — камень ещё стоит.
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
     var prev = sectionDragPage.value ?? sectionRailPage.value;
     for (var i = 0; i < 3; i++) {
       await gesture.moveBy(const Offset(20, 0));
-      for (var f = 0; f < 60; f++) {
-        await tester.pump();
-      }
+      await tester.pump();
       final now = sectionDragPage.value!;
       expect(now, greaterThan(prev));
       prev = now;
@@ -123,12 +135,11 @@ void main() {
       tester.getCenter(find.byType(SectionPill)),
     );
     await tester.pump();
+    // Первый сдвиг распознаёт жест, затем большой ход до правого края.
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
     await gesture.moveBy(const Offset(400, 0));
-    // Камень догоняет палец логарифмически (resistance-тикер): даём
-    // сглаживанию докатиться до правого края (зажим) за 60 кадров.
-    for (var f = 0; f < 60; f++) {
-      await tester.pump();
-    }
+    await tester.pump();
     expect(
       sectionDragPage.value,
       closeTo((count - 1).toDouble(), 0.01),

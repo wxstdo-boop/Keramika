@@ -236,10 +236,17 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 450),
             curve: Curves.easeInOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            // Габариты РОВНО как у соседних категорий (CategoryChip.height и
+            // та же набивка): раньше «+ Новая категория» была чуть выше и
+            // выбивалась из ряда.
+            height: CategoryChip.height,
+            padding: const EdgeInsets.symmetric(
+              horizontal: CategoryChip.hPad,
+            ),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(999),
               border: Border.all(
+                width: CategoryChip.borderWidth,
                 color: theme.colorScheme.outline.withValues(alpha: 0.5),
               ),
             ),
@@ -406,16 +413,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   duration: const Duration(milliseconds: 220),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0.25, 0),
-                        end: Offset.zero,
-                      ).animate(anim),
-                      child: child,
-                    ),
-                  ),
+                  // Только КРОССФЕЙД: раньше подпись въезжала справа
+                  // (Offset(0.25, 0)) и читалась как «дёргает вправо».
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
                   child: _dueAt == null
                       ? const SizedBox.shrink(key: ValueKey('due_none'))
                       : Text(
@@ -917,7 +918,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
 /// Компактная чип-кнопка срока: выбранная заливается primary, остальные —
 /// спокойные. 180 мс easeOutCubic — переключение читается мягко.
-class _DeadlineChip extends StatelessWidget {
+class _DeadlineChip extends StatefulWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -931,25 +932,51 @@ class _DeadlineChip extends StatelessWidget {
   });
 
   @override
+  State<_DeadlineChip> createState() => _DeadlineChipState();
+}
+
+class _DeadlineChipState extends State<_DeadlineChip> {
+  /// Палец на чипе: чип заметно «вдавливается» и подсвечивается — отдача,
+  /// которой раньше не было. Listener только слушает, тап остаётся у
+  /// GestureDetector.
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed == v) return;
+    setState(() => _pressed = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return PressScale(
-      // Та же приятная отдача, что у чипов категории (0.96 / 400 мс).
-      pressedScale: 0.96,
-      duration: const Duration(milliseconds: 400),
+    final selected = widget.selected;
+    return Listener(
+      onPointerDown: (_) => _setPressed(true),
+      onPointerUp: (_) => _setPressed(false),
+      onPointerCancel: (_) => _setPressed(false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
           Haptics.select();
-          onTap();
+          widget.onTap();
         },
-        child: AnimatedContainer(
+        child: AnimatedScale(
+          // Отчётливое «вдавливание» (0.92) — заметно глазу, в отличие от
+          // прежних 0.96 на мелком чипе.
+          scale: _pressed ? 0.92 : 1.0,
+          duration: const Duration(milliseconds: 130),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: selected ? cs.primary : cs.surfaceContainerHighest,
+            color: selected
+                ? cs.primary
+                : _pressed
+                ? cs.primary.withValues(alpha: 0.14)
+                : cs.surfaceContainerHighest,
             border: Border.all(
               color: selected
                   ? cs.primary
@@ -960,16 +987,16 @@ class _DeadlineChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (icon != null) ...[
+              if (widget.icon != null) ...[
                 Icon(
-                  icon,
+                  widget.icon,
                   size: 14,
                   color: selected ? cs.onPrimary : cs.onSurfaceVariant,
                 ),
                 const SizedBox(width: 5),
               ],
               Text(
-                label,
+                widget.label,
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -977,6 +1004,7 @@ class _DeadlineChip extends StatelessWidget {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

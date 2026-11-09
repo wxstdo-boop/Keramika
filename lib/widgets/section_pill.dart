@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
@@ -237,24 +236,15 @@ class _SectionPillState extends State<SectionPill>
   /// Никаких Timer'ов и второго setState.
   late final AnimationController _edgeSettle;
 
-  /// Логарифмический догон камня за пальцем (resistance) ведёт КАЖДЫЙ кадр
-  /// отдельным тикером: камень и экраны, запертые 1:1 к нему, едут
-  /// МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — без рывка и без рассинхрона
-  /// (то самое «перемещение ultra-быстрое зажатием»).
-  late final Ticker _smoothTicker;
-
   /// Куда палец увёл камень (дробная страница).
   double _dragPage = 0;
-  // Сглаженный камень: догоняет цель-палец логарифмически (resistance).
+  // Последнее записанное положение камня (для снапшота волны на отпускании).
   double _dragSmooth = 0;
   double _dragGrabOffset = 0;
 
-  /// Отметка времени прошлого кадра резистанса — по ней считается dt.
-  Duration _lastSmoothElapsed = Duration.zero;
-
   /// Последняя «принятая» X-координата пальца (px по дорожке). Дедзона:
   /// микросдвиги меньше [_dragDeadzone] игнорируются, поэтому дрожание руки
-  /// при удержании не будит тикер и не двигает карусель.
+  /// при удержании не двигает карусель.
   double _dragFingerX = 0;
 
   /// Дедзона пальца, px по дорожке таблетки (~304 px). На дорожке камень
@@ -312,51 +302,11 @@ class _SectionPillState extends State<SectionPill>
             _lastWave = 0;
           }
         });
-    // Логарифмический догон камня за пальцем идёт КАЖДЫЙ КАДР отдельным
-    // тикером (resistance). Камень и экран, запертый 1:1 к нему, из-за
-    // этого едут МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — «тяжёлое» движение без
-    // рывка и без рассинхрона.
-    _smoothTicker = createTicker(_onSmoothTick);
   }
 
-  /// Кадровый тик резистанса: камень догоняет цель-палец логарифмически и
-  /// пишет своё сглаженное значение в общий канал. КРИТИЧНО: как только
-  /// догоняющий хвост становится незаметным (&lt;0.0005 страницы ≈ 0.15 px
-  /// на дорожке), тикер ОСТАНАВЛИВАЕТСЯ — иначе он каждые ~16 мс пишет
-  /// sectionDragPage, и Listenable.merge в билдере пересобирает таблетку,
-  /// а Home jumpTo читает keep-alive экраны — отсюда «под удержанием
-  /// дёргает экраны / доводит». При каждом новом dragUpdate тикер
-  /// перезапускается (см. [_dragUpdate]).
-  void _onSmoothTick(Duration elapsed) {
-    if (!_dragging) {
-      _smoothTicker.stop();
-      return;
-    }
-    // Шаг сглаживания считается по РЕАЛЬНОМУ времени кадра, а не «за кадр»:
-    // фиксированные 0.30/кадр на 120 Гц догоняли вдвое быстрее, чем на 60 Гц —
-    // камень и экраны ехали с разной скоростью на разных экранах («дёргано»).
-    // Приводим коэффициент к базовым 16.7 мс: dt-инвариант.
-    final dtMs = (elapsed - _lastSmoothElapsed).inMicroseconds / 1000.0;
-    _lastSmoothElapsed = elapsed;
-    final k = dtMs <= 0 ? 0.38 : (1.0 - math.pow(1.0 - 0.38, dtMs / 16.7));
-    _dragSmooth += (_dragPage - _dragSmooth) * k;
-    final diff = (_dragPage - _dragSmooth).abs();
-    if (diff < 0.0005) {
-      // Дошёл — фиксируем ровно на цели и остановили тикер: палец застыл,
-      // и каждый кадр писать sectionDragPage вредно (пересборка билдера +
-      // слушатель Home = дёрганье). Новый сдвиг пальца разбудит тикер.
-      _dragSmooth = _dragPage;
-      sectionDragPage.value = _dragSmooth;
-      _smoothTicker.stop();
-      return;
-    }
-    sectionDragPage.value = _dragSmooth;
-  }
 
   @override
   void dispose() {
-    _smoothTicker.stop();
-    _smoothTicker.dispose();
     _edgeSettle.dispose();
     // Экран мог закрыться прямо во время тяги — не оставляем Home с
     // висящей ненулевой страницей.
@@ -400,11 +350,6 @@ class _SectionPillState extends State<SectionPill>
     _dragFingerX = details.localPosition.dx + _dragGrabOffset;
     _dragNearest = _dragPage.round();
     sectionDragPage.value = _dragPage;
-    // Кадровый резистанс стартует: камень начинает догонять палец
-    // логарифмически на каждом кадре. Метку времени сбрасываем — у
-    // перезапущенного тикера отсчёт начинается с нуля.
-    _lastSmoothElapsed = Duration.zero;
-    _smoothTicker.start();
   }
 
   void _dragUpdate(DragUpdateDetails details, int count) {
@@ -453,23 +398,14 @@ class _SectionPillState extends State<SectionPill>
     // «Объём до конца»: тяга наливается весь ход пальца за край, поэтому
     // камень дышит на всю длину жеста. Нормированная доля (-0.9..0.9).
     _edgePull = (over / 90.0).clamp(-0.9, 0.9);
-    // Палец задаёт ЦЕЛЬ камня (точная позиция по дорожке). Сам сдвиг
-    // ведёт кадровый тикер [_onSmoothTick]: камень догоняет цель
-    // логарифмически (resistance) и пишет сглаженное значение в
-    // [sectionDragPage] на каждом кадре. Экраны, запертые 1:1 к нему,
-    // из-за этого едут МЕДЛЕННЕЕ и ПЛАВНЕЕ пальца — без рывка и без
-    // рассинхрона (то самое «ультрабыстрый перелёт зажатием»).
+    // Палец задаёт позицию камня (точная доля по дорожке), она пишется в
+    // [sectionDragPage] НАПРЯМУЮ: палец уже прошёл дедзону, сглаживать
+    // больше нечего. Каждый лишний слой запаздывания только отставал от
+    // пальца и в конце «догонял» скачком. Экран, запертый к этому каналу
+    // 1:1, едет РОВНО под пальцем без лага.
     _dragPage = (frac * (count - 1)).clamp(0.0, (count - 1).toDouble());
-    // Кадровый резистанс: если тикер остановился на сходимости (см.
-    // [_onSmoothTick]), новый сдвиг пальца обязан его разбудить — иначе
-    // «зажать и пошевелить» не двигало бы камень (тикер был уже
-    // остановлен и не писал sectionDragPage).
-    if (!_smoothTicker.isActive) {
-      // Перезапуск: у тикера отсчёт elapsed идёт с нуля — метку времени тоже
-      // обнуляем, иначе первый кадр посчитает отрицательный dt.
-      _lastSmoothElapsed = Duration.zero;
-      _smoothTicker.start();
-    }
+    _dragSmooth = _dragPage;
+    sectionDragPage.value = _dragPage;
     // Направление «резинки» НЕПРЕРЫВНОЕ (см. stretchDir в
     // _buildStoneRow): знак _edgePull — под пальцем, знак _releasePull
     // (затухающий по _edgeSettle) — в полёте. Дискретный гистерезис
@@ -479,23 +415,18 @@ class _SectionPillState extends State<SectionPill>
       _dragNearest = nearest;
       Haptics.light();
     }
-    // sectionDragPage ведёт тикер — здесь не пишем, чтобы не было скачка.
   }
 
   void _dragEnd(int count) {
     if (!_dragging) return;
     _dragging = false;
-    _smoothTicker.stop();
     // Захватываем величину transit-растяжки в точке, где отпустили:
     // по этой величины камень будет ПЛАВНО затухать (см. _releasing в
     // билдере), а не резким броском «складываться» в форму, когда живая
     // пружина долетает до угла.
     //
-    // Берём [_dragSmooth], а НЕ [_dragPage]: под пальцем камень едет с
-    // лёгким логарифмическим отставанием, и на быстром жесте цель пальца
-    // успевает уехать вперёд. Снапшот волны от цели не совпадал с формой,
-    // которую реально видит глаз, — в первый кадр отпускания таблетка
-    // дёргалась («резкий возврат формы»). Фиксируем ровно то, что на экране.
+    // Фиксируем волну ровно по той позиции, что сейчас на экране, — в
+    // первый кадр отпускания таблетка не дёргается («резкий возврат формы»).
     _releasing = true;
     _releaseWave = _waveAt(_dragSmooth, count);
     _lastWave = _releaseWave;
@@ -515,7 +446,6 @@ class _SectionPillState extends State<SectionPill>
   void _dragCancel() {
     if (!_dragging) return;
     _dragging = false;
-    _smoothTicker.stop();
     // Отмена (палец ушёл не по сценарию): то же плавное затухание
     // transit-растяжки от зафиксированной величины.
     _releasing = true;
@@ -830,7 +760,7 @@ class _SectionPillState extends State<SectionPill>
             // работает вовсе».
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              dragStartBehavior: DragStartBehavior.down,
+              dragStartBehavior: DragStartBehavior.start,
               onHorizontalDragStart: (d) => _dragStart(d, count),
               onHorizontalDragUpdate: (d) => _dragUpdate(d, count),
               onHorizontalDragEnd: (_) => _dragEnd(count),

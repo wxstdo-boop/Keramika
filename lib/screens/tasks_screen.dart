@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
 import '../utils/markdown_text.dart' show sanitizeTextForWrap;
+import '../widgets/drag_proxy.dart';
 import '../widgets/swipe_to_delete.dart';
 import '../utils/page_transitions.dart';
 import '../utils/snackbar.dart';
@@ -19,7 +20,6 @@ import '../widgets/smooth_hover.dart';
 import '../widgets/animated_strike_text.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/sliding_picker.dart';
-import '../widgets/stagger_in.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/premium_empty_state.dart';
@@ -523,7 +523,7 @@ class _TasksScreenState extends State<TasksScreen>
         // спокойно и предсказуемо, а не «улетает» рывком.
         autoScrollerVelocityScalar: 18,
         proxyDecorator: (child, index, animation) =>
-            _taskDragProxy(child, theme, animation),
+            buildDragProxy(child, theme, animation),
         onReorderItem: (oldLocal, newLocal) {
           // Локальный индекс (в полке) → глобальный (в полном списке),
           // чтобы reorder сохранял порядок и при активном фильтре категории.
@@ -873,55 +873,6 @@ class _TasksScreenState extends State<TasksScreen>
     );
   }
 
-  Widget _taskDragProxy(
-    Widget child,
-    ThemeData theme,
-    Animation<double> animation,
-  ) {
-    // ТО ЖЕ, что buildDragProxy: перетаскиваемый элемент монтируется
-    // в оверлее ЗАНОВО, поэтому без подавления входной каскад StaggerIn
-    // проигрывался бы прямо во время драга — текст «прыгал» и менял
-    // положение, а после приземления возвращался. Плюс без инкремента
-    // SmoothHover.dragProxyCount живая карточка не узнавала о драге,
-    // оставалась увеличенной и «дублировалась» рядом с прокси.
-    StaggerIn.suppressEntrance = true;
-    SmoothHover.dragProxyCount.value++;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      StaggerIn.suppressEntrance = false;
-      SmoothHover.dragProxyCount.value--;
-    });
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, _) {
-        final t = animation.value;
-        final scale = 1.0 + 0.03 * t;
-        return Transform.scale(
-          scale: scale,
-          child: Material(
-            elevation: 2 + 10 * t,
-            shadowColor: theme.colorScheme.primary.withValues(alpha: 0.25),
-            borderRadius: BorderRadius.circular(20),
-            color: theme.colorScheme.surface,
-            child: Container(
-              // foregroundDecoration — обводка ПОВЕРХ, не участвует в layout
-              // (как в buildDragProxy): размеры прокси = размеры карточки,
-              // текст не перетекает на другие строки при драге.
-              foregroundDecoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: theme.colorScheme.primary.withValues(
-                    alpha: 0.15 + 0.55 * t,
-                  ),
-                  width: 1.5 + t,
-                ),
-              ),
-              child: child,
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   /// Цвет приоритета: ярче и контрастнее.
   Color _priorityColor(int p, ThemeData theme) {

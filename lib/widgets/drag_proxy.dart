@@ -38,9 +38,14 @@ Widget buildDragProxy(
     StaggerIn.suppressEntrance = false;
     SmoothHover.dragProxyCount.value--;
   });
+  // ТЕНЬ ФИКСИРОВАНА. Анимация `Material.elevation` каждый кадр заставляет
+  // движок ПЕРЕСЧИТЫВАТЬ тень (blur + заливка) на каждом кадре драга — на
+  // слабом GPU это и читалось как «иконки при ведении пальцем дёргаются».
+  // Высоту ставим один раз; от «подъёма» остаётся только лёгкий scale и
+  // обводка, которые дёшевы.
   final proxy = AnimatedBuilder(
     animation: animation,
-    builder: (context, _) {
+    builder: (context, child) {
       final raw = animation.value;
       // easeOut совпадает с кривой drop-анимации позиции — масштаб и
       // скольжение движутся в одном темпе, без «двойного» движения.
@@ -50,7 +55,7 @@ Widget buildDragProxy(
       return Transform.scale(
         scale: scale,
         child: Material(
-          elevation: 2 + 8 * t,
+          elevation: 8,
           shadowColor: theme.colorScheme.primary.withValues(alpha: 0.20),
           borderRadius: BorderRadius.circular(borderRadius),
           color: theme.colorScheme.surface,
@@ -71,6 +76,9 @@ Widget buildDragProxy(
         ),
       );
     },
+    // child передаём отдельно: карточка НЕ пересобирается на каждом кадре
+    // драга — AnimatedBuilder лишь переиспользует готовое поддерево.
+    child: RepaintBoundary(child: child),
   );
   if (trackY == null) return proxy;
   return _ProxyPositionReporter(notifier: trackY, child: proxy);
@@ -106,11 +114,18 @@ class _RenderProxyPositionReporter extends RenderProxyBox {
 
   _RenderProxyPositionReporter(this.notifier);
 
+  /// Порог сообщения о сдвиге, px. Заголовки «расступаются» по Y прокси, и
+  /// дёргать их на каждый пиксель незачем: слушатели (ValueListenableBuilder
+  /// на каждом заголовке + AnimatedOpacity) пересобираются на КАЖДОМ
+  /// уведомлении. Шаг в 4 px снимает большую часть пересборок при драге —
+  /// именно это читалось как «драг привычек тормозит».
+  static const double _step = 4.0;
+
   @override
   void paint(PaintingContext context, Offset offset) {
     super.paint(context, offset);
     final y = localToGlobal(Offset.zero).dy;
-    if (y == _lastY) return;
+    if (_lastY != null && (y - _lastY!).abs() < _step) return;
     _lastY = y;
     // Уведомляем вне фазы paint (post-frame): слушатели делают setState,
     // а во время перерисовки это было бы нарушением.

@@ -44,9 +44,13 @@ class _DueDatePickerDialog extends StatefulWidget {
 }
 
 class _DueDatePickerDialogState extends State<_DueDatePickerDialog> {
+  /// Высота одной клетки календаря при ширине диалога 360 и набивке 18 px:
+  /// (360 - 36) / 7 ≈ 46. По ней же фиксируем высоту сетки на 6 недель —
+  /// диалог не меняет размер при смене месяца.
+  static const double _cellSize = 46.0;
+
   late DateTime _month;
   late DateTime _selected;
-  int _direction = 1;
 
   @override
   void initState() {
@@ -57,7 +61,6 @@ class _DueDatePickerDialogState extends State<_DueDatePickerDialog> {
 
   void _shiftMonth(int delta) {
     setState(() {
-      _direction = delta;
       _month = DateTime(_month.year, _month.month + delta, 1);
     });
   }
@@ -132,20 +135,15 @@ class _DueDatePickerDialogState extends State<_DueDatePickerDialog> {
                   onTap: () => _shiftMonth(-1),
                 ),
                 Expanded(
+                  // Название месяца меняется КРОССФЕЙДОМ: горизонтальный
+                  // слайд читался как «дёргает вправо» (новое имя въезжало
+                  // сбоку, а старое уезжало, и текст на миг «двоился»).
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     switchInCurve: Curves.easeOutCubic,
                     switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: Offset(0.12 * _direction, 0),
-                          end: Offset.zero,
-                        ).animate(anim),
-                        child: child,
-                      ),
-                    ),
+                    transitionBuilder: (child, anim) =>
+                        FadeTransition(opacity: anim, child: child),
                     child: Text(
                       local.formatMonthYear(_month),
                       key: ValueKey('${_month.year}-${_month.month}'),
@@ -183,21 +181,20 @@ class _DueDatePickerDialogState extends State<_DueDatePickerDialog> {
               ],
             ),
             const SizedBox(height: 4),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: Offset(0.10 * _direction, 0),
-                    end: Offset.zero,
-                  ).animate(anim),
-                  child: child,
-                ),
-              ),
-              child: GridView.builder(
+            // ВЫСОТА СЕТКИ ФИКСИРОВАНА под максимальные 6 недель: при
+            // переходе между месяцами число недель меняется (5↔6), и без
+            // этого диалог «скукоживался»/раздувался скачком — экран
+            // дёргался. Постоянная высота + кроссфейд без слайда: смена
+            // месяца идёт спокойно и стабильно.
+            SizedBox(
+              height: 6 * _cellSize,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, anim) =>
+                    FadeTransition(opacity: anim, child: child),
+                child: GridView.builder(
                 key: ValueKey('${_month.year}-${_month.month}'),
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -252,6 +249,7 @@ class _DueDatePickerDialogState extends State<_DueDatePickerDialog> {
                     ),
                   );
                 },
+                ),
               ),
             ),
             const SizedBox(height: 10),
