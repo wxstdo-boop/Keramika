@@ -98,6 +98,10 @@ class AlarmReceiver : BroadcastReceiver() {
                     title = shownTitle,
                     body = shownBody,
                     payload = payload,
+                    // id здесь = alarm.id.hashCode. По нему адресная
+                    // остановка (удаление/выключение будильника во время
+                    // звонка) гасит именно этот звонок.
+                    ringCode = id,
                 )
                 logToFile(context, "RING START id=$id started=$ringStarted")
             }

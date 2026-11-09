@@ -432,6 +432,8 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
           return SwipeToDelete(
             key: ValueKey('item_rc_${check.id}'),
             dismissKey: ValueKey('dismiss_${check.id}'),
+            // Фон удаления = границы карточки (стандартный margin [Card] 4 px).
+            inset: const EdgeInsets.all(4),
             confirmDismiss: (_) async {
               return await showDialog<bool>(
                 context: context,

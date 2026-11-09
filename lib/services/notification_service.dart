@@ -840,6 +840,11 @@ class NotificationService extends ChangeNotifier {
     if (!_supported) return;
     await AlarmScheduler.cancelAlarmClock(alarmId.hashCode);
     await _plugin.cancel(id: alarmId.hashCode);
+    // Если будильник ЗВОНИТ прямо сейчас — гасим и сам звонок. Отмена
+    // AlarmManager и уведомления звук не останавливает: его крутит
+    // AlarmForegroundService, который иначе играл бы до 5-минутного
+    // таймаута («удалил будильник, а он всё равно звенит»).
+    await AlarmScheduler.stopRingingAlarm(alarmId.hashCode);
   }
 
   Future<void> scheduleRealityChecks(

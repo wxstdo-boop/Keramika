@@ -464,7 +464,9 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           // Ключ на ВНЕШНЕМ виджете: ReorderableListView берёт key от него.
           key: ValueKey('item_alarm_${alarm.id}'),
           dismissKey: ValueKey('dismiss_${alarm.id}'),
-          horizontalInset: 0,
+          // Фон удаления = границы карточки: у неё margin снизу 8 (зазор
+          // между будильниками). Без этого красная плашка выше карточки.
+          inset: const EdgeInsets.only(bottom: 8),
           confirmDismiss: (_) async {
             return await showDialog<bool>(
               context: context,
@@ -775,7 +777,9 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                           key: ValueKey('item_timer_${timer.id}'),
                           dismissKey: ValueKey('dismiss_${timer.id}'),
                           borderRadius: 16,
-                          horizontalInset: 12,
+                          // Фон удаления = границы карточки (у неё горизонтальный
+                          // margin 12, см. Card ниже).
+                          inset: const EdgeInsets.symmetric(horizontal: 12),
                           confirmDismiss: (_) async => await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(

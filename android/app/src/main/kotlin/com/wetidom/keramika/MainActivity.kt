@@ -298,6 +298,20 @@ class MainActivity : FlutterActivity() {
                     clearAlarmWakeFlags()
                     result.success(true)
                 }
+                "stopAlarmSoundFor" -> {
+                    // Удаление/выключение КОНКРЕТНОГО будильника, пока он
+                    // звонит. Отмены AlarmManager и уведомления недостаточно:
+                    // звук крутит AlarmForegroundService, и без этого он
+                    // продолжал бы играть до 5-минутного таймаута — «удалил
+                    // будильник, а он всё равно звенит». Сервис глушит звук
+                    // только если звонит именно этот будильник.
+                    val code = call.argument<Int>("id") ?: -1
+                    AlarmForegroundService.stopFor(applicationContext, code)
+                    // Уведомление этого будильника тоже убираем.
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(code)
+                    result.success(true)
+                }
                 "getTimeZone" -> {
                     // Returns IANA timezone ID (e.g. "Europe/Moscow") from the system
                     result.success(java.util.TimeZone.getDefault().id)

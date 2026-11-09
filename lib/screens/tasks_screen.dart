@@ -626,6 +626,9 @@ class _TasksScreenState extends State<TasksScreen>
     return SwipeToDelete(
       key: cardKey,
       dismissKey: ValueKey('dismiss_${task.id}'),
+      // Фон удаления = границы карточки: у [Card] стандартный margin 4 px,
+      // без этого красная плашка выходила за карточку со всех сторон.
+      inset: const EdgeInsets.all(4),
       confirmDismiss: (_) async {
         return await showDialog<bool>(
           context: context,

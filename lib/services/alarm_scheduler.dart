@@ -63,6 +63,19 @@ class AlarmScheduler {
     }
   }
 
+  /// Гасит звонок КОНКРЕТНОГО будильника, если он звонит прямо сейчас
+  /// ([code] = `alarm.id.hashCode`). Нужно при удалении/выключении будильника
+  /// во время звонка: отмена AlarmManager и уведомления звук не останавливает.
+  /// Нативный сервис глушит звук только если звонит именно этот будильник.
+  static Future<void> stopRingingAlarm(int code) async {
+    if (!_isAndroid) return;
+    try {
+      await const MethodChannel(
+        'com.wetidom.keramika/alarm_payload',
+      ).invokeMethod('stopAlarmSoundFor', {'id': code});
+    } catch (_) {}
+  }
+
   /// Когда по мнению системы должен сработать ближайший взведённый
   /// будильник (`AlarmManager.getNextAlarmClock`). 0 — не взведено ничего.
   /// Единственный способ из приложения проверить, что постановка реально

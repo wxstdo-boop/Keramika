@@ -278,21 +278,22 @@ const _lastAutoExportKey = 'last_auto_export_at';
 // Нативка слушает saveToDownloads на канале alarm_payload (MainActivity).
 // Раньше здесь был канал '.../backup' — вызов падал в MissingPluginException,
 // и бэкап молча писался в невидимую папку Android/data вместо Download.
-late final MethodChannel _backupChannel;
-// Канал сигналов жизненного цикла Activity → Dart: onUserLeaveHint —
-// пользователь реально покидает приложение (Home/«недавние»/другое
-// приложение), но НЕ при открытии шторки и системных диалогов.
-late final MethodChannel _lifecycleChannel;
-
-/// Инициализация каналов: только для Android/iOS.
-void initChannels() {
-  if (kIsWeb) return;
-  _backupChannel = const MethodChannel('com.wetidom.keramika/alarm_payload');
-  _lifecycleChannel = const MethodChannel('com.wetidom.keramika/lifecycle');
-  _alarmPayloadChannel = const MethodChannel(
-    'com.wetidom.keramika/alarm_payload',
-  );
-}
+//
+// Каналы создаём СРАЗУ, константами. Раньше они были `late final` и
+// присваивались в `initChannels()`, но её никто не вызывал: первое же
+// обращение к `_alarmPayloadChannel` в `_startApp()` падало с
+// LateInitializationError, `setMethodCallHandler` не срабатывал — и тап по
+// уведомлению будильника в уже запущенном приложении не открывал экран
+// задачи (событие onNewAlarmPayload просто не долетало до Dart).
+// `MethodChannel` создаётся дёшево и не трогает платформу до первого invoke,
+// поэтому создание на web безопасно.
+final MethodChannel _backupChannel = const MethodChannel(
+  'com.wetidom.keramika/alarm_payload',
+);
+// Канал сигналов жизненного цикла Activity → Dart (onNewIntent и т.п.).
+final MethodChannel _lifecycleChannel = const MethodChannel(
+  'com.wetidom.keramika/lifecycle',
+);
 
 /// Включает автоэкспорт: разовый прогон (если нужно) + почасовой таймер.
 /// [silent] — true для фоновых прогонов (старт/возврат в приложение),
@@ -596,7 +597,12 @@ Future<String> _performAutoExport({bool showSnack = false}) async {
 }
 
 String? _pendingAlarmPayload;
-late final MethodChannel _alarmPayloadChannel;
+// Канал будильника: getAlarmPayload / stopAlarmSound / onNewAlarmPayload.
+// Создаётся СРАЗУ (см. комментарий у [_backupChannel]) — иначе первый invoke
+// падал с LateInitializationError и обработчик onNewAlarmPayload не вставал.
+final MethodChannel _alarmPayloadChannel = const MethodChannel(
+  'com.wetidom.keramika/alarm_payload',
+);
 
 Future<void> _handleNotificationTap(String? payload) async {
   if (payload == null) return;
@@ -1276,34 +1282,42 @@ Future<void> _startApp() async {
       }
     } catch (_) {}
   }
+}
 
-  // Слушаем новые payload'и когда приложение уже запущено (onNewIntent)
-  // и сигнал о перезагрузке телефона (onBootCompleted).
-  if (!kIsWeb) {
-    _alarmPayloadChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onNewAlarmPayload') {
-        // Если WakeTaskScreen уже виден — игнорируем повторный payload
-        // (пользователь тапнул по уведомлению, пока будильник уже звонит).
-        if (_wakeScreenShowing) return;
-        final payload = call.arguments as String?;
-        if (payload != null && payload.isNotEmpty) {
-          _handleNotificationTap(payload);
-        }
-      } else if (call.method == 'onBootCompleted') {
-        // Телефон перезагрузился (или приложение обновилось) — система
-        // стёрла ВСЕ одноразовые setAlarmClock. Перепланируем будильники
-        // и проверки реальности, иначе они молча пропадут до ручного
-        // открытия приложения.
-        await rescheduleAllNotifications();
+/// Слушает сигналы нативной стороны, пока приложение живо: новый payload
+/// будильника при `onNewIntent` (тап по уведомлению, когда приложение уже
+/// запущено) и `onBootCompleted` (перезагрузка телефона/обновление APK).
+///
+/// Регистрируется при монтировании [KeramikaAppState] — раньше это стояло в
+/// [_startApp] ПОСЛЕ `runApp` и молча не срабатывало: канал был `late final`
+/// и первый же `setMethodCallHandler` падал с LateInitializationError, из-за
+/// чего тап по уведомлению не открывал экран задачи. Каналы теперь создаются
+/// сразу (см. [_alarmPayloadChannel]), а обработчик ставится на монтировании.
+void _listenForAlarmPayloads() {
+  if (kIsWeb) return;
+  _alarmPayloadChannel.setMethodCallHandler((call) async {
+    if (call.method == 'onNewAlarmPayload') {
+      // Если WakeTaskScreen уже виден — игнорируем повторный payload
+      // (пользователь тапнул по уведомлению, пока будильник уже звонит).
+      if (_wakeScreenShowing) return;
+      final payload = call.arguments as String?;
+      if (payload != null && payload.isNotEmpty) {
+        await _handleNotificationTap(payload);
       }
-    });
+    } else if (call.method == 'onBootCompleted') {
+      // Телефон перезагрузился (или приложение обновилось) — система
+      // стёрла ВСЕ одноразовые setAlarmClock. Перепланируем будильники
+      // и проверки реальности, иначе они молча пропадут до ручного
+      // открытия приложения.
+      await rescheduleAllNotifications();
+    }
+  });
 
-    // Канал жизненного цикла от нативной стороны. Раньше по нему приходили
-    // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
-    // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
-    // invoke не падал в MissingPluginException.
-    _lifecycleChannel.setMethodCallHandler((call) async {});
-  }
+  // Канал жизненного цикла от нативной стороны. Раньше по нему приходили
+  // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
+  // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
+  // invoke не падал в MissingPluginException.
+  _lifecycleChannel.setMethodCallHandler((call) async {});
 }
 
 /// Поведение скролла для всего приложения: iOS-стиль «баунса»/натяжения
@@ -1618,6 +1632,9 @@ class KeramikaAppState extends State<KeramikaApp>
     _locked = widget.initialLocked;
     aiLockScreenVisible.value = _locked;
     WidgetsBinding.instance.addObserver(this);
+    // Слушаем payload'и будильника, пока приложение живо (тап по уведомлению
+    // при работающем приложении → onNewIntent → onNewAlarmPayload).
+    _listenForAlarmPayloads();
     // Polling: проверяем каждые 2 сек, жив ли оверлей Ады.
     // Lifecycle resumed НЕ fire при закрытии системного оверлея
     // (main app уже в resumed), поэтому нужен polling.

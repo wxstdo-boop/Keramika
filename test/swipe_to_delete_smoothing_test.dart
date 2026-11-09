@@ -165,4 +165,76 @@ void main() {
       reason: 'возврат занимает заметное время, а не один кадр',
     );
   });
+
+  testWidgets('красная плашка совпадает по высоте с карточкой, а не с обёрткой', (
+    tester,
+  ) async {
+    // Карточка с нижним зазором (как у будильников/привычек: margin снизу 8).
+    // Обёртка Dismissible по высоте = карточка + margin. Если фон удаления
+    // рисовать во всю обёртку, плашка окажется выше карточки на величину
+    // margin — «неровный красный фон». `inset` повторяет margin карточки,
+    // поэтому высота фона обязана совпасть с высотой карточки.
+    const cardMargin = EdgeInsets.only(bottom: 8);
+    await tester.pumpWidget(
+      LocaleProvider(
+        locale: const Locale('ru'),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 400,
+                child: SwipeToDelete(
+                  dismissKey: const ValueKey('d'),
+                  inset: cardMargin,
+                  child: Card(
+                    margin: cardMargin,
+                    child: const SizedBox(
+                      height: 80,
+                      child: Center(child: Text('card')),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Тянем, чтобы фон стал видимым и отрисовался с реальными размерами.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('card')),
+    );
+    await gesture.moveBy(const Offset(-160, 0));
+    await tester.pump();
+
+    // `find.byType(Card)` даёт внешний бокс виджета ВМЕСТЕ с margin
+    // (88 = 80 контента + 8 снизу), а рисуется карточка в области без margin
+    // (80). Фон удаления обязан совпасть именно с нарисованной областью.
+    final cardOuter = tester.getSize(find.byType(Card));
+    final paintedCardHeight = cardOuter.height - cardMargin.bottom;
+    final bgSize = tester.getSize(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).gradient is LinearGradient,
+      ),
+    );
+    expect(
+      bgSize.height,
+      moreOrLessEquals(paintedCardHeight, epsilon: 0.5),
+      reason: 'фон удаления должен быть вровень с карточкой, без её margin',
+    );
+    // И фон НЕ растянут на всю обёртку (иначе был бы выше карточки).
+    expect(
+      bgSize.height,
+      lessThan(cardOuter.height),
+      reason: 'фон не должен включать margin карточки',
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
 }

@@ -40,9 +40,13 @@ void main() {
   const pluginChannel = MethodChannel(
     'dexterous.com/flutter/local_notifications',
   );
+  // Канал будильника (MainActivity): stopAlarmSoundFor глушит звонок
+  // удалённого/выключенного будильника.
+  const payloadChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
 
   final nativeCalls = <MethodCall>[];
   final pluginCalls = <MethodCall>[];
+  final payloadCalls = <MethodCall>[];
 
   void mockChannels({bool schedulerFails = false}) {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -62,11 +66,17 @@ void main() {
         });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(fullscreenChannel, (call) async => true);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(payloadChannel, (call) async {
+          payloadCalls.add(call);
+          return true;
+        });
   }
 
   setUp(() async {
     nativeCalls.clear();
     pluginCalls.clear();
+    payloadCalls.clear();
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
     mockChannels();
@@ -110,6 +120,8 @@ void main() {
         .setMockMethodCallHandler(fullscreenChannel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pluginChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(payloadChannel, null);
   });
 
   bool isAndroid() => defaultTargetPlatform == TargetPlatform.android;
@@ -150,6 +162,32 @@ void main() {
     // Отмена того, чего нет, — обычная ситуация (пользователь удалил
     // будильник, а уведомление осталось). Она не должна ронять приложение.
     await expectLater(service.cancelAlarm('missing-id'), completes);
+  });
+
+  test('отмена будильника глушит звонок, если он звонит сейчас', () async {
+    final service = NotificationService();
+
+    await service.cancelAlarm('alarm-test-1');
+
+    if (!isAndroid()) {
+      // Вне Android нативный сервис звонка не запускается.
+      expect(payloadCalls, isEmpty);
+      return;
+    }
+    // Отмена AlarmManager и уведомления звонок не гасит — его крутит
+    // AlarmForegroundService. Без stopAlarmSoundFor будильник продолжал бы
+    // звенеть до 5-минутного таймаута («удалил, а он всё равно звенит»).
+    final stop = payloadCalls.where((c) => c.method == 'stopAlarmSoundFor');
+    expect(
+      stop.isNotEmpty,
+      isTrue,
+      reason: 'отмена будильника должна глушить нативный звонок',
+    );
+    expect(
+      stop.first.arguments,
+      {'id': 'alarm-test-1'.hashCode},
+      reason: 'глушится звонок именно этого будильника',
+    );
   });
 
   test('сбой нативного канала не пробрасывается наружу', () async {

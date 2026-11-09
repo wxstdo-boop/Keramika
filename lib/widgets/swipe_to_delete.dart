@@ -27,9 +27,13 @@ class SwipeToDelete extends StatefulWidget {
   final Duration? movementDuration;
   final double borderRadius;
 
-  /// Горизонтальный отступ карточки: фон удаления рисуется в тех же
-  /// границах, чтобы красная плашка не «заезжала» за боковые края.
-  final double horizontalInset;
+  /// Отступ фона удаления от границ [Dismissible]. Фон рисуется в тех же
+  /// границах, что и САМА карточка, а не в границах обёртки: у [Card] есть
+  /// собственный `margin` (например, зазор между будильниками — 8 px снизу),
+  /// и он входит в размер ребёнка. Без этого отступа красная плашка выше
+  /// карточки на величину её margin — «неровный фон» на коротких карточках.
+  /// Передавай сюда ТОТ ЖЕ margin, что стоит у [Card].
+  final EdgeInsetsGeometry inset;
 
   const SwipeToDelete({
     super.key,
@@ -39,7 +43,7 @@ class SwipeToDelete extends StatefulWidget {
     this.confirmDismiss,
     this.movementDuration,
     this.borderRadius = 20,
-    this.horizontalInset = 0,
+    this.inset = EdgeInsets.zero,
   });
 
   @override
@@ -70,7 +74,7 @@ class _SwipeToDeleteState extends State<SwipeToDelete> {
       onDismissed: widget.onDismissed,
       onUpdate: (details) => _progress.value = details.progress,
       background: Padding(
-        padding: EdgeInsets.symmetric(horizontal: widget.horizontalInset),
+        padding: widget.inset,
         // Фон удаления изолирован от перерисовки содержимого карточки.
         child: RepaintBoundary(
           child: ValueListenableBuilder<double>(

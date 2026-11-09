@@ -1065,7 +1065,8 @@ class _HabitsScreenState extends State<HabitsScreen>
       // Ключ обязан быть уникальным в пределах всего поддерева,
       // поэтому используем сам id привычки — он одинаков для Flat и Section.
       dismissKey: ValueKey('dismiss_${habit.id}'),
-      horizontalInset: 0,
+      // Фон удаления = границы карточки (у неё margin снизу 8, см. Card ниже).
+      inset: const EdgeInsets.only(bottom: 8),
       confirmDismiss: (direction) async {
         final confirmed = await showDialog<bool>(
           context: context,

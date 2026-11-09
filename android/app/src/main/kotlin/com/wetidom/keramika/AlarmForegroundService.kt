@@ -46,6 +46,11 @@ class AlarmForegroundService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var vibrating = false
 
+    /// Код (alarm_id.hashCode) будильника, который звонит СЕЙЧАС.
+    /// Нужен, чтобы удаление/выключение ОДНОГО будильника глушило звонок
+    /// только если звонит именно он, а не любой другой.
+    private var ringingCode: Int = -1
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -66,6 +71,15 @@ class AlarmForegroundService : Service() {
     private inner class StopReceiver : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             if (intent.action == ACTION_STOP) {
+                // Адресная остановка: если пришёл код будильника, гасим
+                // ТОЛЬКО когда звонит именно он. Удаление или выключение
+                // одного будильника не должно глушить другой, звенящий
+                // параллельно.
+                if (intent.hasExtra("ring_code") &&
+                    intent.getIntExtra("ring_code", 0) != ringingCode
+                ) {
+                    return
+                }
                 stopEverything()
                 stopSelf()
             }
@@ -74,6 +88,11 @@ class AlarmForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            if (intent.hasExtra("ring_code") &&
+                intent.getIntExtra("ring_code", 0) != ringingCode
+            ) {
+                return START_NOT_STICKY
+            }
             stopEverything()
             stopSelf(startId)
             return START_NOT_STICKY
@@ -82,6 +101,10 @@ class AlarmForegroundService : Service() {
         // foreground-уведомление ОБЯЗАНО появиться до истечения ~10 с после
         // startForegroundService — иначе система убьёт процесс.
         startRingingForeground(intent)
+
+        // Запоминаем, чей это звонок: по нему адресная остановка решает,
+        // гасить ли текущий звук (см. StopReceiver / stopFor).
+        ringingCode = intent?.getIntExtra("ring_code", -1) ?: -1
 
         val soundName = intent?.getStringExtra("sound_name") ?: "alarm_default"
         val customPath = intent?.getStringExtra("custom_sound_path")
@@ -404,6 +427,7 @@ class AlarmForegroundService : Service() {
             title: String,
             body: String,
             payload: String,
+            ringCode: Int = -1,
         ): Boolean {
             val i = Intent(ctx, AlarmForegroundService::class.java).apply {
                 putExtra("sound_name", soundName)
@@ -411,6 +435,7 @@ class AlarmForegroundService : Service() {
                 putExtra("title", title)
                 putExtra("body", body)
                 putExtra("payload", payload)
+                putExtra("ring_code", ringCode)
                 if (!customPath.isNullOrEmpty()) putExtra("custom_sound_path", customPath)
             }
             return try {
@@ -440,6 +465,24 @@ class AlarmForegroundService : Service() {
             try {
                 val i = Intent(ctx, AlarmForegroundService::class.java).apply {
                     action = ACTION_STOP
+                }
+                ctx.sendBroadcast(i)
+            } catch (_: Exception) {}
+        }
+
+        /**
+         * Остановить звонок КОНКРЕТНОГО будильника ([ringCode] =
+         * `alarm_id.hashCode`). Нужно, когда пользователь удаляет или
+         * выключает будильник ПОКА он звонит: отмена AlarmManager и
+         * уведомления звонок не гасит — сервис продолжал бы играть до
+         * [MAX_RING_MS] (5 минут). Сервис сам решит, гасить ли текущий звук,
+         * сравнив [ringCode] со своим (см. StopReceiver).
+         */
+        fun stopFor(ctx: Context, ringCode: Int) {
+            try {
+                val i = Intent(ctx, AlarmForegroundService::class.java).apply {
+                    action = ACTION_STOP
+                    putExtra("ring_code", ringCode)
                 }
                 ctx.sendBroadcast(i)
             } catch (_: Exception) {}

@@ -209,4 +209,45 @@ void main() {
       expect(await AlarmScheduler.consumeFiredOneShots(), isEmpty);
     });
   });
+
+  group('остановка звонка удалённого будильника', () {
+    // Канал alarm_payload (MainActivity): stopAlarmSoundFor глушит
+    // AlarmForegroundService, если звонит именно этот будильник.
+    const payloadChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
+    final payloadCalls = <MethodCall>[];
+
+    setUp(() {
+      payloadCalls.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(payloadChannel, (call) async {
+            payloadCalls.add(call);
+            return true;
+          });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(payloadChannel, null);
+    });
+
+    test('stopRingingAlarm шлёт id удалённого будильника нативно', () async {
+      await AlarmScheduler.stopRingingAlarm(4242);
+
+      if (!isAndroid()) {
+        // Вне Android мост молча выходит (нет нативного сервиса звонка).
+        expect(payloadCalls, isEmpty);
+        return;
+      }
+      expect(payloadCalls.single.method, 'stopAlarmSoundFor');
+      expect(payloadCalls.single.arguments, {'id': 4242});
+    });
+
+    test('сбой канала не роняет вызов', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(payloadChannel, (call) async {
+            throw PlatformException(code: 'FAIL');
+          });
+      await expectLater(AlarmScheduler.stopRingingAlarm(1), completes);
+    });
+  });
 }
