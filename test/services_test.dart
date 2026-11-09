@@ -685,6 +685,38 @@ void main() {
       expect(UpdateService.parseReleaseNotes(body), isEmpty);
     });
 
+    test('убирает markdown-акценты и хвостовую пунктуацию', () {
+      const body = '''
+* **Плавность**: убрал рывок окна выхода.
+* `AnimatedStrikeText` больше не пересчитывает layout,
+* *Мелкая* правка;
+''';
+      expect(UpdateService.parseReleaseNotes(body), [
+        'Плавность: убрал рывок окна выхода',
+        'AnimatedStrikeText больше не пересчитывает layout',
+        'Мелкая правка',
+      ]);
+    });
+
+    test('служебные коммиты не попадают в заметки', () {
+      const body = '''
+* release: v1.6.112+45184
+* Merge pull request #17 from x/y
+* ci: починил lint job
+* chore(deps): bump actions/checkout
+* Плавность экрана привычек
+''';
+      expect(UpdateService.parseReleaseNotes(body), ['Плавность экрана привычек']);
+    });
+
+    test('дубликаты пунктов схлопываются', () {
+      const body = '''
+* Плавность окна выхода
+* плавность окна выхода
+''';
+      expect(UpdateService.parseReleaseNotes(body), ['Плавность окна выхода']);
+    });
+
     test('собирает запись релиза: версия, дата, пункты', () {
       final entry = UpdateService.parseRelease({
         'tag_name': 'v1.6.104+45176',

@@ -388,10 +388,19 @@ class _ExitCapsuleButtonState extends State<_ExitCapsuleButton> {
   Widget build(BuildContext context) {
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => setState(() => _pressed = true),
+      // Прогреваем размытый снимок фона ещё ДО тапа: палец только коснулся
+      // кнопки, а снимок слоя и blur уже считаются на растровом потоке.
+      // К моменту onTap растр готов, и открытие окна не дёргается.
+      onPointerDown: (_) {
+        setState(() => _pressed = true);
+        _prewarmExitBackdrop(lockExitBackdrop);
+      },
       onPointerUp: (_) => setState(() => _pressed = false),
       onPointerCancel: (_) => setState(() => _pressed = false),
-      child: GestureDetector(
+      child: MouseRegion(
+        // Desktop/web: курсор на кнопке — тоже повод прогреть снимок.
+        onEnter: (_) => _prewarmExitBackdrop(lockExitBackdrop),
+        child: GestureDetector(
         onTap: widget.onExit,
         child: AnimatedScale(
           scale: _pressed ? 0.94 : 1.0,
@@ -437,6 +446,7 @@ class _ExitCapsuleButtonState extends State<_ExitCapsuleButton> {
             ),
           ),
         ),
+        ),
       ),
     );
   }
@@ -449,23 +459,32 @@ class _ExitCapsuleButtonState extends State<_ExitCapsuleButton> {
 Future<void> _showExitDialog(
   BuildContext context,
   AnimationController glassLoop,
+  ValueNotifier<ui.Image?> backdrop,
 ) async {
   final cs = Theme.of(context).colorScheme;
   final isDark = Theme.of(context).brightness == Brightness.dark;
   // Одна длительность на вход и на выход — её же ждёт задержка перед
   // SystemNavigator.pop() в кнопке «Выйти».
   const glassMs = 380;
-  // Снимок берём СИНХРОННО и сразу: готовый размытый растр лежит в нотифаере
-  // до первого кадра окна, поэтому фон уходит в расфокус ВМЕСТЕ с появлением
-  // шайбы, а не «догоняет» его через кадр-два (раньше асинхронный снимок
-  // приходил с опозданием, и размытие читалось рывком).
-  final backdrop = ValueNotifier<ui.Image?>(_captureBlurredBackdrop());
+  // Снимок УЖЕ снят и размыт заранее (кнопка «Выйти» прогревает его, пока
+  // палец только тянется к ней) — здесь только забираем готовый растр.
+  // Раньше снимок делался в самом тапе: `toImageSync` строит сцену и копирует
+  // кадр прямо на UI-потоке, ровно в момент нажатия — отсюда «дёрганое»
+  // открытие и просадка всей проги. Теперь тап не делает никакой тяжёлой
+  // работы: окно открывается из готового растра.
   // Фон замораживаем НЕ мгновенно, а когда размытая копия уже полностью
   // накрыла ПИН-экран (конец въезда окна). Если остановить цикл медальона
   // прямо в момент тапа, вращение «ключа» обрывается на виду — виден рывок.
   // Под полностью непрозрачной копией остановка не видна, а кадры цикл
   // перестаёт тратить ровно тогда, когда это уже безопасно.
   var frozen = false;
+  // Подстраховка: если прогрев не успел (тап сразу после входа на ПИН-экран),
+  // доснимаем фон АСИНХРОННО, уже после открытия окна — оно покажется на
+  // затемнении и мягко «доразмоется», когда растр будет готов. Главное — сам
+  // тап не делает тяжёлой работы, поэтому открытие не дёргается.
+  if (backdrop.value == null) {
+    _prewarmExitBackdrop(backdrop);
+  }
   final freezeTimer = Timer(
     MotionPrefs.shouldReduceMotion
         ? Duration.zero
@@ -773,18 +792,23 @@ Future<void> _showExitDialog(
 /// Возвращает `null`, если снимок не удался (тогда окно покажется на одном
 /// затемнении — без размытия, но и без ошибки).
 ///
-/// Снимок и размытие делаются СИНХРОННО ([toImageSync] / [Picture.toImageSync]):
-/// асинхронные `toImage`/`Picture.toImage` — это GPU-readback, который
-/// стопорит растровый поток ровно в момент открытия окна, и переход читался
-/// как рывок на старте анимации. Синхронные версии отдают кадр из уже
-/// отрисованного слоя без ожидания и без просадки.
-ui.Image? _captureBlurredBackdrop() {
+/// Снимок и размытие делаются АСИНХРОННО ([toImage] / [Picture.toImage]) и
+/// ЗАРАНЕЕ, пока пользователь ещё только тянется к «Выйти» (см.
+/// [_prewarmExitBackdrop]): к моменту тапа растр уже готов, поэтому сам тап
+/// не делает тяжёлой работы. Синхронные [toImageSync] здесь были ошибкой:
+/// они строят сцену и копируют кадр прямо на UI-потоке в момент нажатия —
+/// открытие окна дёргалось, а вся прога проседала. Асинхронный `toImage`
+/// делает ту же работу на растровом потоке и не трогает UI-поток.
+///
+/// Возвращает `null`, если снимок не удался (тогда окно покажется на одном
+/// затемнении — без размытия, но и без ошибки).
+Future<ui.Image?> _captureBlurredBackdrop() async {
   try {
     // Снимок берётся из последнего ОТРИСОВАННОГО растра слоя: к моменту тапа
     // по «Выйти» фон уже нарисован, лишний кадр не нужен.
     final obj = lockBackgroundKey.currentContext?.findRenderObject();
     if (obj is! RenderRepaintBoundary) return null;
-    final src = obj.toImageSync(pixelRatio: 0.5);
+    final src = await obj.toImage(pixelRatio: 0.5);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     // sigma задана в пикселях ПОЛОВИННОГО растра: 6 × 2 = 12 логических —
@@ -795,8 +819,11 @@ ui.Image? _captureBlurredBackdrop() {
       ui.Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
     );
     final picture = recorder.endRecording();
-    final blurred = picture.toImageSync(src.width, src.height);
-    // Отдаём исходники, оставляем только результат.
+    final blurred = await picture.toImage(src.width, src.height);
+    // Отдаём исходники ТОЛЬКО после того, как растеризация завершилась:
+    // `dispose` на изображении/картинке, чья растеризация ещё идёт, роняет
+    // кадр при отрисовке («Cannot clone a disposed image») — из-за этого фон
+    // и мигал. Теперь оба `await` выше гарантируют, что работа окончена.
     src.dispose();
     picture.dispose();
     return blurred;
@@ -804,6 +831,29 @@ ui.Image? _captureBlurredBackdrop() {
     // Снимок — украшение, а не обязательство: любая ошибка → окно на
     // одном затемнении, без падения.
     return null;
+  }
+}
+
+/// Прогревает размытый снимок фона ЗАРАНЕЕ и кладёт его в [target].
+///
+/// Кнопка «Выйти» вызывает это, как только палец коснулся (или навёл мышь),
+/// то есть за доли секунды до тапа. Тяжёлая работа (снимок слоя + blur)
+/// успевает пройти, пока пользователь ещё тянется к кнопке, и сам тап уже
+/// ничего не делает.
+///
+/// Повторные вызовы перезаписывают готовый растр свежим (фон за это время
+/// мог сдвинуться), но одновременно идёт не больше одного снимка: серия
+/// быстрых тапов не выстраивает очередь тяжёлых захватов.
+bool _prewarmBusy = false;
+
+Future<void> _prewarmExitBackdrop(ValueNotifier<ui.Image?> target) async {
+  if (_prewarmBusy) return;
+  _prewarmBusy = true;
+  try {
+    final img = await _captureBlurredBackdrop();
+    if (img != null) target.value = img;
+  } finally {
+    _prewarmBusy = false;
   }
 }
 
