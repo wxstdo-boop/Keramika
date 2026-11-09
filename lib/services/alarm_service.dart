@@ -15,6 +15,9 @@ class AlarmService extends ChangeNotifier {
 
   List<Alarm> get alarms => List.unmodifiable(_alarms);
 
+  /// Данные уже загружены с диска (в main() до первого кадра).
+  bool get isLoaded => _loaded;
+
   Future<void> load() async {
     final raw = await JsonFile.read(_key);
     _snapshot = raw;

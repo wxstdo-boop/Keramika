@@ -544,26 +544,28 @@ class _PaintSplatPainter extends CustomPainter {
   /// (см. [_ShineText]): ава и текст забрызганы одним материалом.
   static const Color _blood = Color(0xFFB3121F);
 
-  /// Кляксы: (доля x, доля y, доля радиуса, фаза формы). Смещены от центра —
-  /// брызги летят в одну сторону, как от удара кистью.
+  /// Кляксы: (доля x, доля y, доля радиуса, фаза формы). Разнесены по плите
+  /// и мелкие — пятна читаются ОТДЕЛЬНЫМИ брызгами от удара кистью, а не
+  /// одной лужей: крупное центральное пятно сливало соседей в кашу.
   static const List<(double, double, double, double)> _blobs = [
-    (0.42, 0.46, 0.27, 0.0),
-    (0.62, 0.33, 0.16, 1.7),
-    (0.29, 0.62, 0.13, 3.1),
-    (0.67, 0.62, 0.10, 4.4),
-    (0.23, 0.30, 0.075, 2.2),
-    (0.74, 0.47, 0.055, 5.3),
+    (0.40, 0.45, 0.15, 0.0),
+    (0.66, 0.28, 0.105, 1.7),
+    (0.24, 0.64, 0.085, 3.1),
+    (0.72, 0.66, 0.070, 4.4),
+    (0.18, 0.26, 0.052, 2.2),
+    (0.80, 0.44, 0.040, 5.3),
   ];
 
   /// Мелкие брызги-сателлиты вокруг клякс: (доля x, доля y, доля радиуса).
   static const List<(double, double, double)> _drops = [
-    (0.52, 0.22, 0.022),
-    (0.80, 0.30, 0.018),
-    (0.18, 0.46, 0.020),
-    (0.36, 0.78, 0.017),
-    (0.60, 0.76, 0.015),
-    (0.84, 0.62, 0.014),
-    (0.13, 0.70, 0.013),
+    (0.53, 0.18, 0.020),
+    (0.86, 0.24, 0.015),
+    (0.12, 0.44, 0.017),
+    (0.32, 0.82, 0.015),
+    (0.62, 0.80, 0.013),
+    (0.90, 0.64, 0.012),
+    (0.09, 0.72, 0.011),
+    (0.45, 0.62, 0.010),
   ];
 
   const _PaintSplatPainter({
@@ -618,8 +620,9 @@ class _PaintSplatPainter extends CustomPainter {
     );
 
     // Тёмный контактный слой под пятнами: без него кровь на светлой плите
-    // сливалась бы с фоном и брызг «не было видно».
-    final rim = Paint()..color = Colors.black.withValues(alpha: 0.16 * env);
+    // сливалась бы с фоном и брызг «не было видно». Лёгкий — плотная тень
+    // превращала отдельные капли в одну тёмную кляксу.
+    final rim = Paint()..color = Colors.black.withValues(alpha: 0.10 * env);
     for (final b in _blobs) {
       final c = Offset(b.$1 * size.width, b.$2 * size.height);
       canvas.drawPath(
@@ -628,7 +631,9 @@ class _PaintSplatPainter extends CustomPainter {
       );
     }
 
-    final paint = Paint()..color = _blood.withValues(alpha: 0.90 * env);
+    // Полупрозрачная кровь: сквозь пятна просвечивает плита логотипа, и
+    // брызги читаются как след краски, а не как глухие наклейки.
+    final paint = Paint()..color = _blood.withValues(alpha: 0.58 * env);
     for (final b in _blobs) {
       final c = Offset(b.$1 * size.width, b.$2 * size.height);
       canvas.drawPath(_blob(c, short * b.$3 * grow, b.$4), paint);
@@ -637,7 +642,7 @@ class _PaintSplatPainter extends CustomPainter {
     final dropGrow = Curves.easeOutBack.transform(
       ((t - 0.12) / 0.88).clamp(0.0, 1.0),
     );
-    final dropPaint = Paint()..color = _blood.withValues(alpha: 0.80 * env);
+    final dropPaint = Paint()..color = _blood.withValues(alpha: 0.48 * env);
     for (final d in _drops) {
       canvas.drawCircle(
         Offset(d.$1 * size.width, d.$2 * size.height),

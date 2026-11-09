@@ -20,6 +20,10 @@ class TimerService extends ChangeNotifier {
   Timer? _ticker;
 
   List<AppTimer> get timers => List.unmodifiable(_timers);
+
+  /// Данные уже загружены с диска (в main() до первого кадра).
+  bool get isLoaded => _loaded;
+
   bool isRunning(String id) => _running[id] ?? false;
   int remaining(String id) => _remainingSeconds[id] ?? 0;
 

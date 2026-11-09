@@ -48,6 +48,9 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
   final _taskSvc = TaskService();
   // FAB-ряд прячется при прокрутке вниз и плавно возвращается у верха.
   final ValueNotifier<bool> _fabVisible = ValueNotifier<bool>(true);
+  // Данные ещё не загружены: не показываем пустое состояние до готовности
+  // сервиса (иначе после сплэша раздел мигает «пусто → список»).
+  bool _loaded = false;
   final ScrollController _pillCtrl = ScrollController();
   // Ключ для AnimatedList точных времён — чтобы анимация
   // добавления/удаления плашки работала плавно при каждом
@@ -60,7 +63,13 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _pillCtrl.addListener(_syncPillOffset);
-    _service.load().then((_) => _scheduleReminders());
+    // Данные уже загружены в main() до первого кадра — показываем их СРАЗУ,
+    // без ожидания повторного load() (иначе после сплэша раздел мигает).
+    if (_service.isLoaded) _loaded = true;
+    _service.load().then((_) {
+      _scheduleReminders();
+      if (mounted) setState(() => _loaded = true);
+    });
     _habitSvc.load();
     _taskSvc.load();
     // При пересоздании вкладки (вкл/выкл в настройках) сброс офсета, иначе
@@ -302,6 +311,14 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
       builder: (context, _) {
         final checks = _service.checks;
         final hasChecks = checks.isNotEmpty;
+        // Пока данные не загружены — пусто: пустое состояние не мелькает
+        // перед появлением списка (тот же гвард, что в задачах/привычках).
+        if (!_loaded) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: const SizedBox.shrink(key: ValueKey('rc_loading')),
+          );
+        }
         // Используем CustomScrollView вместо SingleChildScrollView + Column
         // чтобы избежать двойной прокрутки и проблем рендеринга, когда
         // ListView внутри SingleChildScrollView пытается занять место.

@@ -50,6 +50,12 @@ class _AlarmsScreenState extends State<AlarmsScreen>
   final ScrollController _pillCtrl = ScrollController();
   // Идёт ли сейчас перетаскивание карточки (см. onReorderStart/End).
   bool _draggingAlarm = false;
+
+  // Данные ещё не загружены: показываем пустоту вместо кросс-фейда
+  // «пусто → список» (иначе после сплэша раздел мигает, как было в задачах
+  // и привычках до появления такого же гварда).
+  bool _loaded = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,8 +67,15 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     // Общий ряд «плюс + Ада» на Home берёт действие именно этого раздела.
     sectionAddActions[widget.pillIndex] = _addAlarm;
     sectionCurrentIndex.addListener(_onCurrentSectionChanged);
-    _service.load();
-    _timerSvc.load();
+    // Данные уже загружены в main() до первого кадра — показываем их СРАЗУ,
+    // без ожидания повторного load() (иначе после сплэша раздел мигает).
+    if (_service.isLoaded && _timerSvc.isLoaded) _loaded = true;
+    Future.wait<void>([
+      _service.load(),
+      _timerSvc.load(),
+    ]).then((_) {
+      if (mounted) setState(() => _loaded = true);
+    });
     SettingsService.loadExperimental();
     _timerSvc.onTimerDone = _onTimerDone;
     WidgetsBinding.instance.addObserver(this);
@@ -340,8 +353,13 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                     Expanded(
                       // Плавный кросс-фейд между списком и пустым состоянием:
                       // после удаления последнего будильника карточка-совет
-                      // появляется, а не прыгает мгновенно.
-                      child: AnimatedSwitcher(
+                      // появляется, а не прыгает мгновенно. Пока данные не
+                      // загружены — пусто (без мигания «пусто → список»).
+                      child: !_loaded
+                          ? const SizedBox.shrink(
+                              key: ValueKey('alarms_loading'),
+                            )
+                          : AnimatedSwitcher(
                         duration: const Duration(milliseconds: 320),
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,

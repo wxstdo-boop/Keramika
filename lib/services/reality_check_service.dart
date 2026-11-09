@@ -31,6 +31,10 @@ class RealityCheckService extends ChangeNotifier {
   bool _loaded = false;
 
   List<RealityCheck> get checks => List.unmodifiable(_checks);
+
+  /// Данные уже загружены с диска (в main() до первого кадра).
+  bool get isLoaded => _loaded;
+
   int get checksPerDay => _checksPerDay;
   int get timeFromHour => _timeFromHour;
   int get timeFromMinute => _timeFromMinute;
