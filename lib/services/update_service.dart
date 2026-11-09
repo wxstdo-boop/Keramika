@@ -262,13 +262,22 @@ class UpdateService {
     final version = match?.group(1) ?? tag.replaceFirst(RegExp(r'^v'), '');
     if (version.isEmpty) return null;
     final published = (json['published_at'] as String?) ?? '';
-    final date = published.length >= 10 ? published.substring(0, 10) : '';
-    // Точное время релиза (UTC, HH:MM) — показывается рядом с датой в
+    // Время релиза показываем в ЛОКАЛЬНОЙ зоне: GitHub отдаёт UTC, и в
+    // «Что нового» оно стояло на 3 часа раньше московского — читалось как
+    // «время неверное». Разбираем в DateTime и переводим в локальное.
+    final publishedAt = DateTime.tryParse(published)?.toLocal();
+    final date = publishedAt != null
+        ? '${publishedAt.year.toString().padLeft(4, '0')}-'
+              '${publishedAt.month.toString().padLeft(2, '0')}-'
+              '${publishedAt.day.toString().padLeft(2, '0')}'
+        : (published.length >= 10 ? published.substring(0, 10) : '');
+    // Точное время релиза (локальное, HH:MM) — показывается рядом с датой в
     // «Что нового»: у авторелизов одной датой несколько выпусков подряд,
     // и по одному дню их не различить.
-    final time = published.length >= 16
-        ? published.substring(11, 16)
-        : '';
+    final time = publishedAt != null
+        ? '${publishedAt.hour.toString().padLeft(2, '0')}:'
+              '${publishedAt.minute.toString().padLeft(2, '0')}'
+        : (published.length >= 16 ? published.substring(11, 16) : '');
     final changes = parseReleaseNotes((json['body'] as String?) ?? '');
     if (changes.isEmpty) {
       changes.add('Обновление $version');

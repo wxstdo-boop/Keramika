@@ -3,9 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/widgets/swipe_to_delete.dart';
 
-/// Свайп-удаление должно быть ОТЗЫВЧИВЫМ: карточка едет 1:1 за пальцем, без
-/// кастомного слоя сглаживания с кадровым тикером (он давал лаг, тормозил
-/// скролл и «удар» на возврате). Красная плашка проявляется по ходу жеста.
+/// Свайп-удаление: карточка едет 1:1 за пальцем, красная плашка ПРОЯВЛЯЕТСЯ
+/// по ходу жеста, а возврат идёт мягко (без мгновенного щелчка).
 void main() {
   Future<void> pumpCard(
     WidgetTester tester, {
@@ -43,6 +42,24 @@ void main() {
   double dx(WidgetTester tester, Offset start) =>
       (tester.getTopLeft(find.text('card')) - start).dx;
 
+  /// Альфа красной плашки (первый цвет градиента) — по ней видно, насколько
+  /// плашка проявилась.
+  double redAlpha(WidgetTester tester) {
+    final container = tester.widgetList<Container>(
+      find.descendant(
+        of: find.byType(SwipeToDelete),
+        matching: find.byType(Container),
+      ),
+    );
+    for (final c in container) {
+      final d = c.decoration;
+      if (d is BoxDecoration && d.gradient is LinearGradient) {
+        return (d.gradient! as LinearGradient).colors.first.a;
+      }
+    }
+    return -1;
+  }
+
   testWidgets('карточка идёт 1:1 за пальцем (без лага)', (tester) async {
     await pumpCard(tester);
     final start = tester.getTopLeft(find.text('card'));
@@ -52,19 +69,50 @@ void main() {
     await tester.pump();
     await gesture.moveBy(const Offset(-60, 0));
     await tester.pump();
-    // Ещё несколько сдвигов: карточка обязана повторять палец без отставания
-    // (прежний сглаживающий слой «придерживал» её на десятки пикселей).
     var raw = 60.0;
     for (var i = 0; i < 10; i++) {
       await gesture.moveBy(const Offset(-8, 0));
       raw += 8;
       await tester.pump(const Duration(milliseconds: 16));
     }
-    final moved = dx(tester, start);
     expect(
-      (-raw - moved).abs(),
+      (-raw - dx(tester, start)).abs(),
       lessThan(2.0),
-      reason: 'без сглаживания карточка едет ровно за пальцем',
+      reason: 'карточка едет ровно за пальцем',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('красная плашка появляется постепенно по ходу жеста', (
+    tester,
+  ) async {
+    await pumpCard(tester);
+    expect(redAlpha(tester), lessThan(0.01), reason: 'в покое плашки нет');
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('card')),
+    );
+    await tester.pump();
+    // До 20 % пути плашки ещё не видно (порог осознанного жеста).
+    await gesture.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    expect(redAlpha(tester), lessThan(0.01), reason: 'ранний сдвиг плашку не жжёт');
+
+    // Дальше красный наливается, и к полному свайпу он плотнее.
+    await gesture.moveBy(const Offset(-120, 0));
+    await tester.pump();
+    final early = redAlpha(tester);
+
+    await gesture.moveBy(const Offset(-140, 0));
+    await tester.pump();
+    final later = redAlpha(tester);
+
+    expect(early, greaterThan(0.01), reason: 'плашка уже проявилась');
+    expect(
+      later,
+      greaterThan(early),
+      reason: 'чем дальше свайп, тем плотнее красный',
     );
 
     await gesture.up();
@@ -80,10 +128,10 @@ void main() {
     );
     await tester.fling(find.text('card'), const Offset(-320, 0), 1500);
     await tester.pumpAndSettle();
-    expect(dismissed, isTrue, reason: 'осознанный свайп удаляет карточку');
+    expect(dismissed, isTrue);
   });
 
-  testWidgets('возврат домой плавный и без скачка на финише', (tester) async {
+  testWidgets('возврат домой плавный, без мгновенного щелчка', (tester) async {
     await pumpCard(tester);
     final start = tester.getTopLeft(find.text('card'));
     final gesture = await tester.startGesture(
@@ -91,16 +139,14 @@ void main() {
     );
     await tester.pump();
     await gesture.moveBy(const Offset(-90, 0));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 200));
     await gesture.up();
 
     final samples = <double>[];
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 60; i++) {
       await tester.pump(const Duration(milliseconds: 16));
       samples.add(dx(tester, start));
     }
-
     var maxStep = 0.0;
     for (var i = 1; i < samples.length; i++) {
       final step = samples[i] - samples[i - 1];
@@ -109,8 +155,14 @@ void main() {
     expect(
       maxStep,
       lessThan(0.05 * 400),
-      reason: 'возврат не должен прыгать кадром',
+      reason: 'возврат не прыгает кадром',
     );
-    expect(samples.last.abs(), lessThan(1.0));
+    // Мягкий возврат: путь не пройден за считанные кадры.
+    final firstAt = samples.indexWhere((v) => v.abs() < 1.0);
+    expect(
+      firstAt,
+      greaterThan(5),
+      reason: 'возврат занимает заметное время, а не один кадр',
+    );
   });
 }

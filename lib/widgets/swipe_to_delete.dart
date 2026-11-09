@@ -2,19 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../utils/animated_delete.dart';
 
-/// Свайп-удаление влево с красным фоном, который проявляется по ходу жеста.
+/// Свайп-удаление влево: карточка едет 1:1 за пальцем, а красная плашка
+/// ПРОЯВЛЯЕТСЯ по ходу жеста.
 ///
-/// Это ТОНКАЯ обёртка над [Dismissible]: вся логика (порог, подтверждение,
-/// удаление, схлопывание строки) остаётся за ним.
+/// Логика (порог, подтверждение, удаление, схлопывание строки) целиком за
+/// [Dismissible] — здесь только визуальная часть.
 ///
-/// Раньше здесь жил кастомный слой «сглаживания»: палец задавал цель, карточку
-/// догоняла пружина на кадровом тикере, а поверх [Dismissible] навешивался
-/// `Transform.translate` на «отставание». Это давало ЛАГ и лишнюю работу на
-/// каждый кадр (два ValueListenableBuilder пересобирались на каждом тике,
-/// карточка рисовалась в лишний слой), из-за чего свайп и скролл «дико
-/// тормозили», а возврат шёл скачком. Карточка теперь едет 1:1 за пальцем —
-/// максимально отзывчиво, без задержки и без лишних слоёв.
-class SwipeToDelete extends StatelessWidget {
+/// Раньше красный фон был нарисован с постоянной альфой: он возникал
+/// мгновенно из-под пальца одним всполохом — читалось как «дёрнуло», а не
+/// как плавное появление. Теперь альфа едет за прогрессом жеста: до 20 %
+/// пути плашки не видно, дальше она наливается и к полному свайпу видна
+/// целиком. Прогресс берём из [Dismissible.onUpdate] — он же тикает и на
+/// возврате, поэтому плашка так же плавно уходит.
+///
+/// Возврат мягче штатного: у [Dismissible] скорость возврата постоянна и
+/// равна `ширина / movementDuration`, поэтому короткий свайп возвращался
+/// почти мгновенно (резкий щелчок). 450 мс даёт спокойный ход и на коротком
+/// свайпе, и на полном смахивании, без догоняющего тикера и лишних слоёв.
+class SwipeToDelete extends StatefulWidget {
   final Key dismissKey;
   final Widget child;
   final DismissDirectionCallback? onDismissed;
@@ -38,32 +43,54 @@ class SwipeToDelete extends StatelessWidget {
   });
 
   @override
+  State<SwipeToDelete> createState() => _SwipeToDeleteState();
+}
+
+class _SwipeToDeleteState extends State<SwipeToDelete> {
+  /// Прогресс свайпа 0..1 из [Dismissible.onUpdate]. Слушает только
+  /// маленький фон удаления — сама карточка не пересобирается.
+  final ValueNotifier<double> _progress = ValueNotifier<double>(0);
+
+  @override
+  void dispose() {
+    _progress.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Dismissible(
-      key: dismissKey,
-      // 400 мс: возврат после отпускания идёт мягко (плавный старт), но без
-      // «желейного» довода — прежние 460 мс вместе с пружиной читались как
-      // затянутый и дёрганый возврат, а слишком короткий срок давал резкий
-      // рывок в первом кадре.
+      key: widget.dismissKey,
       movementDuration:
-          movementDuration ?? const Duration(milliseconds: 400),
-      // Сжатие высоты строки при удалении тоже плавное — карточка
-      // «схлопывается» мягко, а не исчезает рывком.
-      resizeDuration: const Duration(milliseconds: 300),
+          widget.movementDuration ?? const Duration(milliseconds: 450),
+      // Схлопывание строки при удалении — тоже мягко.
+      resizeDuration: const Duration(milliseconds: 320),
       direction: DismissDirection.endToStart,
-      confirmDismiss: confirmDismiss,
-      onDismissed: onDismissed,
+      confirmDismiss: widget.confirmDismiss,
+      onDismissed: widget.onDismissed,
+      onUpdate: (details) => _progress.value = details.progress,
       background: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalInset),
+        padding: EdgeInsets.symmetric(horizontal: widget.horizontalInset),
         // Фон удаления изолирован от перерисовки содержимого карточки.
         child: RepaintBoundary(
-          child: animatedDeleteBackground(
-            context,
-            borderRadius: borderRadius,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _progress,
+            builder: (context, p, _) {
+              // Красный проявляется по ходу жеста: до 20 % пути плашки ещё
+              // не видно, дальше она наливается и к полному свайпу видна
+              // целиком. Альфа запекается в цвета (см.
+              // [animatedDeleteBackground]), без слоя Opacity.
+              final opacity = ((p - 0.20) / 0.80).clamp(0.0, 1.0);
+              return animatedDeleteBackground(
+                context,
+                borderRadius: widget.borderRadius,
+                opacity: opacity,
+              );
+            },
           ),
         ),
       ),
-      child: child,
+      child: widget.child,
     );
   }
 }

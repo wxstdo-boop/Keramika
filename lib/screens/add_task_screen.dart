@@ -227,42 +227,50 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: PressScale(
-        pressedScale: 0.96,
-        duration: const Duration(milliseconds: 400),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: _createCategory,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeInOutCubic,
-            // Габариты РОВНО как у соседних категорий (CategoryChip.height и
-            // та же набивка): раньше «+ Новая категория» была чуть выше и
-            // выбивалась из ряда.
-            height: CategoryChip.height,
-            padding: const EdgeInsets.symmetric(
-              horizontal: CategoryChip.hPad,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                width: CategoryChip.borderWidth,
-                color: theme.colorScheme.outline.withValues(alpha: 0.5),
+      // Center обязателен: в ряду высотой 44 чип ростом 36 без центрирования
+      // прилипал к ВЕРХУ и стоял выше соседних категорий (CategoryChip
+      // центрируется сам) — та самая «новая категория выше остальных».
+      child: Center(
+        child: PressScale(
+          // Отдача «вдавливанием», как у верхних кнопок: чип заметно
+          // уменьшается под пальцем. Рябь InkWell убрана — она читалась как
+          // «подсветка фоном», а не как отклик на нажатие.
+          pressedScale: 0.94,
+          duration: const Duration(milliseconds: 180),
+          releaseDuration: const Duration(milliseconds: 280),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _createCategory,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeInOutCubic,
+              // Габариты РОВНО как у соседних категорий (CategoryChip.height и
+              // та же набивка): «+ Новая категория» не выбивается из ряда.
+              height: CategoryChip.height,
+              padding: const EdgeInsets.symmetric(
+                horizontal: CategoryChip.hPad,
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
-                const SizedBox(width: 4),
-                Text(
-                  Translations.t('newCategory', context),
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  width: CategoryChip.borderWidth,
+                  color: theme.colorScheme.outline.withValues(alpha: 0.5),
                 ),
-              ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    Translations.t('newCategory', context),
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -972,11 +980,10 @@ class _DeadlineChipState extends State<_DeadlineChip> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: selected
-                ? cs.primary
-                : _pressed
-                ? cs.primary.withValues(alpha: 0.14)
-                : cs.surfaceContainerHighest,
+            // Отдача — только «вдавливание» (AnimatedScale ниже), без
+            // подсветки фона: цветовая заливка читалась как «просто фон»,
+            // а не как отклик на нажатие.
+            color: selected ? cs.primary : cs.surfaceContainerHighest,
             border: Border.all(
               color: selected
                   ? cs.primary

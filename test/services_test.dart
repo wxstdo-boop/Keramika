@@ -726,9 +726,14 @@ void main() {
       });
       expect(entry, isNotNull);
       expect(entry!.version, '1.6.104');
-      expect(entry.date, '2026-11-08');
-      // Точное время релиза (UTC, HH:MM) — показывается рядом с датой.
-      expect(entry.time, '12:34');
+      // Дата и время — в ЛОКАЛЬНОЙ зоне (GitHub отдаёт UTC). Сверяем с
+      // тем же пересчётом, чтобы тест не зависел от зоны машины.
+      final local = DateTime.parse('2026-11-08T12:34:56Z').toLocal();
+      expect(entry.date, '${local.year.toString().padLeft(4, '0')}-'
+          '${local.month.toString().padLeft(2, '0')}-'
+          '${local.day.toString().padLeft(2, '0')}');
+      expect(entry.time, '${local.hour.toString().padLeft(2, '0')}:'
+          '${local.minute.toString().padLeft(2, '0')}');
       expect(entry.changes, ['Add a live changelog']);
     });
 

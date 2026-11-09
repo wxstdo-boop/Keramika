@@ -38,47 +38,50 @@ Widget buildDragProxy(
     StaggerIn.suppressEntrance = false;
     SmoothHover.dragProxyCount.value--;
   });
-  // ТЕНЬ ФИКСИРОВАНА. Анимация `Material.elevation` каждый кадр заставляет
-  // движок ПЕРЕСЧИТЫВАТЬ тень (blur + заливка) на каждом кадре драга — на
-  // слабом GPU это и читалось как «иконки при ведении пальцем дёргаются».
-  // Высоту ставим один раз; от «подъёма» остаётся только лёгкий scale и
-  // обводка, которые дёшевы.
+  // ПРОКСИ СТАТИЧЕН, АНИМИРУЕТСЯ ТОЛЬКО МАСШТАБ.
+  //
+  // Раньше тень, обводка и содержимое пересобирались и перерисовывались
+  // КАЖДЫЙ кадр драга (Material.elevation + border + child в одном билдере
+  // AnimatedBuilder). На слабом GPU размытая тень и обводка, перерисованные
+  // 60 раз в секунду, и читались как «при драге подтормаживает».
+  //
+  // Теперь всё оформление прокси (тень, обводка, карточка) собрано ОДИН раз
+  // в [RepaintBoundary] и передано как `child` — AnimatedBuilder на каждом
+  // кадре лишь меняет матрицу Transform.scale. Смена матрицы — операция
+  // композитора: готовый растр прокси просто переиспользуется, перерисовки
+  // нет. Масштаб и скольжение на место идут в одном темпе (easeOut), как и
+  // drop-анимация ReorderableListView.
   final proxy = AnimatedBuilder(
     animation: animation,
     builder: (context, child) {
-      final raw = animation.value;
-      // easeOut совпадает с кривой drop-анимации позиции — масштаб и
-      // скольжение движутся в одном темпе, без «двойного» движения.
-      final t = Curves.easeOut.transform(raw);
-      // Мягкий подъём: 1.0 → 1.02.
+      final t = Curves.easeOut.transform(animation.value);
       final scale = 1.0 + 0.02 * t;
-      return Transform.scale(
-        scale: scale,
-        child: Material(
-          elevation: 8,
-          shadowColor: theme.colorScheme.primary.withValues(alpha: 0.20),
-          borderRadius: BorderRadius.circular(borderRadius),
-          color: theme.colorScheme.surface,
-          clipBehavior: Clip.none,
-          child: Container(
-            // Размер карточки не меняется: обводка рисуется поверх.
-            foregroundDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(
-                color: theme.colorScheme.primary.withValues(
-                  alpha: 0.15 + 0.55 * t,
-                ),
-                width: 1.5 + t,
-              ),
-            ),
-            child: child,
-          ),
-        ),
-      );
+      return Transform.scale(scale: scale, child: child);
     },
-    // child передаём отдельно: карточка НЕ пересобирается на каждом кадре
-    // драга — AnimatedBuilder лишь переиспользует готовое поддерево.
-    child: RepaintBoundary(child: child),
+    child: RepaintBoundary(
+      child: Material(
+        // Высота ФИКСИРОВАНА: анимация elevation заставляла движок
+        // пересчитывать тень каждый кадр.
+        elevation: 8,
+        shadowColor: theme.colorScheme.primary.withValues(alpha: 0.20),
+        borderRadius: BorderRadius.circular(borderRadius),
+        color: theme.colorScheme.surface,
+        clipBehavior: Clip.none,
+        child: Container(
+          // Обводка-«кольцо» ПОВЕРХ карточки (не участвует в layout, поэтому
+          // текст с мягким переносом не перетекает на другие строки).
+          // Постоянная — её анимация стоила перерисовки на каждом кадре.
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.45),
+              width: 2,
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    ),
   );
   if (trackY == null) return proxy;
   return _ProxyPositionReporter(notifier: trackY, child: proxy);
