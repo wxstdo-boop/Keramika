@@ -27,6 +27,9 @@ class TaskService extends ChangeNotifier {
   List<Task> get tasks => List.unmodifiable(_tasks);
   List<String> get categories => List.unmodifiable(_categories);
 
+  /// Данные уже загружены с диска (в main() до первого кадра).
+  bool get isLoaded => _loaded;
+
   /// Потолок категорий: 15, а с подарком 12-го дня — 30.
   int get maxCategories =>
       NewYearEventService().prizeGranted ? kMaxPrizeCategories : kMaxCategories;

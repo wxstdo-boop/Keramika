@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
+import '../widgets/stagger_in.dart';
 import '../l10n/translations.dart';
 import '../models/changelog_entry.dart';
 import '../services/update_service.dart';
@@ -64,23 +67,33 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
               onPressed: () => _load(force: true),
             ),
         ],
-        bottom: _loading
-            ? const PreferredSize(
-                preferredSize: Size.fromHeight(2),
-                child: LinearProgressIndicator(minHeight: 2),
-              )
-            : null,
       ),
       body: RefreshIndicator(
         onRefresh: () => _load(force: true),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(Spacing.md),
-          children: [
-            _buildHeader(theme),
-            const SizedBox(height: Spacing.md),
-            ...entries.map((entry) => _buildCard(theme, entry)),
-          ],
+        // Смена «скелет → список» кросс-фейдом, а не кадром: подмена контента
+        // читалась как мигание сразу после открытия экрана.
+        child: AnimatedSwitcher(
+          duration: Motion.normal,
+          switchInCurve: Motion.standard,
+          switchOutCurve: Curves.easeInCubic,
+          child: _loading
+              ? const _ChangelogSkeleton(key: ValueKey('changelog_loading'))
+              : ListView(
+                  key: const ValueKey('changelog_list'),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(Spacing.md),
+                  children: [
+                    _buildHeader(theme),
+                    const SizedBox(height: Spacing.md),
+                    // Карточки входят каскадом: длинный список проявляется
+                    // мягко, а не возникает одним кадром.
+                    for (var i = 0; i < entries.length; i++)
+                      StaggerIn(
+                        index: i,
+                        child: _buildCard(theme, entries[i]),
+                      ),
+                  ],
+                ),
         ),
       ),
     );
@@ -228,4 +241,82 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
       ],
     ),
   ];
+}
+
+/// Скелет загрузки: три «пустые» карточки-плашки с мягким пульсом.
+///
+/// Держит высоту и ритм будущего списка, поэтому подмена «скелет → список»
+/// читается как догрузка, а не как мигание.
+class _ChangelogSkeleton extends StatefulWidget {
+  const _ChangelogSkeleton({super.key});
+
+  @override
+  State<_ChangelogSkeleton> createState() => _ChangelogSkeletonState();
+}
+
+class _ChangelogSkeletonState extends State<_ChangelogSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: Motion.ambient,
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final base = theme.colorScheme.onSurface.withValues(alpha: 0.07);
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(Spacing.md),
+      children: [
+        for (var i = 0; i < 3; i++)
+          AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, _) {
+              // Соседние плашки пульсируют вразнобой — скелет «дышит»,
+              // а не мигает целиком.
+              final v = (0.5 + 0.5 * math.sin(math.pi * (i / 3 + _pulse.value)))
+                  .clamp(0.0, 1.0);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.md),
+                child: Container(
+                  padding: const EdgeInsets.all(Spacing.lg),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.45,
+                    ),
+                    borderRadius: BorderRadius.circular(Radii.lg),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _bar(base.withValues(alpha: 0.07 + 0.06 * v), 96, 18),
+                      const SizedBox(height: Spacing.sm),
+                      _bar(base.withValues(alpha: 0.07 + 0.06 * v), 180, 12),
+                      const SizedBox(height: Spacing.xs),
+                      _bar(base.withValues(alpha: 0.07 + 0.06 * v), 140, 12),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _bar(Color color, double width, double height) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(height / 2),
+    ),
+  );
 }

@@ -44,9 +44,8 @@ class _SplashScreenState extends State<SplashScreen>
   static const double _kRadius = 30;
 
   /// Сколько сплэш виден до ухода на главную. Единый источник правды:
-  /// от него считаются все окна анимаций, поэтому ничего не «обрезается»
-  /// на выходе (раньше мастер-контроллер шёл 2000 мс, а уход случался на
-  /// 1950-й — последние 2.5 % фаз просто не доигрывались).
+  /// от него считаются все окна анимаций, поэтому ни одна фаза не
+  /// «обрезается» на выходе.
   static const int _kVisibleMs = 1950;
 
   /// Пауза перед стартом левитации: сплэш въезжает (340 мс, scale+fade всей
@@ -86,9 +85,7 @@ class _SplashScreenState extends State<SplashScreen>
     // Один «вздох» левитации за ВИДИМОЕ время сплеша: старт на 340 мс
     // (когда страница встала после въезда) и уход на 1950 мс. Длительность
     // цикла равна этому окну, поэтому человечек доигрывает фазу ИМЕННО к
-    // моменту ухода: раньше цикл был 2200 мс и на 1950-й loop обрывался в
-    // воздухе (фаза ~0.89) — заметное «зависание» на последних кадрах.
-    // Теперь фаза на выходе ровно 1.0 (== 0), без рывка.
+    // моменту ухода: фаза на выходе ровно 1.0 (== 0), без рывка.
     _float = AnimationController(
       duration: const Duration(milliseconds: _kVisibleMs - _kFloatStartMs),
       vsync: this,
@@ -121,11 +118,9 @@ class _SplashScreenState extends State<SplashScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       precacheImage(const AssetImage('assets/keramika.png'), context);
     });
-    // Анимация идёт 2 секунды; переходим на главную сразу после её
-    // окончания. Раньше стояло 2200 мс — лишние 200 мс «мёртвой паузы»
-    // после того, как логотип уже растворился, читались как рывок.
-    // 1950 мс: кросс-фейд стартует, пока человечек ещё догасает, поэтому
-    // переход читается одним движением, а не «пауза → смена кадра».
+    // Переходим на главную сразу после окончания анимации: 1950 мс, когда
+    // кросс-фейд стартует, пока человечек ещё догасает — переход читается
+    // одним движением, а не «пауза → смена кадра».
     _splashTimer = Timer(const Duration(milliseconds: _kVisibleMs), () {
       if (!mounted) return;
       // ВЫХОД: в момент onHome стартует homeEntryRoute (280 мс, наезд
@@ -335,24 +330,22 @@ class _SplashScreenState extends State<SplashScreen>
                               child: IgnorePointer(
                                 // Блик лежит ОДНИМ слоем под RepaintBoundary
                                 // и клипается ВНУТРИ пейнтера
-                                // (canvas.clipRRect). Раньше здесь стоял
-                                // виджет ClipRRect: он делает saveLayer на
-                                // каждый кадр блика, а блик перерисовывается
-                                // каждый кадр — на слабом GPU это лишний
-                                // полноэкранный слой. Клип на канвасе
+                                // (canvas.clipRRect): виджетный ClipRRect
+                                // делает saveLayer на каждый кадр блика, а
+                                // блик перерисовывается каждый кадр — на
+                                // слабом GPU это лишний полноэкранный слой.
+                                // Клип на канвасе
                                 // saveLayer не создаёт.
                                 child: RepaintBoundary(
                                   child: AnimatedBuilder(
                                     animation: _shine,
                                     builder: (context, _) => CustomPaint(
-                                      painter: _GlassSweepPainter(
+                                      painter: _PaintSplatPainter(
                                         t: _shine.value,
                                         radius: _kRadius,
-                                        // На светлой теме кровавое ядро по
-                                        // белому кольцу читается слабо —
-                                        // поэтому яркость задаётся темой,
-                                        // а тёмная кромка полосы делает блик
-                                        // читаемым на любом фоне.
+                                        // На светлой теме кровавые пятна по
+                                        // белому читаются слабо — поэтому
+                                        // яркость задаётся темой.
                                         strength: isDark ? 0.78 : 1.10,
                                       ),
                                     ),
@@ -450,8 +443,8 @@ class _SplashScreenState extends State<SplashScreen>
 /// Два слоя: базовая строка плюс ОНА ЖЕ строка, залитая «кровью» и обрезанная
 /// по бегущему градиенту (`ShaderMask` + `srcIn`, где маска работает по
 /// альфе глифов). Одной маской нельзя — вне полосы подпись стала бы дырой.
-/// Огибающая яркости и кривая хода взяты один-в-один из [_GlassSweepPainter],
-/// поэтому два блеска едут синхронно и оба начинаются/кончаются нулём.
+/// Огибающая яркости и кривая хода взяты один-в-один из [_PaintSplatPainter],
+/// поэтому блик подписи и брызги на аве живут в одном такте.
 class _ShineText extends StatelessWidget {
   final String text;
   final TextStyle style;
@@ -525,61 +518,95 @@ class _ShineText extends StatelessWidget {
   }
 }
 
-/// Полоса блика, катящаяся по «стеклу» карточки логотипа.
+/// Брызги краски на «стекле» карточки логотипа.
 ///
-/// [t] — ход 0 → 1 одного прохода. Оба конца обязаны быть нулевой яркости и
-/// нулевой скоростью, иначе блик «включается» и «выключается» кадром:
-/// яркость — огибающая sin(π·t) (на старте и финише ровно 0), положение —
-/// easeInOutSine (там же скорость 0).
+/// [t] — ход 0 → 1 одного прохода. Кляксы набухают от центра, чуть
+/// перерастают и растворяются: огибающая sin(π·t) держит и старт, и финиш
+/// на нуле, поэтому появление и уход не читаются отдельным кадром.
 ///
-/// Блик СОБРАН ИЗ ЧЕТЫРЁХ СЛОЁВ, а не одной размазанной полосы: тонкая почти
-/// белая «нить» в центре (даёт остриё), вокруг неё узкое яркое ядро с крутыми
-/// скатами, под ними слабое широкое гало, а впереди — тёмный контактный кант.
-/// Одна широкая полоса читалась как «помазанная кистью» дымка; нить и крутые
-/// скаты дают резкий отсвет, как от глянца на керамике.
-///
-/// Тёмный кант идёт ПЕРЕД ядром: без него белый блик физически невидим на
-/// светлой теме (белым по белому ярче не стать) — он и делает полосу
-/// читаемой на любой заливке.
-class _GlassSweepPainter extends CustomPainter {
+/// Геометрия детерминирована (фиксированный seed-фаза у каждой кляксы) —
+/// пятна стоят на месте и не «кипят» между кадрами. Край каждой кляксы
+/// неровный: радиус точки считается по углу с синусоидальной модуляцией,
+/// поэтому пятно выглядит растёкшимся, а не вычерченным циркулем.
+class _PaintSplatPainter extends CustomPainter {
   final double t;
 
-  /// Радиус скругления плиты: блик клипается по нему ПРЯМО на канвасе
+  /// Радиус скругления плиты: брызги клипаются по нему ПРЯМО на канвасе
   /// (`canvas.clipRRect`), чтобы не платить за виджетный `ClipRRect`
   /// (он создаёт saveLayer на каждый кадр).
   final double radius;
 
-  /// Верхняя точка яркости: на тёмном стекле блик читается сильнее,
+  /// Верхняя точка яркости: на тёмном стекле пятна читаются сильнее,
   /// поэтому темой задаётся разная глубина.
   final double strength;
 
-  /// Цвет блика — фирменная «кровь», та же, что у подписи POWERED BY LARAF
-  /// (см. [_ShineText]). Белый блик по белой плите в светлой теме почти не
-  /// читался; кровавая полоса видна и на белом, и на тёмном, и перекликается
-  /// с подписью — ава и текст блестят ОДНИМ материалом.
+  /// Цвет брызг — фирменная «кровь», та же, что у подписи POWERED BY LARAF
+  /// (см. [_ShineText]): ава и текст забрызганы одним материалом.
   static const Color _blood = Color(0xFFB3121F);
 
-  const _GlassSweepPainter({
+  /// Кляксы: (доля x, доля y, доля радиуса, фаза формы). Смещены от центра —
+  /// брызги летят в одну сторону, как от удара кистью.
+  static const List<(double, double, double, double)> _blobs = [
+    (0.42, 0.46, 0.27, 0.0),
+    (0.62, 0.33, 0.16, 1.7),
+    (0.29, 0.62, 0.13, 3.1),
+    (0.67, 0.62, 0.10, 4.4),
+    (0.23, 0.30, 0.075, 2.2),
+    (0.74, 0.47, 0.055, 5.3),
+  ];
+
+  /// Мелкие брызги-сателлиты вокруг клякс: (доля x, доля y, доля радиуса).
+  static const List<(double, double, double)> _drops = [
+    (0.52, 0.22, 0.022),
+    (0.80, 0.30, 0.018),
+    (0.18, 0.46, 0.020),
+    (0.36, 0.78, 0.017),
+    (0.60, 0.76, 0.015),
+    (0.84, 0.62, 0.014),
+    (0.13, 0.70, 0.013),
+  ];
+
+  const _PaintSplatPainter({
     required this.t,
     required this.strength,
     required this.radius,
   });
 
+  /// Неровное пятно: полярный контур с двумя синусоидальными модуляциями.
+  Path _blob(Offset c, double r, double phase) {
+    final p = Path();
+    const steps = 30;
+    for (var i = 0; i <= steps; i++) {
+      final a = i / steps * math.pi * 2;
+      final wob =
+          1 +
+          0.22 * math.sin(3 * a + phase) +
+          0.11 * math.sin(5 * a + phase * 1.7);
+      final pt = Offset(
+        c.dx + math.cos(a) * r * wob,
+        c.dy + math.sin(a) * r * wob,
+      );
+      if (i == 0) {
+        p.moveTo(pt.dx, pt.dy);
+      } else {
+        p.lineTo(pt.dx, pt.dy);
+      }
+    }
+    p.close();
+    return p;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     if (t <= 0 || t >= 1) return;
-    // Степень 1.6 вместо 1.35: вспышка набирает и отдаёт яркость резче, из-за
-    // чего проход читается как короткая искра, а не как долгий разлив.
-    final env = math.pow(math.sin(math.pi * t), 1.6).toDouble() * strength;
+    // Степень 1.35: пятна набухают и опадают резче, чем разлив, — читается
+    // как короткая вспышка брызг, а не долгое растекание.
+    final env = math.pow(math.sin(math.pi * t), 1.35).toDouble() * strength;
     if (env <= 0.004) return;
 
-    final diagonal = math.sqrt(
-      size.width * size.width + size.height * size.height,
-    );
-    // Чуть круче прежних 36°: острый скол света на скруглённом углу плиты.
-    const angle = -math.pi / 4.2;
-    final cx =
-        -diagonal * 1.05 + Curves.easeInOutSine.transform(t) * diagonal * 2.1;
+    // Разлёт: кляксы растут быстро и чуть перерастают цель (easeOutBack).
+    final grow = Curves.easeOutBack.transform(t);
+    final short = size.shortestSide;
 
     canvas.save();
     // Клип по скруглению плиты на канвасе, а не виджетом: saveLayer не нужен.
@@ -589,81 +616,40 @@ class _GlassSweepPainter extends CustomPainter {
         Radius.circular(radius),
       ),
     );
-    canvas.translate(size.width / 2, size.height / 2);
-    canvas.rotate(angle);
 
-    // Полоса с настраиваемым профилем: stops задают «скат» (чем ближе крайние
-    // stops к 0.5, тем острее пик), peak — альфу вершины. Края всегда
-    // прозрачны, иначе полоса включается и выключается видимой кромкой.
-    void band(
-      double center,
-      double width,
-      int peak, {
-      bool dark = false,
-      List<double> stops = const [0.0, 0.5, 1.0],
-      Color? color,
-    }) {
-      if (peak <= 1) return;
-      // strength > 1 (светлая тема) разгоняет вершину выше 255 — withValues
-      // такое значение не принимает, поэтому подрезаем к пределу альфы.
-      peak = peak > 255 ? 255 : peak;
-      final r = Rect.fromLTWH(
-        center - width / 2,
-        -diagonal,
-        width,
-        diagonal * 2,
-      );
-      final hot =
-          color ?? (dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF));
-      final solid = hot.withValues(alpha: peak / 255);
-      final colors = [
-        for (var i = 0; i < stops.length; i++)
-          (i == 0 || i == stops.length - 1) ? solid.withValues(alpha: 0) : solid,
-      ];
-      canvas.drawRect(
-        r,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: colors,
-            stops: stops,
-          ).createShader(r),
+    // Тёмный контактный слой под пятнами: без него кровь на светлой плите
+    // сливалась бы с фоном и брызг «не было видно».
+    final rim = Paint()..color = Colors.black.withValues(alpha: 0.16 * env);
+    for (final b in _blobs) {
+      final c = Offset(b.$1 * size.width, b.$2 * size.height);
+      canvas.drawPath(
+        _blob(c, short * b.$3 * grow + 1.5, b.$4),
+        rim,
       );
     }
 
-    // 1. Тёмный контактный кант — узкий и впереди ядра. Единственная
-    //    НЕкрасная полоса: без него кровавое ядро на белой плите сливалось
-    //    бы с фоном и блик «не показывался».
-    band(
-      cx - diagonal * 0.11,
-      diagonal * 0.12,
-      (0.14 * env * 255).round(),
-      dark: true,
+    final paint = Paint()..color = _blood.withValues(alpha: 0.90 * env);
+    for (final b in _blobs) {
+      final c = Offset(b.$1 * size.width, b.$2 * size.height);
+      canvas.drawPath(_blob(c, short * b.$3 * grow, b.$4), paint);
+    }
+    // Сателлиты — мельче и чуть позже основных клякс (фаза роста со сдвигом).
+    final dropGrow = Curves.easeOutBack.transform(
+      ((t - 0.12) / 0.88).clamp(0.0, 1.0),
     );
-    // 2. Широкое слабое гало — мягкая кровавая подсветка вокруг искры.
-    band(cx, diagonal * 0.30, (0.20 * env * 255).round(), color: _blood);
-    // 3. Узкое ядро с крутыми скатами — плотная кровь (плато в середине).
-    band(
-      cx,
-      diagonal * 0.11,
-      (0.88 * env * 255).round(),
-      color: _blood,
-      stops: const [0.0, 0.42, 0.5, 0.58, 1.0],
-    );
-    // 4. Тонкая «нить» по центру — остриё блеска. Чуть высветленная кровь
-    //    (не белая): держит остриё читаемым, оставаясь красной.
-    band(
-      cx,
-      diagonal * 0.022,
-      (0.95 * env * 255).round(),
-      color: Color.lerp(_blood, Colors.white, 0.28)!,
-    );
+    final dropPaint = Paint()..color = _blood.withValues(alpha: 0.80 * env);
+    for (final d in _drops) {
+      canvas.drawCircle(
+        Offset(d.$1 * size.width, d.$2 * size.height),
+        short * d.$3 * dropGrow,
+        dropPaint,
+      );
+    }
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_GlassSweepPainter oldDelegate) =>
+  bool shouldRepaint(_PaintSplatPainter oldDelegate) =>
       oldDelegate.t != t ||
       oldDelegate.strength != strength ||
       oldDelegate.radius != radius;
@@ -915,7 +901,7 @@ class _LevitationPainter extends CustomPainter {
     for (var i = 0; i < 3; i++) {
       // Полный оборот (2π) за цикл, а не половина: при полуобороте на склейке
       // витков искра телепортировалась на противоположную сторону орбиты —
-      // тот самый рывок раз в цикл. Теперь угол в p=0 и p=1 совпадает.
+      // рывок раз в цикл. Здесь угол в p=0 и p=1 совпадает.
       final a = _tau * p + i * (_tau / 3);
       final spark = Offset(cx + math.cos(a) * 12.0, cy - 3 + math.sin(a) * 6.0);
       final pulse = 0.30 + 0.55 * (0.5 + 0.5 * math.sin(_tau * p * 2 + i));
@@ -940,9 +926,9 @@ class _LevitationPainter extends CustomPainter {
       ..moveTo(0, -7.8)
       ..quadraticBezierTo(4.2, -9.4, 6.6, -13.2)
       // Ноги свисают вниз и чуть в стороны с мягким прогибом — поза
-      // парящего, а не сидящего. Раньше были «скрещены в лотосе» двумя
-      // квадратичными дугами из одного бедра: они самопересекались в
-      // 30-пиксельном бейдже и вместо ног получалось кольцо на палочке.
+      // парящего, а не сидящего: «скрещённые в лотосе» дуги из одного бедра
+      // самопересекались в 30-пиксельном бейдже и вместо ног давали кольцо
+      // на палочке.
       ..moveTo(0, -2.0)
       ..quadraticBezierTo(-3.8, 1.8, -2.9, 6.4)
       ..moveTo(0, -2.0)

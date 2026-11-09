@@ -77,6 +77,7 @@ jobs:
       name: ${{ steps.ver.outputs.name }}
       code: ${{ steps.ver.outputs.code }}
       tag: ${{ steps.ver.outputs.tag }}
+      notes: ${{ steps.notes.outputs.notes }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -125,6 +126,39 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Собираем ${TAG}"
 
+      - name: Заметки из коммитов
+        id: notes
+        # Авторелиз идёт ПУШЕМ, а не через pull request, поэтому у GitHub нет
+        # ни одного PR, из которого он собрал бы «What's Changed» — в теле
+        # релиза оставалась одна таблица SHA-256, и «Что нового» показывало
+        # заголовки без пунктов. Здесь собираем заметки сами: список коммитов
+        # от прошлого тега до текущего HEAD.
+        #
+        # Ручной запуск с непустым notes имеет приоритет — автор задал текст сам.
+        env:
+          MANUAL_NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MANUAL_NOTES" ]; then
+            printf 'notes=%s\n' "$MANUAL_NOTES" >> "$GITHUB_OUTPUT"
+            echo "Заметки заданы вручную"
+            exit 0
+          fi
+          PREV=$(git describe --tags --abbrev=0 'HEAD^' 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV}..HEAD"
+          fi
+          {
+            echo "notes<<EOF"
+            git log --no-merges --pretty=format:'- %s' "$RANGE" \
+              | grep -v '^- release:' || true
+            echo ""
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Заметки собраны из ${RANGE}"
+
       - name: Коммит версии
         if: ${{ inputs.dry_run != 'true' }}
         run: |
@@ -155,6 +189,9 @@ jobs:
       version_name: ${{ needs.bump.outputs.name }}
       version_code: ${{ needs.bump.outputs.code }}
       tag: ${{ needs.bump.outputs.tag }}
-      notes: ${{ inputs.notes }}
+      # Заметки собирает bump (из коммитов, если автор не задал вручную).
+      # Пуш-триггер не имеет inputs.notes, и без этого тело релиза оставалось
+      # с одной таблицей SHA-256 — «Что нового» показывал пустые пункты.
+      notes: ${{ needs.bump.outputs.notes }}
       dry_run: ${{ inputs.dry_run }}
     secrets: inherit

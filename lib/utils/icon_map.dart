@@ -500,9 +500,8 @@ class HabitTaskIconList {
 /// адресует на HabitTaskIconList без миграции всех вызовов.
 final List<IconData> _legacyHabitTaskIcons = HabitTaskIconList.all;
 
-/// Кэш «codePoint → константная иконка». Раньше поиск был линейным перебором
-/// по всему набору (450+ записей), и это вызывалось на КАЖДОЙ отрисовке
-/// карточки — на длинных списках складывалось в заметную работу на кадр.
+/// Кэш «codePoint → константная иконка»: линейный поиск по 450+ записям на
+/// каждой отрисовке карточки складывался в заметную работу на кадр.
 final Map<int, IconData> _iconByCodePoint = <int, IconData>{
   for (final i in _legacyHabitTaskIcons) i.codePoint: i,
 };
