@@ -1,9 +1,20 @@
 import 'package:flutter/material.dart';
 import '../services/prefs.dart';
+import 'online_dot.dart';
 
+/// Заголовок «Keramika» в шапке главного экрана.
+///
+/// Новогодняя шапка Деда Мороза отсюда убрана: под буквой «K» теперь живёт
+/// маленький красный кружок онлайна с зоной тапа под палец — по нему
+/// открывается профиль (см. [OnlineDot]).
+///
+/// Сам заголовок остался «затемняемым»: тап по нему плавно приглушает буквы
+/// (это прежнее поведение, к которому пользователь привык).
 class AnimatedBlurTitle extends StatefulWidget {
-  final VoidCallback? onSantaTap;
-  const AnimatedBlurTitle({super.key, this.onSantaTap});
+  /// Тап по кружку онлайна — открыть профиль.
+  final VoidCallback? onOnlineTap;
+
+  const AnimatedBlurTitle({super.key, this.onOnlineTap});
 
   @override
   State<AnimatedBlurTitle> createState() => _AnimatedBlurTitleState();
@@ -43,21 +54,12 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
 
   @override
   Widget build(BuildContext context) {
-    // «Keramika» без ёлочки. Новогодняя шапочка — НАСТОЯЩИЙ эмодзи 🎅,
-    // обрезанный до самой шапки (красный конус + белая оторочка), а не
-    // рисованная картинка. Сидит точно на букве «r»: заголовок собран из
-    // трёх частей (Ke + r + amika) в Row, шапочка кладётся в Stack вместе
-    // с «r» и перекрывает её верх.
-    // Буква «r» — единственный НЕ-Positioned ребёнок Stack, поэтому она
-    // никуда не сдвигается. Тап по Деду повешен на саму шапку (Positioned),
-    // и только когда заголовок виден.
     final style = const TextStyle(
       fontSize: 27,
       fontWeight: FontWeight.w700,
       fontStyle: FontStyle.italic,
       letterSpacing: -0.8,
     );
-    final santaTap = _hidden ? null : widget.onSantaTap;
     return GestureDetector(
       onTap: _toggle,
       behavior: HitTestBehavior.opaque,
@@ -68,42 +70,24 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Ke', style: style),
-              // Буква «r» с шапочкой поверх неё (перекрывает верх буквы —
-              // ничего не вылезает за AppBar, ничего не обрезается).
+              // Буква «K» с кружком онлайна под ней. Кружок — Positioned-
+              // ребёнок Stack, поэтому лэйаут заголовка не меняется: буква
+              // остаётся единственным не-Positioned элементом и никуда не
+              // сдвигается, а кружок висит под глифом.
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Text('r', style: style),
-                  // Эмодзи Санты, обрезанный до шапки. Тап по нему открывает
-                  // ивент (только при видимом заголовке). GestureDetector здесь
-                  // не меняет лэйаут: он всё равно Positioned-ребёнок.
+                  Text('K', style: style),
                   Positioned(
-                    top: -3,
-                    left: -1,
-                    child: GestureDetector(
-                      onTap: santaTap,
-                      behavior: HitTestBehavior.opaque,
-                      // Зона чуть больше глифа, чтобы тапать проще, но
-                      // Positioned-смещение — ровно как в оригинале.
-                      child: SizedBox(
-                        width: 27,
-                        height: 11,
-                        child: FittedBox(
-                          fit: BoxFit.cover,
-                          alignment: Alignment.topCenter,
-                          clipBehavior: Clip.hardEdge,
-                          child: const Text(
-                            '🎅',
-                            style: TextStyle(fontSize: 27, height: 1),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Под буквой, чуть ниже базовой линии: кружок «прижат» к
+                    // низу «K», а не висит посреди слова.
+                    left: -8,
+                    bottom: -6,
+                    child: OnlineDot(onTap: widget.onOnlineTap ?? () {}),
                   ),
                 ],
               ),
-              Text('amika', style: style),
+              Text('eramika', style: style),
             ],
           ),
         ),

@@ -271,13 +271,17 @@ class UpdateService {
               '${publishedAt.month.toString().padLeft(2, '0')}-'
               '${publishedAt.day.toString().padLeft(2, '0')}'
         : (published.length >= 10 ? published.substring(0, 10) : '');
-    // Точное время релиза (локальное, HH:MM) — показывается рядом с датой в
-    // «Что нового»: у авторелизов одной датой несколько выпусков подряд,
-    // и по одному дню их не различить.
+    // Точное время релиза (локальное, HH:MM:SS) — показывается рядом с датой
+    // в «Что нового»: у авторелизов одной датой несколько выпусков подряд,
+    // и по одному дню их не различить, а по минутам — можно. Секунды делают
+    // метку по-настоящему точной.
     final time = publishedAt != null
         ? '${publishedAt.hour.toString().padLeft(2, '0')}:'
-              '${publishedAt.minute.toString().padLeft(2, '0')}'
-        : (published.length >= 16 ? published.substring(11, 16) : '');
+              '${publishedAt.minute.toString().padLeft(2, '0')}:'
+              '${publishedAt.second.toString().padLeft(2, '0')}'
+        : (published.length >= 19
+              ? published.substring(11, 19)
+              : (published.length >= 16 ? published.substring(11, 16) : ''));
     final changes = parseReleaseNotes((json['body'] as String?) ?? '');
     if (changes.isEmpty) {
       changes.add('Обновление $version');

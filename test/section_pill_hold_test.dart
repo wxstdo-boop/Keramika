@@ -160,6 +160,44 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('у края растяжка не «замирает» под пальцем и не скачет на отпускании', (
+    tester,
+  ) async {
+    await pumpPill(tester);
+    double stoneWidth() {
+      final r = tester.getRect(
+        find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_GlassStone',
+        ),
+      );
+      return r.width;
+    }
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(SectionPill)),
+    );
+    await tester.pump();
+    // Дотягиваем до ПРАВОГО края рельса: страница упирается в предел и
+    // sectionDragPage перестаёт меняться. Раньше именно здесь камень
+    // «замирал» под пальцем, а на отпускании рывком прыгал в настоящее
+    // значение тяги.
+    for (var i = 0; i < 26; i++) {
+      await gesture.moveBy(const Offset(16, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final before = stoneWidth();
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 16));
+    final first = stoneWidth();
+    expect(
+      (first - before).abs(),
+      lessThan(0.02 * before),
+      reason: 'на отпускании форма не должна прыгать: под пальцем растяжка '
+          'уже доехала до того же значения',
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('растяжка нарастает без скачка в начале тяги', (tester) async {
     await pumpPill(tester);
     double stoneWidth() {

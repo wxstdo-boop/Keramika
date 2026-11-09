@@ -35,6 +35,7 @@ import 'services/habit_service.dart';
 import 'services/task_service.dart';
 import 'services/timer_service.dart';
 import 'services/prefs.dart';
+import 'services/profile_service.dart';
 import 'services/ai_guide_service.dart';
 import 'services/json_file.dart';
 import 'services/migration.dart';
@@ -104,6 +105,9 @@ Future<void> _loadStartupData() async {
       AlarmService().load(),
       RealityCheckService().load(),
       TimerService().load(),
+      // Профиль (имя, аватарка, друзья, музыка) читается вместе с
+      // остальными: к первому кадру шапки кружок онлайна уже знает статус.
+      ProfileService().load(),
     ]);
 
     // Дефолтные демо-записи убраны: пользователь добавляет привычки,

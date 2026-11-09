@@ -733,7 +733,8 @@ void main() {
           '${local.month.toString().padLeft(2, '0')}-'
           '${local.day.toString().padLeft(2, '0')}');
       expect(entry.time, '${local.hour.toString().padLeft(2, '0')}:'
-          '${local.minute.toString().padLeft(2, '0')}');
+          '${local.minute.toString().padLeft(2, '0')}:'
+          '${local.second.toString().padLeft(2, '0')}');
       expect(entry.changes, ['Add a live changelog']);
     });
 

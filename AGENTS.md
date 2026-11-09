@@ -454,6 +454,33 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
   `setMockMessageHandler(SystemChannels.platform.name, …)` с
   `platformChannel.codec.decodeMethodCall(...)` (см. `preferences_test.dart`).
 
+## Профиль «керамика-юзера»
+
+- Экран — `lib/screens/profile_screen.dart`, состояние — `lib/services/profile_service.dart`
+  (синглтон-`ChangeNotifier`), аватарки — `lib/widgets/profile_avatar.dart`
+  (индекс варианта стабилен, поэтому друг не «перекрашивается» между запусками).
+- Профиль (имя, аватарка, друзья, музыка) читается в общем стартовом
+  `Future.wait` (`main.dart`), как остальные сервисы. Онлайн-статус вынесен
+  ОТДЕЛЬНЫМ ключом в `SharedPreferences` (`profile_online`), потому что его
+  читают и шапка (`OnlineDot`), и экран профиля, и он не должен тянуть разбор
+  всего файла профиля.
+- Кружок онлайна в шапке (`lib/widgets/online_dot.dart`) сидит под буквой «K»
+  (`AnimatedBlurTitle`), зона тапа ~30 px при глифе 9 px. Новогодняя шапка из
+  заголовка убрана.
+- Рейтинг — локальный: свой счёт считается из реальной активности
+  (`ProfileService.localScore()` = сумма стриков + выполненные задачи + бонус
+  за активные дни), друзья добавляются вручную. Общего сервера у приложения
+  нет, поэтому «онлайн»-рейтинг пока локальный; сеть нужна только для
+  открытия событий в браузере (`url_launcher`).
+- `_Card` в профиле — это `Material`, а не голый `DecoratedBox`: `ListTile`
+  рисует чернильные волны на ближайшем `Material`, иначе Flutter роняет
+  assertion «ListTile background color or ink splashes may be invisible».
+- Своя музыка копируется в приватную папку (`getApplicationDocumentsDirectory()
+  /sounds`) — путь из общего хранилища/кэша переживёт не всякий день.
+- Тест экрана профиля не делает файловый I/O внутри `testWidgets`
+  (fake-async виснет): профиль читается в `setUp` (настоящая async-зона), а
+  сам виджет-тест только рендерит и скроллит.
+
 ## Публикация в F-Droid / IzzyOnDroid
 
 Полная инструкция — `docs/publishing-fdroid.md`. Ключевое, чтобы не наступать

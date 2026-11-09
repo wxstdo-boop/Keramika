@@ -257,6 +257,14 @@ class _SectionPillState extends State<SectionPill>
   /// пересекает границу раздела.
   int _dragNearest = -1;
 
+  /// Тяга за край, вынесенная в notifier: у самого края рельса страница уже
+  /// упёрлась в предел, [sectionDragPage] перестаёт меняться — и без этого
+  /// канала камень НЕ перестраивался бы, хотя [_edgePull] продолжал расти.
+  /// Растяжка под пальцем «замирала», а на отпускании камень рывком брал
+  /// настоящее значение тяги (та самая жалоба). Пишем сюда на каждом
+  /// изменении тяги — ребилд идёт ровно за пальцем.
+  final ValueNotifier<double> _edgePullNotifier = ValueNotifier<double>(0.0);
+
   /// Последняя вычисленная величина transit-растяжки (волна) — живая:
   /// считается прямо из текущей позиции карусели, поэтому при отпускании
   /// пальца не «прыгает» в замороженное значение, а едет дальше вместе с
@@ -294,6 +302,7 @@ class _SectionPillState extends State<SectionPill>
   @override
   void dispose() {
     _edgeSettle.dispose();
+    _edgePullNotifier.dispose();
     // Экран мог закрыться прямо во время тяги — не оставляем Home с
     // висящей ненулевой страницей.
     if (_dragging) sectionDragPage.value = null;
@@ -309,6 +318,7 @@ class _SectionPillState extends State<SectionPill>
     _edgeSettle.value = 0;
     _releasePull = 0;
     _edgePull = 0;
+    _edgePullNotifier.value = 0;
     _lastWave = 0;
 
     _dragPage = sectionRailPage.value
@@ -380,6 +390,9 @@ class _SectionPillState extends State<SectionPill>
     // «Объём до конца»: тяга наливается весь ход пальца за край, поэтому
     // камень дышит на всю длину жеста. Нормированная доля (-0.9..0.9).
     _edgePull = (over / 90.0).clamp(-0.9, 0.9);
+    // У края страница уже на пределе — sectionDragPage не меняется, и без
+    // этого уведомления камень не перестроился бы (растяжка «замирала»).
+    _edgePullNotifier.value = _edgePull;
     // Палец задаёт позицию камня (точная доля по дорожке), она пишется в
     // [sectionDragPage] НАПРЯМУЮ: палец уже прошёл дедзону, сглаживать
     // больше нечего. Каждый лишний слой запаздывания только отставал от
@@ -461,6 +474,7 @@ class _SectionPillState extends State<SectionPill>
       ..value = 0
       ..forward();
     _edgePull = 0;
+    _edgePullNotifier.value = 0;
   }
 
   @override
@@ -584,6 +598,7 @@ class _SectionPillState extends State<SectionPill>
     return AnimatedBuilder(
       animation: Listenable.merge([
         _edgeSettle,
+        _edgePullNotifier,
         sectionCurrentIndex,
         sectionDragPage,
         sectionRailPage,

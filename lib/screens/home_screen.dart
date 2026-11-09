@@ -23,6 +23,7 @@ import 'tasks_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 import 'nutrition_screen.dart';
+import 'profile_screen.dart';
 import '../main.dart';
 import '../l10n/translations.dart';
 import '../utils/android_settings.dart';
@@ -30,8 +31,6 @@ import '../services/prefs.dart';
 import '../utils/page_transitions.dart';
 import '../utils/jank_probe.dart';
 import '../widgets/animated_blur_title.dart';
-import '../widgets/new_year_event_banner.dart';
-import '../services/new_year_event_service.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 import '../widgets/page_spring.dart';
 
@@ -339,40 +338,10 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Показывает окно ивента «Новый год» по тапу на Деду Морозу в
-  /// заголовке. НЕ автоматически при запуске.
-  /// Гвард _eventModalOpen предотвращает двойной диалог (из-за
-  /// которого «фон оставался» после закрытия).
-  bool _eventModalOpen = false;
-  void _showEventModal() {
-    if (!NewYearEventService.isActive) return;
-    if (_eventModalOpen || !mounted) return;
-    _eventModalOpen = true;
-    // Роут с ПРОЗРАЧНЫМ барьером: затемнение рисует сам баннер своим
-    // контроллером. Иначе роут гасит фон отдельно от карточки — два
-    // разнесённых по времени фейда («выход дерганый, фон догоняет»).
-    // Тут скрим и карточка живут на одной таймлайне: фон гаснет быстрее,
-    // карточка мягко долетает до конца.
-    showGeneralDialog<void>(
-      context: context,
-      // Закрыть можно только кнопкой X в окне (не тапом по фону).
-      barrierDismissible: false,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.transparent,
-      // Имя роута нужно jank-пробе: без него окно ивента и все прочие
-      // `showGeneralDialog` пишутся в лог одним `RawDialogRoute<void>`, и
-      // «тормозит ивент» неотличимо от «тормозит меню языка».
-      routeSettings: const RouteSettings(name: 'dlg:event'),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (ctx, _, _) => NewYearEventBanner(
-        onClose: () {
-          // Гарантированное закрытие: даже если диалог уже в процессе
-          // закрытия — не роняем и не оставляем «фон».
-          if (Navigator.canPop(ctx)) Navigator.of(ctx).pop();
-        },
-      ),
-      transitionBuilder: (ctx, _, _, child) => child,
-    ).whenComplete(() => _eventModalOpen = false);
+  /// Открывает профиль «керамика-юзера» (тап по кружку онлайна в шапке).
+  void _openProfile() {
+    if (!mounted) return;
+    Navigator.of(context).push(slideSideRoute(const ProfileScreen()));
   }
 
   void _onPageScroll() {
@@ -589,8 +558,8 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
-          // Тап по Деду Морозу в заголовке открывает окно ивента.
-          title: AnimatedBlurTitle(onSantaTap: _showEventModal),
+          // Тап по кружку онлайна под «K» открывает профиль.
+          title: AnimatedBlurTitle(onOnlineTap: _openProfile),
           centerTitle: false,
           actions: [
             PressScale(
