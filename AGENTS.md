@@ -301,6 +301,20 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
   второй `pop`/`stopAlarmSound` ронял экран.
 - **Перепланировка на старте/возврате** (`rescheduleAllNotifications`)
   сперва гасит прозвеневшие одноразовые, потом взводит включённые.
+- **Каналы — не `late final`.** Раньше `_alarmPayloadChannel` и
+  `_lifecycleChannel` присваивались в `initChannels()`, которую никто не
+  вызывал: первый же `setMethodCallHandler` в `_startApp()` падал с
+  `LateInitializationError`, и тап по уведомлению в ЖИВОМ приложении
+  (`onNewIntent` → `onNewAlarmPayload`) не открывал экран задачи. Каналы
+  создаются сразу константами, а `_listenForAlarmPayloads()` зовётся при
+  монтировании `KeramikaAppState`. `MethodChannel` на web безвреден — не
+  трогает платформу до первого `invoke`.
+- **Остановка звонка — адресная.** Удаление/выключение звенящего будильника
+  не гасило звук: отмена `AlarmManager` и уведомления не трогают
+  `AlarmForegroundService`, и он играл до 5-минутного `MAX_RING_MS`. Теперь
+  сервис помнит `ringingCode` (= `alarm_id.hashCode`), а `stopFor(ringCode)`
+  (канал `stopAlarmSoundFor`) глушит звук ТОЛЬКО если звонит именно этот
+  будильник — иначе параллельный звонок другого будильника не срывается.
 - Диагностика — чёрный ящик `alarm_fire_log.txt` (пишут и `AlarmLog.kt`, и
   `AlarmBlackBox`), читается через adb без root.
 
