@@ -639,6 +639,14 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
   указывает на него и на актуальные `versionName`/`versionCode`; (3) копия
   рецепта — MR в `fdroiddata`. Нельзя ссылаться на коммит, которого нет на
   GitHub: F-Droid клонирует именно его.
+- **Changelog обязан лежать в коммите рецепта, а не просто в репозитории.**
+  Тег указывает на коммит `release: v…`, и раньше в него не попадал
+  `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` (коммит трогал
+  только `pubspec.yaml` и `app_version.dart`) — на стороне fdroiddata «Что
+  нового» было пустым. Теперь `ship.yml` шагом «Changelog для F-Droid»
+  генерирует файл из тех же коммитов, что и заметки релиза, и коммитит его
+  вместе с бампом; уже написанный автором файл не перетирается. Проверка:
+  `git ls-tree -r --name-only <tag>` должен содержать `changelogs/<versionCode>.txt`.
 - **`fdroid rewritemeta` — жёсткий гейт CI.** В fdroiddata есть job
   `fdroid rewritemeta`, который переформатирует файл и требует НУЛЕВОЙ diff.
   Поэтому рецепт держать строго в каноническом виде: ключи верхнего уровня

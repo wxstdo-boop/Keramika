@@ -19,9 +19,9 @@ RepoType: git
 Repo: https://github.com/wxstdo-boop/Keramika.git
 
 Builds:
-  - versionName: 1.6.124
-    versionCode: 45196
-    commit: 4c0dee7adde653533044f742a77360af9035035c
+  - versionName: 1.6.130
+    versionCode: 45202
+    commit: abafdba6a510156816620189b32cab789abc88ec
     timeout: 10800
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
@@ -54,5 +54,5 @@ Builds:
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+\+[0-9]+$
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.6.124
-CurrentVersionCode: 45196
+CurrentVersion: 1.6.130
+CurrentVersionCode: 45202
