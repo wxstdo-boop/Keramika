@@ -77,29 +77,22 @@ class OnlineDot extends StatelessWidget {
                       height: size,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        // Налитый красный ↔ прозрачная середина: «пусто».
+                        // Монотонный полупрозрачный красный ↔ прозрачная
+                        // середина: «пусто». Без свечения и градиента —
+                        // ровная матовая заливка, ничего не «отсвечивает».
                         color: online
-                            ? _blood.withValues(alpha: 0.9)
+                            ? _blood.withValues(alpha: 0.55)
                             : Colors.transparent,
                         // У пустого остаётся тонкое кольцо — иначе он бы
                         // просто исчез и статус читался бы как «нет данных».
                         border: Border.all(
                           color: online
-                              ? _blood.withValues(alpha: 0.9)
+                              ? _blood.withValues(alpha: 0.75)
                               : theme.colorScheme.outline.withValues(
-                                  alpha: 0.55,
+                                  alpha: 0.45,
                                 ),
-                          width: online ? 1.0 : 1.4,
+                          width: online ? 1.0 : 1.2,
                         ),
-                        boxShadow: online
-                            ? [
-                                BoxShadow(
-                                  color: _blood.withValues(alpha: 0.55),
-                                  blurRadius: 7,
-                                  spreadRadius: 0.6,
-                                ),
-                              ]
-                            : null,
                       ),
                     ),
                   ),

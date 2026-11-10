@@ -31,9 +31,9 @@ void main() {
     expect(find.text('1.6.72'), findsOneWidget);
     expect(find.text('1.6.71'), findsOneWidget);
     expect(find.byType(Card), findsWidgets);
-    // Список не пришёл из сети — значит доступна кнопка «Повторить»,
-    // иначе экран выглядел бы тупиком до перезахода.
-    expect(find.byIcon(Icons.refresh_rounded), findsOneWidget);
+    // Кнопки «Повторить» больше нет: обновление — свайпом (RefreshIndicator),
+    // чтобы офлайн-экран не выглядел «сломанным» с лишней кнопкой.
+    expect(find.byIcon(Icons.refresh_rounded), findsNothing);
     // Плашка списка изменений: заголовок — сразу «Как развивается
     // приложение», ниже мелким текстом план; «Список изменений» убран.
     expect(

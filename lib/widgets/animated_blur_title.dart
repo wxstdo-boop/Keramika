@@ -128,8 +128,9 @@ class _TitleWithDot extends StatelessWidget {
     required this.onDotTap,
   });
 
-  /// Зазор между кружком и верхом буквы, px.
-  static const double _gap = 3;
+  /// Зазор между кружком и верхом буквы, px. Небольшой: кружок сидит ПРЯМО
+  /// над буквой, а не висит высоко.
+  static const double _gap = 0.5;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +152,7 @@ class _TitleWithDot extends StatelessWidget {
     // верхом. Зона тапа OnlineDot — квадрат 30×30 с глифом по центру.
     final dotRadius = OnlineDot.dotSize / 2;
     final tapHalf = OnlineDot.tapTarget / 2;
-    final dotCx = (lastGlyph?.right ?? painter.width) - dotRadius + 2;
+    final dotCx = (lastGlyph?.right ?? painter.width) - dotRadius + 5;
     final dotCy = (lastGlyph?.top ?? 0) - dotRadius - _gap;
 
     // Stack хит-тестит только ВНУТРИ своих границ: кружок, вынесенный за верх

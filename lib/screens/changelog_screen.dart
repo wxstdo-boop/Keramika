@@ -51,9 +51,6 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
   List<ChangelogEntry>? _entries;
   bool _loading = true;
 
-  /// Список пришёл из сети (true) или это встроенная подстраховка (false).
-  bool _live = false;
-
   @override
   void initState() {
     super.initState();
@@ -66,7 +63,6 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
     if (!mounted) return;
     setState(() {
       _entries = fetched;
-      _live = fetched != null;
       _loading = false;
     });
   }
@@ -83,16 +79,6 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
         // Задизайненный «Назад» (тултип) — единый стиль со всеми экранами.
         leading: const BackButtonTooltip(),
         centerTitle: true,
-        actions: [
-          // Когда показана подстраховка (сети не было), даём обновить вручную:
-          // иначе экран выглядел бы тупиком до перезахода.
-          if (!_loading && !_live)
-            IconButton(
-              tooltip: Translations.t('retry', context),
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: () => _load(force: true),
-            ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: () => _load(force: true),
