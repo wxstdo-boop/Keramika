@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -20,6 +21,17 @@ import '../widgets/smooth_tooltip.dart';
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
 /// сюда достаточно подставить сетевую загрузку — форма карточки не изменится.
 const String kKeramikaSiteUrl = 'https://keramika.ru';
+
+/// Округлая (капсульная) форма кнопок профиля — та же «отдача фоном», что у
+/// кнопок настроек: полное скругление и мягкое вдавливание под пальцем.
+/// Тон применяется вызывающим: кнопки — tonal, как экспорт/импорт настроек.
+ButtonStyle _roundButtonStyle() => FilledButton.styleFrom(
+  shape: const StadiumBorder(),
+  padding: const EdgeInsets.symmetric(
+    horizontal: Spacing.md,
+    vertical: Spacing.sm,
+  ),
+);
 
 /// Экран профиля «керамика-юзера».
 ///
@@ -97,7 +109,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _saveName() async {
-    await _service.setName(_nameCtrl.text);
+    // Имя обрезаем до лимита и снимаем пробелы по краям: в шапке оно
+    // показывается как есть, и «хвост» из пробелов там читался бы дырой.
+    await _service.setName(_nameCtrl.text.trim());
     if (!mounted) return;
     FocusScope.of(context).unfocus();
     Haptics.light();
@@ -351,6 +365,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Лимит короткого имени: 10 символов. Счётчик под полем не нужен —
+  /// ввод просто обрезается, а подпись «Короткое имя» уже всё объясняет.
+  static const int _nameMaxLength = 10;
+
   Widget _nameCard(ThemeData theme) {
     return _Card(
       title: Translations.t('profileName', context, 'Короткое имя'),
@@ -361,7 +379,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: TextField(
               controller: _nameCtrl,
               textInputAction: TextInputAction.done,
-              maxLength: 20,
+              maxLength: _nameMaxLength,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(_nameMaxLength),
+              ],
               onSubmitted: (_) => _saveName(),
               decoration: InputDecoration(
                 hintText: Translations.t(
@@ -369,6 +390,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   context,
                   'Как вас звать?',
                 ),
+                // Счётчик «0/10» под полем не показываем — он шумит, а
+                // лимит и так ощущается обрезкой ввода.
                 counterText: '',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(Radii.md),
@@ -377,9 +400,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(width: Spacing.xs),
-          FilledButton(
-            onPressed: _saveName,
-            child: Text(Translations.t('save', context, 'Сохранить')),
+          // Отдача «вдавливанием», как у значка «Назад»: кнопка мягко
+          // уменьшается под пальцем и так же возвращается.
+          PressScale(
+            pressedScale: 0.94,
+            child: FilledButton.tonal(
+              onPressed: _saveName,
+              style: _roundButtonStyle(),
+              child: Text(Translations.t('save', context, 'Сохранить')),
+            ),
           ),
         ],
       ),
@@ -459,13 +488,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           Align(
             alignment: Alignment.centerLeft,
-            child: FilledButton.tonalIcon(
-              onPressed: _pickMusic,
-              icon: const Icon(Icons.library_music_outlined),
-              label: Text(
-                hasMusic
-                    ? Translations.t('profileMusicChange', context, 'Заменить')
-                    : Translations.t('profileMusicAdd', context, 'Выбрать файл'),
+            child: PressScale(
+              pressedScale: 0.94,
+              child: FilledButton.tonalIcon(
+                onPressed: _pickMusic,
+                style: _roundButtonStyle(),
+                icon: const Icon(Icons.library_music_outlined),
+                label: Text(
+                  hasMusic
+                      ? Translations.t('profileMusicChange', context, 'Заменить')
+                      : Translations.t('profileMusicAdd', context, 'Выбрать файл'),
+                ),
               ),
             ),
           ),
@@ -848,9 +881,13 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
               const SizedBox(height: Spacing.md),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
-                  onPressed: _submit,
-                  child: Text(Translations.t('add', context, 'Добавить')),
+                child: PressScale(
+                  pressedScale: 0.96,
+                  child: FilledButton.tonal(
+                    onPressed: _submit,
+                    style: _roundButtonStyle(),
+                    child: Text(Translations.t('add', context, 'Добавить')),
+                  ),
                 ),
               ),
             ],
@@ -969,14 +1006,18 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
               const SizedBox(height: Spacing.md),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    final score = int.tryParse(_ctrl.text.trim()) ?? 0;
-                    Navigator.of(context).pop(
-                      widget.friend.copyWith(score: score),
-                    );
-                  },
-                  child: Text(Translations.t('save', context, 'Сохранить')),
+                child: PressScale(
+                  pressedScale: 0.96,
+                  child: FilledButton.tonal(
+                    onPressed: () {
+                      final score = int.tryParse(_ctrl.text.trim()) ?? 0;
+                      Navigator.of(context).pop(
+                        widget.friend.copyWith(score: score),
+                      );
+                    },
+                    style: _roundButtonStyle(),
+                    child: Text(Translations.t('save', context, 'Сохранить')),
+                  ),
                 ),
               ),
             ],

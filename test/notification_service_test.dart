@@ -337,23 +337,26 @@ void main() {
     expect(args['id'], 'alarm-test-1'.hashCode);
   });
 
-  test('выключенный переключатель не даёт поставить будильник', () async {
+  test('будильник ставится даже при выключенных уведомлениях', () async {
     final service = NotificationService();
     await service.setEnabled(false, requestPermission: false);
     final before = nativeCalls.length;
 
     final ok = await service.scheduleAlarm(makeAlarm());
 
-    // Будильник не должен ставиться в систему, пока пользователь выключил
-    // уведомления: иначе он прозвонит ночью, когда всё выключено.
-    expect(ok, isFalse);
+    // РЕГРЕСС: раньше выключенный тумблер уведомлений (или снятое системой
+    // разрешение после обновления APK) молча запрещал постановку будильника —
+    // «включены, но не звонят». Звонок идёт через foreground-сервис по
+    // AlarmManager и в уведомлениях не нуждается, поэтому будильник обязан
+    // ставиться ВСЕГДА, а уведомление — лишь дополнительный слой.
+    expect(ok, isTrue);
     expect(
       nativeCalls
           .skip(before)
           .where((c) => c.method == 'scheduleAlarmClock')
-          .isEmpty,
+          .isNotEmpty,
       isTrue,
-      reason: 'Будильник поставлен, хотя уведомления выключены',
+      reason: 'Будильник не поставлен, хотя звонок от уведомлений не зависит',
     );
   });
 }

@@ -121,7 +121,7 @@ void main() {
     expect(board.last.name, 'Слабак');
   });
 
-  testWidgets('кружок онлайна есть под «K» и открывает профиль по тапу', (
+  testWidgets('кружок онлайна есть НАД «K» и открывает профиль по тапу', (
     tester,
   ) async {
     var opened = false;
@@ -139,9 +139,61 @@ void main() {
     expect(find.byType(OnlineDot), findsOneWidget);
     expect(find.textContaining('🎅'), findsNothing);
 
+    // Кружок стоит НАД буквой «K»: его центр выше центра буквы.
+    final dotCenter = tester.getCenter(find.byType(OnlineDot));
+    final kCenter = tester.getCenter(find.text('K'));
+    expect(
+      dotCenter.dy,
+      lessThan(kCenter.dy),
+      reason: 'кружок должен быть сверху, а не под буквой',
+    );
+
     await tester.tap(find.byType(OnlineDot));
     await tester.pump();
     expect(opened, isTrue, reason: 'тап по кружку должен открывать профиль');
+  });
+
+  group('шапка с именем юзера', () {
+    // Имя ставим в setUp (реальная async-зона), а не внутри testWidgets:
+    // запись профиля — файловый I/O, а он в fake-async виснет (см. AGENTS.md).
+    setUp(() async {
+      await ProfileService().load();
+      await ProfileService().setName('Гончар');
+    });
+    tearDown(() async {
+      await ProfileService().setName('');
+    });
+
+    testWidgets('в шапке вместо «Keramika» показывается имя юзера', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(title: AnimatedBlurTitle(onOnlineTap: () {})),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Гончар'), findsOneWidget);
+      expect(find.text('K'), findsNothing);
+      expect(find.text('eramika'), findsNothing);
+      // Кружок онлайна остаётся — он висит над первой буквой имени.
+      expect(find.byType(OnlineDot), findsOneWidget);
+    });
+  });
+
+  test('короткое имя обрезается до 10 символов', () async {
+    final svc = ProfileService();
+    await svc.load();
+    await svc.setName('ОченьДлинноеИмя');
+    expect(svc.name, 'ОченьДлинн');
+    expect(svc.name.length, ProfileService.maxNameLength);
+
+    // Пробелы по краям снимаются, внутри — сохраняются.
+    await svc.setName('  Гончар  ');
+    expect(svc.name, 'Гончар');
   });
 
   testWidgets('аватарка меняет цвет по индексу, вариантов достаточно', (

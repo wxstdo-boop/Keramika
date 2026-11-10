@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import '../services/prefs.dart';
+import '../services/profile_service.dart';
 import 'online_dot.dart';
 
 /// Заголовок «Keramika» в шапке главного экрана.
 ///
-/// Новогодняя шапка Деда Мороза отсюда убрана: под буквой «K» теперь живёт
+/// Новогодняя шапка Деда Мороза отсюда убрана: НАД первой буквой живёт
 /// маленький красный кружок онлайна с зоной тапа под палец — по нему
 /// открывается профиль (см. [OnlineDot]).
+///
+/// Если в профиле сохранено короткое имя, вместо «Keramika» показывается
+/// оно — шапка становится личной.
 ///
 /// Сам заголовок остался «затемняемым»: тап по нему плавно приглушает буквы
 /// (это прежнее поведение, к которому пользователь привык).
@@ -67,28 +71,46 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
         opacity: CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
         child: FittedBox(
           fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Буква «K» с кружком онлайна под ней. Кружок — Positioned-
-              // ребёнок Stack, поэтому лэйаут заголовка не меняется: буква
-              // остаётся единственным не-Positioned элементом и никуда не
-              // сдвигается, а кружок висит под глифом.
-              Stack(
+          child: AnimatedBuilder(
+            // Имя юзера в шапке: как только профиль сохраняет короткое имя,
+            // заголовок сам меняется на него — без пересборки всего Home.
+            animation: ProfileService(),
+            builder: (context, _) {
+              // Своё имя вместо «Keramika»: пустое поле оставляем брендом,
+              // чтобы шапка не оставалась пустой у нового пользователя.
+              final name = ProfileService().displayName;
+              final title = name.isNotEmpty
+                  ? Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: style,
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('K', style: style),
+                        Text('eramika', style: style),
+                      ],
+                    );
+              // Кружок онлайна — Positioned-ребёнок Stack, поэтому лэйаут
+              // заголовка не меняется: он висит НАД первой буквой и не
+              // сдвигает текст (Stack не обрезает, Clip.none). Зона тапа
+              // шире глифа, поэтому по кружку удобно попадать пальцем.
+              return Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Text('K', style: style),
+                  title,
                   Positioned(
-                    // Под буквой, чуть ниже базовой линии: кружок «прижат» к
-                    // низу «K», а не висит посреди слова.
-                    left: -8,
-                    bottom: -6,
+                    // Над первой буквой: кружок «сидит» на верхушке глифа,
+                    // а не болтается у базовой линии.
+                    left: -6,
+                    top: -6,
                     child: OnlineDot(onTap: widget.onOnlineTap ?? () {}),
                   ),
                 ],
-              ),
-              Text('eramika', style: style),
-            ],
+              );
+            },
           ),
         ),
       ),

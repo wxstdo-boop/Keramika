@@ -334,6 +334,15 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
 `WakeTaskScreen` → `stopAlarmSound`. Догон после перезагрузки — `BootReceiver`
 нативно из манифеста `alarm_manifest` (SharedPreferences, пишет плагин).
 
+- **Срабатывание будильника НЕ зависит от уведомлений.** `scheduleAlarm`
+  гейтит только по `_initialized`/`_supported`, но НЕ по тумблеру
+  «Уведомления» и НЕ по `POST_NOTIFICATIONS`. Звонок поднимает
+  `AlarmForegroundService` по точному `AlarmManager`, звук играет
+  `MediaPlayer` сервиса — право на уведомления ему не нужно. Раньше жёсткий
+  гейт `if (!_enabled || !await ensureNotificationPermission()) return false`
+  молча запрещал постановку: стоило отказать в уведомлениях (или системе —
+  снять право после обновления APK), как будильники оставались «включёнными,
+  но не звонящими». Право лишь ПРОСИМ, но не требуем.
 - **Одноразовый будильник не воскресает.** При срабатывании `AlarmReceiver`
   зовёт `AlarmSchedulerPlugin.markOneShotFired` + `removeManifestEntryFor`,
   а Dart на старте/возврате из фона гасит такие будильники через
@@ -476,9 +485,17 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
   ОТДЕЛЬНЫМ ключом в `SharedPreferences` (`profile_online`), потому что его
   читают и шапка (`OnlineDot`), и экран профиля, и он не должен тянуть разбор
   всего файла профиля.
-- Кружок онлайна в шапке (`lib/widgets/online_dot.dart`) сидит под буквой «K»
-  (`AnimatedBlurTitle`), зона тапа ~30 px при глифе 9 px. Новогодняя шапка из
-  заголовка убрана.
+- Кружок онлайна в шапке (`lib/widgets/online_dot.dart`) сидит НАД первой
+  буквой заголовка (`AnimatedBlurTitle`), зона тапа ~30 px при глифе 9 px.
+  Новогодняя шапка из заголовка убрана. Если в профиле сохранено короткое
+  имя, вместо «Keramika» показывается оно (`AnimatedBlurTitle` слушает
+  `ProfileService`).
+- **Короткое имя — максимум 10 символов** (`ProfileService.maxNameLength`).
+  Поле ввода обрезает набор через `LengthLimitingTextInputFormatter`, счётчик
+  под полем скрыт (`counterText: ''`), а сервис режет имя и сам (на случай
+  прихода извне). Пробелы по краям снимаются.
+- Кнопки профиля — капсульные (`_roundButtonStyle`, `StadiumBorder`) в тоне
+  `FilledButton.tonal` и с отдачей `PressScale`, как кнопки настроек.
 - Рейтинг — локальный: свой счёт считается из реальной активности
   (`ProfileService.localScore()` = сумма стриков + выполненные задачи + бонус
   за активные дни), друзья добавляются вручную. Общего сервера у приложения

@@ -327,7 +327,7 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
         Translations.t(
           'changeLintCleanup',
           context,
-          'Internal cleanup: test helpers no longer use underscore-prefixed names',
+          'Tidied up the internals — the app is a little more dependable now',
         ),
       ],
     ),
@@ -354,7 +354,7 @@ class _ChangelogScreenState extends State<ChangelogScreen> {
         Translations.t(
           'changeCIUpdate',
           context,
-          'Build pipeline updated: newer GitHub Actions and a fixed lint job',
+          'Releases go out more smoothly — we reworked the build pipeline',
         ),
       ],
     ),

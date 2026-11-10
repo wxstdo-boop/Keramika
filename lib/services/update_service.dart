@@ -337,6 +337,11 @@ class UpdateService {
       text = text.replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1)!);
       text = text.replaceAll('`', '');
       text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      // Технический «хвост» в скобках — это заметка для разработчика
+      // («(каналы не late)», «(без обещаний про Play Protect)»), а не то,
+      // что человеку важно в «Что нового». Срезаем её: пункт читается
+      // живой фразой, а не протоколом.
+      text = text.replaceFirst(RegExp(r'\s*\([^()]*\)\s*$'), '').trim();
       // Хвостовая точка/запятая/точка с запятой в списке лишняя.
       text = text.replaceAll(RegExp(r'[.;,]+$'), '').trim();
       if (text.isEmpty) continue;

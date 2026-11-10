@@ -635,21 +635,32 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<bool> scheduleAlarm(Alarm alarm) async {
-    if (!_enabled || !_initialized || !_supported) {
+    if (!_initialized || !_supported) {
       // Раньше этот возврат был МОЛЧАЛИВЫМ: будильник оставался сохранённым,
       // включённым в списке — и никогда не звенел. Теперь причина видна в
       // журнале на телефоне.
       await AlarmBlackBox.log(
-        'DART SKIP id=${alarm.id.hashCode} reason=disabled '
-        'enabled=$_enabled init=$_initialized supported=$_supported',
+        'DART SKIP id=${alarm.id.hashCode} reason=not-ready '
+        'init=$_initialized supported=$_supported',
       );
       return false;
     }
-    if (!await ensureNotificationPermission()) {
+    // ВАЖНО: срабатывание будильника НЕ зависит от разрешения на уведомления
+    // и от общего тумблера «Уведомления» в настройках.
+    //
+    // Звонок поднимает AlarmForegroundService по точному AlarmManager — это
+    // работает и без POST_NOTIFICATIONS (звук играет MediaPlayer сервиса,
+    // а не уведомление). Раньше здесь стоял жёсткий гейт
+    // `if (!_enabled || !await ensureNotificationPermission()) return false;`:
+    // стоило пользователю отказать в уведомлениях (или системе — снять право
+    // после обновления APK), как будильники переставали ставиться ВООБЩЕ, —
+    // «включены, но не звонят». Разрешение лишь ПРОСИМ (мягко, без диалога на
+    // каждой перепланировке), но не требуем: тишина будильника недопустима.
+    if (_isAndroid && !await areNotificationsEnabled()) {
       await AlarmBlackBox.log(
-        'DART SKIP id=${alarm.id.hashCode} reason=no-notif-permission',
+        'DART NOTE id=${alarm.id.hashCode} notifications off — ставим '
+        'будильник всё равно (звонок независим)',
       );
-      return false;
     }
     // Слой-диагностика «почему не сработает утром»: фиксируем ПЕРЕД постановкой
     // состояние прав, по которым на OEM (MIUI/HyperOS) будильник тихо превращается

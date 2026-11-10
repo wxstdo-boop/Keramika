@@ -148,8 +148,17 @@ class ProfileService extends ChangeNotifier {
     if (resolved == value) _snapshot = resolved;
   }
 
+  /// Максимальная длина короткого имени. Поле ввода уже ограничивает
+  /// набор, но сервис держит лимит и сам: имя приходит и из других мест
+  /// (например, из будущей синхронизации), а в шапке длинный текст ломал бы
+  /// строку.
+  static const int maxNameLength = 10;
+
   Future<void> setName(String value) async {
-    _name = value;
+    final trimmed = value.trim();
+    _name = trimmed.length > maxNameLength
+        ? trimmed.substring(0, maxNameLength)
+        : trimmed;
     notifyListeners();
     await _save();
   }

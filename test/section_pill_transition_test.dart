@@ -170,4 +170,47 @@ void main() {
     expect(sectionCurrentIndex.value, 0);
     expect(pillHeight(tester), fullPill);
   });
+
+  testWidgets('тяга таблетки ведёт экраны плавно: карусель догоняет палец, '
+      'не прыгает 1:1, и доводится на отпускании', (tester) async {
+    await boot(tester);
+    expect(sectionRailPage.value, 0);
+
+    final center = tester.getCenter(find.byType(SectionPill).first);
+    final g = await tester.startGesture(center);
+    await tester.pump(const Duration(milliseconds: 20));
+
+    // Первый сдвиг лишь распознаёт жест (touch-slop) — камень ещё стоит.
+    await g.moveBy(const Offset(30, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    // Осознанный сдвиг вправо: палец задаёт цель таблетки.
+    await g.moveBy(const Offset(80, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    final target = sectionDragPage.value;
+    expect(target, isNotNull, reason: 'палец ведёт камень');
+    expect(target!, greaterThan(0));
+
+    // ОДИН кадр спустя карусель ещё НЕ на цели: экран догоняет палец
+    // пружиной (плавно), а не телепортируется 1:1.
+    await tester.pump(const Duration(milliseconds: 16));
+    final justAfter = sectionRailPage.value;
+    expect(
+      justAfter,
+      lessThan(target),
+      reason: 'экран не должен прыгать на цель в первом же кадре',
+    );
+
+    // Отпускаем: пружина доводит раздел до ближайшего.
+    await g.up();
+    for (var i = 0; i < 120; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final settled = sectionRailPage.value;
+    expect(
+      (settled - settled.round()).abs(),
+      lessThan(0.05),
+      reason: 'после отпускания карусель успокаивается на целом разделе',
+    );
+    expect(sectionCurrentIndex.value, settled.round());
+  });
 }

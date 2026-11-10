@@ -81,6 +81,24 @@ class _HomeScreenState extends State<HomeScreen>
     dampingRatio: 1.0,
   );
 
+  /// Пружина СЛЕДОВАНИЯ карусели за пальцем (тяга таблетки).
+  ///
+  /// Раньше палец двигал карусель жёстким `jumpToWithoutSettling` 1:1: экран
+  /// телепортировался на долю таблетки, и на быстрой/медленной тяге это
+  /// читалось «экран дёргается, слишком быстрый и неплавный». Теперь позицию
+  /// карусели ведёт мягкая пружина к цели пальца — экран догоняет камень
+  /// плавно, без скачков, а на отпускании `_pageSpring` доводит раздел до
+  /// ближайшего (палец намеренно «не дотягивает» до пикселя).
+  late final PageSpring _dragSpring = PageSpring(
+    vsync: this,
+    controller: _pageController,
+    // Мягче тап-пружины: экран идёт ЗА пальцем с лёгким запаздыванием —
+    // это и даёт «плавно», а не «дёргано».
+    stiffness: 300,
+    dampingRatio: 0.95,
+  );
+  double _dragTargetPage = 0;
+
   /// Сколько сейчас разделов (нужно пружине, чтобы не уехать за край).
   int _pagesCount = 4;
   // Раздел, на котором PageView УСТАНОВИЛСЯ (после анимации/свайпа).
@@ -167,40 +185,33 @@ class _HomeScreenState extends State<HomeScreen>
   /// карусель к своей старой цели и спорила с пальцем (камень «дрожал»).
   void _onSectionDragPage() {
     final page = sectionDragPage.value;
-    if (page == null || !page.isFinite) return;
+    if (page == null || !page.isFinite) {
+      // Палец отпустил (или тяга отменена) — догоняем ближайший раздел.
+      // Пружина тапа идёт от ЖИВОЙ позиции карусели и стартует с нулевой
+      // скорости, поэтому экран мягко дотягивается до раздела, а не прыгает.
+      _dragSpring.stop();
+      _pageSpring.to(
+        sectionCurrentIndex.value.toDouble(),
+        maxPage: (_pagesCount - 1).toDouble(),
+      );
+      return;
+    }
     if (!_pageController.hasClients ||
         !_pageController.position.hasContentDimensions) {
       return;
     }
+    // Пружину тапа обязательно останавливаем: иначе она каждый кадр тянула
+    // бы карусель к старой цели и спорила с пальцем (камень «дрожал»).
     _pageSpring.stop();
-    final pos = _pageController.position;
-    final perPage = pos.viewportDimension * _pageController.viewportFraction;
-    if (perPage <= 0) return;
-    // Абсолютная синхронная установка: экран встаёт РОВНО на долю
-    // таблетки. Никакого «догоняющего» коэффициента — он расцеплял
-    // экран и таблетку (экран отставал на 45 % и дёргался под пальцем,
-    // а потом пружина доматывала). Полный lock 1:1 убирает дёрганье.
-    // Плавность «приземления» по углам даёт пружина Home на отпускании.
-    final target = (page * perPage).clamp(
-      pos.minScrollExtent,
-      pos.maxScrollExtent,
-    );
-    // ЭПСИЛОН: пока палец «держится» на месте, resistance-тикер
-    // докатывает хвост к цели крохотными долями (0.0005/кадр) и каждый
-    // кадр пишет sectionDragPage. Без фильтра тут каждый такий кадр
-    // вызывал бы jumpTo — 4 keep-alive экрана перечитывались бы, и под
-    // удержанием читалось как «дёргает / доводит». Сдвигаем карусель
-    // только когда сдвиг заметен по пикселям (>= 0.5 px): хвост
-    // «уезжает» незаметно, и дёрганье при удержании исчезает.
-    if ((pos.pixels - target).abs() < 0.5) return;
-    // jumpToWithoutSettling, а НЕ jumpTo: `jumpTo` заканчивается
-    // `goBallistic(0.0)`, и `PageScrollPhysics` тут же заводит пружину к
-    // БЛИЖАЙШЕЙ странице — карусель «доводит себя сама», споря с пальцем, а
-    // под удержанием это читалось как подёргивание экранов. Здесь карусель
-    // ведёт ТОЛЬКО палец (через таблетку), а доводку по углам на отпускании
-    // делает пружина Home (_pageSpring / sectionTabTap).
-    // ignore: deprecated_member_use
-    pos.jumpToWithoutSettling(target);
+    // ЭПСИЛОН: пока палец «держится» на месте, сопротивление таблетки
+    // докатывает хвост крохотными долями и каждый кадр пишет sectionDragPage.
+    // Без фильтра тут каждый такой кадр перезапускал бы пружину и экран
+    // «дышал» на месте. Ведём пружину только когда цель сдвинулась заметно.
+    if ((page - _dragTargetPage).abs() < 0.002) return;
+    _dragTargetPage = page;
+    // Пружина следования ведёт карусель к доле пальца: экран едет ПОД
+    // пальцем плавно (с лёгким запаздыванием), без жёсткого 1:1-скачка.
+    _dragSpring.to(page, maxPage: (_pagesCount - 1).toDouble());
   }
 
   @override
@@ -213,6 +224,7 @@ class _HomeScreenState extends State<HomeScreen>
     sectionDragPage.removeListener(_onSectionDragPage);
     _pageController.removeListener(_onPageScroll);
     _pageSpring.dispose();
+    _dragSpring.dispose();
     _pageController.dispose();
     _animCtrl.dispose();
     super.dispose();
@@ -236,6 +248,7 @@ class _HomeScreenState extends State<HomeScreen>
       // Останавливаем незавершённый переход между вкладками и встаём
       // ровно на текущую страницу (ту, что уже выбрана чипами).
       _pageSpring.stop();
+      _dragSpring.stop();
       if (_pageController.hasClients) {
         _pageController.jumpToPage(_currentIndex.value);
       }
@@ -462,6 +475,9 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     Haptics.select();
+    // Тап по разделу отменяет возможную тягу таблетки: пружина следования
+    // больше не нужна, карусель доведёт тап-пружина.
+    _dragSpring.stop();
     // Индикатор не перескакивает к цели: он продолжает следовать page
     // напрямую, пока PageView доезжает до выбранного раздела.
     // Отменяем незавершённый переход перед новым: иначе несколько быстрых

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'design_tokens.dart';
 import 'motion_prefs.dart';
 
 /// Длительность перехода с учётом «убрать анимации».
@@ -154,13 +155,19 @@ Route<T> fadeRoute<T>(Widget page) {
 Route<T> slideSideRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     settings: RouteSettings(name: page.runtimeType.toString()),
-    transitionDuration: _routeDuration(const Duration(milliseconds: 300)),
-    reverseTransitionDuration: _routeDuration(const Duration(milliseconds: 220)),
+    // Вход и выход мягче и чуть длиннее: с прежними 300/220 мс профиль
+    // «влетал» и «выскакивал» — смена экрана читалась рывком. Кривая
+    // [Motion.emphasized] (нулевая скорость на обоих концах) убирает
+    // жёсткий старт и резкую остановку.
+    transitionDuration: _routeDuration(const Duration(milliseconds: 380)),
+    reverseTransitionDuration: _routeDuration(
+      const Duration(milliseconds: 300),
+    ),
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
         parent: animation,
-        curve: Curves.easeOutCubic,
+        curve: Motion.emphasized,
       );
       return Stack(
         fit: StackFit.expand,

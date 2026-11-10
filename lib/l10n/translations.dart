@@ -675,8 +675,6 @@ class Translations {
       'forgeNoChanges': 'No edits this turn',
       'showPassword': 'Show code',
       'hidePassword': 'Hide code',
-      'patchTodos':
-          'Remaining to do — autosave and minor tweaks',
       'patchDeveloping': 'How the app is developing',
       'patchRoadmap': 'Minor tweaks, PR in 2027',
       'changeSwipeUp': 'Swipe up on the home screen to refresh',
@@ -691,12 +689,12 @@ class Translations {
       'changeTaskShelvesContrast':
           'Task shelves: headings are now readable in both light and dark themes',
       'changeLintCleanup':
-          'Internal cleanup: test helpers no longer use underscore-prefixed names',
+          'Tidied up the internals — the app is a little more dependable now',
       'changeTaskShelves': 'Tasks are split into "Active" and "Completed" shelves',
       'changeTaskMarkFinal':
           'Completing a task is final — it moves to the completed shelf',
       'changeCIUpdate':
-          'Build pipeline updated: newer GitHub Actions and a fixed lint job',
+          'Releases go out more smoothly — we reworked the build pipeline',
       'changeCategoryDrag':
           'Categories can be dragged to reorder them in the task editor',
       'changeCategoryReorder':
@@ -1640,8 +1638,6 @@ class Translations {
       'forgeNoChanges': 'В этот раз правок нет',
       'showPassword': 'Показать код',
       'hidePassword': 'Скрыть код',
-      'patchTodos':
-          'Осталось сделать — автосохранение и мелкие доработки',
       'patchDeveloping': 'Как развивается приложение',
       'patchRoadmap': 'Мелкие доработки, PR в 2027',
       'changeSwipeUp': 'Свайп вверх на главном экране для обновления',
@@ -1658,12 +1654,12 @@ class Translations {
       'changeTaskShelvesContrast':
           'Полки задач: заголовки теперь читаются и в светлой, и в тёмной теме',
       'changeLintCleanup':
-          'Внутренняя уборка: тестовые помощники больше не начинаются с подчёркивания',
+          'Прибрались внутри — приложение стало чуть надёжнее',
       'changeTaskShelves': 'Задачи разделены на полки «Активные» и «Выполненные»',
       'changeTaskMarkFinal':
           'Выполнение задачи окончательно — она переезжает на полку выполненных',
       'changeCIUpdate':
-          'Обновлён процесс сборки: новые GitHub Actions и починенная проверка lint',
+          'Выпуски выходят ровнее — переделали сборку',
       'changeCategoryDrag':
           'Категории можно перетаскивать, меняя их порядок в редакторе задачи',
       'changeCategoryReorder': 'Порядок категорий меняется плавно и запоминается',
@@ -2609,8 +2605,6 @@ class Translations {
       'forgeNoChanges': 'Aucune modification cette fois',
       'showPassword': 'Afficher le code',
       'hidePassword': 'Masquer le code',
-      'patchTodos':
-          'À faire — sauvegarde automatique et petites améliorations',
       'patchDeveloping': 'Comment l\'application évolue',
       'patchRoadmap': 'Petites retouches, PR en 2027',
       'changeSwipeUp': 'Glissez vers le haut sur l\'accueil pour actualiser',
@@ -2627,13 +2621,13 @@ class Translations {
       'changeTaskShelvesContrast':
           'Étagères de tâches : les titres sont lisibles en thème clair et sombre',
       'changeLintCleanup':
-          'Nettoyage interne : les helpers de test ne commencent plus par un tiret bas',
+          'Rangement interne — l’application est un peu plus fiable',
       'changeTaskShelves':
           'Les tâches sont réparties en étagères « Actives » et « Terminées »',
       'changeTaskMarkFinal':
           'Terminer une tâche est définitif — elle passe à l’étagère des tâches terminées',
       'changeCIUpdate':
-          'Pipeline de build mis à jour : nouvelles GitHub Actions et job lint corrigé',
+          'Les versions sortent plus proprement — refonte de la compilation',
       'changeCategoryDrag':
           'On peut faire glisser les catégories pour les réordonner dans l’éditeur de tâche',
       'changeCategoryReorder':
