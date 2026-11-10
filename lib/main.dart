@@ -326,7 +326,26 @@ Future<void> _autoExportTick({bool silent = false}) async {
     );
     debugPrint('[auto-export] OK -> $saved');
   } catch (e, st) {
+    // Раньше сбой уходил ТОЛЬКО в debugPrint — в релизе пользователь не видел
+    // ни файла, ни ошибки, и автоэкспорт выглядел «мёртвым». Теперь при
+    // ручном включении показываем причину, чтобы сбой не был молчаливым.
     debugPrint('[auto-export] FAILED: $e\n$st');
+    if (!silent) {
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        showBeautifulSnackBar(
+          ctx,
+          message: Translations.t(
+            'autoExportFailed',
+            ctx,
+            'Не удалось сохранить бэкап',
+          ),
+          icon: Icons.error_outline,
+          iconColor: Colors.redAccent,
+          duration: const Duration(seconds: 5),
+        );
+      }
+    }
   } finally {
     _isAutoExporting = false;
     _autoExportTimer?.cancel();

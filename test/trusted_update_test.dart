@@ -2,23 +2,21 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Регресс-тест на «доверенную» самопереустановку.
+/// Регресс-тест на самообновление и на профиль возможностей установки APK.
 ///
-/// Тихий путь обновления держится на двух вещах, которые легко случайно
-/// снести при правках нативной части:
+/// История: сперва установка шла сессией `PackageInstaller` с обычным
+/// подтверждением — Play Protect показывал «требуется проверка», и это было
+/// терпимо. Затем был включён ТИХИЙ путь
+/// (`USER_ACTION_NOT_REQUIRED` + разрешение
+/// `UPDATE_PACKAGES_WITHOUT_USER_ACTION`), и вердикт сменился на «вредоносное
+/// приложение заблокировано»: установка APK без подтверждения — это ровно то
+/// поведение, по которому Play Protect метит незнакомые сайдлоады как malware.
 ///
-///  1. разрешения `UPDATE_PACKAGES_WITHOUT_USER_ACTION` и
-///     `ENFORCE_UPDATE_OWNERSHIP` в манифесте (оба `normal`, выдаются сами);
-///  2. `setRequireUserAction(USER_ACTION_NOT_REQUIRED)` в сессии
-///     `PackageInstaller` — с `USER_ACTION_REQUIRED` система показывает
-///     диалог на КАЖДОМ обновлении, и тихая установка становится
-///     невозможной.
-///
-/// Проверяем тексты файлов: собрать APK и установить его в CI негде, а эти
-/// две строки — единственное, что отличает «тихое» обновление от «спросить
-/// каждый раз». Падение теста означает, что фичу сломали молча.
+/// Поэтому инвариант обратный: разрешения на тихую установку в манифесте быть
+/// НЕ должно, а сессия обязана запрашивать обычный системный экран. Проверяем
+/// тексты файлов: собрать APK и установить его в CI негде.
 void main() {
-  test('манифест объявляет разрешения доверенного самообновления', () {
+  test('манифест не объявляет разрешение тихой самопереустановки', () {
     final file = File('android/app/src/main/AndroidManifest.xml');
     expect(
       file.existsSync(),
@@ -27,22 +25,29 @@ void main() {
     );
     final manifest = file.readAsStringSync();
 
-    for (final permission in const [
-      'android.permission.REQUEST_INSTALL_PACKAGES',
-      'android.permission.ENFORCE_UPDATE_OWNERSHIP',
-      'android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION',
-    ]) {
-      expect(
-        manifest,
-        contains(permission),
-        reason:
-            'В манифесте нет разрешения $permission — тихое самообновление '
-            'перестанет работать',
-      );
-    }
+    // Считаем только действующие объявления: строка `uses-permission` с этим
+    // именем. Упоминание в комментарии (объяснение, почему разрешения нет)
+    // тестом не считается.
+    final declared = RegExp(
+      r'<uses-permission[^>]*android\.permission\.UPDATE_PACKAGES_WITHOUT_USER_ACTION',
+    ).hasMatch(manifest);
+    expect(
+      declared,
+      isFalse,
+      reason:
+          'Разрешение UPDATE_PACKAGES_WITHOUT_USER_ACTION вернулось в манифест: '
+          'тихая установка APK без подтверждения — триггер Play Protect '
+          '«вредоносное приложение»',
+    );
+
+    expect(
+      manifest,
+      contains('android.permission.REQUEST_INSTALL_PACKAGES'),
+      reason: 'Без REQUEST_INSTALL_PACKAGES самообновление не работает вовсе',
+    );
   });
 
-  test('сессия установки просит систему обойтись без подтверждения', () {
+  test('сессия установки запрашивает обычное подтверждение', () {
     final file = File(
       'android/app/src/main/kotlin/com/wetidom/keramika/MainActivity.kt',
     );
@@ -51,21 +56,30 @@ void main() {
       isTrue,
       reason: 'Не найден MainActivity.kt — тест запущен не из корня проекта',
     );
-    final source = file.readAsStringSync();
+    // Комментарии объясняют, почему тихий путь НЕ используется, и содержат
+    // имя константы. Проверяем только код: строки комментариев отбрасываем,
+    // иначе тест ловил бы собственное пояснение.
+    final code = file
+        .readAsLinesSync()
+        .where((line) {
+          final t = line.trimLeft();
+          return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+        })
+        .join('\n');
 
     expect(
-      source,
-      contains('USER_ACTION_NOT_REQUIRED'),
+      code,
+      contains('USER_ACTION_REQUIRED,'),
       reason:
-          'Сессия установки больше не просит тихий путь — вернулся диалог '
-          'на каждом обновлении',
+          'Сессия установки больше не запрашивает системный экран — вернулся '
+          'тихий путь, который Play Protect метит как вредоносное ПО',
     );
     expect(
-      source,
-      isNot(contains('USER_ACTION_REQUIRED,')),
+      code,
+      isNot(contains('USER_ACTION_NOT_REQUIRED')),
       reason:
-          'USER_ACTION_REQUIRED гарантирует подтверждение на каждом '
-          'обновлении: это ломает доверенную установку',
+          'USER_ACTION_NOT_REQUIRED снова просит тихую установку без '
+          'подтверждения — это и включало «вредоносное приложение»',
     );
   });
 }

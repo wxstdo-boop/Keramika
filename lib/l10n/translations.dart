@@ -598,6 +598,7 @@ class Translations {
       'autoExport': 'Auto-export',
       'autoExportHourly': 'Save backup to Download/Keramika every hour',
       'autoExportDone': 'Backup saved to Download/Keramika',
+      'autoExportFailed': 'Could not save the backup',
       'clearCache': 'Clear cache',
       'clearCacheDesc': 'Free up storage used by temporary files',
       'clearCacheDone': 'Cache cleared!',
@@ -1557,6 +1558,7 @@ class Translations {
       'autoExport': 'Автоэкспорт',
       'autoExportHourly': 'Сохранять бэкап в Загрузки/Keramika каждый час',
       'autoExportDone': 'Бэкап сохранён в Загрузки/Keramika',
+      'autoExportFailed': 'Не удалось сохранить бэкап',
       'clearCache': 'Очистить кэш',
       'clearCacheDesc': 'Освободить место, занятое временными файлами',
       'clearCacheDone': 'Кэш очищен!',
@@ -2520,6 +2522,7 @@ class Translations {
       'autoExportHourly':
           'Enregistrer une sauvegarde dans Téléchargements/Keramika chaque heure',
       'autoExportDone': 'Sauvegarde enregistrée dans Téléchargements/Keramika',
+      'autoExportFailed': 'Échec de l\'enregistrement de la sauvegarde',
       'clearCache': 'Vider le cache',
       'clearCacheDesc': 'Libérer l’espace des fichiers temporaires',
       'clearCacheDone': 'Cache vidé !',

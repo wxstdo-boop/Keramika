@@ -184,7 +184,6 @@ FOREGROUND_SERVICE (+ specialUse)     процесс во время звонк�
 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS  не усыплять будильники
 REQUEST_INSTALL_PACKAGES               автообновление
 ENFORCE_UPDATE_OWNERSHIP               доверенное самообновление (API 34+)
-UPDATE_PACKAGES_WITHOUT_USER_ACTION    тихая самопереустановка (API 31+)
 VIBRATE                               тактильный отклик
 READ_EXTERNAL_STORAGE (maxSdk 32)     выбор файлов для экспорта
 ```

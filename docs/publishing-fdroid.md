@@ -67,12 +67,15 @@ Neo Store, Droid-ify и других клиентах F-Droid.
   самообновление выключено, поэтому разрешение не используется по назначению.
   Можно предложить ревьюеру удалить его в рецепте (`sed -i '/REQUEST_INSTALL_PACKAGES/d'
   android/app/src/main/AndroidManifest.xml`), если это будет замечанием.
-  Вместе с ним в F-Droid-сборке не нужны и `ENFORCE_UPDATE_OWNERSHIP`
-  (объявление себя владельцем обновлений) и
-  `UPDATE_PACKAGES_WITHOUT_USER_ACTION` (тихая самопереустановка) — все три
-  относятся только к самообновлению: вырезать все —
+  Вместе с ним в F-Droid-сборке не нужно и `ENFORCE_UPDATE_OWNERSHIP`
+  (объявление себя владельцем обновлений) — оба относятся только к
+  самообновлению: вырезать оба —
   `sed -i -e '/REQUEST_INSTALL_PACKAGES/d' -e '/ENFORCE_UPDATE_OWNERSHIP/d'
-  -e '/UPDATE_PACKAGES_WITHOUT_USER_ACTION/d' android/app/src/main/AndroidManifest.xml`.
+  android/app/src/main/AndroidManifest.xml`. В рецепте оставлена и строка
+  `/UPDATE_PACKAGES_WITHOUT_USER_ACTION/d`: сейчас такого разрешения в
+  манифесте нет (его убрали — это был триггер Play Protect), но `sed` без
+  совпадений безвреден, а для старых коммитов, где разрешение ещё есть, он
+  нужен.
 - **`third_party/`** — два локальных форка плагинов лежат прямо в репозитории
   (не git-submodules). F-Droid это устраивает: код доступен, собирается из
   исходников.
@@ -242,8 +245,8 @@ Build notes:
   (AGP 9.1.1 default), installed in prebuild via sdkmanager.
 - NDK 28.2.13676358.
 - F-Droid build disables self-update with `--dart-define=KERAMIKA_NO_SELF_UPDATE=true`
-  and strips `REQUEST_INSTALL_PACKAGES`, `ENFORCE_UPDATE_OWNERSHIP` and
-  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, so no in-app APK installation.
+  and strips `REQUEST_INSTALL_PACKAGES` and `ENFORCE_UPDATE_OWNERSHIP`, so no
+  in-app APK installation.
 - Signing config is removed automatically by fdroidserver; no keystore needed.
 ```
 

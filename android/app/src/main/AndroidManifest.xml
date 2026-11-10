@@ -8,13 +8,17 @@
          не считала самообновление недоверенной установкой. Разрешение
          обычное (normal) — выдаётся автоматически, диалога нет. -->
     <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP"/>
-    <!-- Тихая самопереустановка: разрешает объявить сессию обновления без
-         пользовательского подтверждения (USER_ACTION_NOT_REQUIRED). Работает
-         только для ОБНОВЛЕНИЯ уже установленного приложения тем же пакетом
-         (isSelfUpdate в AOSP PackageInstallerSession) и только на API 34+ с
-         достаточно высоким targetSdk. Первая установка всё равно покажет
-         системный экран. Разрешение обычное (normal) — диалога нет. -->
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"/>
+    <!-- ВАЖНО: разрешения UPDATE_PACKAGES_WITHOUT_USER_ACTION здесь быть НЕ
+         должно. Оно разрешает объявить сессию установки БЕЗ подтверждения
+         (USER_ACTION_NOT_REQUIRED) — то есть тихую самопереустановку. Именно
+         этот набор (установка APK + тихий путь без диалога) Play Protect
+         трактует как поведение вредоносного ПО и на незнакомом сайдлоаде
+         меняет вердикт с «требуется проверка» на «вредоносное приложение
+         заблокировано». Мы ставим обновление сессией PackageInstaller с
+         обычным системным экраном подтверждения (USER_ACTION_REQUIRED):
+         обновление проходит в одно нажатие и не выглядит как скрытая
+         установка. Не возвращать это разрешение и не переключать флаг в
+         MainActivity на USER_ACTION_NOT_REQUIRED — это и ломает установку. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>

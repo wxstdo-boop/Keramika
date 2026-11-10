@@ -584,6 +584,16 @@ class MainActivity : FlutterActivity() {
                 "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
             val orphanSel =
                 "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+            // Удаление старой копии — best-effort, но НЕ должно ронять экспорт.
+            //
+            // Грабли: после переустановки приложения (автообновление/новая
+            // подпись) строка файла в MediaStore остаётся «чужой» — запись
+            // принадлежала прошлому владельцу. Тогда `resolver.delete` бросает
+            // `RecoverableSecurityException` (Android 10+), и раньше это
+            // исключение всплывало из `saveBytesToDownloads`, установка
+            // бэкапа срывалась целиком. Теперь ошибка удаления только
+            // логируется: новая копия всё равно запишется и заменит старую по
+            // имени, а «зависшая» строка будет подчищена следующим экспортом.
             for (id in downloadIds(
                 resolver,
                 exactSel,
@@ -597,11 +607,15 @@ class MainActivity : FlutterActivity() {
                 null,
                 pendingMode = 2,
             )) {
-                resolver.delete(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    "${MediaStore.MediaColumns._ID}=?",
-                    arrayOf(id.toString()),
-                )
+                try {
+                    resolver.delete(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        "${MediaStore.MediaColumns._ID}=?",
+                        arrayOf(id.toString()),
+                    )
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "could not delete old backup row $id: $e")
+                }
             }
             // Best-effort: физические «сироты» .pending-… (строки в MediaStore
             // уже потеряны, на MIUI удаление строки не всегда стирает файл).
@@ -868,21 +882,20 @@ class MainActivity : FlutterActivity() {
      *    приложение ВЛАДЕЛЬЦЕМ своих обновлений. Тогда для нас сохраняется
      *    быстрый путь без лишних напоминаний, а сторонний установщик
      *    обновить приложение уже не сможет;
-     *  * setRequireUserAction(USER_ACTION_NOT_REQUIRED) (API 31+) плюс
-     *    разрешение UPDATE_PACKAGES_WITHOUT_USER_ACTION просят систему НЕ
-     *    показывать подтверждение для обновления уже установленного
-     *    приложения (в AOSP PackageInstallerSession это ветка isSelfUpdate).
-     *    Условия строгие: только ОБНОВЛЕНИЕ, только API 34+ и достаточно
-     *    высокий targetSdk. Если они не выполнены, система присылает
-     *    STATUS_PENDING_USER_ACTION, и [InstallResultReceiver] показывает
-     *    системный экран как раньше — установка не ломается, просто требует
-     *    одного нажатия;
+     *  * setRequireUserAction(USER_ACTION_REQUIRED) (API 31+) — показываем
+     *    ОБЫЧНЫЙ системный экран «Установить обновление?». Это осознанный
+     *    выбор: тихий путь (USER_ACTION_NOT_REQUIRED + разрешение
+     *    UPDATE_PACKAGES_WITHOUT_USER_ACTION) означает установку APK без
+     *    подтверждения, и именно этот набор Play Protect метит как поведение
+     *    вредоносного ПО — на незнакомом сайдлоаде вердикт менялся с
+     *    «требуется проверка» на «вредоносное приложение заблокировано».
+     *    Одно нажатие на системном экране сохраняет самообновление рабочим и
+     *    не выглядит как скрытая установка. Не возвращать NOT_REQUIRED;
      *  * итог приходит не «файр-энд-форгет», а статусом в
      *    [InstallResultReceiver], поэтому сбой установки виден в интерфейсе.
      *
-     * Разрешения ENFORCE_UPDATE_OWNERSHIP и
-     * UPDATE_PACKAGES_WITHOUT_USER_ACTION в манифесте — обычные (normal):
-     * система выдаёт их автоматически, запрашивать у пользователя нечего.
+     * Разрешение ENFORCE_UPDATE_OWNERSHIP в манифесте — обычное (normal):
+     * система выдаёт его автоматически, запрашивать у пользователя нечего.
      */
     private fun installViaSession(file: File) {
         val installer = packageManager.packageInstaller
@@ -894,14 +907,11 @@ class MainActivity : FlutterActivity() {
         params.setInstallReason(PackageManager.INSTALL_REASON_USER)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             params.setInstallScenario(PackageManager.INSTALL_SCENARIO_FAST)
-            // Просим тихую установку: система сама решит, можно ли обойтись
-            // без подтверждения (AOSP PackageInstallerSession.
-            // computeUserActionRequirement). Если нельзя — пришлёт
-            // STATUS_PENDING_USER_ACTION, и [InstallResultReceiver] покажет
-            // системный экран. USER_ACTION_REQUIRED здесь был бы гарантией
-            // лишнего диалога на каждом обновлении.
+            // Обычный системный экран подтверждения. НЕ менять на
+            // USER_ACTION_NOT_REQUIRED: тихий путь без диалога Play Protect
+            // считает поведением вредоносного ПО (см. комментарий к методу).
             params.setRequireUserAction(
-                PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED,
+                PackageInstaller.SessionParams.USER_ACTION_REQUIRED,
             )
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
