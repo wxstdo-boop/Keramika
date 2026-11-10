@@ -17,6 +17,7 @@ import 'package:keramika/services/task_service.dart';
 import 'package:keramika/widgets/animated_blur_title.dart';
 import 'package:keramika/widgets/online_dot.dart';
 import 'package:keramika/widgets/profile_avatar.dart';
+import 'package:keramika/widgets/smooth_typing.dart';
 
 /// Профиль «керамика-юзера»: имя, аватарка, онлайн-статус, рейтинг, музыка
 /// и события. Данные — локальные, поэтому тесты работают с реальным
@@ -121,7 +122,7 @@ void main() {
     expect(board.last.name, 'Слабак');
   });
 
-  testWidgets('кружок онлайна есть НАД «K» и открывает профиль по тапу', (
+  testWidgets('кружок онлайна есть НАД последней буквой и открывает профиль', (
     tester,
   ) async {
     var opened = false;
@@ -139,13 +140,19 @@ void main() {
     expect(find.byType(OnlineDot), findsOneWidget);
     expect(find.textContaining('🎅'), findsNothing);
 
-    // Кружок стоит НАД буквой «K»: его центр выше центра буквы.
+    // Кружок — справа сверху от заголовка: он выше и правее центра текста.
+    // Так он висит над последней буквой и не касается глифов.
     final dotCenter = tester.getCenter(find.byType(OnlineDot));
-    final kCenter = tester.getCenter(find.text('K'));
+    final titleCenter = tester.getCenter(find.text('Keramika'));
     expect(
       dotCenter.dy,
-      lessThan(kCenter.dy),
-      reason: 'кружок должен быть сверху, а не под буквой',
+      lessThan(titleCenter.dy),
+      reason: 'кружок должен быть сверху, а не под буквами',
+    );
+    expect(
+      dotCenter.dx,
+      greaterThan(titleCenter.dx),
+      reason: 'кружок должен быть справа, над последней буквой',
     );
 
     await tester.tap(find.byType(OnlineDot));
@@ -177,9 +184,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('Гончар'), findsOneWidget);
-      expect(find.text('K'), findsNothing);
-      expect(find.text('eramika'), findsNothing);
-      // Кружок онлайна остаётся — он висит над первой буквой имени.
+      expect(find.text('Keramika'), findsNothing);
+      // Кружок онлайна остаётся — он висит над последней буквой имени.
       expect(find.byType(OnlineDot), findsOneWidget);
     });
   });
@@ -240,5 +246,59 @@ void main() {
   test('имя можно сохранить и оно появляется в шапке профиля', () async {
     await ProfileService().setName('Керамик');
     expect(ProfileService().displayName, 'Керамик');
+  });
+
+  testWidgets('без имени в шапке профиля показан «Аноним», а кружок — слева', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(411, 891) * 3;
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    // Профиль в setUp уже пустой (временная папка) — имя не задаём: запись
+    // профиля делает файловый I/O, а он в fake-async виснет (см. AGENTS.md).
+    await tester.pumpWidget(
+      LocaleProvider(
+        locale: const Locale('ru'),
+        child: const MaterialApp(home: ProfileScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Аноним'), findsOneWidget);
+    // Кружок онлайна в шапке профиля — слева от имени.
+    final dotCenter = tester.getCenter(find.byType(OnlineDot));
+    final nameCenter = tester.getCenter(find.text('Аноним'));
+    expect(
+      dotCenter.dx,
+      lessThan(nameCenter.dx),
+      reason: 'кружок должен быть слева от имени',
+    );
+    // Поле короткого имени — с плавными буквами, как остальные поля.
+    expect(find.byType(SmoothTyping), findsOneWidget);
+  });
+
+  testWidgets('тап по кружку в профиле переключает онлайн-статус', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(411, 891) * 3;
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await ProfileService().setOnline(false);
+    await tester.pumpWidget(
+      LocaleProvider(
+        locale: const Locale('ru'),
+        child: const MaterialApp(home: ProfileScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(ProfileService().online, isFalse);
+
+    await tester.tap(find.byType(OnlineDot));
+    await tester.pumpAndSettle();
+    expect(ProfileService().online, isTrue);
+
+    await ProfileService().setOnline(false);
   });
 }

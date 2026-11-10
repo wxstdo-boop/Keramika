@@ -10,12 +10,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/profile_service.dart';
+import '../utils/context_menu.dart';
 import '../utils/design_tokens.dart';
 import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
+import '../widgets/online_dot.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/smooth_tooltip.dart';
+import '../widgets/smooth_typing.dart';
 
 /// Официальный сайт Keramika. Здесь — события проекта; список кэшируется
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
@@ -30,6 +33,30 @@ ButtonStyle _roundButtonStyle() => FilledButton.styleFrom(
   padding: const EdgeInsets.symmetric(
     horizontal: Spacing.md,
     vertical: Spacing.sm,
+  ),
+);
+
+/// Плоское скруглённое поле профиля — как у остальных полей приложения:
+/// заливка фоном без жёсткой рамки, подсказка/подпись как обычно, счётчик
+/// длины скрыт (лимит и так ощущается обрезкой ввода).
+InputDecoration _fieldDecoration(
+  ThemeData theme, {
+  String? hint,
+  String? label,
+}) => InputDecoration(
+  hintText: hint,
+  labelText: label,
+  counterText: '',
+  isDense: true,
+  filled: true,
+  fillColor: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.6),
+  contentPadding: const EdgeInsets.symmetric(
+    horizontal: Spacing.sm,
+    vertical: Spacing.sm,
+  ),
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(Radii.md),
+    borderSide: BorderSide.none,
   ),
 );
 
@@ -291,11 +318,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Шапка профиля: крупная аватарка (тап — смена цвета), имя и онлайн-статус.
+  /// Шапка профиля: крупная аватарка (тап — смена цвета) и имя, слева от
+  /// которого — кружок онлайна (тап переключает статус).
+  ///
+  /// Текстовой строки «В сети / Не в сети» больше нет: статус читается по
+  /// кружку, который сам плавно перетекает между красным и пустым.
   Widget _headerCard(ThemeData theme) {
-    final cs = theme.colorScheme;
     final name = _service.displayName.isEmpty
-        ? Translations.t('profileNoName', context, 'Без имени')
+        ? Translations.t('profileAnonymous', context, 'Аноним')
         : _service.displayName;
     return _Card(
       child: Column(
@@ -314,56 +344,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: Spacing.md),
-          Text(
-            name,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: Weights.bold,
-            ),
-          ),
-          const SizedBox(height: Spacing.xxs),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _statusDot(theme),
-              const SizedBox(width: Spacing.xs),
-              Text(
-                _service.online
-                    ? Translations.t('profileOnline', context, 'В сети')
-                    : Translations.t('profileOffline', context, 'Не в сети'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
+          // Кружок слева от имени — тап по нему переключает онлайн-статус.
+          // Зона тапа кружка (30 px) шире глифа (11 px): сдвигаем всю группу
+          // влево на её «свес», чтобы по центру карточки осталось ИМЯ, а не
+          // середина пары «кружок + имя».
+          Center(
+            child: Transform.translate(
+              offset: Offset(-_dotOverhang, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OnlineDot(size: _dotSize, onTap: _toggleOnline),
+                  const SizedBox(width: Spacing.xxs),
+                  // Смена имени (и «Аноним») — плавным кросс-фейдом, а не кадром.
+                  AnimatedSwitcher(
+                    duration: MotionPrefs.shouldReduceMotion
+                        ? Duration.zero
+                        : Motion.normal,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: SizeTransition(
+                        axis: Axis.horizontal,
+                        sizeFactor: anim,
+                        child: child,
+                      ),
+                    ),
+                    child: Text(
+                      name,
+                      key: ValueKey(name),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: Weights.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _statusDot(ThemeData theme) {
-    final online = _service.online;
-    return AnimatedContainer(
-      duration: MotionPrefs.shouldReduceMotion ? Duration.zero : Motion.normal,
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: online
-            ? const Color(0xFFE53935).withValues(alpha: 0.9)
-            : theme.colorScheme.outline.withValues(alpha: 0.5),
-        boxShadow: online
-            ? [
-                BoxShadow(
-                  color: const Color(0xFFE53935).withValues(alpha: 0.5),
-                  blurRadius: 8,
-                  spreadRadius: 0.5,
-                ),
-              ]
-            : null,
-      ),
-    );
-  }
+  /// Видимый диаметр кружка онлайна у имени, px.
+  static const double _dotSize = 11;
+
+  /// «Свес» зоны тапа кружка влево от глифа: половина разницы между зоной
+  /// тапа и самим глифом. На столько сдвигаем пару «кружок + имя», чтобы имя
+  /// осталось по центру карточки.
+  static const double _dotOverhang = (OnlineDot.tapTarget - _dotSize) / 2;
 
   /// Лимит короткого имени: 10 символов. Счётчик под полем не нужен —
   /// ввод просто обрезается, а подпись «Короткое имя» уже всё объясняет.
@@ -376,25 +407,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         children: [
           Expanded(
-            child: TextField(
+            // Как в остальных полях приложения: буквы проявляются и гаснут
+            // по одной ([SmoothTyping]), лупа выделения выключена, меню —
+            // короткое (Копировать/Вставить/Вырезать). Само поле прозрачное,
+            // «мозг» ввода — настоящий TextField внутри.
+            child: SmoothTyping(
               controller: _nameCtrl,
-              textInputAction: TextInputAction.done,
-              maxLength: _nameMaxLength,
-              inputFormatters: [
-                LengthLimitingTextInputFormatter(_nameMaxLength),
-              ],
-              onSubmitted: (_) => _saveName(),
-              decoration: InputDecoration(
-                hintText: Translations.t(
-                  'profileNameHint',
-                  context,
-                  'Как вас звать?',
-                ),
-                // Счётчик «0/10» под полем не показываем — он шумит, а
-                // лимит и так ощущается обрезкой ввода.
-                counterText: '',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(Radii.md),
+              style: theme.textTheme.bodyLarge,
+              builder: (style) => TextField(
+                controller: _nameCtrl,
+                style: style,
+                magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                contextMenuBuilder: minimalContextMenuBuilder,
+                textInputAction: TextInputAction.done,
+                maxLength: _nameMaxLength,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(_nameMaxLength),
+                ],
+                onSubmitted: (_) => _saveName(),
+                cursorOpacityAnimates: true,
+                decoration: _fieldDecoration(
+                  theme,
+                  hint: Translations.t(
+                    'profileNameHint',
+                    context,
+                    'Как вас звать?',
+                  ),
                 ),
               ),
             ),
@@ -496,8 +534,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: const Icon(Icons.library_music_outlined),
                 label: Text(
                   hasMusic
-                      ? Translations.t('profileMusicChange', context, 'Заменить')
-                      : Translations.t('profileMusicAdd', context, 'Выбрать файл'),
+                      ? Translations.t(
+                          'profileMusicChange',
+                          context,
+                          'Заменить',
+                        )
+                      : Translations.t(
+                          'profileMusicAdd',
+                          context,
+                          'Выбрать файл',
+                        ),
                 ),
               ),
             ),
@@ -660,26 +706,26 @@ class _Card extends StatelessWidget {
         ),
         padding: const EdgeInsets.all(Spacing.md),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title != null)
-            Row(
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 18, color: theme.colorScheme.primary),
-                  const SizedBox(width: Spacing.xs),
-                ],
-                Expanded(
-                  child: Text(
-                    title!,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: Weights.semibold,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (title != null)
+              Row(
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 18, color: theme.colorScheme.primary),
+                    const SizedBox(width: Spacing.xs),
+                  ],
+                  Expanded(
+                    child: Text(
+                      title!,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: Weights.semibold,
+                      ),
                     ),
                   ),
-                ),
-                ?trailing,
-              ],
-            ),
+                  ?trailing,
+                ],
+              ),
             if (title != null) const SizedBox(height: Spacing.xs),
             child,
           ],
@@ -720,12 +766,11 @@ class _AvatarPickerSheet extends StatelessWidget {
             SizedBox(
               height: 300,
               child: GridView.builder(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 5,
-                      mainAxisSpacing: Spacing.sm,
-                      crossAxisSpacing: Spacing.sm,
-                    ),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 5,
+                  mainAxisSpacing: Spacing.sm,
+                  crossAxisSpacing: Spacing.sm,
+                ),
                 itemCount: profileAvatarVariants.length,
                 itemBuilder: (context, i) {
                   final isSelected = i == selected;
@@ -820,18 +865,25 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                   ProfileAvatar(index: _avatar, size: 52, glow: true),
                   const SizedBox(width: Spacing.md),
                   Expanded(
-                    child: TextField(
+                    child: SmoothTyping(
                       controller: _ctrl,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        hintText: Translations.t(
-                          'profileFriendName',
-                          context,
-                          'Имя друга',
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(Radii.md),
+                      style: theme.textTheme.bodyLarge,
+                      builder: (style) => TextField(
+                        controller: _ctrl,
+                        style: style,
+                        magnifierConfiguration:
+                            TextMagnifierConfiguration.disabled,
+                        contextMenuBuilder: minimalContextMenuBuilder,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
+                        cursorOpacityAnimates: true,
+                        decoration: _fieldDecoration(
+                          theme,
+                          hint: Translations.t(
+                            'profileFriendName',
+                            context,
+                            'Имя друга',
+                          ),
                         ),
                       ),
                     ),
@@ -864,17 +916,24 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                 ),
               ),
               const SizedBox(height: Spacing.md),
-              TextField(
+              SmoothTyping(
                 controller: _scoreCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: Translations.t(
-                    'profileFriendScore',
-                    context,
-                    'Очки рейтинга',
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(Radii.md),
+                style: theme.textTheme.bodyLarge,
+                ghosts: false,
+                builder: (style) => TextField(
+                  controller: _scoreCtrl,
+                  style: style,
+                  keyboardType: TextInputType.number,
+                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                  contextMenuBuilder: minimalContextMenuBuilder,
+                  cursorOpacityAnimates: true,
+                  decoration: _fieldDecoration(
+                    theme,
+                    label: Translations.t(
+                      'profileFriendScore',
+                      context,
+                      'Очки рейтинга',
+                    ),
                   ),
                 ),
               ),
@@ -940,9 +999,7 @@ class _FriendActionsSheet extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
-              title: Text(
-                Translations.t('delete', context, 'Удалить'),
-              ),
+              title: Text(Translations.t('delete', context, 'Удалить')),
               onTap: () => Navigator.of(context).pop('remove'),
             ),
           ],
@@ -989,17 +1046,24 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
+              SmoothTyping(
                 controller: _ctrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: Translations.t(
-                    'profileFriendScore',
-                    context,
-                    'Очки рейтинга',
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(Radii.md),
+                style: theme.textTheme.bodyLarge,
+                ghosts: false,
+                builder: (style) => TextField(
+                  controller: _ctrl,
+                  style: style,
+                  keyboardType: TextInputType.number,
+                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
+                  contextMenuBuilder: minimalContextMenuBuilder,
+                  cursorOpacityAnimates: true,
+                  decoration: _fieldDecoration(
+                    theme,
+                    label: Translations.t(
+                      'profileFriendScore',
+                      context,
+                      'Очки рейтинга',
+                    ),
                   ),
                 ),
               ),
@@ -1011,9 +1075,9 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
                   child: FilledButton.tonal(
                     onPressed: () {
                       final score = int.tryParse(_ctrl.text.trim()) ?? 0;
-                      Navigator.of(context).pop(
-                        widget.friend.copyWith(score: score),
-                      );
+                      Navigator.of(
+                        context,
+                      ).pop(widget.friend.copyWith(score: score));
                     },
                     style: _roundButtonStyle(),
                     child: Text(Translations.t('save', context, 'Сохранить')),
