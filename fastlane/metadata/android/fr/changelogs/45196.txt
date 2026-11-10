@@ -1,0 +1,3 @@
+- Le service de lecture d'écran ne demande que l'accès qu'il utilise
+- La mise à jour s'installe comme propriétaire de ses propres mises à jour
+- Divers correctifs et finitions

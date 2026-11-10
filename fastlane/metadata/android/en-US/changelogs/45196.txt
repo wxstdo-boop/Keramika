@@ -1,0 +1,3 @@
+- The screen-reading service now asks only for the access it uses
+- In-app update installs as the app's own update owner
+- Various fixes and polish
