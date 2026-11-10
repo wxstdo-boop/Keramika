@@ -176,6 +176,53 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Заметки собраны из ${RANGE}"
 
+      - name: Changelog для F-Droid
+        # fdroiddata читает fastlane-заметки ИЗ КОММИТА, на который смотрит
+        # рецепт. Тег релиза указывает на этот самый «release: v…» коммит, а
+        # он трогал только pubspec/app_version — changelog, добавленный
+        # автором в предыдущем коммите, в тег не попадал, и на странице
+        # «Что нового» у ревьюера было пусто. Поэтому генерим файл
+        # <versionCode>.txt из тех же коммитов, что и заметки релиза, и
+        # коммитим его вместе с бампом.
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          MANUAL_NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          CODE="${{ steps.ver.outputs.code }}"
+          DIR="fastlane/metadata/android/en-US/changelogs"
+          FILE="${DIR}/${CODE}.txt"
+          if [ -f "$FILE" ]; then
+            echo "Changelog ${CODE}.txt уже есть — оставляю как есть"
+            exit 0
+          fi
+          mkdir -p "$DIR"
+          PREV_RELEASE=$(git rev-list -n1 --grep='^release: ' 'HEAD^' 2>/dev/null || true)
+          PREV_TAG=$(git describe --tags --abbrev=0 'HEAD^' 2>/dev/null || true)
+          if [ -n "$PREV_RELEASE" ]; then
+            RANGE="${PREV_RELEASE}..HEAD"
+          elif [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          if [ -n "$MANUAL_NOTES" ]; then
+            printf '%s\n' "$MANUAL_NOTES" > "$FILE"
+          else
+            git log --no-merges --pretty=format:'- %s' "$RANGE" \
+              | grep -v '^- release:' > "$FILE" || true
+          fi
+          # F-Droid отбрасывает пустой changelog — подстраховываемся.
+          [ -s "$FILE" ] || printf -- '- Обновление\n' > "$FILE"
+          # Лимит F-Droid — 500 символов; длинный текст обрезаем с «...».
+          if [ "$(wc -c < "$FILE")" -gt 500 ]; then
+            head -c 470 "$FILE" > "${FILE}.tmp"
+            printf '\n...\n' >> "${FILE}.tmp"
+            mv "${FILE}.tmp" "$FILE"
+          fi
+          echo "Сгенерирован ${FILE}:"
+          cat "$FILE"
+
       - name: Коммит версии
         if: ${{ inputs.dry_run != 'true' }}
         run: |
@@ -184,7 +231,10 @@ jobs:
           git config user.email "ship@users.noreply.github.com"
           # kAppVersion обновляется бампом вместе с pubspec.yaml — иначе
           # следующий же регрессионный тест упадёт на расхождении версий.
-          git add pubspec.yaml pubspec.lock lib/services/app_version.dart
+          # changelog кладём в тот же коммит: fdroiddata читает его именно
+          # из коммита рецепта, иначе «Что нового» пустое.
+          git add pubspec.yaml pubspec.lock lib/services/app_version.dart \
+            "fastlane/metadata/android/en-US/changelogs/${{ steps.ver.outputs.code }}.txt"
           git commit -m "release: ${{ steps.ver.outputs.tag }}"
           # Только main: бамп не задевает forge и другие ветки.
           # Пуш в main не перезапустит воркфлоу: коммит "release: v…" отсекается
