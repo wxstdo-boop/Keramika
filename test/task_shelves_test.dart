@@ -13,10 +13,10 @@ import 'package:keramika/services/json_file.dart';
 import 'package:keramika/services/prefs.dart';
 import 'package:keramika/services/task_service.dart';
 
-/// Задачи делятся на две полки — «Активные» и «Выполненные» — ровно тогда,
-/// когда появляется хотя бы одна выполненная (как Полезные/Вредные в
-/// привычках). И галка НЕ снимается обратно: повторный тап по выполненной
-/// задаче ничего не меняет.
+/// Активные задачи идут одним списком БЕЗ заголовка. Как только появляется
+/// хотя бы одна выполненная, внизу вырастает архивная полка с заголовком
+/// «Архивные» (как Полезные/Вредные в привычках). Галка НЕ снимается
+/// обратно: повторный тап по выполненной задаче ничего не меняет.
 void main() {
   late Directory tmpDir;
 
@@ -124,12 +124,12 @@ void main() {
     ]);
 
     expect(find.text('Активные'), findsNothing);
-    expect(find.text('Выполненные'), findsNothing);
+    expect(find.text('Архивные'), findsNothing);
     expect(card('a1'), findsOneWidget);
     expect(card('a2'), findsOneWidget);
   });
 
-  testWidgets('с выполненной задачей список делится на две полки', (
+  testWidgets('с выполненной задачей появляется архивная полка', (
     tester,
   ) async {
     await seedAndPump(tester, [
@@ -137,13 +137,14 @@ void main() {
       Task(id: 'a2', title: 'Позвонить маме', done: true),
     ]);
 
-    expect(find.text('Активные'), findsOneWidget);
-    expect(find.text('Выполненные'), findsOneWidget);
+    // Активные — без заголовка; архивная полка подписана.
+    expect(find.text('Активные'), findsNothing);
+    expect(find.text('Архивные'), findsOneWidget);
     expect(card('a1'), findsOneWidget);
     expect(card('a2'), findsOneWidget);
   });
 
-  testWidgets('отметка задачи переносит её на полку «Выполненные»', (
+  testWidgets('отметка задачи переносит её в архив', (
     tester,
   ) async {
     await seedAndPump(tester, [
@@ -163,7 +164,7 @@ void main() {
       isTrue,
       reason: 'тап отмечает задачу выполненной',
     );
-    // Обе задачи теперь на полке «Выполненные»: две галки.
+    // Обе задачи теперь в архиве: две галки.
     expect(find.byIcon(Icons.check), findsNWidgets(2));
   });
 
@@ -208,7 +209,9 @@ void main() {
         );
 
         final bg = base.scaffoldBackgroundColor;
-        for (final label in ['Активные', 'Выполненные']) {
+        // Единственный заголовок полки — «Архивные»: он и должен читаться
+        // на фоне в обеих темах (приглушённый сине-серый на тёмном сливался).
+        for (final label in ['Архивные']) {
           final text = tester.widget<Text>(find.text(label));
           final color = text.style!.color!;
           expect(

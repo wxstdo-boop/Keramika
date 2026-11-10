@@ -74,11 +74,10 @@ class _TasksScreenState extends State<TasksScreen>
     end: Offset.zero,
   ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic));
 
-  /// Плавное «рождение» полок «Активные»/«Выполненные»: пока выполнена хотя
-  /// бы одна задача, между активными и выполненными появляется заголовок и
-  /// воздух. Без анимации это был бы резкий «щелчок» раскладки (список
-  /// мгновенно разъезжается на две полки). Анимируем появление полки
-  /// «Выполненные»: заголовок и её список мягко проявляются, а сдвиг
+  /// Плавное «рождение» архивной полки: пока выполнена хотя бы одна задача,
+  /// внизу появляется заголовок «Архивные» и воздух. Без анимации это был бы
+  /// резкий «щелчок» раскладки (список мгновенно разъезжается). Анимируем
+  /// появление полки: заголовок и её список мягко проявляются, а сдвиг
   /// компенсирует [SizeTransition] в шапке — соседние карточки не прыгают.
   late final AnimationController _splitReveal = AnimationController(
     vsync: this,
@@ -91,9 +90,9 @@ class _TasksScreenState extends State<TasksScreen>
   );
 
   /// «Опускание» только что выполненной задачи: карточка мягко съезжает
-  /// вниз (из зоны активных в полку выполненных) и проявляется. Так
-  /// переезд ОДНОЙ карточки читается как движение, а не как «исчезла там —
-  /// возникла здесь». Запускается на каждую отметку.
+  /// вниз (в архивную полку) и проявляется. Так переезд ОДНОЙ карточки
+  /// читается как движение, а не как «исчезла там — возникла здесь».
+  /// Запускается на каждую отметку.
   late final AnimationController _cardDrop = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 320),
@@ -110,8 +109,8 @@ class _TasksScreenState extends State<TasksScreen>
     begin: const Offset(0, -0.16),
     end: Offset.zero,
   ).animate(_cardDropT);
-  /// id только что выполненной задачи — её карточка анимируется в полке
-  /// «Выполненные»; остальные рисуются сразу.
+  /// id только что выполненной задачи — её карточка анимируется в архивной
+  /// полке; остальные рисуются сразу.
   String? _justCompletedId;
   // Hide FAB row on scroll: smoothly slides down + fades when scrolled past
   // 8px; comes back when scrolled to top. Используем NotificationListener
@@ -248,7 +247,7 @@ class _TasksScreenState extends State<TasksScreen>
   DateTime? _lastTaskTap;
 
   Future<void> _toggleTask(Task task) async {
-    // Снять галку нельзя: выполненная задача уходит на полку «Выполненные»
+    // Снять галку нельзя: выполненная задача уходит в архивную полку
     // и остаётся там. Вернуть её в работу можно только правкой задачи.
     if (task.done) return;
     final now = DateTime.now();
@@ -261,11 +260,11 @@ class _TasksScreenState extends State<TasksScreen>
     Haptics.select();
     // Парный мягкий звук — если человек включил звуки в настройках.
     Sounds.success();
-    // Была ли полка «Выполненные» ДО отметки: деление списка появляется
-    // ровно один раз (первая выполненная задача) — только тогда его и
-    // раскрываем плавно, а не мигаем полкой на каждой отметке.
+    // Был ли архив ДО отметки: полка появляется ровно один раз (первая
+    // выполненная задача) — только тогда её и раскрываем плавно, а не
+    // мигаем полкой на каждой отметке.
     final hadDone = _service.tasks.any((t) => t.done);
-    // Показываем переезд ДО мутации: карточка в полке «Выполненные» должна
+    // Показываем переезд ДО мутации: карточка в архивной полке должна
     // приехать анимированно (иначе полка уже стоит на экране, и вставка
     // читается как рывок).
     setState(() => _justCompletedId = task.id);
@@ -278,8 +277,8 @@ class _TasksScreenState extends State<TasksScreen>
     });
     await _service.toggle(task.id);
     if (!mounted) return;
-    // Первая выполненная задача рождает полку «Выполненные» — раскрываем её
-    // плавно, чтобы список не «щелкнул» из одной полки в две.
+    // Первая выполненная задача рождает архивную полку — раскрываем её
+    // плавно, чтобы список не «щелкнул».
     final hasDone = _service.tasks.any((t) => t.done);
     if (!hadDone && hasDone) {
       _splitReveal.forward(from: 0);
@@ -511,8 +510,9 @@ class _TasksScreenState extends State<TasksScreen>
   /// десятками задач.
   ///
   /// Пока выполненных задач нет — один список без заголовков. Как только
-  /// появляется хотя бы одна выполненная — список делится на две полки
-  /// «Активные» и «Выполненные» (по образцу Полезные/Вредные в привычках).
+  /// появляется хотя бы одна выполненная — внизу вырастает архивная полка
+  /// «Архивные» (по образцу Полезные/Вредные в привычках); активные идут
+  /// одним списком БЕЗ заголовка.
   /// Полки — РАЗНЫЕ sliver-списки, поэтому выполненную задачу нельзя
   /// перетащить обратно в активные.
   Widget _buildScrollList(
@@ -524,10 +524,10 @@ class _TasksScreenState extends State<TasksScreen>
     final empty = tasks.isEmpty;
     final active = tasks.where((t) => !t.done).toList();
     final done = tasks.where((t) => t.done).toList();
-    // Делим на полки ровно тогда, когда есть что положить на «Выполненные».
+    // Архив показываем ровно тогда, когда есть что в него положить.
     final split = done.isNotEmpty;
 
-    // Полка «Выполненные» (заголовок + её список) появляется ПЛАВНО: фейд
+    // Архивная полка (заголовок + её список) появляется ПЛАВНО: фейд
     // целиком, а верхний зазор растёт через SizeTransition — список ниже не
     // «прыгает» вниз, а мягко разъезжается.
     final completedGroup = SliverMainAxisGroup(
@@ -570,21 +570,10 @@ class _TasksScreenState extends State<TasksScreen>
             child: _buildHeader(context, theme, empty),
           ),
         ),
-        if (split && active.isNotEmpty) ...[
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            sliver: SliverToBoxAdapter(
-              child: _shelfHeader(
-                context,
-                theme,
-                'tasksSectionActive',
-                SectionTints.active(theme),
-              ),
-            ),
-          ),
-          _taskSliver(context, theme, active, all),
-        ] else
-          _taskSliver(context, theme, active, all),
+        // Активные задачи идут БЕЗ заголовка: они и есть основной список —
+        // подписывать их «Активные» значит подписывать очевидное. Заголовок
+        // несёт только архивная полка, чтобы отличаться от остального.
+        _taskSliver(context, theme, active, all),
         if (split) SliverFadeTransition(opacity: _splitFade, sliver: completedGroup),
         const SliverToBoxAdapter(child: SizedBox(height: 4)),
       ],
