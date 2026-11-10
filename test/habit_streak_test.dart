@@ -286,4 +286,67 @@ void main() {
     expect(one(svc).doneToday, true);
     expect(one(svc).lastDoneDate, HabitService.mskToday());
   });
+
+  test('add() нормализует «мёртвый» стрик сразу (без ожидания load)', () async {
+    final svc = HabitService();
+    await svc.load();
+    // Пропущен день (отметка 3 дня назад, стрик записан как живой 5).
+    await svc.add(makeHabit(streak: 5, lastDone: day(3)));
+    // Раньше add() клал привычку как есть, и «мёртвый» счётчик висел до
+    // следующего load() — «часть счётчиков сбросилась, часть нет».
+    expect(one(svc).streak, 0);
+    expect(one(svc).lastDoneDate, isNull);
+    expect(one(svc).doneToday, false);
+  });
+
+  test('update() нормализует «мёртвый» стрик сразу', () async {
+    final svc = HabitService();
+    await svc.load();
+    await svc.add(makeHabit()); // чистая привычка
+    await svc.update(makeHabit(streak: 5, lastDone: day(3)));
+    expect(one(svc).streak, 0);
+    expect(one(svc).lastDoneDate, isNull);
+  });
+
+  test('add/update не трогают живую серию (вчера отмечено)', () async {
+    final svc = HabitService();
+    await svc.load();
+    await svc.add(makeHabit(streak: 5, lastDone: day(1)));
+    expect(one(svc).streak, 5, reason: 'вчера отмечено — серия жива');
+    await svc.update(makeHabit(streak: 5, lastDone: day(1)));
+    expect(one(svc).streak, 5);
+    expect(one(svc).lastDoneDate, day(1));
+  });
+
+  test('пропуск дня: разные привычки сбрасываются одинаково', () async {
+    final svc = HabitService();
+    await svc.load();
+    // Три привычки с одной и той же историей (отметка 2 дня назад,
+    // стрик 5), но разными расписаниями: ежедневная, будни и «только
+    // сегодняшний день недели».
+    final todayWd = HabitService.mskToday().weekday;
+    final variants = <String, List<int>>{
+      'h-daily': const [],
+      'h-weekdays': const [1, 2, 3, 4, 5],
+      'h-today': <int>[todayWd],
+    };
+    for (final e in variants.entries) {
+      await svc.add(
+        Habit(
+          id: e.key,
+          name: e.key,
+          streak: 5,
+          lastDoneDate: day(2),
+          type: 'good',
+          activeDays: e.value,
+        ),
+      );
+    }
+    // Для ежедневной и будничной пропущен положенный день → сброс.
+    expect(svc.habits.firstWhere((h) => h.id == 'h-daily').streak, 0);
+    expect(svc.habits.firstWhere((h) => h.id == 'h-weekdays').streak, 0);
+    // А у привычки «только сегодня» пропущенный день не был положен —
+    // серия честно живёт. Это и есть правильное (не одинаковое!) поведение.
+    expect(svc.habits.firstWhere((h) => h.id == 'h-today').streak, 5);
+  });
 }

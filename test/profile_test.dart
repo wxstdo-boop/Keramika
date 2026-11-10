@@ -103,6 +103,11 @@ void main() {
         iconCodePoint: 57690,
         activeDays: const [1, 2, 3, 4, 5, 6, 7],
         streak: 10,
+        // Живой стрик: отметка сегодня. Без даты `streak: 10` — это ровно
+        // «мёртвые данные», которые сервис честно обнуляет при добавлении
+        // (см. тест «осиротевший стрик»), и очков за них быть не должно.
+        doneToday: true,
+        lastDoneDate: HabitService.mskToday(),
       ),
     );
     await TaskService().load();

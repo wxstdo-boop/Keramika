@@ -178,11 +178,16 @@ class HabitService extends ChangeNotifier {
   static int _notifBase(String habitId) => 10000 + (habitId.hashCode & 0x3fff);
 
   Future<void> add(Habit habit) async {
-    _habits.add(habit);
+    // Нормализуем на входе, как это делает load()/toggle(): иначе привычка,
+    // пришедшая из формы, импорта или ИИ, встаёт в список с «мёртвым»
+    // стриком (streak>0 при пропущенном дне) и живёт так до следующего
+    // load() — «часть счётчиков сбросилась, часть нет».
+    final normalized = _normalizeForToday(habit);
+    _habits.add(normalized);
     _normalizeOrder();
     notifyListeners();
     await _save();
-    await _scheduleReminder(habit);
+    await _scheduleReminder(normalized);
   }
 
   Future<void> remove(String id) async {
@@ -322,12 +327,17 @@ class HabitService extends ChangeNotifier {
   Future<void> update(Habit habit) async {
     final idx = _habits.indexWhere((h) => h.id == habit.id);
     if (idx != -1) {
-      _habits[idx] = habit;
+      // Нормализуем, как load()/toggle(): форма редактирования присылает
+      // привычку с прежними streak/lastDoneDate, и без этого «мёртвая»
+      // серия (пропущен положенный день) сохранялась бы на диск и висела
+      // до следующей загрузки — рассинхрон сброса между привычками.
+      final normalized = _normalizeForToday(habit);
+      _habits[idx] = normalized;
       _normalizeOrder();
       notifyListeners();
       await _save();
-      await cancelReminderFor(habit.id);
-      await _scheduleReminder(habit);
+      await cancelReminderFor(normalized.id);
+      await _scheduleReminder(normalized);
     }
   }
 
