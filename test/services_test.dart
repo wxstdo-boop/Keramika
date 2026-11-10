@@ -1031,4 +1031,41 @@ void main() {
       expect(TaskService().tasks.map((task) => task.id).toSet(), {'t1', 't2'});
     });
   });
+
+  group('Похвала за выполненную задачу', () {
+    test('ровно одна строка, без переносов', () async {
+      for (final lang in ['ru', 'en', 'fr']) {
+        final line = await AiGuideService.taskDoneLine(lang);
+        expect(line.contains('\n'), isFalse, reason: '«$lang»: $line');
+        expect(line.trim(), line, reason: 'нет краевых пробелов');
+        expect(line, isNotEmpty);
+      }
+    });
+
+    test('подряд идущие отметки не повторяют строку', () async {
+      globalPrefs.setInt('ai_tasks_done_total', 0);
+      final first = await AiGuideService.taskDoneLine('ru');
+      final second = await AiGuideService.taskDoneLine('ru');
+      expect(
+        second,
+        isNot(first),
+        reason: 'соседние похвалы должны различаться (разнообразие)',
+      );
+    });
+
+    test('круглая веха даёт особую строку, а не рядовую', () async {
+      globalPrefs.setInt('ai_tasks_done_total', 10);
+      final line = await AiGuideService.taskDoneLine('ru');
+      expect(line, contains('🏅'));
+      expect(line.toLowerCase(), contains('десять'));
+    });
+
+    test('язык влияет на текст', () async {
+      globalPrefs.setInt('ai_tasks_done_total', 0);
+      final ru = await AiGuideService.taskDoneLine('ru');
+      globalPrefs.setInt('ai_tasks_done_total', 0);
+      final en = await AiGuideService.taskDoneLine('en');
+      expect(ru, isNot(en));
+    });
+  });
 }

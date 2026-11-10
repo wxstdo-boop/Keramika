@@ -1979,6 +1979,102 @@ class AiGuideService {
     return 'дней';
   }
 
+  // ---- Короткая похвала за выполненную задачу ----
+
+  static const _taskPraiseKey = 'ai_task_praise_idx';
+
+  /// Одна короткая строка похвалы за выполненную задачу.
+  ///
+  /// Требования: ровно ОДНА строка (снекбар читается за один взгляд, без
+  /// переносов) и разнообразие — варианты чередуются по индексу в prefs,
+  /// поэтому подряд идущие отметки не повторяются. Круглые вехи по счётчику
+  /// за всё время дают особую строку вместо рядовой.
+  static Future<String> taskDoneLine(String languageCode) async {
+    if (languageCode == 'system') {
+      languageCode = await SettingsService.resolveLanguageCode();
+    }
+    final ru = languageCode.startsWith('ru');
+    final fr = languageCode.startsWith('fr');
+    final total = globalPrefs.getInt('ai_tasks_done_total') ?? 0;
+    final milestone = _taskMilestoneLine(total, ru, fr);
+    if (milestone != null) return milestone;
+    final pool = ru ? _praiseRu : (fr ? _praiseFr : _praiseEn);
+    final idx = (globalPrefs.getInt(_taskPraiseKey) ?? 0) % pool.length;
+    try {
+      await globalPrefs.setInt(_taskPraiseKey, idx + 1);
+    } catch (_) {
+      // Хранилище недоступно — похвала всё равно покажется, просто начнёт
+      // круг заново. Ронять из-за этого показ нельзя.
+    }
+    return pool[idx];
+  }
+
+  static String? _taskMilestoneLine(int total, bool ru, bool fr) {
+    const marks = {5, 10, 25, 50, 100, 200, 365};
+    if (!marks.contains(total)) return null;
+    if (ru) {
+      return switch (total) {
+        5 => '🏅 Пять задач за всё время — разгон!',
+        10 => '🏅 Десять! Это уже привычка.',
+        25 => '🏆 Двадцать пять задач — сила.',
+        50 => '🏆 Пятьдесят! Ты машина.',
+        100 => '🏆 Сто задач! Легенда.',
+        _ => '🏆 $total задач за всё время — невероятно!',
+      };
+    }
+    if (fr) {
+      return switch (total) {
+        5 => '🏅 Cinq tâches en tout — ça décolle !',
+        10 => '🏅 Dix ! C\'est déjà une habitude.',
+        25 => '🏆 Vingt-cinq tâches — quelle force.',
+        50 => '🏆 Cinquante ! Tu es une machine.',
+        100 => '🏆 Cent tâches ! Légende.',
+        _ => '🏆 $total tâches en tout — incroyable !',
+      };
+    }
+    return switch (total) {
+      5 => '🏅 Five tasks total — picking up speed!',
+      10 => '🏅 Ten! That\'s a habit now.',
+      25 => '🏆 Twenty-five tasks — strength.',
+      50 => '🏆 Fifty! You\'re a machine.',
+      100 => '🏆 A hundred tasks! Legend.',
+      _ => '🏆 $total tasks total — incredible!',
+    };
+  }
+
+  static const _praiseRu = [
+    '🎯 Есть! Задача закрыта.',
+    '✨ Сделано — и сделано хорошо.',
+    '💪 Минус одна. Ты растёшь.',
+    '🔥 Красиво! Дальше.',
+    '✅ Готово! Так держать.',
+    '🌟 Плюс один к характеру.',
+    '🚀 Ещё одна в копилку!',
+    '🎉 Отлично! Идём дальше.',
+  ];
+
+  static const _praiseFr = [
+    '🎯 Fait ! Tâche close.',
+    '✨ Fait — et bien fait.',
+    '💪 Une de moins. Tu grandis.',
+    '🔥 Beau ! Suivant.',
+    '✅ Fait ! Continue.',
+    '🌟 Un point de caractère en plus.',
+    '🚀 Encore une au compteur !',
+    '🎉 Bravo ! On avance.',
+  ];
+
+  static const _praiseEn = [
+    '🎯 Done! Task closed.',
+    '✨ Done — and done well.',
+    '💪 One less. You grow.',
+    '🔥 Smooth! Next.',
+    '✅ Done! Keep going.',
+    '🌟 One more point of character.',
+    '🚀 Another one in the bank!',
+    '🎉 Nice! Onward.',
+  ];
+
   // ---- Инструменты Ады: создание привычек/задач/будильников/РП ----
 
   static List<Map<String, dynamic>> _tools() => [

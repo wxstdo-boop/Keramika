@@ -24,6 +24,7 @@ import '../widgets/sliding_picker.dart';
 import '../widgets/smooth_char_counter.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/premium_empty_state.dart';
+import '../utils/section_tints.dart';
 import '../widgets/section_pill.dart'
     show kSectionPillSlotHeight, sectionCurrentIndex;
 import 'add_task_screen.dart';
@@ -44,7 +45,7 @@ class _TasksScreenState extends State<TasksScreen>
     with
         WidgetsBindingObserver,
         AutomaticKeepAliveClientMixin,
-        SingleTickerProviderStateMixin {
+        TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
   final _service = TaskService();
@@ -72,6 +73,46 @@ class _TasksScreenState extends State<TasksScreen>
     begin: const Offset(0, 0.02),
     end: Offset.zero,
   ).animate(CurvedAnimation(parent: _reveal, curve: Curves.easeOutCubic));
+
+  /// Плавное «рождение» полок «Активные»/«Выполненные»: пока выполнена хотя
+  /// бы одна задача, между активными и выполненными появляется заголовок и
+  /// воздух. Без анимации это был бы резкий «щелчок» раскладки (список
+  /// мгновенно разъезжается на две полки). Анимируем появление полки
+  /// «Выполненные»: заголовок и её список мягко проявляются, а сдвиг
+  /// компенсирует [SizeTransition] в шапке — соседние карточки не прыгают.
+  late final AnimationController _splitReveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 360),
+    value: 1,
+  );
+  late final Animation<double> _splitFade = CurvedAnimation(
+    parent: _splitReveal,
+    curve: Curves.easeOutCubic,
+  );
+
+  /// «Опускание» только что выполненной задачи: карточка мягко съезжает
+  /// вниз (из зоны активных в полку выполненных) и проявляется. Так
+  /// переезд ОДНОЙ карточки читается как движение, а не как «исчезла там —
+  /// возникла здесь». Запускается на каждую отметку.
+  late final AnimationController _cardDrop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    value: 1,
+  );
+  late final Animation<double> _cardDropT = CurvedAnimation(
+    parent: _cardDrop,
+    curve: Curves.easeOutCubic,
+  );
+  /// Вертикальный «приезд» карточки: доля высоты карточки, поэтому сдвиг
+  /// сам масштабируется под её размер (без чтения .value в build — иначе
+  /// смещение застыло бы на значении момента сборки).
+  late final Animation<Offset> _cardDropSlide = Tween<Offset>(
+    begin: const Offset(0, -0.16),
+    end: Offset.zero,
+  ).animate(_cardDropT);
+  /// id только что выполненной задачи — её карточка анимируется в полке
+  /// «Выполненные»; остальные рисуются сразу.
+  String? _justCompletedId;
   // Hide FAB row on scroll: smoothly slides down + fades when scrolled past
   // 8px; comes back when scrolled to top. Используем NotificationListener
   // (как на экране будильников), а НЕ ScrollController на внутреннем
@@ -138,6 +179,8 @@ class _TasksScreenState extends State<TasksScreen>
     _pillCtrl.dispose();
     _fabVisible.dispose();
     _reveal.dispose();
+    _splitReveal.dispose();
+    _cardDrop.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -218,19 +261,46 @@ class _TasksScreenState extends State<TasksScreen>
     Haptics.select();
     // Парный мягкий звук — если человек включил звуки в настройках.
     Sounds.success();
+    // Была ли полка «Выполненные» ДО отметки: деление списка появляется
+    // ровно один раз (первая выполненная задача) — только тогда его и
+    // раскрываем плавно, а не мигаем полкой на каждой отметке.
+    final hadDone = _service.tasks.any((t) => t.done);
+    // Показываем переезд ДО мутации: карточка в полке «Выполненные» должна
+    // приехать анимированно (иначе полка уже стоит на экране, и вставка
+    // читается как рывок).
+    setState(() => _justCompletedId = task.id);
+    _cardDrop.forward(from: 0).whenComplete(() {
+      // Снимаем «анимируемую» метку: карточка больше не оборачивается
+      // переходом (иначе один лишний набор слоёв висел бы на ней всегда).
+      if (mounted && _justCompletedId == task.id) {
+        setState(() => _justCompletedId = null);
+      }
+    });
     await _service.toggle(task.id);
     if (!mounted) return;
+    // Первая выполненная задача рождает полку «Выполненные» — раскрываем её
+    // плавно, чтобы список не «щелкнул» из одной полки в две.
+    final hasDone = _service.tasks.any((t) => t.done);
+    if (!hadDone && hasDone) {
+      _splitReveal.forward(from: 0);
+    }
     try {
       final lang = await SettingsService.loadLanguageCode();
-      final rewards = await AiGuideService.collectRewards(lang);
-      if (rewards.isNotEmpty && mounted) {
+      // Награды за вехи (все задачи выполнены / всего N) Ада забирает в чат —
+      // отдельный слой, короткой похвале он не мешает.
+      await AiGuideService.collectRewards(lang);
+      // Короткая похвала — ОДНА строка и разная на каждую отметку (см.
+      // [AiGuideService.taskDoneLine]). Раньше на обычной задаче не
+      // показывалось ничего, а на вехе всплывало длинное поздравление.
+      final line = await AiGuideService.taskDoneLine(lang);
+      if (mounted) {
         showBeautifulSnackBar(
           context,
-          message: rewards.first,
+          message: line,
           icon: Icons.emoji_events,
           iconColor: Colors.amber,
-          duration: const Duration(seconds: 4),
-          groupKey: 'ada_reward',
+          duration: const Duration(seconds: 3),
+          groupKey: 'task_done',
         );
       }
     } catch (_) {}
@@ -457,6 +527,33 @@ class _TasksScreenState extends State<TasksScreen>
     // Делим на полки ровно тогда, когда есть что положить на «Выполненные».
     final split = done.isNotEmpty;
 
+    // Полка «Выполненные» (заголовок + её список) появляется ПЛАВНО: фейд
+    // целиком, а верхний зазор растёт через SizeTransition — список ниже не
+    // «прыгает» вниз, а мягко разъезжается.
+    final completedGroup = SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizeTransition(
+            sizeFactor: _splitFade,
+            alignment: Alignment.topCenter,
+            child: const SizedBox(height: 14),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          sliver: SliverToBoxAdapter(
+            child: _shelfHeader(
+              context,
+              theme,
+              'tasksSectionDone',
+              SectionTints.completed(theme),
+            ),
+          ),
+        ),
+        _taskSliver(context, theme, done, all),
+      ],
+    );
+
     return CustomScrollView(
       key: const ValueKey('list'),
       controller: _pillCtrl,
@@ -481,27 +578,14 @@ class _TasksScreenState extends State<TasksScreen>
                 context,
                 theme,
                 'tasksSectionActive',
-                _shelfTint(theme, done: false),
+                SectionTints.active(theme),
               ),
             ),
           ),
           _taskSliver(context, theme, active, all),
         ] else
           _taskSliver(context, theme, active, all),
-        if (split && done.isNotEmpty) ...[
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            sliver: SliverToBoxAdapter(
-              child: _shelfHeader(
-                context,
-                theme,
-                'tasksSectionDone',
-                _shelfTint(theme, done: true),
-              ),
-            ),
-          ),
-          _taskSliver(context, theme, done, all),
-        ],
+        if (split) SliverFadeTransition(opacity: _splitFade, sliver: completedGroup),
         const SliverToBoxAdapter(child: SizedBox(height: 4)),
       ],
     );
@@ -543,32 +627,45 @@ class _TasksScreenState extends State<TasksScreen>
           if (newGlobal == oldGlobal) return;
           _service.reorder(oldGlobal, newGlobal);
         },
-        itemBuilder: (context, i) => KeyedSubtree(
-          key: ValueKey('item_task_${list[i].id}'),
-          // Плавная смена содержимого при переключении категории: только
-          // лёгкий подъём (SlideTransition — чистая трансформация, без
-          // saveLayer). FadeTransition на КАЖДОЙ карточке создавал по
-          // слою прозрачности на карточку каждый кадр — на слабом GPU это
-          // и был «тормоз в конце» переключения категорий.
-          child: SlideTransition(
-            position: _revealSlide,
-            child: _buildTaskCard(context, theme, list[i], i),
-          ),
-        ),
+        itemBuilder: (context, i) {
+          final task = list[i];
+          // Только что выполненная задача «приезжает» на полку выполненных:
+          // мягко съезжает сверху и проявляется. Остальные карточки рисуются
+          // сразу — анимируется ровно одна, переезд читается как движение.
+          if (task.id == _justCompletedId && task.done) {
+            return KeyedSubtree(
+              key: ValueKey('item_task_${task.id}'),
+              child: SlideTransition(
+                position: _revealSlide,
+                child: FadeTransition(
+                  opacity: _cardDropT,
+                  child: SizeTransition(
+                    sizeFactor: _cardDropT,
+                    alignment: Alignment.topCenter,
+                    child: SlideTransition(
+                      position: _cardDropSlide,
+                      child: _buildTaskCard(context, theme, task, i),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+          return KeyedSubtree(
+            key: ValueKey('item_task_${task.id}'),
+            // Плавная смена содержимого при переключении категории: только
+            // лёгкий подъём (SlideTransition — чистая трансформация, без
+            // saveLayer). FadeTransition на КАЖДОЙ карточке создавал по
+            // слою прозрачности на карточку каждый кадр — на слабом GPU это
+            // и был «тормоз в конце» переключения категорий.
+            child: SlideTransition(
+              position: _revealSlide,
+              child: _buildTaskCard(context, theme, task, i),
+            ),
+          );
+        },
       ),
     );
-  }
-
-  /// Цвет заголовка полки. На светлой теме — насыщенный, на тёмной —
-  /// осветлённый: чистые `green`/`blueGrey` на тёмном фоне читались бы
-  /// плохо (низкий контраст), а «Выполненные» вообще сливались бы с фоном.
-  Color _shelfTint(ThemeData theme, {required bool done}) {
-    final dark = theme.brightness == Brightness.dark;
-    if (done) {
-      // «Выполненные» — приглушённый сине-серый: спокойнее активных.
-      return dark ? const Color(0xFF9FB2C4) : const Color(0xFF546E7A);
-    }
-    return dark ? const Color(0xFF7BD88F) : const Color(0xFF2E7D32);
   }
 
   /// Заголовок полки: цветное название + растворяющаяся линия до края —

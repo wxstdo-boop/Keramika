@@ -22,6 +22,7 @@ import '../widgets/drag_proxy.dart';
 import '../widgets/animated_strike_text.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
+import '../utils/section_tints.dart';
 import '../widgets/section_pill.dart'
     show kSectionPillSlotHeight, sectionCurrentIndex;
 import 'add_habit_screen.dart';
@@ -841,10 +842,20 @@ class _HabitsScreenState extends State<HabitsScreen>
         ),
       ),
       if (splitSections) ...[
-        _sectionHeaderSliver(context, theme, 'habitsSectionGood', Colors.green),
+        _sectionHeaderSliver(
+          context,
+          theme,
+          'habitsSectionGood',
+          SectionTints.active(theme),
+        ),
         ..._zoneSlivers(context, theme, goodHabits, sorted),
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
-        _sectionHeaderSliver(context, theme, 'habitsSectionBad', Colors.red),
+        _sectionHeaderSliver(
+          context,
+          theme,
+          'habitsSectionBad',
+          SectionTints.harmful(theme),
+        ),
         ..._zoneSlivers(context, theme, badHabits, sorted),
       ] else
         ..._zoneSlivers(context, theme, sorted, sorted),
