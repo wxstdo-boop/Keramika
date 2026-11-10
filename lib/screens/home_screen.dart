@@ -778,17 +778,12 @@ class _HomeScreenState extends State<HomeScreen>
                         child: ClipRRect(
                           clipBehavior: Clip.antiAlias,
                           borderRadius: BorderRadius.circular(cornerRadius),
+                          // Без рамки: тонкая серая кромка вокруг контента
+                          // читалась как «полоса», разделяющая шапку и список.
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               color: Theme.of(context).scaffoldBackgroundColor,
                               borderRadius: BorderRadius.circular(cornerRadius),
-                              border: Border.all(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .outlineVariant
-                                    .withValues(alpha: 0.18),
-                                width: 0.8,
-                              ),
                             ),
                             child: child,
                           ),

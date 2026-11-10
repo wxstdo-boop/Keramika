@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Вариант аватарки «керамика-юзера»: тройной градиент + значок.
+import '../utils/motion_prefs.dart';
+
+/// Вариант аватарки «керамика-юзера»: монотонный красный тон + значок.
 ///
 /// Индекс варианта — то, что хранит профиль ([ProfileService.avatarIndex]) и
 /// что видит друг в рейтинге. Список детерминированный: один и тот же индекс
@@ -13,78 +15,40 @@ class ProfileAvatarVariant {
   const ProfileAvatarVariant(this.colors, this.icon);
 }
 
-/// Авторские варианты аватарки: тёплая керамика, глазурь, обжиг. Порядок
-/// стабилен — индекс переживает перезапуск.
+/// Варианты аватарки: спокойная гамма красных — от светлого к глубокому.
+/// Порядок стабилен, индекс переживает перезапуск.
 final List<ProfileAvatarVariant> profileAvatarVariants = _build();
 
+/// Значки вариантов: у каждого индекса свой — аватарка узнаваема без цвета.
+const List<IconData> _avatarIcons = [
+  Icons.local_fire_department,
+  Icons.water_drop,
+  Icons.auto_awesome,
+  Icons.eco,
+  Icons.wb_sunny,
+  Icons.favorite,
+  Icons.nightlight,
+  Icons.cruelty_free,
+  Icons.star,
+  Icons.bolt,
+  Icons.diamond,
+  Icons.spa,
+];
+
 List<ProfileAvatarVariant> _build() {
-  const seed = <ProfileAvatarVariant>[
-    ProfileAvatarVariant(
-      [Color(0xFFFFB199), Color(0xFFFF7B54), Color(0xFFC1440E)],
-      Icons.local_fire_department,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFF9BE8FF), Color(0xFF3FA7D6), Color(0xFF1B4965)],
-      Icons.water_drop,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFFC9B8FF), Color(0xFF8E7CFF), Color(0xFF4A3F9E)],
-      Icons.auto_awesome,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFF8BF0C8), Color(0xFF2BB3A0), Color(0xFF0F6E6E)],
-      Icons.eco,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFFFFD166), Color(0xFFFF8C42), Color(0xFFD62828)],
-      Icons.wb_sunny,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFFFF9EC6), Color(0xFFB06AB3), Color(0xFF7C4DFF)],
-      Icons.favorite,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFFB8C4FF), Color(0xFF5C6BC0), Color(0xFF283593)],
-      Icons.nightlight,
-    ),
-    ProfileAvatarVariant(
-      [Color(0xFFE6C9A8), Color(0xFFB08968), Color(0xFF7F5539)],
-      Icons.cruelty_free,
-    ),
-  ];
-  const icons = <IconData>[
-    Icons.local_fire_department,
-    Icons.water_drop,
-    Icons.auto_awesome,
-    Icons.eco,
-    Icons.wb_sunny,
-    Icons.favorite,
-    Icons.nightlight,
-    Icons.cruelty_free,
-    Icons.star,
-    Icons.bolt,
-    Icons.diamond,
-    Icons.spa,
-  ];
-  final generated = <ProfileAvatarVariant>[];
-  for (var i = 0; i < 40; i++) {
-    final hue = (i * 53 + 18) % 360;
-    final sat = (0.55 + 0.22 * (i % 3)).clamp(0.0, 1.0);
-    final light = (0.50 + 0.12 * ((i ~/ 3) % 3)).clamp(0.0, 1.0);
-    Color band(double dHue, double dLight) => HSLColor.fromAHSL(
-      1,
-      (hue + dHue) % 360,
-      sat,
-      (light + dLight).clamp(0.05, 0.95),
-    ).toColor();
-    generated.add(
-      ProfileAvatarVariant(
-        [band(-26, 0.14), band(0, 0.0), band(26, -0.16)],
-        icons[i % icons.length],
-      ),
+  final out = <ProfileAvatarVariant>[];
+  for (var i = 0; i < 48; i++) {
+    // Красный с лёгким сдвигом оттенка и светлоты: варианты различаются, но
+    // остаются ОДНИМ тоном — «монотонные красные», без пестроты.
+    final hue = (352.0 + (i % 5) * 4.0) % 360.0;
+    final light = 0.46 + 0.05 * ((i ~/ 5) % 3);
+    final sat = 0.58 + 0.06 * (i % 2);
+    final color = HSLColor.fromAHSL(1, hue, sat, light).toColor();
+    out.add(
+      ProfileAvatarVariant([color], _avatarIcons[i % _avatarIcons.length]),
     );
   }
-  return [...seed, ...generated];
+  return out;
 }
 
 /// Цвета аватарки по индексу (с защитой от выхода за границы списка).
@@ -98,53 +62,59 @@ IconData profileAvatarIcon(int index) {
   return profileAvatarVariants[i].icon;
 }
 
-/// Круглая аватарка с градиентом и значком. [glow] добавляет мягкое свечение
-/// — им пользуется шапка профиля, чтобы аватарка читалась как «живая».
+/// Круглая аватарка: монотонная полупрозрачная красная заливка и обводка —
+/// та же «чистая» рамка, что у кружков привычек (без свечения и градиентов,
+/// которые ловили блик и спорили с содержимым карточки).
+///
+/// Смена варианта — плавный кросс-фейд с лёгким «проявлением», а не подмена
+/// кадром: аватарка меняется на глазах, и резкий щелчок читался бы дёшево.
 class ProfileAvatar extends StatelessWidget {
   final int index;
   final double size;
-  final bool glow;
   final bool showIcon;
 
   const ProfileAvatar({
     super.key,
     required this.index,
     this.size = 44,
-    this.glow = false,
     this.showIcon = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colors = profileAvatarColors(index);
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: colors,
+    final color = profileAvatarColors(index).first;
+    final reduce = MotionPrefs.shouldReduceMotion;
+    return AnimatedSwitcher(
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.92, end: 1).animate(anim),
+          child: child,
         ),
-        boxShadow: glow
-            ? [
-                BoxShadow(
-                  color: colors.last.withValues(alpha: 0.45),
-                  blurRadius: size * 0.42,
-                  spreadRadius: size * 0.04,
-                ),
-              ]
+      ),
+      child: Container(
+        key: ValueKey(index),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          // Монотонная полупрозрачная заливка: ровный красный без «отсветов».
+          color: color.withValues(alpha: 0.30),
+          // Обводка как у кружков привычек: тонкое чистое кольцо.
+          border: Border.all(color: color.withValues(alpha: 0.65), width: 2),
+        ),
+        alignment: Alignment.center,
+        child: showIcon
+            ? Icon(
+                profileAvatarIcon(index),
+                size: size * 0.46,
+                color: color.withValues(alpha: 0.95),
+              )
             : null,
       ),
-      alignment: Alignment.center,
-      child: showIcon
-          ? Icon(
-              profileAvatarIcon(index),
-              size: size * 0.5,
-              color: Colors.white.withValues(alpha: 0.92),
-            )
-          : null,
     );
   }
 }

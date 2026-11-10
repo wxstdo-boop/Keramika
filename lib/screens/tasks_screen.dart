@@ -102,6 +102,7 @@ class _TasksScreenState extends State<TasksScreen>
     parent: _cardDrop,
     curve: Curves.easeOutCubic,
   );
+
   /// Вертикальный «приезд» карточки: доля высоты карточки, поэтому сдвиг
   /// сам масштабируется под её размер (без чтения .value в build — иначе
   /// смещение застыло бы на значении момента сборки).
@@ -109,9 +110,19 @@ class _TasksScreenState extends State<TasksScreen>
     begin: const Offset(0, -0.16),
     end: Offset.zero,
   ).animate(_cardDropT);
-  /// id только что выполненной задачи — её карточка анимируется в архивной
-  /// полке; остальные рисуются сразу.
+
+  /// id только что переключённой задачи — её карточка «приезжает» в новую
+  /// полку анимированно; остальные рисуются сразу.
   String? _justCompletedId;
+
+  /// Показывать ли архивную полку. Держим флагом, а не «done не пуст»: когда
+  /// последняя архивная задача уходит (снята галка или удалена), полку надо
+  /// ещё успеть плавно свернуть, прежде чем убрать из дерева.
+  bool _archiveVisible = false;
+
+  /// Была ли хоть одна выполненная задача на прошлой синхронизации — по
+  /// этому ловим «полка появилась»/«полка опустела».
+  bool _hadDone = false;
   // Hide FAB row on scroll: smoothly slides down + fades when scrolled past
   // 8px; comes back when scrolled to top. Используем NotificationListener
   // (как на экране будильников), а НЕ ScrollController на внутреннем
@@ -141,10 +152,37 @@ class _TasksScreenState extends State<TasksScreen>
     // без кадра пустого состояния. Повторный load() в фоне дешёвый и
     // подхватит правки, если кто-то писал в файл извне.
     if (_service.isLoaded) _loaded = true;
+    _hadDone = _service.tasks.any((t) => t.done);
+    _archiveVisible = _hadDone;
+    // Полка реагирует на ЛЮБОЕ изменение списка (отметка, снятие галки,
+    // удаление свайпом), а не только на тап по галке — иначе снятие последней
+    // архивной задачи оставляло бы полку висеть.
+    _service.addListener(_syncArchive);
     _service.load().then((_) {
       if (!mounted) return;
-      setState(() => _loaded = true);
+      setState(() {
+        _loaded = true;
+        _hadDone = _service.tasks.any((t) => t.done);
+        _archiveVisible = _hadDone;
+      });
     });
+  }
+
+  /// Плавно показать/свернуть архивную полку по факту наличия выполненных.
+  void _syncArchive() {
+    final hasDone = _service.tasks.any((t) => t.done);
+    if (hasDone == _hadDone) return;
+    _hadDone = hasDone;
+    if (hasDone) {
+      setState(() => _archiveVisible = true);
+      _splitReveal.forward(from: 0);
+    } else {
+      _splitReveal.reverse().whenComplete(() {
+        if (!mounted) return;
+        if (_service.tasks.any((t) => t.done)) return;
+        setState(() => _archiveVisible = false);
+      });
+    }
   }
 
   /// Раздел стал активным — форсируем ресинк офсета таблетки (keep-alive
@@ -172,6 +210,7 @@ class _TasksScreenState extends State<TasksScreen>
 
   @override
   void dispose() {
+    _service.removeListener(_syncArchive);
     _pillCtrl.removeListener(_syncPillOffset);
     sectionAddActions.remove(widget.pillIndex);
     sectionCurrentIndex.removeListener(_onCurrentSectionChanged);
@@ -237,36 +276,29 @@ class _TasksScreenState extends State<TasksScreen>
     }
   }
 
-  /// Отметить задачу выполненной. Отметка НЕОБРАТИМА: повторный тап по уже
-  /// выполненной задаче ничего не делает — галка не снимается. При выполнении
-  /// Ада «реально» выдаёт награду — снекбаром, когда достигнута новая веха
-  /// (все сделано / N всего / стрик).
+  /// Переключить задачу. Галка СНИМАЕТСЯ: выполненная задача возвращается из
+  /// архива в активный список. При отметке Ада «реально» выдаёт награду —
+  /// снекбаром, когда достигнута новая веха (все сделано / N всего / стрик).
   /// Защита от двойного срабатывания: палец на слабом экране может «дрогнуть»
   /// и GestureDetector выдаст второй tap — значок мигал бы туда-обратно.
   /// Повторный toggle в течение 500 мс игнорируется.
   DateTime? _lastTaskTap;
 
   Future<void> _toggleTask(Task task) async {
-    // Снять галку нельзя: выполненная задача уходит в архивную полку
-    // и остаётся там. Вернуть её в работу можно только правкой задачи.
-    if (task.done) return;
     final now = DateTime.now();
     if (_lastTaskTap != null &&
         now.difference(_lastTaskTap!) < const Duration(milliseconds: 500)) {
       return;
     }
     _lastTaskTap = now;
+    final wasDone = task.done;
     // Приятный тактильный отклик: лёгкий «клик» при отметке задачи.
     Haptics.select();
     // Парный мягкий звук — если человек включил звуки в настройках.
     Sounds.success();
-    // Был ли архив ДО отметки: полка появляется ровно один раз (первая
-    // выполненная задача) — только тогда её и раскрываем плавно, а не
-    // мигаем полкой на каждой отметке.
-    final hadDone = _service.tasks.any((t) => t.done);
-    // Показываем переезд ДО мутации: карточка в архивной полке должна
-    // приехать анимированно (иначе полка уже стоит на экране, и вставка
-    // читается как рывок).
+    // Показываем переезд ДО мутации: карточка в новой полке должна приехать
+    // анимированно (иначе полка уже стоит на экране, и вставка читается как
+    // рывок).
     setState(() => _justCompletedId = task.id);
     _cardDrop.forward(from: 0).whenComplete(() {
       // Снимаем «анимируемую» метку: карточка больше не оборачивается
@@ -277,12 +309,8 @@ class _TasksScreenState extends State<TasksScreen>
     });
     await _service.toggle(task.id);
     if (!mounted) return;
-    // Первая выполненная задача рождает архивную полку — раскрываем её
-    // плавно, чтобы список не «щелкнул».
-    final hasDone = _service.tasks.any((t) => t.done);
-    if (!hadDone && hasDone) {
-      _splitReveal.forward(from: 0);
-    }
+    // Похвалу выдаём только за ОТМЕТКУ, не за снятие галки.
+    if (wasDone) return;
     try {
       final lang = await SettingsService.loadLanguageCode();
       // Награды за вехи (все задачи выполнены / всего N) Ада забирает в чат —
@@ -524,8 +552,6 @@ class _TasksScreenState extends State<TasksScreen>
     final empty = tasks.isEmpty;
     final active = tasks.where((t) => !t.done).toList();
     final done = tasks.where((t) => t.done).toList();
-    // Архив показываем ровно тогда, когда есть что в него положить.
-    final split = done.isNotEmpty;
 
     // Архивная полка (заголовок + её список) появляется ПЛАВНО: фейд
     // целиком, а верхний зазор растёт через SizeTransition — список ниже не
@@ -542,11 +568,18 @@ class _TasksScreenState extends State<TasksScreen>
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
           sliver: SliverToBoxAdapter(
-            child: _shelfHeader(
-              context,
-              theme,
-              'tasksSectionDone',
-              SectionTints.completed(theme),
+            // Заголовок тоже растёт/опадает по высоте вместе с зазором: без
+            // этого при уходе последней архивной задачи он пропадал бы
+            // скачком раскладки, хотя зазор уже сомкнулся.
+            child: SizeTransition(
+              sizeFactor: _splitFade,
+              alignment: Alignment.topCenter,
+              child: _shelfHeader(
+                context,
+                theme,
+                'tasksSectionDone',
+                SectionTints.completed(theme),
+              ),
             ),
           ),
         ),
@@ -574,7 +607,8 @@ class _TasksScreenState extends State<TasksScreen>
         // подписывать их «Активные» значит подписывать очевидное. Заголовок
         // несёт только архивная полка, чтобы отличаться от остального.
         _taskSliver(context, theme, active, all),
-        if (split) SliverFadeTransition(opacity: _splitFade, sliver: completedGroup),
+        if (_archiveVisible)
+          SliverFadeTransition(opacity: _splitFade, sliver: completedGroup),
         const SliverToBoxAdapter(child: SizedBox(height: 4)),
       ],
     );
@@ -621,7 +655,7 @@ class _TasksScreenState extends State<TasksScreen>
           // Только что выполненная задача «приезжает» на полку выполненных:
           // мягко съезжает сверху и проявляется. Остальные карточки рисуются
           // сразу — анимируется ровно одна, переезд читается как движение.
-          if (task.id == _justCompletedId && task.done) {
+          if (task.id == _justCompletedId) {
             return KeyedSubtree(
               key: ValueKey('item_task_${task.id}'),
               child: SlideTransition(
@@ -678,8 +712,6 @@ class _TasksScreenState extends State<TasksScreen>
               letterSpacing: 0.2,
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(color: tint.withValues(alpha: 0.4))),
         ],
       ),
     );
@@ -965,16 +997,15 @@ class _TasksScreenState extends State<TasksScreen>
     );
   }
 
-
   /// Цвет приоритета: ярче и контрастнее.
   Color _priorityColor(int p, ThemeData theme) {
     switch (p) {
       case 2:
-        return Colors.red.shade400;
+        return Colors.red.shade300;
       case 1:
-        return Colors.orange.shade500;
+        return Colors.orange.shade400;
       default:
-        return Colors.green.shade500;
+        return Colors.green.shade400;
     }
   }
 
@@ -1000,19 +1031,14 @@ class _TasksScreenState extends State<TasksScreen>
       1 => Translations.t('priorityMedium', context),
       _ => Translations.t('priorityLow', context),
     };
+    // Монотонная плашка: ровная матовая заливка одним тоном, без радиального
+    // «отсвета» — в карточках он ловил блик и спорил с текстом задачи.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: const Alignment(-0.5, -0.5),
-          radius: 1.15,
-          colors: [
-            color.withValues(alpha: 0.30),
-            color.withValues(alpha: 0.10),
-          ],
-        ),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.28), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.22), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -637,7 +637,10 @@ class _SectionPillState extends State<SectionPill>
         // заметно вытягивается и округляется в сторону следующего раздела.
         // Коэффициент волны 0.72 (был 0.55 — растяжение «проскальзывало»)
         // держит эффект отчётливым, а `math.min(0.98, …)` не даёт раздуться.
-        final visualStretch = math.min(0.98, edgeStretch + 0.90 * wave);
+        // Волна даёт лишь ЛЁГКОЕ «дыхание» формы: большая её доля растягивала
+        // камень симметрично у каждого порога и читалась как «дёрнуло в
+        // другую сторону». Основную растяжку держит крайняя тяга.
+        final visualStretch = math.min(0.62, edgeStretch + 0.42 * wave);
         // Радиус угла 10.0: растянутая таблетка округляется заметно.
         final capRadius = 22.0 + 10.0 * visualStretch;
 
@@ -662,7 +665,7 @@ class _SectionPillState extends State<SectionPill>
                 // (stretch = 0) садится ровно. Одна и та же формула везде,
                 // без ветки по _dragging: «в полёте 0 / под пальцем -3px»
                 // дёргало камень вертикально в момент отпускания.
-                offset: Offset(0, -2.6 * visualStretch),
+                offset: Offset(0, -1.6 * visualStretch),
                 child: Transform.scale(
                   // Масштаб считается прямо из stretch — БЕЗ tween'а:
                   // под пальцем 1:1 за движением (zero latency), после
@@ -678,7 +681,7 @@ class _SectionPillState extends State<SectionPill>
                   alignment: Alignment(
                     math.max(
                       -1.0,
-                      math.min(1.0, -stretchDir * visualStretch * 2.0),
+                      math.min(1.0, -stretchDir * visualStretch * 1.4),
                     ),
                     0,
                   ),
@@ -686,7 +689,7 @@ class _SectionPillState extends State<SectionPill>
                   // вытягивается по ходу секции (wave) и за краем (edgeStretch),
                   // после отпускания — сползает по _edgeSettle. Единый
                   // коэффициент, без дискретных переключений.
-                  scaleX: 1.0 + 0.42 * visualStretch,
+                  scaleX: 1.0 + 0.26 * visualStretch,
                   // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
                   // breath). Дышащий масштаб идёт через Transform — иначе
                   // каждый кадр пересобирался layout, камень «дёргался».

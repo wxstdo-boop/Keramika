@@ -1061,8 +1061,6 @@ class _HabitsScreenState extends State<HabitsScreen>
               letterSpacing: 0.2,
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(color: tint.withValues(alpha: 0.4))),
         ],
       ),
     );

@@ -324,9 +324,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Текстовой строки «В сети / Не в сети» больше нет: статус читается по
   /// кружку, который сам плавно перетекает между красным и пустым.
   Widget _headerCard(ThemeData theme) {
-    final name = _service.displayName.isEmpty
-        ? Translations.t('profileAnonymous', context, 'Аноним')
-        : _service.displayName;
+    final name = _service.displayName;
+    // Пустое имя — это приглашение, а не подпись: вместо заглушки в шапке
+    // мягко показывается «Как вас звать?».
+    final hasName = name.isNotEmpty;
     return _Card(
       child: Column(
         children: [
@@ -336,11 +337,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: GestureDetector(
               onTap: _pickAvatar,
               behavior: HitTestBehavior.opaque,
-              child: ProfileAvatar(
-                index: _service.avatarIndex,
-                size: 96,
-                glow: true,
-              ),
+              child: ProfileAvatar(index: _service.avatarIndex, size: 96),
             ),
           ),
           const SizedBox(height: Spacing.md),
@@ -355,28 +352,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   OnlineDot(size: _dotSize, onTap: _toggleOnline),
-                  const SizedBox(width: Spacing.xxs),
-                  // Смена имени (и «Аноним») — плавным кросс-фейдом, а не кадром.
-                  AnimatedSwitcher(
-                    duration: MotionPrefs.shouldReduceMotion
-                        ? Duration.zero
-                        : Motion.normal,
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: SizeTransition(
-                        axis: Axis.horizontal,
-                        sizeFactor: anim,
-                        child: child,
-                      ),
+                  // Зазор мал: кружок стоит вплотную к первой букве имени, а
+                  // не «висит» отдельно от него.
+                  const SizedBox(width: 1),
+                  // Имя и подсказка пустого состояния («Как вас звать?»)
+                  // живут в ОДНОМ слоте и меняются плавным кросс-фейдом:
+                  // очистка поля не «щёлкает» подписью, а мягко перетекает.
+                  _NameWithHint(
+                    name: name,
+                    showHint: !hasName,
+                    hint: Translations.t(
+                      'profileNameHint',
+                      context,
+                      'Как вас звать?',
                     ),
-                    child: Text(
-                      name,
-                      key: ValueKey(name),
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: Weights.bold,
+                    nameStyle: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: Weights.bold,
+                    ),
+                    hintStyle: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: Weights.bold,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.55,
                       ),
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ],
@@ -665,6 +663,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+/// Имя профиля и подсказка пустого состояния в одном слоте.
+///
+/// Пока имя пусто, на его месте — «Как вас звать?»; как только имя сохранено
+/// (или стёрто), содержимое мягко перетекает кросс-фейдом с лёгким
+/// «проявлением». Резкая подмена подписи читалась бы как щелчок.
+class _NameWithHint extends StatelessWidget {
+  final String name;
+  final bool showHint;
+  final String hint;
+  final TextStyle? nameStyle;
+  final TextStyle? hintStyle;
+
+  const _NameWithHint({
+    required this.name,
+    required this.showHint,
+    required this.hint,
+    this.nameStyle,
+    this.hintStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MotionPrefs.shouldReduceMotion;
+    return AnimatedSwitcher(
+      duration: reduce ? Duration.zero : Motion.normal,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: SizeTransition(
+          axis: Axis.horizontal,
+          sizeFactor: anim,
+          child: child,
+        ),
+      ),
+      child: Text(
+        showHint ? hint : name,
+        key: ValueKey(showHint ? 'hint' : 'name'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: showHint ? hintStyle : nameStyle,
+      ),
+    );
+  }
+}
+
 /// Пункт списка событий.
 class _KeramikaEvent {
   final String title;
@@ -862,7 +906,7 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
               const SizedBox(height: Spacing.md),
               Row(
                 children: [
-                  ProfileAvatar(index: _avatar, size: 52, glow: true),
+                  ProfileAvatar(index: _avatar, size: 52),
                   const SizedBox(width: Spacing.md),
                   Expanded(
                     child: SmoothTyping(

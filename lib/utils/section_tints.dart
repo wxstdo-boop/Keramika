@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 abstract final class SectionTints {
   SectionTints._();
 
-  static const Color _activeLight = Color(0xFF2E7D32);
+  static const Color _activeLight = Color(0xFF4CAF50);
   static const Color _activeDark = Color(0xFF7BD88F);
   static const Color _completedLight = Color(0xFF546E7A);
   static const Color _completedDark = Color(0xFF9FB2C4);
