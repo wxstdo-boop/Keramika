@@ -81,12 +81,14 @@ class _TasksScreenState extends State<TasksScreen>
   /// компенсирует [SizeTransition] в шапке — соседние карточки не прыгают.
   late final AnimationController _splitReveal = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 360),
+    duration: const Duration(milliseconds: 460),
     value: 1,
   );
+  // easeInOutCubic: нулевая скорость на обоих концах — полка и раскрывается,
+  // и сворачивается без «толчка» в первом/последнем кадре.
   late final Animation<double> _splitFade = CurvedAnimation(
     parent: _splitReveal,
-    curve: Curves.easeOutCubic,
+    curve: Curves.easeInOutCubic,
   );
 
   /// «Опускание» только что выполненной задачи: карточка мягко съезжает
@@ -95,7 +97,7 @@ class _TasksScreenState extends State<TasksScreen>
   /// Запускается на каждую отметку.
   late final AnimationController _cardDrop = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 320),
+    duration: const Duration(milliseconds: 420),
     value: 1,
   );
   late final Animation<double> _cardDropT = CurvedAnimation(
@@ -583,7 +585,7 @@ class _TasksScreenState extends State<TasksScreen>
             ),
           ),
         ),
-        _taskSliver(context, theme, done, all),
+        _taskSliver(context, theme, done, all, reveal: _splitFade),
       ],
     );
 
@@ -621,8 +623,9 @@ class _TasksScreenState extends State<TasksScreen>
     BuildContext context,
     ThemeData theme,
     List<Task> list,
-    List<Task> all,
-  ) {
+    List<Task> all, {
+    Animation<double>? reveal,
+  }) {
     if (list.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -674,17 +677,30 @@ class _TasksScreenState extends State<TasksScreen>
               ),
             );
           }
+          // Плавная смена содержимого при переключении категории: только
+          // лёгкий подъём (SlideTransition — чистая трансформация, без
+          // saveLayer). FadeTransition на КАЖДОЙ карточке создавал по
+          // слою прозрачности на карточку каждый кадр — на слабом GPU это
+          // и был «тормоз в конце» переключения категорий.
+          Widget card = SlideTransition(
+            position: _revealSlide,
+            child: _buildTaskCard(context, theme, task, i),
+          );
+          // Элементы архивной полки растут/опадают по высоте ВМЕСТЕ с полкой:
+          // высота полки набирается плавно, а не появляется кадром (иначе
+          // список под полкой и вся прокрутка «дёргались»).
+          if (reveal != null) {
+            card = SizeTransition(
+              sizeFactor: reveal,
+              alignment: Alignment.topCenter,
+              child: card,
+            );
+          }
+          // Ключ — на самом внешнем узле: SliverReorderableList требует ключ у
+          // элемента, и обёртка SizeTransition его не должна «съедать».
           return KeyedSubtree(
             key: ValueKey('item_task_${task.id}'),
-            // Плавная смена содержимого при переключении категории: только
-            // лёгкий подъём (SlideTransition — чистая трансформация, без
-            // saveLayer). FadeTransition на КАЖДОЙ карточке создавал по
-            // слою прозрачности на карточку каждый кадр — на слабом GPU это
-            // и был «тормоз в конце» переключения категорий.
-            child: SlideTransition(
-              position: _revealSlide,
-              child: _buildTaskCard(context, theme, task, i),
-            ),
+            child: card,
           );
         },
       ),

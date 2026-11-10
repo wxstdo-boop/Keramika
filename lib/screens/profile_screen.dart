@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
+import '../services/music_service.dart';
 import '../services/profile_service.dart';
 import '../utils/context_menu.dart';
 import '../utils/design_tokens.dart';
@@ -75,10 +75,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _service = ProfileService();
+  final _music = MusicService();
   final _nameCtrl = TextEditingController();
-
-  AudioPlayer? _player;
-  bool _playingMusic = false;
 
   /// События Keramika: заголовок + ссылка. Пока список локальный — он не
   /// зависит от доступности сайта и открывается мгновенно.
@@ -115,6 +113,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _music.addListener(_onMusicChanged);
     _nameCtrl.text = _service.name;
     if (!_service.loaded) {
       _service.load().then((_) {
@@ -125,9 +124,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    // Плеер НЕ останавливаем и не уничтожаем: музыка — общий сервис, она
+    // должна продолжать играть при уходе с экрана (см. [MusicService]).
+    _music.removeListener(_onMusicChanged);
     _nameCtrl.dispose();
-    _player?.dispose();
     super.dispose();
+  }
+
+  void _onMusicChanged() {
+    if (mounted) setState(() {});
   }
 
   void _toast(String message, {IconData icon = Icons.check_circle_outline}) {
@@ -182,9 +187,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           '${soundsDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await File(srcPath).copy(newPath);
       final title = picked.name.isNotEmpty ? picked.name : 'Моя музыка';
+      // Меняем трек: старый останавливаем, новый ждёт нажатия «плей».
+      await _music.stop();
       await _service.setMusic(path: newPath, title: title);
       if (!mounted) return;
-      setState(() {});
       _toast(Translations.t('profileMusicSet', context, 'Музыка сохранена'));
     } catch (_) {
       if (!mounted) return;
@@ -203,35 +209,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final path = _service.musicPath;
     if (path == null) return;
     Haptics.light();
-    final player = _player ??= AudioPlayer();
-    if (_playingMusic) {
-      await player.stop();
-      if (mounted) setState(() => _playingMusic = false);
-      return;
-    }
-    try {
-      final file = File(path);
-      if (!file.existsSync() || file.lengthSync() == 0) {
-        _toast(
-          Translations.t('profileMusicMissing', context, 'Файл не найден'),
-          icon: Icons.error_outline,
-        );
-        return;
-      }
-      player.onPlayerComplete.listen((_) {
-        if (mounted && _playingMusic) setState(() => _playingMusic = false);
-      });
-      await player.play(DeviceFileSource(path));
-      if (mounted) setState(() => _playingMusic = true);
-    } catch (_) {
-      if (mounted) setState(() => _playingMusic = false);
+    final ok = await _music.toggle(path);
+    if (!ok && mounted) {
+      _toast(
+        Translations.t('profileMusicMissing', context, 'Файл не найден'),
+        icon: Icons.error_outline,
+      );
     }
   }
 
   Future<void> _removeMusic() async {
-    await _player?.stop();
+    // Полная остановка перед удалением: файла скоро не станет, играть нечего.
+    await _music.stop();
     await _service.setMusic();
-    if (mounted) setState(() => _playingMusic = false);
   }
 
   Future<void> _openEvent(String url) async {
@@ -324,16 +314,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Текстовой строки «В сети / Не в сети» больше нет: статус читается по
   /// кружку, который сам плавно перетекает между красным и пустым.
   Widget _headerCard(ThemeData theme) {
-    final name = _service.displayName;
-    // Пустое имя — это приглашение, а не подпись: вместо заглушки в шапке
-    // мягко показывается «Как вас звать?».
-    final hasName = name.isNotEmpty;
+    // Пустое имя в шапке подписываем «Аноним» — как и было; приглашение
+    // «Как вас звать?» живёт в поле ввода, а не на месте имени.
+    final name = _service.displayName.isEmpty
+        ? Translations.t('profileAnonymous', context, 'Аноним')
+        : _service.displayName;
     return _Card(
       child: Column(
         children: [
           const SizedBox(height: Spacing.xs),
           PressScale(
             pressedScale: 0.92,
+            // Заметно медленнее штатного: аватарка «уходит» под палец и
+            // возвращается мягко, а не щёлкает размером.
+            duration: const Duration(milliseconds: 520),
+            releaseDuration: const Duration(milliseconds: 620),
             child: GestureDetector(
               onTap: _pickAvatar,
               behavior: HitTestBehavior.opaque,
@@ -355,26 +350,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Зазор мал: кружок стоит вплотную к первой букве имени, а
                   // не «висит» отдельно от него.
                   const SizedBox(width: 1),
-                  // Имя и подсказка пустого состояния («Как вас звать?»)
-                  // живут в ОДНОМ слоте и меняются плавным кросс-фейдом:
-                  // очистка поля не «щёлкает» подписью, а мягко перетекает.
-                  _NameWithHint(
-                    name: name,
-                    showHint: !hasName,
-                    hint: Translations.t(
-                      'profileNameHint',
-                      context,
-                      'Как вас звать?',
-                    ),
-                    nameStyle: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: Weights.bold,
-                    ),
-                    hintStyle: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: Weights.bold,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.55,
+                  // Смена имени (и «Аноним») — плавным кросс-фейдом, а не кадром.
+                  AnimatedSwitcher(
+                    duration: MotionPrefs.shouldReduceMotion
+                        ? Duration.zero
+                        : Motion.normal,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: SizeTransition(
+                        axis: Axis.horizontal,
+                        sizeFactor: anim,
+                        child: child,
                       ),
-                      fontStyle: FontStyle.italic,
+                    ),
+                    child: Text(
+                      name,
+                      key: ValueKey(name),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: Weights.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -457,6 +453,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       icon: Icons.podcasts_outlined,
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
+        // Скруглённая подсветка при зажатии (по умолчанию чернильный отклик
+        // прямоугольный): плитка читается как кнопка, а не как «квадрат».
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.sm),
+        ),
         value: _service.online,
         onChanged: (_) => _toggleOnline(),
         title: Text(
@@ -479,74 +480,125 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _musicCard(ThemeData theme) {
     final hasMusic = _service.musicPath != null;
+    final playing = _music.playing && _music.path == _service.musicPath;
+    // Плашка меняется ПЛАВНО: между «пусто», строкой трека и подписью
+    // кнопки играет AnimatedSize + AnimatedSwitcher — добавление, замена и
+    // удаление музыки не «щёлкают» раскладкой.
     return _Card(
       title: Translations.t('profileMusic', context, 'Своя музыка'),
       icon: Icons.music_note_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (hasMusic)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: PressScale(
-                pressedScale: 0.88,
-                child: IconButton.filledTonal(
-                  onPressed: _toggleMusicPlayback,
-                  icon: Icon(
-                    _playingMusic ? Icons.pause : Icons.play_arrow_rounded,
+      child: AnimatedSize(
+        duration: MotionPrefs.shouldReduceMotion
+            ? Duration.zero
+            : Motion.slow,
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedSwitcher(
+              duration: MotionPrefs.shouldReduceMotion
+                  ? Duration.zero
+                  : Motion.normal,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SizeTransition(
+                  sizeFactor: anim,
+                  alignment: Alignment.topCenter,
+                  child: child,
+                ),
+              ),
+              child: hasMusic
+                  ? ListTile(
+                      key: const ValueKey('music_row'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: PressScale(
+                        pressedScale: 0.88,
+                        child: IconButton.filledTonal(
+                          onPressed: _toggleMusicPlayback,
+                          icon: AnimatedSwitcher(
+                            // Значок плей/пауза сменяется медленно и мягко, а
+                            // не подменой кадром.
+                            duration: MotionPrefs.shouldReduceMotion
+                                ? Duration.zero
+                                : const Duration(milliseconds: 380),
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: ScaleTransition(
+                                scale: Tween<double>(
+                                  begin: 0.8,
+                                  end: 1,
+                                ).animate(anim),
+                                child: child,
+                              ),
+                            ),
+                            child: Icon(
+                              playing
+                                  ? Icons.pause
+                                  : Icons.play_arrow_rounded,
+                              key: ValueKey(playing),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Название плашки — ВСЕГДА «Твоя музыка» (ключ
+                      // profileMusic), а не имя файла: подпись не скачет.
+                      title: Text(
+                        Translations.t('profileMusic', context, 'Твоя музыка'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: PressScale(
+                        pressedScale: 0.86,
+                        child: IconButton(
+                          onPressed: _removeMusic,
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
+                    )
+                  : Padding(
+                      key: const ValueKey('music_empty'),
+                      padding: const EdgeInsets.only(bottom: Spacing.xs),
+                      child: Text(
+                        Translations.t(
+                          'profileMusicEmpty',
+                          context,
+                          'Добавьте свой трек — он будет играть в профиле',
+                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: PressScale(
+                pressedScale: 0.94,
+                child: FilledButton.tonalIcon(
+                  onPressed: _pickMusic,
+                  style: _roundButtonStyle(),
+                  icon: const Icon(Icons.library_music_outlined),
+                  label: Text(
+                    hasMusic
+                        ? Translations.t(
+                            'profileMusicChange',
+                            context,
+                            'Заменить',
+                          )
+                        : Translations.t(
+                            'profileMusicAdd',
+                            context,
+                            'Выбрать файл',
+                          ),
                   ),
                 ),
               ),
-              title: Text(
-                _service.musicTitle ??
-                    Translations.t('profileMusicTrack', context, 'Мой трек'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
-                onPressed: _removeMusic,
-                icon: const Icon(Icons.delete_outline),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.xs),
-              child: Text(
-                Translations.t(
-                  'profileMusicEmpty',
-                  context,
-                  'Добавьте свой трек — он будет играть в профиле',
-                ),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
             ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: PressScale(
-              pressedScale: 0.94,
-              child: FilledButton.tonalIcon(
-                onPressed: _pickMusic,
-                style: _roundButtonStyle(),
-                icon: const Icon(Icons.library_music_outlined),
-                label: Text(
-                  hasMusic
-                      ? Translations.t(
-                          'profileMusicChange',
-                          context,
-                          'Заменить',
-                        )
-                      : Translations.t(
-                          'profileMusicAdd',
-                          context,
-                          'Выбрать файл',
-                        ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -558,12 +610,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return _Card(
       title: Translations.t('profileLeaderboard', context, 'Рейтинг друзей'),
       icon: Icons.emoji_events_outlined,
-      trailing: IconButton(
-        onPressed: _addFriend,
-        icon: const Icon(Icons.person_add_alt_1_outlined),
-        tooltip: Translations.t('profileAddFriend', context, 'Добавить друга'),
+      trailing: PressScale(
+        pressedScale: 0.86,
+        child: IconButton(
+          onPressed: _addFriend,
+          icon: const Icon(Icons.person_add_alt_1_outlined),
+          tooltip: Translations.t('profileAddFriend', context, 'Добавить друга'),
+        ),
       ),
-      child: Column(
+      // Строки рейтинга вставляются/переезжают ПЛАВНО: AnimatedSize тянет
+      // высоту, AnimatedSwitcher кросс-фейдит состав при добавлении/удалении
+      // друга — карточка не «щёлкает» раскладкой.
+      child: AnimatedSize(
+        duration: MotionPrefs.shouldReduceMotion
+            ? Duration.zero
+            : Motion.slow,
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: Column(
         children: [
           for (var i = 0; i < rows.length; i++)
             _leaderRow(theme, rows[i], rank: i + 1, isMe: rows[i].id == 'me'),
@@ -582,6 +646,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
         ],
+        ),
       ),
     );
   }
@@ -658,52 +723,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => _openEvent(e.url),
             ),
         ],
-      ),
-    );
-  }
-}
-
-/// Имя профиля и подсказка пустого состояния в одном слоте.
-///
-/// Пока имя пусто, на его месте — «Как вас звать?»; как только имя сохранено
-/// (или стёрто), содержимое мягко перетекает кросс-фейдом с лёгким
-/// «проявлением». Резкая подмена подписи читалась бы как щелчок.
-class _NameWithHint extends StatelessWidget {
-  final String name;
-  final bool showHint;
-  final String hint;
-  final TextStyle? nameStyle;
-  final TextStyle? hintStyle;
-
-  const _NameWithHint({
-    required this.name,
-    required this.showHint,
-    required this.hint,
-    this.nameStyle,
-    this.hintStyle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final reduce = MotionPrefs.shouldReduceMotion;
-    return AnimatedSwitcher(
-      duration: reduce ? Duration.zero : Motion.normal,
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, anim) => FadeTransition(
-        opacity: anim,
-        child: SizeTransition(
-          axis: Axis.horizontal,
-          sizeFactor: anim,
-          child: child,
-        ),
-      ),
-      child: Text(
-        showHint ? hint : name,
-        key: ValueKey(showHint ? 'hint' : 'name'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: showHint ? hintStyle : nameStyle,
       ),
     );
   }
@@ -820,7 +839,13 @@ class _AvatarPickerSheet extends StatelessWidget {
                   final isSelected = i == selected;
                   return GestureDetector(
                     onTap: () => onPick(i),
-                    child: Container(
+                    // Обводка выбора перетекает плавно (AnimatedContainer), а
+                    // не появляется кадром: тап по аватарке не «щёлкает».
+                    child: AnimatedContainer(
+                      duration: MotionPrefs.shouldReduceMotion
+                          ? Duration.zero
+                          : Motion.normal,
+                      curve: Curves.easeOutCubic,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
@@ -943,7 +968,11 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                   separatorBuilder: (_, _) => const SizedBox(width: Spacing.xs),
                   itemBuilder: (context, i) => GestureDetector(
                     onTap: () => setState(() => _avatar = i),
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: MotionPrefs.shouldReduceMotion
+                          ? Duration.zero
+                          : Motion.normal,
+                      curve: Curves.easeOutCubic,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(

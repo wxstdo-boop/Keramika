@@ -84,9 +84,10 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
               final name = ProfileService().displayName;
               final title = name.isNotEmpty ? name : 'Keramika';
               // Смена имени — плавная: кросс-фейд со лёгким «проявлением»,
-              // а не мгновенная подмена текста.
+              // а не мгновенная подмена текста. Заметно медленнее обычного —
+              // читается как мягкое перетекание.
               return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 320),
+                duration: const Duration(milliseconds: 520),
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,
                 transitionBuilder: (child, anim) => FadeTransition(
@@ -128,10 +129,9 @@ class _TitleWithDot extends StatelessWidget {
     required this.onDotTap,
   });
 
-  /// Смещение кружка вниз от верха строки, px. Отрицательное значение
-  /// ОПУСКАЕТ кружок к букве: ящик строки заметно выше чернил «a», и при
-  /// нулевом зазоре кружок висел слишком высоко над глифом.
-  static const double _gap = -2.5;
+  /// Зазор между правым краем последней буквы и центром кружка, px. Малый —
+  /// кружок стоит почти вплотную к букве, справа от неё.
+  static const double _gapX = 3.0;
 
   @override
   Widget build(BuildContext context) {
@@ -149,23 +149,23 @@ class _TitleWithDot extends StatelessWidget {
       );
       if (boxes.isNotEmpty) lastGlyph = boxes.last.toRect();
     }
-    // Видимый центр кружка: чуть правее конца последнего глифа и НАД его
-    // верхом. Зона тапа OnlineDot — квадрат 30×30 с глифом по центру.
-    final dotRadius = OnlineDot.dotSize / 2;
+    // Центр кружка: СПРАВА от последней буквы, почти вплотную, и по СЕРЕДИНЕ
+    // её высоты (раньше висел над буквой). Зона тапа OnlineDot — квадрат 30×30
+    // с глифом по центру.
     final tapHalf = OnlineDot.tapTarget / 2;
-    final dotCx = (lastGlyph?.right ?? painter.width) - dotRadius + 5;
-    final dotCy = (lastGlyph?.top ?? 0) - dotRadius - _gap;
+    final dotCx = (lastGlyph?.right ?? painter.width) + _gapX;
+    final dotCy = lastGlyph?.center.dy ?? painter.height / 2;
 
-    // Stack хит-тестит только ВНУТРИ своих границ: кружок, вынесенный за верх
-    // отрицательным `top`, было бы не нажать. Поэтому раздуваем рамку на
-    // недостающие поля, а текст внутри сдвигаем на ту же величину. Сверху и
-    // снизу отступ ОДИНАКОВЫЙ — вертикальный центр текста не меняется, шапка
-    // не «съезжает» вниз.
+    // Stack хит-тестит только ВНУТРИ своих границ: кружок, вынесенный за
+    // границы, было бы не нажать. Поэтому раздуваем рамку на недостающие поля,
+    // а текст внутри сдвигаем на ту же величину — вертикальный центр текста не
+    // меняется, шапка не «съезжает».
     final padTop = math.max(0.0, tapHalf - dotCy);
+    final padBottom = math.max(0.0, dotCy + tapHalf - painter.height);
     final padRight = math.max(0.0, dotCx + tapHalf - painter.width);
     return SizedBox(
       width: painter.width + padRight,
-      height: painter.height + padTop * 2,
+      height: painter.height + padTop + padBottom,
       child: Stack(
         clipBehavior: Clip.none,
         children: [

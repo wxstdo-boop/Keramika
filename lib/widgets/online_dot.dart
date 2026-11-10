@@ -5,15 +5,15 @@ import '../services/profile_service.dart';
 import '../utils/motion_prefs.dart';
 import 'press_scale.dart';
 
-/// Красный кружок онлайна: «горит» над последней буквой заголовка и рядом с
-/// именем в профиле.
+/// Красный кружок онлайна: «горит» справа от последней буквы заголовка и рядом
+/// с именем в профиле.
 ///
 /// Слушает [ProfileService]: когда профиль переключает онлайн-статус, кружок
 /// сам перетекает между «налитым красным» и «пустым» (прозрачная середина,
 /// тонкое кольцо) — без резкого щелчка цвета. Тап по кружку открывает профиль
 /// (или переключает статус — задаёт вызывающий): зона нажатия заметно больше
-/// самого глифа (см. [_tapTarget]), чтобы по нему было удобно попадать пальцем.
-class OnlineDot extends StatelessWidget {
+/// самого глифа (см. [tapTarget]), чтобы по нему было удобно попадать пальцем.
+class OnlineDot extends StatefulWidget {
   /// Диаметр самого кружка по умолчанию, px.
   static const double dotSize = 9;
 
@@ -30,7 +30,38 @@ class OnlineDot extends StatelessWidget {
   /// Диаметр кружка, px. В шапке он мельче ([dotSize]), у имени — крупнее.
   final double size;
 
-  const OnlineDot({super.key, required this.onTap, this.size = dotSize});
+  /// Глубина «вдавливания» под пальцем. Меньше 1 — кружок мягко сжимается.
+  final double pressedScale;
+
+  /// Радиус фона, подсвечиваемого при зажатии. По умолчанию круг (равен
+  /// половине зоны тапа); у кружка в шапке профиля фон квадратный — там
+  /// задаётся скруглённый прямоугольник, чтобы подсветка не читалась углом.
+  final double pressedBorderRadius;
+
+  /// Длительность перетекания «красный ↔ пустой» и вдавливания. Долгая по
+  /// умолчанию: смена статуса читается как «дыхание», а не как мигание.
+  final Duration duration;
+
+  const OnlineDot({
+    super.key,
+    required this.onTap,
+    this.size = dotSize,
+    this.pressedScale = 0.78,
+    this.pressedBorderRadius = tapTarget / 2,
+    this.duration = const Duration(milliseconds: 640),
+  });
+
+  @override
+  State<OnlineDot> createState() => _OnlineDotState();
+}
+
+class _OnlineDotState extends State<OnlineDot> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,14 +74,10 @@ class OnlineDot extends StatelessWidget {
         // перетекание цвета — как раз тот декоративный эффект, который
         // выключает тумблер.
         final reduce = MotionPrefs.shouldReduceMotion;
-        // Длиннее обычного: переход красный ↔ пустой читается как «дыхание»,
-        // а не как мигание.
-        final duration = reduce
-            ? Duration.zero
-            : const Duration(milliseconds: 420);
+        final duration = reduce ? Duration.zero : widget.duration;
         return PressScale(
-          pressedScale: 0.82,
-          duration: reduce ? Duration.zero : const Duration(milliseconds: 160),
+          pressedScale: widget.pressedScale,
+          duration: duration,
           child: Semantics(
             button: true,
             label: online ? 'Online' : 'Offline',
@@ -58,40 +85,57 @@ class OnlineDot extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: () {
                 Haptics.light();
-                onTap();
+                widget.onTap();
               },
+              onTapDown: (_) => _setPressed(true),
+              onTapUp: (_) => _setPressed(false),
+              onTapCancel: () => _setPressed(false),
               child: SizedBox(
-                width: tapTarget,
-                height: tapTarget,
-                child: Center(
-                  // Пустой кружок чуть меньше налитого: смена статуса видна
-                  // и по размеру, и по цвету — но мягко, вместе с цветом.
-                  child: AnimatedScale(
-                    scale: online ? 1.0 : 0.82,
-                    duration: duration,
-                    curve: Curves.easeInOutCubic,
-                    child: AnimatedContainer(
+                width: OnlineDot.tapTarget,
+                height: OnlineDot.tapTarget,
+                // Фон тапа — со скруглением, а не квадрат: под пальцем он
+                // мягко подсвечивается в тон кружка и так же мягко гаснет.
+                child: AnimatedContainer(
+                  duration: duration,
+                  curve: Curves.easeInOutCubic,
+                  decoration: BoxDecoration(
+                    color: _pressed
+                        ? OnlineDot._blood.withValues(alpha: 0.14)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(
+                      widget.pressedBorderRadius,
+                    ),
+                  ),
+                  child: Center(
+                    // Пустой кружок чуть меньше налитого: смена статуса видна
+                    // и по размеру, и по цвету — но мягко, вместе с цветом.
+                    child: AnimatedScale(
+                      scale: online ? 1.0 : 0.82,
                       duration: duration,
                       curve: Curves.easeInOutCubic,
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        // Монотонный полупрозрачный красный ↔ прозрачная
-                        // середина: «пусто». Без свечения и градиента —
-                        // ровная матовая заливка, ничего не «отсвечивает».
-                        color: online
-                            ? _blood.withValues(alpha: 0.55)
-                            : Colors.transparent,
-                        // У пустого остаётся тонкое кольцо — иначе он бы
-                        // просто исчез и статус читался бы как «нет данных».
-                        border: Border.all(
+                      child: AnimatedContainer(
+                        duration: duration,
+                        curve: Curves.easeInOutCubic,
+                        width: widget.size,
+                        height: widget.size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          // Монотонный полупрозрачный красный ↔ прозрачная
+                          // середина: «пусто». Без свечения и градиента —
+                          // ровная матовая заливка, ничего не «отсвечивает».
                           color: online
-                              ? _blood.withValues(alpha: 0.75)
-                              : theme.colorScheme.outline.withValues(
-                                  alpha: 0.45,
-                                ),
-                          width: online ? 1.0 : 1.2,
+                              ? OnlineDot._blood.withValues(alpha: 0.55)
+                              : Colors.transparent,
+                          // У пустого остаётся тонкое кольцо — иначе он бы
+                          // просто исчез и статус читался бы как «нет данных».
+                          border: Border.all(
+                            color: online
+                                ? OnlineDot._blood.withValues(alpha: 0.75)
+                                : theme.colorScheme.outline.withValues(
+                                    alpha: 0.45,
+                                  ),
+                            width: online ? 1.0 : 1.2,
+                          ),
                         ),
                       ),
                     ),

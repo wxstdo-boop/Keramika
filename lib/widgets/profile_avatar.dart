@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../utils/motion_prefs.dart';
 
-/// Вариант аватарки «керамика-юзера»: монотонный красный тон + значок.
+/// Вариант аватарки «керамика-юзера»: красный тон со «стеклянным» блеском.
 ///
 /// Индекс варианта — то, что хранит профиль ([ProfileService.avatarIndex]) и
 /// что видит друг в рейтинге. Список детерминированный: один и тот же индекс
@@ -62,9 +62,8 @@ IconData profileAvatarIcon(int index) {
   return profileAvatarVariants[i].icon;
 }
 
-/// Круглая аватарка: монотонная полупрозрачная красная заливка и обводка —
-/// та же «чистая» рамка, что у кружков привычек (без свечения и градиентов,
-/// которые ловили блик и спорили с содержимым карточки).
+/// Круглая аватарка: красный «стеклянный» шар — мягкий градиент с блестящими
+/// пятнами-бликами и чистой обводкой, как у кружков привычек.
 ///
 /// Смена варианта — плавный кросс-фейд с лёгким «проявлением», а не подмена
 /// кадром: аватарка меняется на глазах, и резкий щелчок читался бы дёшево.
@@ -85,7 +84,7 @@ class ProfileAvatar extends StatelessWidget {
     final color = profileAvatarColors(index).first;
     final reduce = MotionPrefs.shouldReduceMotion;
     return AnimatedSwitcher(
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 320),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 420),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, anim) => FadeTransition(
@@ -95,26 +94,72 @@ class ProfileAvatar extends StatelessWidget {
           child: child,
         ),
       ),
-      child: Container(
+      child: SizedBox(
         key: ValueKey(index),
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          // Монотонная полупрозрачная заливка: ровный красный без «отсветов».
-          color: color.withValues(alpha: 0.30),
-          // Обводка как у кружков привычек: тонкое чистое кольцо.
-          border: Border.all(color: color.withValues(alpha: 0.65), width: 2),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Основа: мягкий градиент — светлое «стеклянное» пятно сверху-слева,
+            // к плотному красному внизу. Ровная обводка как у кружков привычек.
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.4, -0.5),
+                    radius: 1.1,
+                    colors: [
+                      Color.lerp(
+                        color,
+                        Colors.white,
+                        0.55,
+                      )!.withValues(alpha: 0.72),
+                      color.withValues(alpha: 0.34),
+                      color.withValues(alpha: 0.20),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.70),
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+            if (showIcon)
+              Center(
+                child: Icon(
+                  profileAvatarIcon(index),
+                  size: size * 0.44,
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ),
+            // Блестящие пятна: яркий «зайчик» и вторичный, слабее — аватарка
+            // читается как объёмный стеклянный шарик.
+            Positioned(
+              left: size * 0.22,
+              top: size * 0.18,
+              child: _gloss(size * 0.20, 0.60),
+            ),
+            Positioned(
+              left: size * 0.42,
+              top: size * 0.33,
+              child: _gloss(size * 0.09, 0.40),
+            ),
+          ],
         ),
-        alignment: Alignment.center,
-        child: showIcon
-            ? Icon(
-                profileAvatarIcon(index),
-                size: size * 0.46,
-                color: color.withValues(alpha: 0.95),
-              )
-            : null,
       ),
     );
   }
+
+  Widget _gloss(double diameter, double alpha) => Container(
+    width: diameter,
+    height: diameter,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.white.withValues(alpha: alpha),
+    ),
+  );
 }

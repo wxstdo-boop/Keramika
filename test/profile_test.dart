@@ -253,7 +253,7 @@ void main() {
     expect(ProfileService().displayName, 'Керамик');
   });
 
-  testWidgets('без имени в шапке профиля — «Как вас звать?», а кружок слева', (
+  testWidgets('без имени в шапке профиля показан «Аноним», а кружок — слева', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(411, 891) * 3;
@@ -270,11 +270,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Пустое имя — это приглашение «Как вас звать?» (и в шапке, и в подсказке
-    // поля ввода). Кружок стоит слева от этого слота.
+    // Пустое имя в шапке подписано «Аноним»; приглашение «Как вас звать?»
+    // живёт в поле ввода (подсказка hint), а не на месте имени.
+    expect(find.text('Аноним'), findsOneWidget);
     expect(find.text('Как вас звать?'), findsWidgets);
     final dotCenter = tester.getCenter(find.byType(OnlineDot));
-    final nameCenter = tester.getCenter(find.text('Как вас звать?').first);
+    final nameCenter = tester.getCenter(find.text('Аноним'));
     expect(
       dotCenter.dx,
       lessThan(nameCenter.dx),
