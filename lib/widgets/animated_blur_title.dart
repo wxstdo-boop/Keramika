@@ -139,7 +139,9 @@ class _TitleWithDot extends StatelessWidget {
 
   /// Насколько центр кружка ниже низа последней буквы, px. Кружок сидит у
   /// нижней кромки глифа — «на хвостике», а не на середине высоты.
-  static const double _dropY = 1.0;
+  /// Отрицательное значение приподнимает его: кружок «растёт» из хвостика,
+  /// а не висит под буквой.
+  static const double _dropY = -2.0;
 
   @override
   Widget build(BuildContext context) {

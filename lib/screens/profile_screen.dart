@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/music_service.dart';
+import '../services/new_year_event_service.dart';
 import '../services/profile_service.dart';
 import '../utils/context_menu.dart';
 import '../utils/design_tokens.dart';
@@ -17,8 +18,10 @@ import '../utils/snackbar.dart';
 import '../widgets/online_dot.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/new_year_event_banner.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/smooth_typing.dart';
+import '../widgets/volumetric_switch.dart';
 
 /// Официальный сайт Keramika. Здесь — события проекта; список кэшируется
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
@@ -43,8 +46,14 @@ InputDecoration _fieldDecoration(
   ThemeData theme, {
   String? hint,
   String? label,
+  double hintAlpha = 1.0,
 }) => InputDecoration(
   hintText: hint,
+  // Подсказка гаснет и проявляется плавно: [hintAlpha] анимирует состояние
+  // экрана при вводе/стирании первой буквы.
+  hintStyle: TextStyle(
+    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: hintAlpha),
+  ),
   labelText: label,
   counterText: '',
   isDense: true,
@@ -73,13 +82,39 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
   final _service = ProfileService();
   final _music = MusicService();
   final _nameCtrl = TextEditingController();
 
+  /// Прозрачность подсказки «Как вас звать?»: 1 — пустое поле, 0 — есть текст.
+  /// Отдельный контроллер, потому что подсказку рисует сам TextField, и
+  /// мгновенная её подмена читалась бы как щелчок.
+  late final AnimationController _hintCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: _nameCtrl.text.isEmpty ? 1 : 0,
+  );
+
+  void _onNameChanged() {
+    if (MotionPrefs.shouldReduceMotion) {
+      _hintCtrl.value = _nameCtrl.text.isEmpty ? 1 : 0;
+      return;
+    }
+    if (_nameCtrl.text.isEmpty) {
+      _hintCtrl.reverse();
+    } else {
+      _hintCtrl.forward();
+    }
+  }
+
   /// События Keramika: заголовок + ссылка. Пока список локальный — он не
   /// зависит от доступности сайта и открывается мгновенно.
+  ///
+  /// Новогодний ивент — ОДНИМ пунктом списка: тап по нему открывает то самое
+  /// окно со шапками ([NewYearEventBanner]), а не сайт. Раньше ивент жил
+  /// отдельной шапкой Деда Мороза в заголовке — теперь он здесь.
   List<_KeramikaEvent> get _events => [
     _KeramikaEvent(
       title: Translations.t('eventNewYear', context, 'Новогодний ивент'),
@@ -89,6 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'Каждый день — новая шапка до 1 января',
       ),
       url: kKeramikaSiteUrl,
+      banner: true,
     ),
     _KeramikaEvent(
       title: Translations.t('eventCeramics', context, 'Керамическая ярмарка'),
@@ -115,9 +151,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _music.addListener(_onMusicChanged);
     _nameCtrl.text = _service.name;
+    _nameCtrl.addListener(_onNameChanged);
     if (!_service.loaded) {
       _service.load().then((_) {
-        if (mounted) setState(() => _nameCtrl.text = _service.name);
+        if (mounted) {
+          _nameCtrl.text = _service.name;
+          _onNameChanged();
+        }
       });
     }
   }
@@ -127,7 +167,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Плеер НЕ останавливаем и не уничтожаем: музыка — общий сервис, она
     // должна продолжать играть при уходе с экрана (см. [MusicService]).
     _music.removeListener(_onMusicChanged);
+    _nameCtrl.removeListener(_onNameChanged);
     _nameCtrl.dispose();
+    _hintCtrl.dispose();
     super.dispose();
   }
 
@@ -222,6 +264,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Полная остановка перед удалением: файла скоро не станет, играть нечего.
     await _music.stop();
     await _service.setMusic();
+  }
+
+  /// Открыть окно новогоднего ивента (пункт «Новогодний ивент» в событиях).
+  /// Если ивент сейчас неактивен — сообщаем об этом, а не открываем пустое
+  /// окно. Роут с прозрачным барьером: затемнение рисует сам баннер.
+  Future<void> _openEventBanner() async {
+    if (!NewYearEventService.isActive) {
+      _toast(
+        Translations.t('eventNewYearSoon', context, 'Ивент ещё не начался'),
+        icon: Icons.event_outlined,
+      );
+      return;
+    }
+    Haptics.light();
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      routeSettings: const RouteSettings(name: 'dlg:event'),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (ctx, _, _) => NewYearEventBanner(
+        onClose: () {
+          if (Navigator.canPop(ctx)) Navigator.of(ctx).pop();
+        },
+      ),
+      transitionBuilder: (ctx, _, _, child) => child,
+    );
   }
 
   Future<void> _openEvent(String url) async {
@@ -405,30 +475,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // по одной ([SmoothTyping]), лупа выделения выключена, меню —
             // короткое (Копировать/Вставить/Вырезать). Само поле прозрачное,
             // «мозг» ввода — настоящий TextField внутри.
-            child: SmoothTyping(
-              controller: _nameCtrl,
-              style: theme.textTheme.bodyLarge,
-              builder: (style) => TextField(
-                controller: _nameCtrl,
-                style: style,
-                magnifierConfiguration: TextMagnifierConfiguration.disabled,
-                contextMenuBuilder: minimalContextMenuBuilder,
-                textInputAction: TextInputAction.done,
-                maxLength: _nameMaxLength,
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(_nameMaxLength),
-                ],
-                onSubmitted: (_) => _saveName(),
-                cursorOpacityAnimates: true,
-                decoration: _fieldDecoration(
-                  theme,
-                  hint: Translations.t(
-                    'profileNameHint',
-                    context,
-                    'Как вас звать?',
+            //
+            // Подсказка «Как вас звать?» нарисована ПОВЕРХ поля отдельным
+            // слоем: штатный `hintText` исчезает мгновенно и не умеет
+            // возвращаться плавно, а нам нужен мягкий фейд и при вводе, и при
+            // стирании.
+            child: Stack(
+              children: [
+                SmoothTyping(
+                  controller: _nameCtrl,
+                  style: theme.textTheme.bodyLarge,
+                  builder: (style) => TextField(
+                    controller: _nameCtrl,
+                    style: style,
+                    magnifierConfiguration:
+                        TextMagnifierConfiguration.disabled,
+                    contextMenuBuilder: minimalContextMenuBuilder,
+                    textInputAction: TextInputAction.done,
+                    maxLength: _nameMaxLength,
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(_nameMaxLength),
+                    ],
+                    onSubmitted: (_) => _saveName(),
+                    cursorOpacityAnimates: true,
+                    decoration: _fieldDecoration(theme),
                   ),
                 ),
-              ),
+                IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _hintCtrl,
+                    builder: (context, _) {
+                      final t = _hintCtrl.value;
+                      if (t <= 0.001) return const SizedBox.shrink();
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: Spacing.sm),
+                          child: Opacity(
+                            opacity: t,
+                            child: Text(
+                              Translations.t(
+                                'profileNameHint',
+                                context,
+                                'Как вас звать?',
+                              ),
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: Spacing.xs),
@@ -451,29 +552,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return _Card(
       title: Translations.t('profileOnlineTitle', context, 'Онлайн-статус'),
       icon: Icons.podcasts_outlined,
-      child: SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        // Скруглённая подсветка при зажатии (по умолчанию чернильный отклик
-        // прямоугольный): плитка читается как кнопка, а не как «квадрат».
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Radii.sm),
-        ),
-        value: _service.online,
-        onChanged: (_) => _toggleOnline(),
-        title: Text(
-          Translations.t(
-            'profileOnlineSwitch',
-            context,
-            'Показывать красный кружок',
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  Translations.t(
+                    'profileOnlineSwitch',
+                    context,
+                    'Показывать красный кружок',
+                  ),
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  Translations.t(
+                    'profileOnlineSwitchDesc',
+                    context,
+                    'Другие увидят, что вы на связи',
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        subtitle: Text(
-          Translations.t(
-            'profileOnlineSwitchDesc',
-            context,
-            'Другие увидят, что вы на связи',
+          const SizedBox(width: Spacing.sm),
+          // Тот же объёмный переключатель, что в настройках: статус не
+          // выпадает из общего вида приложения.
+          VolumetricSwitch(
+            value: _service.online,
+            onChanged: (_) => _toggleOnline(),
+            activeColor: theme.colorScheme.primary,
+            semanticLabel: Translations.t(
+              'profileOnlineSwitch',
+              context,
+              'Показывать красный кружок',
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -485,7 +605,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // кнопки играет AnimatedSize + AnimatedSwitcher — добавление, замена и
     // удаление музыки не «щёлкают» раскладкой.
     return _Card(
-      title: Translations.t('profileMusic', context, 'Своя музыка'),
+      title: Translations.t('profileMusic', context, 'Твоя музыка'),
       icon: Icons.music_note_outlined,
       child: AnimatedSize(
         duration: MotionPrefs.shouldReduceMotion
@@ -726,8 +846,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               title: Text(e.title),
               subtitle: Text(e.subtitle),
-              trailing: const Icon(Icons.open_in_new, size: 18),
-              onTap: () => _openEvent(e.url),
+              trailing: Icon(
+                e.banner ? Icons.celebration_outlined : Icons.open_in_new,
+                size: 18,
+              ),
+              onTap: () => e.banner ? _openEventBanner() : _openEvent(e.url),
             ),
         ],
       ),
@@ -740,10 +863,15 @@ class _KeramikaEvent {
   final String title;
   final String subtitle;
   final String url;
+
+  /// true — пункт открывает окно новогоднего ивента, а не сайт.
+  final bool banner;
+
   const _KeramikaEvent({
     required this.title,
     required this.subtitle,
     required this.url,
+    this.banner = false,
   });
 }
 
@@ -847,10 +975,11 @@ class _AvatarPickerSheet extends StatelessWidget {
                   return PressScale(
                     // Кружки отдают под пальцем и мягко возвращаются: тап по
                     // аватарке читается как нажатие, а не как «мёртвый» выбор.
-                    // Возврат длиннее вдавливания — отпускание не щёлкает.
-                    pressedScale: 0.86,
-                    duration: const Duration(milliseconds: 180),
-                    releaseDuration: const Duration(milliseconds: 340),
+                    // Возврат заметно длиннее вдавливания — отпускание не
+                    // щёлкает, кружок «выплывает» обратно.
+                    pressedScale: 0.82,
+                    duration: const Duration(milliseconds: 260),
+                    releaseDuration: const Duration(milliseconds: 520),
                     child: GestureDetector(
                       onTap: () => onPick(i),
                       // Обводка выбора перетекает плавно (AnimatedContainer), а

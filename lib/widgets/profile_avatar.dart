@@ -20,6 +20,8 @@ class ProfileAvatarVariant {
 final List<ProfileAvatarVariant> profileAvatarVariants = _build();
 
 /// Значки вариантов: у каждого индекса свой — аватарка узнаваема без цвета.
+/// Набор «человечный» и небанальный (природа, еда, спорт, музыка, космос) —
+/// 48 разных глифов на 48 вариантов, повторов нет.
 const List<IconData> _avatarIcons = [
   Icons.local_fire_department,
   Icons.water_drop,
@@ -33,6 +35,42 @@ const List<IconData> _avatarIcons = [
   Icons.bolt,
   Icons.diamond,
   Icons.spa,
+  Icons.pets,
+  Icons.cake,
+  Icons.icecream,
+  Icons.coffee,
+  Icons.local_florist,
+  Icons.emoji_nature,
+  Icons.park,
+  Icons.forest,
+  Icons.waves,
+  Icons.cloud,
+  Icons.umbrella,
+  Icons.beach_access,
+  Icons.terrain,
+  Icons.volcano,
+  Icons.ac_unit,
+  Icons.grain,
+  Icons.thunderstorm,
+  Icons.air,
+  Icons.bubble_chart,
+  Icons.palette,
+  Icons.brush,
+  Icons.colorize,
+  Icons.music_note,
+  Icons.headphones,
+  Icons.videogame_asset,
+  Icons.sports_esports,
+  Icons.sports_basketball,
+  Icons.sports_soccer,
+  Icons.rocket_launch,
+  Icons.sailing,
+  Icons.hiking,
+  Icons.snowboarding,
+  Icons.downhill_skiing,
+  Icons.kayaking,
+  Icons.nights_stay,
+  Icons.egg_alt,
 ];
 
 List<ProfileAvatarVariant> _build() {

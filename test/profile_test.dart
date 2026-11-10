@@ -232,7 +232,7 @@ void main() {
     expect(find.text('Профиль'), findsOneWidget);
     expect(find.text('Короткое имя'), findsOneWidget);
     expect(find.text('Онлайн-статус'), findsOneWidget);
-    expect(find.text('Своя музыка'), findsOneWidget);
+    expect(find.text('Твоя музыка'), findsOneWidget);
 
     // Остальные блоки ниже сгиба — доскролливаем, а не притворяемся, что
     // они на первом экране.

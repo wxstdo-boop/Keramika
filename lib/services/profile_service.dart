@@ -88,7 +88,13 @@ class ProfileService extends ChangeNotifier {
 
   /// Показывать ли красный кружок онлайна. Хранится отдельно и переживает
   /// перезапуск (см. комментарий к классу).
-  bool get online => _readOnlinePref();
+  ///
+  /// Значение кэшируется в памяти: чтение из prefs синхронное, но с диска —
+  /// и при частом опросе (кружок в шапке слушает сервис) это давало заметный
+  /// лаг. Кэш обновляем СРАЗУ при переключении, до записи на диск.
+  bool? _onlineCache;
+
+  bool get online => _onlineCache ??= _readOnlinePref();
 
   bool _readOnlinePref() {
     try {
@@ -169,7 +175,7 @@ class ProfileService extends ChangeNotifier {
     await _save();
   }
 
-  /// Своя музыка профиля: хранится ПУТЬ к уже скопированному в приватную
+  /// Твоя музыка профиля: хранится ПУТЬ к уже скопированному в приватную
   /// папку файлу (см. экран профиля) — он переживёт очистку кэша.
   Future<void> setMusic({String? path, String? title}) async {
     _musicPath = path;
@@ -179,14 +185,13 @@ class ProfileService extends ChangeNotifier {
   }
 
   /// Переключает онлайн-статус. Красный кружок в шапке загорается/гаснет
-  /// сразу: сначала уведомляем слушателей, потом пишем на диск.
+  /// сразу: сначала обновляем кэш и уведомляем слушателей, потом пишем на диск.
   Future<void> setOnline(bool value) async {
+    _onlineCache = value;
+    notifyListeners();
     try {
       await globalPrefs.setBool(_onlinePrefsKey, value);
     } catch (_) {}
-    // Уведомляем ПОСЛЕ записи: слушатели читают [online] из prefs, и
-    // оповещение раньше записи вернуло бы им старое значение.
-    notifyListeners();
   }
 
   Future<void> toggleOnline() => setOnline(!online);
