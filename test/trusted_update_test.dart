@@ -82,4 +82,26 @@ void main() {
           'подтверждения — это и включало «вредоносное приложение»',
     );
   });
+
+  test('при блокировке установки есть путь в настройки Play Protect', () {
+    final mainActivity = File(
+      'android/app/src/main/kotlin/com/wetidom/keramika/MainActivity.kt',
+    ).readAsStringSync();
+    final installer = File('lib/services/installer.dart').readAsStringSync();
+
+    expect(
+      mainActivity,
+      contains('openPlayProtectSettings'),
+      reason:
+          'Нативный канал больше не умеет открыть Play Protect — тупик при '
+          'блокировке установки вернётся',
+    );
+    expect(
+      installer,
+      contains('openPlayProtectSettings'),
+      reason:
+          'Installer больше не пробрасывает openPlayProtectSettings в '
+          'интерфейс — кнопка «Открыть» в снекбаре перестанет работать',
+    );
+  });
 }

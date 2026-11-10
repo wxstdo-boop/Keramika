@@ -259,6 +259,10 @@ void _showInstallOutcome(InstallOutcome outcome, [int attempt = 0]) {
       }),
     );
   } else {
+    // Система отклонила установку (STATUS_FAILURE_BLOCKED — типично вердикт
+    // Play Protect на незнакомый сайдлоад). Даём не только текст, но и путь:
+    // кнопка открывает экран Play Protect / «Безопасность», где вердикт
+    // видно и можно переопределить. Без этого пользователь упирался в тупик.
     showBeautifulSnackBar(
       context,
       message: Translations.t(
@@ -268,7 +272,9 @@ void _showInstallOutcome(InstallOutcome outcome, [int attempt = 0]) {
       ),
       icon: Icons.warning_amber_rounded,
       iconColor: Colors.redAccent,
-      duration: const Duration(seconds: 6),
+      duration: const Duration(seconds: 8),
+      actionLabel: Translations.t('open', context, 'Открыть'),
+      onAction: Installer.openPlayProtectSettings,
     );
   }
 }

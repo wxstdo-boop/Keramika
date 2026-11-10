@@ -80,6 +80,7 @@ class Translations {
       'updateInstallBlocked':
           'The system blocked the update. Allow installs for this app and try again.',
       'updateInstallCancelled': 'Update cancelled',
+      'open': 'Open',
       'patchNotes': 'Patch notes',
       'soon': 'Soon',
       'noAlarms': 'No alarms yet',
@@ -1034,6 +1035,7 @@ class Translations {
       'updateInstallBlocked':
           'Система заблокировала обновление. Разрешите установку из этого источника и попробуйте снова.',
       'updateInstallCancelled': 'Обновление отменено',
+      'open': 'Открыть',
       'patchNotes': 'Список изменений',
       'soon': 'Скоро',
       'noAlarms': 'Будильников пока нет',
@@ -1997,6 +1999,7 @@ class Translations {
       'updateInstallBlocked':
           'Le système a bloqué la mise à jour. Autorisez l’installation depuis cette source et réessayez.',
       'updateInstallCancelled': 'Mise à jour annulée',
+      'open': 'Ouvrir',
       'patchNotes': 'Notes de mise à jour',
       'soon': 'Bientôt',
       'noAlarms': 'Aucune alarme pour l’instant',

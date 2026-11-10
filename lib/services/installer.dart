@@ -164,6 +164,16 @@ class Installer {
     } catch (_) {}
   }
 
+  /// Открывает экран Play Protect / «Безопасность»: там пользователь видит
+  /// вердикт по приложению и может его переопределить, когда система
+  /// заблокировала самообновление.
+  static Future<void> openPlayProtectSettings() async {
+    if (!_supported) return;
+    try {
+      await _channel.invokeMethod<bool>('openPlayProtectSettings');
+    } catch (_) {}
+  }
+
   /// Запускает установку APK через сессию PackageInstaller (доверенное
   /// самообновление). [expectedSha256] (hex) — если задан, нативная сторона
   /// сверит хеш файла и откажет при несовпадении. Итог установки приходит

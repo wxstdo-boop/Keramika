@@ -823,6 +823,33 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                // Открывает экран Play Protect / «Безопасность». Нужен, когда
+                // система отклонила самообновление (STATUS_FAILURE_BLOCKED):
+                // там пользователь видит вердикт и может его переопределить.
+                // Прямого действия «открыть Play Protect» в API нет, поэтому
+                // сперва пробуем известный экран Google Play Services
+                // (Android 13+), затем общий экран настроек безопасности.
+                "openPlayProtectSettings" -> {
+                    var opened = false
+                    val targets = listOf<Intent>(
+                        Intent().setClassName(
+                            "com.google.android.gms",
+                            "com.google.android.gms.security.settings.VerifyAppsSettingsActivity",
+                        ),
+                        Intent(Settings.ACTION_SECURITY_SETTINGS),
+                    )
+                    for (intent in targets) {
+                        try {
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            opened = true
+                            break
+                        } catch (e: Exception) {
+                            Log.w("MainActivity", "openPlayProtectSettings: $e")
+                        }
+                    }
+                    result.success(opened)
+                }
                 "installApk" -> {
                     val path = call.argument<String>("path")
                     val expected = call.argument<String>("sha256")
