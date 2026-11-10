@@ -126,6 +126,39 @@ Codeberg) со ссылкой на APK-релиз. Лимит на APK — 30 М
 | Hacker News / Lobsters | Пост «Show HN» про FOSS-будильник с Адой |
 | Product Hunt | Анонс, если нужен более широкий, но не FOSS-ориентированный охват |
 
+### Готовая заявка в `albertomosconi/foss-apps`
+
+Этот список (≈1.2k звёзд) принимает любые FOSS-приложения без порога по
+звёздам, а в его категории Productivity уже стоят Loop Habit Tracker и
+Tasks.org — Keramika там на месте. Редактируется ровно один файл `apps.json`,
+записи в категории идут по алфавиту.
+
+Готовая запись для категории `productivity` (вставить по алфавиту, между
+«GitJournal» и «Loop Habit Tracker»):
+
+```json
+{
+    "host": "GitHub",
+    "name": "Keramika",
+    "description": "An offline alarm clock that will not let you fall back asleep, plus habit tracking, tasks and focus sessions in one app. Includes an optional AI assistant, disabled by default. No account, no ads, no trackers; everything works offline.",
+    "stars_link": "https://img.shields.io/github/stars/wxstdo-boop/Keramika.svg?label=★&style=flat",
+    "source": "https://github.com/wxstdo-boop/Keramika",
+    "fdroid": "https://f-droid.org/packages/com.wetidom.keramika"
+}
+```
+
+Поля `playstore`/`website` удалены (их нет). Поле `fdroid` станет рабочим
+после приёма в F-Droid; если подаёте в `foss-apps` раньше — удалите и его.
+
+Шаги: форк `https://github.com/albertomosconi/foss-apps`, ветка `Keramika`,
+правка `apps/productivity.json`, коммит `app: add Keramika in Productivity`,
+PR в `main` по их шаблону.
+
+> Почему не `awesome-flutter`: их правила требуют минимум 35 звёзд у проекта.
+> Пока звёзд меньше, заявка нарушает правила и будет закрыта — это не «пиар»,
+> а шум в чужом трекере.
+
+
 ## Чек-лист перед подачей
 
 - [ ] Релиз на GitHub собран и подписан, тег вида `vX.Y.Z+NNNNN` проставлен.

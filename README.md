@@ -120,6 +120,18 @@
 
 > Требуется Android 8.0 (API 26) или новее.
 
+### Автообновление через Obtainium
+
+[Obtainium](https://github.com/ImranR98/Obtainium) следит за GitHub Releases и
+сам предлагает обновления, сверяя APK по SHA-256. Добавь в приложении ссылку:
+
+```
+https://github.com/wxstdo-boop/Keramika
+```
+
+Obtainium подхватит нужный ABI и будет ставить новые версии поверх — данные
+(PIN, будильники, задачи) сохранятся.
+
 ### F-Droid
 
 Приложение готовится к публикации в F-Droid. После приёма его можно будет
