@@ -128,9 +128,10 @@ class _TitleWithDot extends StatelessWidget {
     required this.onDotTap,
   });
 
-  /// Зазор между кружком и верхом буквы, px. Небольшой: кружок сидит ПРЯМО
-  /// над буквой, а не висит высоко.
-  static const double _gap = 0.5;
+  /// Смещение кружка вниз от верха строки, px. Отрицательное значение
+  /// ОПУСКАЕТ кружок к букве: ящик строки заметно выше чернил «a», и при
+  /// нулевом зазоре кружок висел слишком высоко над глифом.
+  static const double _gap = -2.5;
 
   @override
   Widget build(BuildContext context) {
