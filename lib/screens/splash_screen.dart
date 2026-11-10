@@ -669,7 +669,12 @@ class _PaintSplatPainter extends CustomPainter {
     // раньше, чем [t] доходит до 1, поэтому в кадре пятна всегда плотные.
     final settle = Curves.easeOutCubic.transform(t.clamp(0.0, 1.0));
     final flash = math.pow(math.sin(math.pi * t), 1.35).toDouble();
-    final env = (0.72 * settle + 0.28 * flash) * strength;
+    // Огибающая МОНОТОННО растёт: раньше в ней сидел вес 0.28·flash, и после
+    // пика «удара» (t≈0.65) яркость падала к t=1 — пятна на глазах
+    // прозрачнели к концу сплэша. Теперь вспышка «удара» живёт только как
+    // добавка в начале (множитель (1−settle) гасит её к концу), поэтому к
+    // финалу пятна самые плотные и уже не бледнеют.
+    final env = (settle + 0.15 * flash * (1 - settle)) * strength;
     if (env <= 0.004) return;
 
     // Разлёт: кляксы быстро растекаются и ЗАМИРАЮТ в максимальном размере.

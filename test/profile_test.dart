@@ -145,13 +145,13 @@ void main() {
     expect(find.byType(OnlineDot), findsOneWidget);
     expect(find.textContaining('🎅'), findsNothing);
 
-    // Кружок — справа от заголовка и на СЕРЕДИНЕ его высоты (чуть выше),
-    // а не внизу: он «растёт» от последней буквы на уровне её середины.
+    // Кружок — справа от заголовка и ВЫШЕ его середины: он «растёт» от
+    // последней буквы, но поднят над строкой, чтобы не налезать на букву.
     final dotCenter = tester.getCenter(find.byType(OnlineDot));
     final titleCenter = tester.getCenter(find.text('Keramika'));
     expect(
       (dotCenter.dy - titleCenter.dy).abs(),
-      lessThan(6),
+      lessThan(8),
       reason: 'кружок должен быть примерно на середине высоты заголовка',
     );
     expect(

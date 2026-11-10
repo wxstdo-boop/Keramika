@@ -69,6 +69,9 @@ class Translations {
               'More points — higher in the ranking.',
       'profileFriendSetScore': 'Points',
       'profilePickAvatar': 'Avatar',
+      'profileAvatarFromGallery': 'Your own from the gallery',
+      'profileAvatarSet': 'Avatar updated',
+      'profileAvatarFailed': 'Could not load the avatar',
       'profileMe': 'Me',
       'profileEvents': 'Events',
       'eventNewYear': 'New Year event',
@@ -595,6 +598,33 @@ class Translations {
       'tipOvereatTitle': 'Don’t eat to bursting',
       'tipOvereatBody':
           'Stop when comfortable, not stuffed. It takes 20 minutes for the brain to register fullness.',
+      'tipSugarSwapTitle': 'Swap the sugar',
+      'tipSugarSwapBody':
+          'Craving sweets? Reach for fruit, a square of dark chocolate or cinnamon tea — the taste is there, the spike is not.',
+      'tipSaltBloatTitle': 'Less salt, less bloat',
+      'tipSaltBloatBody':
+          'Salty snacks and sauces hold water in. Season with herbs, lemon and spices instead — the puffiness drops in a couple of days.',
+      'tipPotassiumTitle': 'Potassium against puffiness',
+      'tipPotassiumBody':
+          'Bananas, greens, avocado and beans help push excess water out. Add one to every meal.',
+      'tipWaterBloatTitle': 'Water flushes water',
+      'tipWaterBloatBody':
+          'When you drink too little, the body stores fluid. 6–8 glasses a day is the simplest anti-bloat habit.',
+      'tipLateSaltTitle': 'No salt at night',
+      'tipLateSaltBody':
+          'A salty dinner shows up on the face by morning. Keep the evening meal light and low-salt.',
+      'tipMoveBloatTitle': 'Move to drain',
+      'tipMoveBloatBody':
+          'A 20-minute walk or a light workout gets the lymph moving and the puffiness visibly down.',
+      'tipProcessedTitle': 'Skip processed food',
+      'tipProcessedBody':
+          'Sausages, chips and ready meals are salt bombs. Cook from whole foods and the swelling eases.',
+      'tipHerbalTitle': 'Herbal teas',
+      'tipHerbalBody':
+          'Dandelion, nettle and green tea gently support the kidneys and help shed excess water.',
+      'tipSwellingCheckTitle': 'When to see a doctor',
+      'tipSwellingCheckBody':
+          'If puffiness stays for weeks, is one-sided or comes with pain — see a doctor rather than dieting it away.',
       'newTimer': 'New timer',
       'editTimer': 'Edit timer',
       'timerDuration': 'Duration',
@@ -1034,6 +1064,9 @@ class Translations {
               'Чем больше — тем выше в рейтинге.',
       'profileFriendSetScore': 'Очки',
       'profilePickAvatar': 'Аватарка',
+      'profileAvatarFromGallery': 'Своя из галереи',
+      'profileAvatarSet': 'Аватарка обновлена',
+      'profileAvatarFailed': 'Не удалось загрузить аватарку',
       'profileMe': 'Я',
       'profileEvents': 'События',
       'eventNewYear': 'Новогодний ивент',
@@ -1565,6 +1598,33 @@ class Translations {
       'tipOvereatTitle': 'Не ешь до отвала',
       'tipOvereatBody':
           'Остановись, когда комфортно, а не когда объелся. Мозгу нужно 20 минут, чтобы понять сытость.',
+      'tipSugarSwapTitle': 'Замени сладкое',
+      'tipSugarSwapBody':
+          'Тянет на сладкое? Возьми фрукт, квадратик горького шоколада или чай с корицей — вкус есть, скачка сахара нет.',
+      'tipSaltBloatTitle': 'Меньше соли — меньше отёков',
+      'tipSaltBloatBody':
+          'Солёные снеки и соусы задерживают воду. Приправляй травами, лимоном и специями — отёчность сойдёт за пару дней.',
+      'tipPotassiumTitle': 'Калий против отёков',
+      'tipPotassiumBody':
+          'Бананы, зелень, авокадо и бобовые помогают выводить лишнюю воду. Добавляй что-то из них к каждому приёму пищи.',
+      'tipWaterBloatTitle': 'Вода выводит воду',
+      'tipWaterBloatBody':
+          'Пьёшь мало — тело запасает жидкость. 6–8 стаканов в день — самая простая привычка против отёков.',
+      'tipLateSaltTitle': 'Без соли на ночь',
+      'tipLateSaltBody':
+          'Солёный ужин к утру виден на лице. Вечером держи еду лёгкой и малосольной.',
+      'tipMoveBloatTitle': 'Движение выгоняет воду',
+      'tipMoveBloatBody':
+          '20 минут ходьбы или лёгкая тренировка разгоняют лимфу — и отёчность заметно спадает.',
+      'tipProcessedTitle': 'Мимо переработки',
+      'tipProcessedBody':
+          'Колбасы, чипсы и готовые блюда — солевые бомбы. Готовь из цельных продуктов — и отёки уйдут.',
+      'tipHerbalTitle': 'Травяные чаи',
+      'tipHerbalBody':
+          'Одуванчик, крапива и зелёный чай мягко поддерживают почки и помогают сбросить лишнюю воду.',
+      'tipSwellingCheckTitle': 'Когда к врачу',
+      'tipSwellingCheckBody':
+          'Если отёк держится неделями, односторонний или с болью — иди к врачу, а не «растворяй» его диетой.',
       'newTimer': 'Новый таймер',
       'editTimer': 'Изменить таймер',
       'timerDuration': 'Длительность',
@@ -2008,6 +2068,9 @@ class Translations {
               'dans le journal. Plus de points — plus haut dans le classement.',
       'profileFriendSetScore': 'Points',
       'profilePickAvatar': 'Avatar',
+      'profileAvatarFromGallery': 'La vôtre depuis la galerie',
+      'profileAvatarSet': 'Avatar mis à jour',
+      'profileAvatarFailed': "Impossible de charger l'avatar",
       'profileMe': 'Moi',
       'profileEvents': 'Événements',
       'eventNewYear': 'Événement du Nouvel An',
@@ -2538,6 +2601,33 @@ class Translations {
       'tipOvereatTitle': 'Ne mangez pas jusqu’à éclater',
       'tipOvereatBody':
           'Arrêtez-vous quand vous êtes à l’aise, pas quand vous êtes plein. Le cerveau a 20 minutes pour comprendre la satiété.',
+      'tipSugarSwapTitle': 'Remplacez le sucre',
+      'tipSugarSwapBody':
+          'Une envie de sucré ? Prenez un fruit, un carré de chocolat noir ou un thé à la cannelle — le goût est là, le pic de sucre non.',
+      'tipSaltBloatTitle': 'Moins de sel, moins de gonflement',
+      'tipSaltBloatBody':
+          'Snacks salés et sauces retiennent l’eau. Assaisonnez avec des herbes, du citron et des épices — le gonflement part en quelques jours.',
+      'tipPotassiumTitle': 'Le potassium contre la rétention',
+      'tipPotassiumBody':
+          'Bananes, verdure, avocat et légumineuses aident à évacuer l’eau en excès. Ajoutez-en à chaque repas.',
+      'tipWaterBloatTitle': 'L’eau chasse l’eau',
+      'tipWaterBloatBody':
+          'Quand vous buvez trop peu, le corps stocke le liquide. 6 à 8 verres par jour : l’habitude anti-gonflement la plus simple.',
+      'tipLateSaltTitle': 'Pas de sel le soir',
+      'tipLateSaltBody':
+          'Un dîner salé se voit sur le visage au matin. Gardez le repas du soir léger et peu salé.',
+      'tipMoveBloatTitle': 'Bougez pour drainer',
+      'tipMoveBloatBody':
+          '20 minutes de marche ou un effort léger relancent la lymphe — et le gonflement baisse nettement.',
+      'tipProcessedTitle': 'Évitez le transformé',
+      'tipProcessedBody':
+          'Charcuterie, chips et plats préparés sont des bombes de sel. Cuisinez des aliments bruts — et les gonflements s’apaisent.',
+      'tipHerbalTitle': 'Tisanes',
+      'tipHerbalBody':
+          'Pissenlit, ortie et thé vert soutiennent doucement les reins et aident à éliminer l’eau en excès.',
+      'tipSwellingCheckTitle': 'Quand consulter',
+      'tipSwellingCheckBody':
+          'Si le gonflement dure des semaines, est unilatéral ou douloureux — consultez un médecin plutôt que de le « dissoudre » par le régime.',
       'newTimer': 'Nouveau minuteur',
       'editTimer': 'Modifier le minuteur',
       'timerDuration': 'Durée',

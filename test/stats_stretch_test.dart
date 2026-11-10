@@ -92,4 +92,85 @@ void main() {
     expect(scrollable.position.pixels, greaterThan(0));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('stats: контент растягивается при протяжке за край', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(411, 891) * 3;
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      LocaleProvider(
+        locale: const Locale('ru'),
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: const RealityCheckStatsScreen(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    final scv = find.byType(SingleChildScrollView);
+    final sc = tester.state<ScrollableState>(find.byType(Scrollable));
+
+    /// Вертикальный масштаб деформации растяжения (её Transform помечен
+    /// ключом). В покое — 1.0, при протяжке — больше.
+    double stretchScale() => tester
+        .widget<Transform>(find.byKey(const ValueKey('stats_stretch')))
+        .transform
+        .storage[5];
+
+    expect(stretchScale(), closeTo(1.0, 0.001), reason: 'в покое растяжения нет');
+
+    // Тянем за НИЖНИЙ край: список уже внизу, движение уходит за границу.
+    sc.position.jumpTo(sc.position.maxScrollExtent);
+    await tester.pump();
+    final down = await tester.startGesture(
+      tester.getTopLeft(scv) + const Offset(12, 300),
+    );
+    for (var j = 0; j < 10; j++) {
+      await down.moveBy(const Offset(0, -40));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      stretchScale(),
+      greaterThan(1.01),
+      reason: 'при протяжке за нижний край контент должен растягиваться',
+    );
+
+    // Отпустили — упругая пружина возвращает всё в покой.
+    await down.up();
+    for (var j = 0; j < 240; j++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      stretchScale(),
+      closeTo(1.0, 0.002),
+      reason: 'после отпускания растяжение должно сойти на нет',
+    );
+
+    // То же самое за ВЕРХНИЙ край.
+    sc.position.jumpTo(sc.position.minScrollExtent);
+    await tester.pump();
+    final up = await tester.startGesture(
+      tester.getTopLeft(scv) + const Offset(12, 300),
+    );
+    for (var j = 0; j < 10; j++) {
+      await up.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      stretchScale(),
+      greaterThan(1.01),
+      reason: 'при протяжке за верхний край контент должен растягиваться',
+    );
+    await up.up();
+    for (var j = 0; j < 240; j++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(stretchScale(), closeTo(1.0, 0.002));
+    expect(tester.takeException(), isNull);
+  });
 }

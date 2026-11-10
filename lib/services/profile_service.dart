@@ -74,6 +74,10 @@ class ProfileService extends ChangeNotifier {
   int _avatarIndex = 0;
   String? _musicPath;
   String? _musicTitle;
+
+  /// Своя аватарка из галереи: путь к скопированному в приватную папку файлу.
+  /// Пока он задан — он и показывается вместо сгенерированного варианта.
+  String? _avatarImagePath;
   final List<ProfileFriend> _friends = [];
 
   bool get loaded => _loaded;
@@ -81,6 +85,7 @@ class ProfileService extends ChangeNotifier {
   int get avatarIndex => _avatarIndex;
   String? get musicPath => _musicPath;
   String? get musicTitle => _musicTitle;
+  String? get avatarImagePath => _avatarImagePath;
   List<ProfileFriend> get friends => List.unmodifiable(_friends);
 
   /// Короткое имя для показа: пустое поле заменяем на «Керамика-юзер».
@@ -114,6 +119,7 @@ class ProfileService extends ChangeNotifier {
     _avatarIndex = 0;
     _musicPath = null;
     _musicTitle = null;
+    _avatarImagePath = null;
     _friends.clear();
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -122,6 +128,7 @@ class ProfileService extends ChangeNotifier {
         _avatarIndex = (map['avatar'] as num?)?.toInt() ?? 0;
         _musicPath = map['musicPath']?.toString();
         _musicTitle = map['musicTitle']?.toString();
+        _avatarImagePath = map['avatarImage']?.toString();
         final list = (map['friends'] as List?) ?? const [];
         _friends
           ..clear()
@@ -148,6 +155,7 @@ class ProfileService extends ChangeNotifier {
       'avatar': _avatarIndex,
       'musicPath': _musicPath,
       'musicTitle': _musicTitle,
+      'avatarImage': _avatarImagePath,
       'friends': _friends.map((f) => f.toJson()).toList(),
     });
     final resolved = await JsonFile.writeWithSnapshot(_fileKey, value, _snapshot);
@@ -169,8 +177,18 @@ class ProfileService extends ChangeNotifier {
     await _save();
   }
 
+  /// Выбор сгенерированного варианта: своя картинка из галереи при этом
+  /// снимается — иначе непонятно, что показывать.
   Future<void> setAvatarIndex(int index) async {
     _avatarIndex = index;
+    _avatarImagePath = null;
+    notifyListeners();
+    await _save();
+  }
+
+  /// Своя аватарка из галереи (путь к уже скопированному файлу).
+  Future<void> setAvatarImage(String? path) async {
+    _avatarImagePath = path;
     notifyListeners();
     await _save();
   }

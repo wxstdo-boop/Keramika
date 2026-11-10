@@ -4,17 +4,21 @@ import 'package:flutter/material.dart';
 
 import '../utils/motion_prefs.dart';
 
-/// Толстая «хамелеон»-обводка вокруг кнопки проигрывания: цвет медленно
-/// перетекает по кругу радуги, а яркость и толщина пульсируют в такт музыке.
+/// Тонкая «хамелеон»-обводка вокруг кнопки проигрывания: цвета медленно
+/// перетекают в тон темы (primary ↔ tertiary), а яркость пульсирует в такт
+/// музыке.
 ///
-/// Кольцо живёт ТОЛЬКО когда трек играет ([active]): на паузе оно гаснет до
-/// прозрачного, поэтому кнопка не «светится впустую». Пульс — синус от
-/// прогресса контроллера, замкнутый на стыке 1→0 (без рывка).
+/// Кольцо живёт ТОЛЬКО когда трек играет ([active]): на паузе гаснет до
+/// прозрачного. Сама кнопка (child) при этом НИКОГДА не гаснет — раньше
+/// прозрачность вешалась на всю ячейку вместе с ребёнком, и на старте кнопка
+/// «пропадала» (её закрывало погасшее кольцо). Теперь гашение касается только
+/// декоративного слоя обводки.
 class MusicPulseRing extends StatefulWidget {
   final bool active;
   final Widget child;
 
-  /// Толщина кольца в покое и на пике пульса, px.
+  /// Толщина кольца в покое и на пике пульса, px. Тонкое кольцо — акцент, а
+  /// не «бублик» вокруг кнопки.
   final double baseWidth;
   final double pulseWidth;
 
@@ -22,8 +26,8 @@ class MusicPulseRing extends StatefulWidget {
     super.key,
     required this.active,
     required this.child,
-    this.baseWidth = 2.6,
-    this.pulseWidth = 1.6,
+    this.baseWidth = 1.7,
+    this.pulseWidth = 0.7,
   });
 
   @override
@@ -31,7 +35,7 @@ class MusicPulseRing extends StatefulWidget {
 }
 
 class _MusicPulseRingState extends State<MusicPulseRing>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2600),
@@ -61,57 +65,62 @@ class _MusicPulseRingState extends State<MusicPulseRing>
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final reduce = MotionPrefs.shouldReduceMotion;
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) {
-        final t = _ctrl.value;
-        // Пульс 0…1: два «удара» за цикл, оба конца замкнуты.
-        final pulse = reduce ? 0.0 : (0.5 + 0.5 * math.sin(t * math.pi * 2));
-        final hue = (t * 360) % 360;
-        final base = HSLColor.fromAHSL(1, hue, 0.72, 0.58).toColor();
-        final glow = base.withValues(alpha: widget.active ? 0.30 + 0.25 * pulse : 0.0);
-
-        return AnimatedOpacity(
-          // Кольцо живёт только пока трек играет: на паузе оно плавно гаснет
-          // до нуля. Раньше гасли лишь свечение/тень, а сам радужный кант
-          // оставался ярким — «светилось впустую» вопреки замыслу.
+    // Цвета — в тон темы, а не радуга: акцент primary → tertiary. Полный круг
+    // радуги читался как «игрушечная гирлянда» и спорил с палитрой.
+    final a = cs.primary;
+    final b = cs.tertiary;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Кольцо — ОТДЕЛЬНЫЙ слой ПОД кнопкой: гаснет только оно, ребёнок
+        // (кнопка) никогда не становится прозрачным и не «пропадает» на
+        // старте.
+        AnimatedOpacity(
           opacity: widget.active ? 1.0 : 0.0,
-          duration: MotionPrefs.shouldReduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 420),
-          curve: Curves.easeOutCubic,
-          child: Container(
-            // Толщина кольца ПОСТОЯННА: пульсируют только свечение и цвет.
-            // Меняющаяся толщина двигала бы вёрстку строки каждый кадр — это
-            // читалось бы как дрожь, а не как дыхание.
-            padding: EdgeInsets.all(widget.baseWidth + widget.pulseWidth),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              // Градиент-«хамелеон»: два соседних тона по кругу радуги.
-              gradient: SweepGradient(
-                colors: [
-                  HSLColor.fromAHSL(1, hue, 0.72, 0.58).toColor(),
-                  HSLColor.fromAHSL(1, (hue + 60) % 360, 0.72, 0.60).toColor(),
-                  HSLColor.fromAHSL(1, (hue + 180) % 360, 0.72, 0.56).toColor(),
-                  HSLColor.fromAHSL(1, hue, 0.72, 0.58).toColor(),
-                ],
-              ),
-              boxShadow: widget.active
-                  ? [
-                      BoxShadow(
-                        color: glow,
-                        blurRadius: 12 + 8 * pulse,
-                        spreadRadius: 0.5 + 1.5 * pulse,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: child,
+          duration: reduce ? Duration.zero : const Duration(milliseconds: 420),
+          curve: Curves.easeOut,
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (context, _) {
+              final t = _ctrl.value;
+              // Пульс 0…1: два «удара» за цикл, оба конца замкнуты.
+              final pulse = reduce
+                  ? 0.0
+                  : (0.5 + 0.5 * math.sin(t * math.pi * 2));
+              // Медленный поворот градиента: цвет «перетекает» по кругу, но в
+              // пределах двух тонов темы.
+              final turn = t * 2 * math.pi;
+              final lead = Color.lerp(a, b, 0.5 + 0.5 * math.sin(turn))!;
+              final tail = Color.lerp(b, a, 0.5 + 0.5 * math.cos(turn))!;
+              return Container(
+                // Толщина кольца постоянна: пульсируют только свечение и цвет.
+                padding: EdgeInsets.all(widget.baseWidth + widget.pulseWidth),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: SweepGradient(
+                    transform: GradientRotation(turn),
+                    colors: [
+                      lead.withValues(alpha: 0.85),
+                      tail.withValues(alpha: 0.85),
+                      lead.withValues(alpha: 0.85),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: a.withValues(alpha: 0.20 + 0.22 * pulse),
+                      blurRadius: 10 + 7 * pulse,
+                      spreadRadius: 0.2 + 1.1 * pulse,
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-        );
-      },
-      child: widget.child,
+        ),
+        widget.child,
+      ],
     );
   }
 }

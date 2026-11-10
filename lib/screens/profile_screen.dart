@@ -153,6 +153,18 @@ class _ProfileScreenState extends State<ProfileScreen>
     _nameCtrl.text = _service.name;
     _nameCtrl.addListener(_syncHint);
     _nameFocus.addListener(_syncHint);
+    // Клавиатура не должна «приезжать» в профиль вместе с экраном. Если
+    // предыдущий экран оставил открытое поле (или фокус), система поднимает
+    // IME сразу при появлении роута — пользователь видит «автовызов
+    // клавиатуры». Явно снимаем фокус на первом кадре профиля: поле имени
+    // получает ввод только по тапу.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final focus = FocusManager.instance.primaryFocus;
+      if (focus != null && !_nameFocus.hasFocus) {
+        focus.unfocus();
+      }
+    });
     if (!_service.loaded) {
       _service.load().then((_) {
         if (mounted) {
@@ -198,16 +210,56 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> _pickAvatar() async {
     Haptics.light();
-    final picked = await showModalBottomSheet<int>(
+    final picked = await showModalBottomSheet<Object>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _AvatarPickerSheet(
         selected: _service.avatarIndex,
+        imagePath: _service.avatarImagePath,
         onPick: (i) => Navigator.of(ctx).pop(i),
+        onPickImage: () => Navigator.of(ctx).pop(const _PickImageSignal()),
       ),
     );
-    if (picked != null) await _service.setAvatarIndex(picked);
+    if (picked is _PickImageSignal) {
+      await _pickAvatarFromGallery();
+    } else if (picked is int) {
+      await _service.setAvatarIndex(picked);
+    }
+  }
+
+  /// Своя аватарка из галереи: системный пикер картинок, затем копия в
+  /// приватную папку — путь из галереи/кэша переживёт не всякий день, а своя
+  /// аватарка должна оставаться на месте.
+  Future<void> _pickAvatarFromGallery() async {
+    final picked = await FilePicker.pickFile(type: FileType.image);
+    if (picked?.path == null) return;
+    final srcPath = picked!.path!;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final avatarDir = Directory('${dir.path}/avatars');
+      await avatarDir.create(recursive: true);
+      final ext = picked.extension?.isNotEmpty == true
+          ? picked.extension!
+          : 'png';
+      final newPath =
+          '${avatarDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await File(srcPath).copy(newPath);
+      await _service.setAvatarImage(newPath);
+      if (!mounted) return;
+      Haptics.light();
+      _toast(Translations.t('profileAvatarSet', context, 'Аватарка обновлена'));
+    } catch (_) {
+      if (!mounted) return;
+      _toast(
+        Translations.t(
+          'profileAvatarFailed',
+          context,
+          'Не удалось загрузить аватарку',
+        ),
+        icon: Icons.error_outline,
+      );
+    }
   }
 
   Future<void> _toggleOnline() async {
@@ -462,7 +514,11 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: GestureDetector(
               onTap: _pickAvatar,
               behavior: HitTestBehavior.opaque,
-              child: ProfileAvatar(index: _service.avatarIndex, size: 96),
+              child: ProfileAvatar(
+                index: _service.avatarIndex,
+                size: 96,
+                imagePath: _service.avatarImagePath,
+              ),
             ),
           ),
           const SizedBox(height: Spacing.md),
@@ -709,6 +765,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                           pressedScale: 0.88,
                           child: IconButton.filledTonal(
                             onPressed: _toggleMusicPlayback,
+                            // Скруглённый фон (круг), а не квадрат: под
+                            // пальцем подсветка повторяет форму кнопки.
+                            style: IconButton.styleFrom(
+                              shape: const CircleBorder(),
+                            ),
                             icon: AnimatedSwitcher(
                               // Значок плей/пауза сменяется медленно и мягко,
                               // а не подменой кадром.
@@ -879,7 +940,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
               ),
-              ProfileAvatar(index: f.colorIndex, size: 36),
+              ProfileAvatar(
+                index: f.colorIndex,
+                size: 36,
+                // Своя аватарка из галереи — и в строке «Я» рейтинга, чтобы
+                // она не «подменялась» сгенерированным вариантом.
+                imagePath: isMe ? _service.avatarImagePath : null,
+              ),
               const SizedBox(width: Spacing.sm),
               Expanded(
                 child: Text(
@@ -912,23 +979,60 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Column(
         children: [
           for (final e in _events)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primaryContainer,
-                child: Icon(
-                  Icons.local_activity_outlined,
-                  color: theme.colorScheme.onPrimaryContainer,
-                  size: 20,
+            // Отдача уменьшением + СКРУГЛЁННЫЙ фон зажатия: тап по пункту
+            // события читается как нажатие, а подсветка повторяет форму
+            // строки, а не заливает квадрат.
+            PressScale(
+              pressedScale: 0.96,
+              duration: const Duration(milliseconds: 180),
+              releaseDuration: const Duration(milliseconds: 320),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(Radii.md),
+                onTap: () => e.banner ? _openEventBanner() : _openEvent(e.url),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        child: Icon(
+                          Icons.local_activity_outlined,
+                          color: theme.colorScheme.onPrimaryContainer,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e.title,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                fontWeight: Weights.semibold,
+                              ),
+                            ),
+                            Text(
+                              e.subtitle,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.sm),
+                      Icon(
+                        e.banner
+                            ? Icons.celebration_outlined
+                            : Icons.open_in_new,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              title: Text(e.title),
-              subtitle: Text(e.subtitle),
-              trailing: Icon(
-                e.banner ? Icons.celebration_outlined : Icons.open_in_new,
-                size: 18,
-              ),
-              onTap: () => e.banner ? _openEventBanner() : _openEvent(e.url),
             ),
         ],
       ),
@@ -1011,12 +1115,26 @@ class _Card extends StatelessWidget {
   }
 }
 
-/// Нижний лист выбора аватарки: сетка градиентов, выбранный — с рамкой.
+/// Сигнал «выбрать свою аватарку из галереи»: лист закрывается с ним, а
+/// экран открывает системный пикер уже после закрытия листа.
+class _PickImageSignal {
+  const _PickImageSignal();
+}
+
+/// Нижний лист выбора аватарки: первым — «своя из галереи», дальше сетка
+/// градиентов, выбранный — с рамкой.
 class _AvatarPickerSheet extends StatelessWidget {
   final int selected;
+  final String? imagePath;
   final ValueChanged<int> onPick;
+  final VoidCallback onPickImage;
 
-  const _AvatarPickerSheet({required this.selected, required this.onPick});
+  const _AvatarPickerSheet({
+    required this.selected,
+    required this.onPick,
+    required this.onPickImage,
+    this.imagePath,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1038,7 +1156,50 @@ class _AvatarPickerSheet extends StatelessWidget {
                 fontWeight: Weights.bold,
               ),
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.sm),
+            // Своя аватарка — ПЕРВОЙ, отдельной крупной кнопкой: это главный
+            // выбор, а не один из 48 вариантов. Пока картинка не выбрана,
+            // кружок пустой с иконкой галереи; после выбора — сама картинка.
+            PressScale(
+              pressedScale: 0.9,
+              duration: const Duration(milliseconds: 260),
+              releaseDuration: const Duration(milliseconds: 520),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(Radii.md),
+                onTap: onPickImage,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+                  child: Row(
+                    children: [
+                      ProfileAvatar(
+                        index: selected,
+                        size: 44,
+                        imagePath: imagePath,
+                        showIcon: imagePath == null,
+                      ),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: Text(
+                          Translations.t(
+                            'profileAvatarFromGallery',
+                            context,
+                            'Своя аватарка из галереи',
+                          ),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: Weights.semibold,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: Spacing.lg),
             SizedBox(
               height: 300,
               child: GridView.builder(

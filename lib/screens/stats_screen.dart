@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/scheduler.dart' show Ticker;
+
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import '../utils/motion_prefs.dart';
@@ -28,6 +30,11 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
   /// Постоянная «живая» анимация чисел: лёгкий глитч/размытие.
   late final AnimationController _glitchCtrl;
 
+  /// Скролл статистики: деформация растяжения читает его позицию каждый кадр
+  /// (см. [_StretchScroll]) — так возврат в покой не зависит от того, какие
+  /// уведомления успела прислать физика.
+  final _scrollCtrl = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +53,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
   @override
   void dispose() {
     _glitchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -94,12 +102,15 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     // установка) — раньше при пустом логе график вовсе не показывался.
     final monthDays = _logSvc.lastDays(30);
 
-    final bodyContent = SingleChildScrollView(
-      // Физика — как на ОСТАЛЬНЫХ экранах (привычки, задачи, будильники):
-      // упругий BouncingScrollPhysics. Раньше здесь стоял ClampingScrollPhysics,
-      // и статистика «не отдавала» край — при протяжке не было того мягкого
-      // натяжения/сжатия, к которому привыкли на других списках. AlwaysScrollable
-      // поверх — чтобы pull-to-refresh работал и на коротком контенте.
+    // Физика — как на ОСТАЛЬНЫХ экранах (привычки, задачи, будильники):
+    // упругий BouncingScrollPhysics. AlwaysScrollable поверх — чтобы
+    // pull-to-refresh работал и на коротком контенте. Сверх этого —
+    // [_StretchScroll]: при протяжке края контент физически ТЯНЕТСЯ
+    // (сверху и снизу), как блок разделов на главном экране.
+    final bodyContent = _StretchScroll(
+      controller: _scrollCtrl,
+      child: SingleChildScrollView(
+      controller: _scrollCtrl,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -238,6 +249,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
             glitch: _glitchCtrl,
           ),
         ],
+      ),
       ),
     );
 
@@ -432,7 +444,9 @@ Widget _ringedCard({
   // Обводка карточек — тоньше и прозрачнее прежней: цветной «кант» должен
   // читаться как лёгкая подсветка у грани, а не как рамка. Раньше он был
   // заметно плотнее (толщина 0.8, альфа до 0.55) и «обводил» карточку.
-  const thickness = 0.6;
+  // Ещё тоньше: 0.35 — кант почти волосяной, карточки не выглядят
+  // «окантованными».
+  const thickness = 0.35;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   return Container(
@@ -442,9 +456,9 @@ Widget _ringedCard({
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: <Color>[
-          accent.withValues(alpha: dark ? 0.38 : 0.26),
-          accent.withValues(alpha: dark ? 0.07 : 0.06),
-          cs.tertiary.withValues(alpha: dark ? 0.26 : 0.16),
+          accent.withValues(alpha: dark ? 0.30 : 0.20),
+          accent.withValues(alpha: dark ? 0.05 : 0.04),
+          cs.tertiary.withValues(alpha: dark ? 0.20 : 0.12),
         ],
         stops: const <double>[0, 0.55, 1],
       ),
@@ -474,47 +488,86 @@ class _GlitchText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Глитч перерисовывается каждый кадр 60 fps. Без собственного
-    // RepaintBoundary грязный абзац тянет за собой перерисовку ВСЕГО слоя
-    // страницы — графика, карточки, текст. Слои координаты не меняют,
-    // картинка остаётся пиксель-в-пиксель той же, а на Adreno 610 это
-    // разница между «листается» и «тормозит».
+    // Глитч — ЧИСТАЯ ПЕРЕРИСОВКА: видимый текст рисует статичный [Text], а
+    // цветные «двойники»-тени — painter, слушающий [ctrl] через `repaint`.
+    // Дерево при этом НЕ перестраивается каждый кадр. Это не только про
+    // 60 fps: перестройка анимированного абзаца помечает слой скролла
+    // «грязным» на каждом кадре, и вертикальный драг перестаёт двигать
+    // список — статистика «не листалась» (проверено регрессом
+    // stats_stretch_test).
+    final base = style ?? const TextStyle();
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: ctrl,
-        builder: (context, _) {
-          final t = ctrl.value;
-          // Плавная волна «глитча»: лёгкая пульсация цветовых каналов.
-          final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
-          final base = style ?? const TextStyle();
-          // СТАТИКА: текст стоит на месте (никакого сдвига/размытия),
-          // «глитч» — только расщепление цветных теней, пульсирующее
-          // по амплитуде. Цвета холодный/тёплый — как RGB-расщепление.
-          return Text(
-            text,
-            style: base.copyWith(
-              shadows: [
-                Shadow(
-                  color: const Color(
-                    0xFFFF3B5C,
-                  ).withValues(alpha: 0.08 + wave * 0.14),
-                  blurRadius: 1.5,
-                  offset: const Offset(1.1, 0),
-                ),
-                Shadow(
-                  color: const Color(
-                    0xFF33D1FF,
-                  ).withValues(alpha: 0.07 + wave * 0.12),
-                  blurRadius: 1.5,
-                  offset: const Offset(-1.1, 0),
-                ),
-              ],
-            ),
-          );
-        },
+      child: CustomPaint(
+        painter: _GlitchShadowPainter(
+          text: text,
+          style: base,
+          ctrl: ctrl,
+          textDirection: Directionality.of(context),
+        ),
+        child: Text(text, style: base),
       ),
     );
   }
+}
+
+/// Тени-«глитч» под текстом: два полупрозрачных цветных двойника, амплитуда
+/// которых пульсирует волной от [ctrl]. Рисуются ПОД текстом (background
+/// painter), поэтому сам текст остаётся чётким.
+class _GlitchShadowPainter extends CustomPainter {
+  final String text;
+  final TextStyle style;
+  final Animation<double> ctrl;
+  final TextDirection textDirection;
+
+  _GlitchShadowPainter({
+    required this.text,
+    required this.style,
+    required this.ctrl,
+    required this.textDirection,
+  }) : super(repaint: ctrl);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = ctrl.value;
+    // Плавная волна «глитча»: лёгкая пульсация цветовых каналов.
+    final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
+    // Текст стоит на месте (никакого сдвига/размытия), «глитч» — только
+    // расщепление цветных теней, пульсирующее по амплитуде. Холодный/тёплый
+    // — как RGB-расщепление.
+    _drawShadowCopy(
+      canvas,
+      size,
+      const Color(0xFFFF3B5C).withValues(alpha: 0.08 + wave * 0.14),
+      const Offset(1.1, 0),
+    );
+    _drawShadowCopy(
+      canvas,
+      size,
+      const Color(0xFF33D1FF).withValues(alpha: 0.07 + wave * 0.12),
+      const Offset(-1.1, 0),
+    );
+  }
+
+  /// Рисует одну цветную тень: прозрачный текст с цветной размытой тенью —
+  /// ровно то, что давало прежнее `shadows` у [Text], но без пересборки.
+  void _drawShadowCopy(Canvas canvas, Size size, Color color, Offset offset) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: style.copyWith(
+          color: Colors.transparent,
+          shadows: [Shadow(color: color, blurRadius: 1.5, offset: offset)],
+        ),
+      ),
+      textDirection: textDirection,
+      maxLines: 1,
+    )..layout(maxWidth: size.width);
+    tp.paint(canvas, Offset.zero);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlitchShadowPainter old) =>
+      old.text != text || old.style != style || old.textDirection != textDirection;
 }
 
 /// График «последние 30 дней»: объёмные 3D-столбики. Каждый день — один
@@ -603,22 +656,22 @@ class _MonthChart extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            // Площадка «галактики»: 30 дней уложены в спираль — свежий день
-            // в ядре, старые расходятся по рукавам. Вместо столбиков —
-            // светящиеся звёзды: размер и яркость даёт активность дня
-            // (привычки + задачи), а цвет — состав дня, поэтому легенда
-            // внизу честная. Спираль медленно вращается и «дышит».
+            // Интуитивный столбчатый график за 30 дней: высота столбика —
+            // активность дня, а его две части — привычки (снизу) и задачи
+            // (сверху). Так видно и «сколько всего», и «из чего сложилось»,
+            // без легенды-головоломки: что закрашено — то и сделано.
+            // Плавный рост при входе, подписи дат по краям, отметка
+            // «лучшего дня» и «сегодня».
             SizedBox(
-              height: 300,
+              height: 190,
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
                 duration: const Duration(milliseconds: 900),
                 curve: Curves.easeOutCubic,
-                builder: (context, grow, _) => _GalaxyView(
+                builder: (context, grow, _) => _DaysBarChart(
                   days: days,
                   maxV: maxV,
                   grow: grow,
-                  glitch: glitch,
                   theme: theme,
                   habitColor: habitColor,
                   taskColor: taskColor,
@@ -689,26 +742,23 @@ class _MonthChart extends StatelessWidget {
 }
 
 
-/// «Галактика»: 30 дней последнего месяца, уложенные в спираль. Самый
-/// свежий день — в ядре, старые расходятся по рукавам. Вместо столбиков —
-/// светящиеся звёзды: размер и яркость даёт активность дня (привычки +
-/// задачи), а цвет — состав дня, поэтому легенда под графиком честная.
-/// Спираль медленно вращается и «дышит» от [glitch]; при включённом
-/// «убрать анимации» кадр замирает, но картинка остаётся читаемой.
-class _GalaxyView extends StatelessWidget {
+
+/// Столбчатый график «последние 30 дней»: один столбик на день, высота —
+/// суммарная активность (привычки + задачи), стек — привычки снизу, задачи
+/// сверху. Подписи дат по краям, «сегодня» подсвечено, а «лучший день»
+/// отмечен меткой сверху. Никакой спирали: график читается за секунду.
+class _DaysBarChart extends StatelessWidget {
   final List<DayCompletion> days;
   final int maxV;
   final double grow;
-  final Animation<double> glitch;
   final ThemeData theme;
   final Color habitColor;
   final Color taskColor;
 
-  const _GalaxyView({
+  const _DaysBarChart({
     required this.days,
     required this.maxV,
     required this.grow,
-    required this.glitch,
     required this.theme,
     required this.habitColor,
     required this.taskColor,
@@ -717,203 +767,330 @@ class _GalaxyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = theme.colorScheme;
-    // Значения нормируем на максимум месяца: «лучший день» — самая крупная
-    // звезда, остальные — пропорционально.
-    final values = <double>[
-      for (final d in days)
-        maxV <= 0 ? 0.0 : ((d.habits + d.tasks) / maxV).clamp(0.0, 1.0),
-    ];
-    // Доля привычек в дне: цвет звезды честно отражает состав дня.
-    final habitRatios = <double>[
-      for (final d in days)
-        (d.habits + d.tasks) == 0 ? 0.5 : d.habits / (d.habits + d.tasks),
-    ];
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: glitch,
-        builder: (context, _) => CustomPaint(
-          painter: _GalaxyPainter(
-            values: values,
-            habitRatios: habitRatios,
-            grow: grow,
-            phase: glitch.value,
-            habitColor: habitColor,
-            taskColor: taskColor,
-            coreColor: cs.primary,
-            dustColor: cs.onSurfaceVariant,
-          ),
-          size: Size.infinite,
+      child: CustomPaint(
+        painter: _DaysBarPainter(
+          days: days,
+          maxV: maxV,
+          grow: grow,
+          habitColor: habitColor,
+          taskColor: taskColor,
+          axisColor: cs.onSurfaceVariant.withValues(alpha: 0.30),
+          gridColor: cs.onSurfaceVariant.withValues(alpha: 0.14),
+          labelColor: cs.onSurfaceVariant,
+          todayColor: cs.primary,
         ),
+        size: Size.infinite,
       ),
     );
   }
 }
 
-/// Художник «галактики». Дни кладём по спирали: `t = i / (n-1)` — 0 у самого
-/// старого дня (внешний рукав), 1 у сегодняшнего (ядро). Размер и яркость
-/// точки растут к ядру и вместе со значением дня.
-class _GalaxyPainter extends CustomPainter {
-  final List<double> values; // активность дня 0..1 (0 — старый, n-1 — свежий)
-  final List<double> habitRatios; // доля привычек в дне 0..1 (цвет звезды)
-  final double grow; // прогресс входа 0..1 (анимация «прорастания»)
-  final double phase; // 0..1 — вечный цикл вращения/дыхания
+/// Художник столбчатого графика. Столбик дня стоит на общей базовой линии,
+/// его высота пропорциональна активности дня относительно [maxV]. Стек:
+/// нижний сегмент — привычки ([habitColor]), верхний — задачи ([taskColor]).
+/// Три тонкие горизонтальные линии задают шкалу, а пунктирная линия на
+/// уровне [maxV] показывает «лучший день».
+class _DaysBarPainter extends CustomPainter {
+  final List<DayCompletion> days;
+  final int maxV;
+  final double grow;
   final Color habitColor;
   final Color taskColor;
-  final Color coreColor;
-  final Color dustColor;
+  final Color axisColor;
+  final Color gridColor;
+  final Color labelColor;
+  final Color todayColor;
 
-  _GalaxyPainter({
-    required this.values,
-    required this.habitRatios,
+  _DaysBarPainter({
+    required this.days,
+    required this.maxV,
     required this.grow,
-    required this.phase,
     required this.habitColor,
     required this.taskColor,
-    required this.coreColor,
-    required this.dustColor,
+    required this.axisColor,
+    required this.gridColor,
+    required this.labelColor,
+    required this.todayColor,
   });
 
-  static const double _turns = 1.8;
+  static const double _topPad = 20; // место под метку «лучший день»
+  static const double _bottomPad = 18; // место под подписи дат
 
   @override
   void paint(Canvas canvas, Size size) {
-    final n = values.length;
+    final n = days.length;
     if (n == 0 || size.width <= 0 || size.height <= 0) return;
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxR = math.min(size.width, size.height) / 2 - 10;
-    final minR = math.max(6.0, math.min(size.width, size.height) * 0.045);
 
-    // Полный оборот за цикл: sin/cos замкнуты на стыке 1→0, поэтому
-    // вращение идёт без рывка.
-    final spin = phase * 2 * math.pi;
-    final breath = math.sin(spin);
+    final chartTop = _topPad;
+    final chartBottom = size.height - _bottomPad;
+    final chartH = chartBottom - chartTop;
+    if (chartH <= 4) return;
 
-    double radiusOf(double t) => minR + (maxR - minR) * (1 - t);
-    double angleOf(double t) =>
-        -math.pi / 2 + _turns * 2 * math.pi * t + spin * 0.35;
+    final maxValue = math.max(1, maxV);
 
-    // Фоновая пыль: неподвижные тусклые звёзды — глубина кадра. Позиции
-    // детерминированы индексом, чтобы картинка не «кипела» между кадрами.
-    final dustPaint = Paint()..isAntiAlias = true;
-    for (var s = 0; s < 60; s++) {
-      final a = (s * 2.399963) % (math.pi * 2); // золотой угол — ровная россыпь
-      final rr = maxR * (0.18 + 0.82 * ((s * 37 % 100) / 100));
-      final p = center + Offset(math.cos(a), math.sin(a)) * rr;
-      final twinkle = 0.3 + 0.7 * ((s * 53 % 100) / 100);
-      dustPaint.color = dustColor.withValues(alpha: 0.05 + 0.10 * twinkle);
-      canvas.drawCircle(p, 0.6 + 0.8 * twinkle, dustPaint);
+    // Горизонтальные линии шкалы: четверть, половина, три четверти — без
+    // подписей-цифр, чтобы не шуметь; ориентир даёт сама высота.
+    final gridPaint = Paint()
+      ..strokeWidth = 1
+      ..isAntiAlias = true
+      ..color = gridColor;
+    for (var g = 1; g <= 3; g++) {
+      final y = chartBottom - chartH * (g / 4);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    // Два рукава спирали — тонкие ленты, на которых «сидят» дни. Угол
-    // считаем непрерывно от t, иначе лента «ломается» ступеньками.
-    final armPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = true;
-    for (var arm = 0; arm < 2; arm++) {
-      final path = Path();
-      for (var s = 0; s <= 96; s++) {
-        final t = s / 96;
-        final r = radiusOf(t);
-        final a = angleOf(t) + arm * math.pi;
-        final p = center + Offset(math.cos(a), math.sin(a)) * r;
-        if (s == 0) {
-          path.moveTo(p.dx, p.dy);
-        } else {
-          path.lineTo(p.dx, p.dy);
-        }
-      }
-      armPaint
-        ..color = coreColor.withValues(alpha: 0.16)
-        ..strokeWidth = math.min(size.width, size.height) * 0.028;
-      canvas.drawPath(path, armPaint);
-    }
-
-    // Ядро: мягкое светящееся пятно в центре — «сегодня» вырастает из него.
-    final coreR = math.min(size.width, size.height) * 0.10;
-    canvas.drawCircle(
-      center,
-      coreR * (0.9 + 0.1 * breath),
+    // Базовая линия — чуть плотнее сетки.
+    canvas.drawLine(
+      Offset(0, chartBottom),
+      Offset(size.width, chartBottom),
       Paint()
-        ..shader = RadialGradient(
-          colors: [
-            coreColor.withValues(alpha: 0.36 + 0.07 * breath),
-            coreColor.withValues(alpha: 0.0),
-          ],
-        ).createShader(Rect.fromCircle(center: center, radius: coreR)),
+        ..strokeWidth = 1.2
+        ..isAntiAlias = true
+        ..color = axisColor,
     );
 
-    // Дни: от старого (внешний рукав) к свежему (ядро).
+    // Геометрия столбиков: ширина доли минус небольшой зазор.
+    final slot = size.width / n;
+    final barW = math.max(1.5, slot * 0.62);
+    final radius = Radius.circular(math.min(barW / 2, 2.4));
+
+    var bestIndex = -1;
+    var bestTotal = 0;
     for (var i = 0; i < n; i++) {
-      final t = n == 1 ? 1.0 : i / (n - 1);
-      final v = values[i].clamp(0.0, 1.0);
-      // Каскад: свежие дни «загораются» позже старых — волна из центра.
-      final local = (grow * 1.3 - (1 - t) * 0.3).clamp(0.0, 1.0);
-      final a = angleOf(t);
-      final r = radiusOf(t);
-      final p = center + Offset(math.cos(a), math.sin(a)) * r;
-
-      final ratio = habitRatios[i].clamp(0.0, 1.0);
-      final color = v <= 0
-          ? dustColor.withValues(alpha: 0.22)
-          : Color.lerp(taskColor, habitColor, ratio)!;
-
-      // Размер: пустой день — точка, плотный — крупная звезда. Ближе к
-      // ядру дни чуть крупнее: перспектива «вглубь».
-      final base = 2.4 + 6.8 * v + 1.6 * t;
-      final dotR = base * local * (0.92 + 0.08 * breath);
-
-      if (v > 0) {
-        // Свечение вокруг звезды — тем сильнее, чем плотнее день.
-        canvas.drawCircle(
-          p,
-          dotR * (2.2 + 1.4 * v),
-          Paint()
-            ..isAntiAlias = true
-            ..shader = RadialGradient(
-              colors: [
-                color.withValues(alpha: (0.40 + 0.30 * v) * local),
-                color.withValues(alpha: 0.0),
-              ],
-            ).createShader(
-              Rect.fromCircle(center: p, radius: dotR * (2.2 + 1.4 * v)),
-            ),
-        );
+      final t = days[i].habits + days[i].tasks;
+      if (t > bestTotal) {
+        bestTotal = t;
+        bestIndex = i;
       }
-      canvas.drawCircle(
-        p,
-        dotR,
-        Paint()
-          ..isAntiAlias = true
-          ..color = color.withValues(alpha: v <= 0 ? 1.0 : 0.95 * local),
-      );
     }
 
-    // Кольцо «сегодня»: тонкий контур вокруг последней (самой свежей) точки
-    // в ядре — отмечает текущий день, не перегружая картинку подписью.
-    if (n > 0) {
-      final a = angleOf(1.0);
-      final r = radiusOf(1.0);
-      final p = center + Offset(math.cos(a), math.sin(a)) * r;
-      final ringR = (3.4 + 6.0 * values[n - 1].clamp(0.0, 1.0)) * grow + 3.4;
-      canvas.drawCircle(
-        p,
-        ringR,
+    for (var i = 0; i < n; i++) {
+      final d = days[i];
+      final total = d.habits + d.tasks;
+      final cx = slot * (i + 0.5);
+      if (total <= 0) {
+        // Пустой день — маленькая точка у базовой линии, а не пустое
+        // место: видно, что день был, но активности нет.
+        canvas.drawCircle(
+          Offset(cx, chartBottom - 1.6),
+          1.6,
+          Paint()..color = axisColor.withValues(alpha: 0.55),
+        );
+        continue;
+      }
+      final full = chartH * (total / maxValue);
+      final h = (full * grow).clamp(0.0, chartH);
+      // Доли привычек и задач в столбике.
+      final habitH = h * (d.habits / total);
+      final taskH = h - habitH;
+      final left = cx - barW / 2;
+      final rect = RRect.fromRectAndCorners(
+        Rect.fromLTWH(left, chartBottom - h, barW, h),
+        topLeft: radius,
+        topRight: radius,
+      );
+
+      // Стек: снизу привычки, сверху задачи.
+      canvas.save();
+      canvas.clipRRect(rect);
+      canvas.drawRect(
+        Rect.fromLTWH(left, chartBottom - habitH, barW, habitH),
+        Paint()..color = habitColor,
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(left, chartBottom - h, barW, taskH),
+        Paint()..color = taskColor,
+      );
+      canvas.restore();
+      // Тонкий контур — столбики не «слипаются» на тёмной теме.
+      canvas.drawRRect(
+        rect,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.3
+          ..strokeWidth = 1
           ..isAntiAlias = true
-          ..color = coreColor.withValues(alpha: 0.85 * grow),
+          ..color = todayColor.withValues(alpha: 0.18),
       );
+
+      // «Сегодня» — последний столбик: подписываем дату акцентом.
+      final isToday = i == n - 1;
+      if (bestIndex == i && grow > 0.85) {
+        // Метка «лучший день»: маленькая звёздочка над столбиком.
+        _drawStar(
+          canvas,
+          Offset(cx, chartBottom - h - 8),
+          4.2,
+          todayColor.withValues(alpha: 0.9 * grow),
+        );
+      }
+      if (isToday) {
+        canvas.drawCircle(
+          Offset(cx, chartBottom + 6),
+          2.0,
+          Paint()..color = todayColor,
+        );
+      }
     }
+
+    // Подписи дат по краям: первый и последний день диапазона. Короткие
+    // числа («1», «30») — без нагромождения.
+    _label(canvas, size, days.first.date, chartBottom + _bottomPad - 4, TextAlign.left);
+    _label(canvas, size, days.last.date, chartBottom + _bottomPad - 4, TextAlign.right);
+  }
+
+  void _label(Canvas canvas, Size size, String date, double y, TextAlign align) {
+    // date приходит в формате 'yyyy-MM-dd' — берём день месяца.
+    final day = date.length >= 10 ? date.substring(8, 10) : date;
+    final tp = TextPainter(
+      text: TextSpan(
+        text: day.replaceFirst(RegExp(r'^0'), ''),
+        style: TextStyle(color: labelColor, fontSize: 10, fontWeight: FontWeight.w600),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final x = align == TextAlign.left ? 0.0 : size.width - tp.width;
+    tp.paint(canvas, Offset(x, y - tp.height));
+  }
+
+  void _drawStar(Canvas canvas, Offset c, double r, Color color) {
+    final path = Path();
+    for (var k = 0; k < 10; k++) {
+      final rad = k.isEven ? r : r * 0.45;
+      final a = -math.pi / 2 + k * math.pi / 5;
+      final p = c + Offset(math.cos(a), math.sin(a)) * rad;
+      if (k == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, Paint()..color = color..isAntiAlias = true);
   }
 
   @override
-  bool shouldRepaint(covariant _GalaxyPainter old) =>
+  bool shouldRepaint(covariant _DaysBarPainter old) =>
       old.grow != grow ||
-      old.phase != phase ||
-      old.values != values ||
-      old.habitRatios != habitRatios ||
+      old.maxV != maxV ||
+      old.days != days ||
       old.habitColor != habitColor ||
       old.taskColor != taskColor;
+}
+
+
+/// «Растяжение» края скролла: при протяжке за верхнюю/нижнюю границу
+/// содержимое мягко тянется вдоль оси (и слегка сжимается поперёк), а на
+/// отпускании так же плавно возвращается.
+///
+/// Почему не [OverscrollNotification]: с [BouncingScrollPhysics] пиксели
+/// уходят за границу свободно, и граничное условие возвращает ноль —
+/// уведомления о перепротяжке не приходят вовсе. Поэтому деформацию берём
+/// прямо из позиции контроллера, опрашивая её тикером, пока край оттянут:
+/// тогда и пружина возврата сама тянет наш масштаб обратно, без отдельной
+/// анимации отпускания и без зависимости от чужих уведомлений.
+///
+/// Деформация — это [Transform] (не влияет на layout), поэтому размеры списка
+/// и pull-to-refresh не задеты.
+class _StretchScroll extends StatefulWidget {
+  final ScrollController controller;
+  final Widget child;
+
+  const _StretchScroll({required this.controller, required this.child});
+
+  @override
+  State<_StretchScroll> createState() => _StretchScrollState();
+}
+
+class _StretchScrollState extends State<_StretchScroll>
+    with SingleTickerProviderStateMixin {
+  /// Величина протяжки 0..1 (0 — покой, 1 — предел деформации).
+  final ValueNotifier<double> _pull = ValueNotifier<double>(0);
+
+  late final Ticker _ticker = createTicker(_sample);
+
+  /// Тянут за верхний край (иначе — за нижний): от этого зависит, из какого
+  /// угла контент «растягивается».
+  bool _atTop = true;
+
+  /// Кадров подряд в границах: двух достаточно, чтобы считать движение
+  /// завершённым и остановить тикер (в простое не тратим кадры).
+  int _calm = 0;
+
+  /// Ход протяжки, на котором деформация достигает предела, px.
+  static const double _fullPull = 220;
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _pull.dispose();
+    super.dispose();
+  }
+
+  /// Один замер позиции: переносим «выход за границу» в деформацию.
+  void _sample(Duration _) {
+    final pos = widget.controller.hasClients
+        ? widget.controller.position
+        : null;
+    if (pos == null) {
+      _ticker.stop();
+      return;
+    }
+    final double beyondTop = pos.minScrollExtent - pos.pixels;
+    final double beyondBottom = pos.pixels - pos.maxScrollExtent;
+    final double beyond = math.max(beyondTop, beyondBottom);
+    _atTop = beyondTop >= beyondBottom;
+    _pull.value = (beyond / _fullPull).clamp(0.0, 1.0);
+    if (beyond <= 0.5) {
+      if (++_calm >= 2) {
+        _pull.value = 0;
+        _ticker.stop();
+      }
+    } else {
+      _calm = 0;
+    }
+  }
+
+  bool _onNotification(ScrollNotification n) {
+    if (MotionPrefs.shouldReduceMotion) return false;
+    if (n is ScrollStartNotification ||
+        n is ScrollUpdateNotification ||
+        n is ScrollEndNotification) {
+      _calm = 0;
+      if (!_ticker.isActive) _ticker.start();
+      // Замер сразу, не дожидаясь следующего кадра: тикер успевает только
+      // к следующему фрейму, а деформация должна быть видна уже на этом.
+      _sample(Duration.zero);
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onNotification,
+      child: ValueListenableBuilder<double>(
+        valueListenable: _pull,
+        builder: (context, raw, child) {
+          final p = Curves.easeOutCubic.transform(raw);
+          // Transform присутствует ВСЕГДА (в покое — единичный): если
+          // убирать/вставлять его на ходу, дерево под пальцем меняется, и
+          // жест обрывается. Поэтому «покой» — это масштаб 1, а не
+          // отсутствие виджета.
+          return Transform.scale(
+            // Ключ — точка опоры для тестов растяжения: по нему находят
+            // именно эту деформацию, не путая с прочими Transform на экране.
+            key: const ValueKey('stats_stretch'),
+            // Растяжка вдоль оси протяжки + лёгкое сжатие поперёк —
+            // «резина», а не просто сдвиг.
+            scaleX: 1 - 0.018 * p,
+            scaleY: 1 + 0.030 * p,
+            alignment: _atTop ? Alignment.topCenter : Alignment.bottomCenter,
+            child: child,
+          );
+        },
+        child: widget.child,
+      ),
+    );
+  }
 }

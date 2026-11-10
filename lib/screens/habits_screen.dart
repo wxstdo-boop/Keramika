@@ -1053,6 +1053,24 @@ class _HabitsScreenState extends State<HabitsScreen>
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Row(
         children: [
+          // Точка-маркер в тон секции: заголовок читается как «начало списка»
+          // и не сливается с карточками ниже.
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tint,
+              boxShadow: [
+                BoxShadow(
+                  color: tint.withValues(alpha: 0.45),
+                  blurRadius: 6,
+                  spreadRadius: 0.5,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(
             Translations.t(keyName, context),
             style: theme.textTheme.titleSmall?.copyWith(

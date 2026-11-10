@@ -1478,6 +1478,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'If it is sweet and packaged, it wants to stay in the store. Choose fruit, dark chocolate or water first.',
         ),
         'color': Colors.purple,
+        'group': 'sugar',
       },
       {
         'icon': Icons.apple_outlined,
@@ -1492,6 +1493,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'An apple or berries satisfy the sweet tooth without the sugar spike.',
         ),
         'color': Colors.red,
+        'group': 'sugar',
       },
       {
         'icon': Icons.hourglass_top,
@@ -1516,6 +1518,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'Two squares of 85% dark chocolate satisfy the temptation without the guilt.',
         ),
         'color': Colors.brown,
+        'group': 'sugar',
       },
       {
         'icon': Icons.dining_outlined,
@@ -1530,6 +1533,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'Plain yogurt with berries is a dessert without false shame that feels indulgent.',
         ),
         'color': Colors.teal,
+        'group': 'sugar',
       },
       {
         'icon': Icons.soup_kitchen_outlined,
@@ -1540,6 +1544,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'A warm sugar-free drink calms sweet cravings.',
         ),
         'color': Colors.orange,
+        'group': 'sugar',
       },
       {
         'icon': Icons.favorite_outline,
@@ -1554,6 +1559,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'The brain resists bans; it reacts better to replacement.',
         ),
         'color': Colors.pink,
+        'group': 'sugar',
       },
       {
         'icon': Icons.fastfood_outlined,
@@ -1740,6 +1746,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'Stress spikes sugar cravings. Walk it off instead.',
         ),
         'color': Colors.cyan,
+        'group': 'sugar',
       },
       {
         'icon': Icons.directions_run,
@@ -1760,6 +1767,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           'One black coffee can kill sugar craving for 30-40 minutes.',
         ),
         'color': Colors.brown,
+        'group': 'sugar',
       },
       {
         'icon': Icons.ice_skating,
@@ -1770,6 +1778,138 @@ class _NutritionScreenState extends State<NutritionScreen>
           'A glass of ice water instantly resets mind and body вЂ” the cold shock breaks the craving loop.',
         ),
         'color': Colors.cyan,
+        'group': 'sugar',
+      },
+      {
+        'icon': Icons.cake_outlined,
+        'title': Translations.t(
+          'tipSugarSwapTitle',
+          context,
+          'Swap the sugar',
+        ),
+        'body': Translations.t(
+          'tipSugarSwapBody',
+          context,
+          'Craving sweets? Reach for fruit, a square of dark chocolate or cinnamon tea — the taste is there, the spike is not.',
+        ),
+        'color': Colors.pink,
+        'group': 'sugar',
+      },
+      {
+        'icon': Icons.water_drop,
+        'title': Translations.t(
+          'tipSaltBloatTitle',
+          context,
+          'Less salt, less bloat',
+        ),
+        'body': Translations.t(
+          'tipSaltBloatBody',
+          context,
+          'Salty snacks and sauces hold water in. Season with herbs, lemon and spices instead — the puffiness drops in a couple of days.',
+        ),
+        'color': Colors.blueGrey,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.eco,
+        'title': Translations.t(
+          'tipPotassiumTitle',
+          context,
+          'Potassium against puffiness',
+        ),
+        'body': Translations.t(
+          'tipPotassiumBody',
+          context,
+          'Bananas, greens, avocado and beans help push excess water out. Add one to every meal.',
+        ),
+        'color': Colors.lightGreen,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.local_drink_outlined,
+        'title': Translations.t(
+          'tipWaterBloatTitle',
+          context,
+          'Water flushes water',
+        ),
+        'body': Translations.t(
+          'tipWaterBloatBody',
+          context,
+          'When you drink too little, the body stores fluid. 6–8 glasses a day is the simplest anti-bloat habit.',
+        ),
+        'color': Colors.lightBlue,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.nightlight_outlined,
+        'title': Translations.t(
+          'tipLateSaltTitle',
+          context,
+          'No salt at night',
+        ),
+        'body': Translations.t(
+          'tipLateSaltBody',
+          context,
+          'A salty dinner shows up on the face by morning. Keep the evening meal light and low-salt.',
+        ),
+        'color': Colors.deepPurple,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.directions_walk,
+        'title': Translations.t(
+          'tipMoveBloatTitle',
+          context,
+          'Move to drain',
+        ),
+        'body': Translations.t(
+          'tipMoveBloatBody',
+          context,
+          'A 20-minute walk or a light workout gets the lymph moving and the puffiness visibly down.',
+        ),
+        'color': Colors.teal,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.no_food_outlined,
+        'title': Translations.t(
+          'tipProcessedTitle',
+          context,
+          'Skip processed food',
+        ),
+        'body': Translations.t(
+          'tipProcessedBody',
+          context,
+          'Sausages, chips and ready meals are salt bombs. Cook from whole foods and the swelling eases.',
+        ),
+        'color': Colors.orange,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.emoji_food_beverage_outlined,
+        'title': Translations.t('tipHerbalTitle', context, 'Herbal teas'),
+        'body': Translations.t(
+          'tipHerbalBody',
+          context,
+          'Dandelion, nettle and green tea gently support the kidneys and help shed excess water.',
+        ),
+        'color': Colors.green,
+        'group': 'bloat',
+      },
+      {
+        'icon': Icons.medical_services_outlined,
+        'title': Translations.t(
+          'tipSwellingCheckTitle',
+          context,
+          'When to see a doctor',
+        ),
+        'body': Translations.t(
+          'tipSwellingCheckBody',
+          context,
+          'If puffiness stays for weeks, is one-sided or comes with pain — see a doctor rather than dieting it away.',
+        ),
+        'color': Colors.redAccent,
+        'group': 'bloat',
       },
     ];
 
@@ -1777,8 +1917,11 @@ class _NutritionScreenState extends State<NutritionScreen>
     final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
     final seed = dayOfYear * 9301 + 49297 + now.hour;
     final rng = Random(seed % 0x7fffffff);
-    allTips.shuffle(rng);
-    final tips = allTips.sublist(0, 8);
+    // Подбор разнообразный, а не «что попалось»: раньше перемешанный список
+    // брал первые 8 — и день за днём выдавал одни и те же темы. Теперь
+    // гарантируем в наборе свежие карточки и карточки против отёков, а
+    // остальное добираем случайно: лента не «залипает» на одном сюжете.
+    final tips = _pickDiverseTips(allTips, rng);
 
     return SizedBox(
       height: 160,
@@ -1852,6 +1995,52 @@ class _NutritionScreenState extends State<NutritionScreen>
         },
       ),
     );
+  }
+
+  /// Тематически разнообразный набор советов.
+  ///
+  /// Слепой `shuffle` + «первые 8» давали перекос: однажды наверху
+  /// оказывались пять карточек про сладкое — и лента казалась однообразной.
+  /// Советы с тегом `group` («против сладкого», «против отёков») держим
+  /// приоритетными: в дневной подборке всегда есть по одной из каждой
+  /// группы, остальное добираем случайно.
+  List<Map<String, dynamic>> _pickDiverseTips(
+    List<Map<String, dynamic>> all,
+    Random rng,
+  ) {
+    String groupOf(Map<String, dynamic> tip) =>
+        (tip['group'] as String?) ?? 'general';
+
+    final sugar = <Map<String, dynamic>>[];
+    final bloat = <Map<String, dynamic>>[];
+    final general = <Map<String, dynamic>>[];
+    for (final t in all) {
+      switch (groupOf(t)) {
+        case 'sugar':
+          sugar.add(t);
+        case 'bloat':
+          bloat.add(t);
+        default:
+          general.add(t);
+      }
+    }
+    sugar.shuffle(rng);
+    bloat.shuffle(rng);
+    general.shuffle(rng);
+
+    final picked = <Map<String, dynamic>>[];
+    // По одной «сладкой» и «отёчной» — обязательный минимум подборки.
+    if (sugar.isNotEmpty) picked.add(sugar.removeAt(0));
+    if (bloat.isNotEmpty) picked.add(bloat.removeAt(0));
+    // Остальное — случайно, чтобы лента не выстраивалась блоками.
+    final rest = <Map<String, dynamic>>[...sugar, ...bloat, ...general]
+      ..shuffle(rng);
+    for (final t in rest) {
+      if (picked.length >= 8) break;
+      picked.add(t);
+    }
+    picked.shuffle(rng);
+    return picked;
   }
 }
 

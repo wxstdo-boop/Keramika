@@ -136,11 +136,11 @@ class _TitleWithDot extends StatelessWidget {
   /// Зазор между правым краем последней буквы и ЛЕВЫМ краем кружка, px.
   /// Кружок стоит справа с воздухом — на букву не налезает. Считается от
   /// диаметра кружка: он растёт, а зазор должен оставаться прежним.
-  static const double _gapLeft = 3.0;
+  static const double _gapLeft = 6.0;
 
   /// Смещение центра кружка от СЕРЕДИНЫ высоты последней буквы, px.
   /// Отрицательное — приподнимает кружок над серединой («ещё над»).
-  static const double _dropY = -2.0;
+  static const double _dropY = -3.0;
 
   @override
   Widget build(BuildContext context) {
