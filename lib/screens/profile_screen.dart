@@ -88,21 +88,29 @@ class _ProfileScreenState extends State<ProfileScreen>
   final _music = MusicService();
   final _nameCtrl = TextEditingController();
 
-  /// Прозрачность подсказки «Как вас звать?»: 1 — пустое поле, 0 — есть текст.
-  /// Отдельный контроллер, потому что подсказку рисует сам TextField, и
-  /// мгновенная её подмена читалась бы как щелчок.
+  /// Прозрачность подсказки «Как вас звать?»: видна, пока поле НЕ в фокусе.
+  /// Подсказка гаснет плавно, как только пользователь открыл поле, и так же
+  /// плавно возвращается, когда он его закрыл, — отдельный контроллер, потому
+  /// что штатный `hintText` меняется мгновенно и не умеет этого.
   late final AnimationController _hintCtrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 260),
     value: _nameCtrl.text.isEmpty ? 1 : 0,
   );
 
-  void _onNameChanged() {
+  /// Фокус поля имени: подсказка живёт ровно столько, сколько поле закрыто.
+  final _nameFocus = FocusNode();
+
+  void _syncHint() {
+    // Подсказка видна, пока поле ЗАКРЫТО и пусто: открыл поле — гаснет,
+    // закрыл — возвращается. Пока в поле есть имя, подсказку не показываем —
+    // иначе она легла бы поверх текста.
+    final shown = !_nameFocus.hasFocus && _nameCtrl.text.isEmpty;
     if (MotionPrefs.shouldReduceMotion) {
-      _hintCtrl.value = _nameCtrl.text.isEmpty ? 1 : 0;
+      _hintCtrl.value = shown ? 1 : 0;
       return;
     }
-    if (_nameCtrl.text.isEmpty) {
+    if (shown) {
       _hintCtrl.reverse();
     } else {
       _hintCtrl.forward();
@@ -151,12 +159,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.initState();
     _music.addListener(_onMusicChanged);
     _nameCtrl.text = _service.name;
-    _nameCtrl.addListener(_onNameChanged);
+    _nameFocus.addListener(_syncHint);
     if (!_service.loaded) {
       _service.load().then((_) {
         if (mounted) {
           _nameCtrl.text = _service.name;
-          _onNameChanged();
         }
       });
     }
@@ -167,7 +174,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     // Плеер НЕ останавливаем и не уничтожаем: музыка — общий сервис, она
     // должна продолжать играть при уходе с экрана (см. [MusicService]).
     _music.removeListener(_onMusicChanged);
-    _nameCtrl.removeListener(_onNameChanged);
+    _nameFocus.removeListener(_syncHint);
+    _nameFocus.dispose();
     _nameCtrl.dispose();
     _hintCtrl.dispose();
     super.dispose();
@@ -491,6 +499,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     magnifierConfiguration:
                         TextMagnifierConfiguration.disabled,
                     contextMenuBuilder: minimalContextMenuBuilder,
+                    focusNode: _nameFocus,
                     textInputAction: TextInputAction.done,
                     maxLength: _nameMaxLength,
                     inputFormatters: [
@@ -663,10 +672,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                           ),
                         ),
                       ),
-                      // Название плашки — ВСЕГДА «Твоя музыка» (ключ
-                      // profileMusic), а не имя файла: подпись не скачет.
+                      // Заголовок карточки — «Твоя музыка», а строка трека
+                      // подписана «Играет бодрый звук»: понятно, что это не
+                      // имя файла, а состояние проигрывания.
                       title: Text(
-                        Translations.t('profileMusic', context, 'Твоя музыка'),
+                        Translations.t(
+                          'profileMusicPlaying',
+                          context,
+                          'Играет бодрый звук',
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),

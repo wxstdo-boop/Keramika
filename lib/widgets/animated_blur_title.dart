@@ -133,14 +133,12 @@ class _TitleWithDot extends StatelessWidget {
     required this.onDotTap,
   });
 
-  /// Зазор между правым краем последней буквы и центром кружка, px. Малый —
-  /// кружок стоит почти вплотную к букве, справа от неё.
-  static const double _gapX = 4.0;
+  /// Зазор между правым краем последней буквы и центром кружка, px. Кружок
+  /// стоит справа от буквы, с небольшим воздухом.
+  static const double _gapX = 7.0;
 
-  /// Насколько центр кружка ниже низа последней буквы, px. Кружок сидит у
-  /// нижней кромки глифа — «на хвостике», а не на середине высоты.
-  /// Отрицательное значение приподнимает его: кружок «растёт» из хвостика,
-  /// а не висит под буквой.
+  /// Смещение центра кружка от СЕРЕДИНЫ высоты последней буквы, px.
+  /// Отрицательное — приподнимает кружок над серединой («ещё над»).
   static const double _dropY = -2.0;
 
   @override
@@ -159,12 +157,11 @@ class _TitleWithDot extends StatelessWidget {
       );
       if (boxes.isNotEmpty) lastGlyph = boxes.last.toRect();
     }
-    // Центр кружка: СПРАВА от последней буквы и у её НИЗА — кружок «идёт от
-    // хвостика» буквы (раньше висел справа на середине высоты). Зона тапа
-    // OnlineDot — квадрат 30×30 с глифом по центру.
+    // Центр кружка: СПРАВА от последней буквы, у СЕРЕДИНЫ её высоты (чуть
+    // выше середины — «ещё над»). Зона тапа OnlineDot — квадрат 30×30.
     final tapHalf = OnlineDot.tapTarget / 2;
     final dotCx = (lastGlyph?.right ?? painter.width) + _gapX;
-    final dotCy = (lastGlyph?.bottom ?? painter.height) + _dropY;
+    final dotCy = ((lastGlyph?.top ?? 0) + (lastGlyph?.bottom ?? painter.height)) / 2 + _dropY;
 
     // Stack хит-тестит только ВНУТРИ своих границ: кружок, вынесенный за
     // границы, было бы не нажать. Поэтому раздуваем рамку на недостающие поля,
@@ -173,14 +170,13 @@ class _TitleWithDot extends StatelessWidget {
     final padTop = math.max(0.0, tapHalf - dotCy);
     final padBottom = math.max(0.0, dotCy + tapHalf - painter.height);
     final padRight = math.max(0.0, dotCx + tapHalf - painter.width);
-    // Хвостик ведём от нижнего правого угла буквы к центру кружка: рисуем его
-    // ПОД кружком в том же Stack, поэтому кружок накрывает конец росчерка и
-    // шов не виден.
+    // Короткий росчерк от середины буквы к кружку — кружок читается
+    // продолжением имени, а не отдельной точкой.
     final tailFrom = Offset(
       lastGlyph?.right ?? painter.width,
-      (lastGlyph?.bottom ?? painter.height) - 1,
+      ((lastGlyph?.top ?? 0) + (lastGlyph?.bottom ?? painter.height)) / 2 - 1,
     );
-    final tailTo = Offset(dotCx - 2.2, dotCy - 2.2);
+    final tailTo = Offset(dotCx - 2.6, dotCy - 1.4);
     return SizedBox(
       width: painter.width + padRight,
       height: painter.height + padTop + padBottom,

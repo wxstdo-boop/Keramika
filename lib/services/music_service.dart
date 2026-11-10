@@ -22,14 +22,26 @@ class MusicService extends ChangeNotifier {
   static final MusicService _instance = MusicService._();
   factory MusicService() => _instance;
 
-  /// Длительность фейда громкости при старте и остановке.
-  static const Duration _fade = Duration(milliseconds: 700);
+  /// Длительность фейда громкости при старте.
+  static const Duration _fadeIn = Duration(milliseconds: 700);
+
+  /// Затухание короче: пауза/стоп не должны «висеть» под пальцем.
+  static const Duration _fadeOut = Duration(milliseconds: 420);
 
   AudioPlayer? _player;
   bool _playing = false;
   String? _path;
   StreamSubscription<void>? _completeSub;
   Timer? _fadeTimer;
+
+  /// Поколение рамп: растёт при каждом новом фейде/отмене. Старый таймер,
+  /// увидев чужое поколение, тихо выходит и завершает свой future — раньше
+  /// отменённый рамп «подвешивал» ожидающего навсегда (отсюда и лаг).
+  int _rampGen = 0;
+
+  /// Текущая целевая громкость (0…1). Держим сами: `player.volume` может
+  /// отставать на кадр, из-за чего resume стартовал «не с нуля».
+  double _vol = 1;
 
   /// Играет ли музыка прямо сейчас.
   bool get playing => _playing;
@@ -44,19 +56,22 @@ class MusicService extends ChangeNotifier {
     if (!file.existsSync() || file.lengthSync() == 0) return false;
     final player = _player ??= _createPlayer();
     try {
-      if (_path != path) {
-        await player.setReleaseMode(ReleaseMode.loop);
-        // Начинаем с нуля и «вплываем» до полной громкости.
+      // Состояние и иконка меняются СРАЗУ, фейд идёт следом — тап по «плей»
+      // отзывается мгновенно, а не через полсекунды.
+      final switching = _path != path;
+      _playing = true;
+      _path = path;
+      notifyListeners();
+      if (switching) {
+        // Свежий старт: с нуля «вплываем» до полной громкости.
         await player.setVolume(0);
+        _vol = 0;
         await player.play(DeviceFileSource(path));
-        _rampVolume(player, 0, 1);
+        await _rampVolume(player, 0, 1, over: _fadeIn);
       } else {
         await player.resume();
-        _rampVolume(player, player.volume, 1);
+        await _rampVolume(player, _vol, 1, over: _fadeIn);
       }
-      _path = path;
-      _playing = true;
-      notifyListeners();
       return true;
     } catch (_) {
       _playing = false;
@@ -68,28 +83,36 @@ class MusicService extends ChangeNotifier {
   /// Пауза без потери позиции: громкость мягко уходит в ноль, и только потом
   /// плеер встаёт на паузу — так остановка не «щёлкает». Повторный [play]
   /// продолжит с того же места.
+  ///
+  /// Состояние меняется мгновенно, само затухание — в фоне: кнопка «пауза»
+  /// не ждёт 400 мс, пока стихнет звук.
   Future<void> pause() async {
     final player = _player;
-    if (player != null) {
-      await _rampVolume(player, player.volume, 0);
-      await player.pause();
-      await player.setVolume(1);
-    }
     _playing = false;
     notifyListeners();
+    if (player == null) return;
+    final gen = _rampGen;
+    await _rampVolume(player, _vol, 0, over: _fadeOut);
+    // За время фейда могли снова нажать «плей» — тогда паузу не делаем.
+    if (gen != _rampGen || _playing) return;
+    _vol = 0;
+    await player.pause();
   }
 
-  /// Полная остановка: используется при удалении трека.
+  /// Полная остановка: используется при удалении трека. Не блокирует UI —
+  /// сначала гасим состояние, затухание и `stop()` уходят в фон.
   Future<void> stop() async {
     final player = _player;
-    if (player != null) {
-      await _rampVolume(player, player.volume, 0);
-      await player.stop();
-      await player.setVolume(1);
-    }
     _playing = false;
     _path = null;
     notifyListeners();
+    if (player == null) return;
+    final gen = _rampGen;
+    await _rampVolume(player, _vol, 0, over: _fadeOut);
+    if (gen != _rampGen || _playing) return;
+    _vol = 1;
+    await player.stop();
+    await player.setVolume(1);
   }
 
   /// Переключить воспроизведение для трека по пути.
@@ -101,23 +124,39 @@ class MusicService extends ChangeNotifier {
     return play(path);
   }
 
-  /// Плавно перевести громкость от [from] к [to] за [_fade]. Возвращается,
-  /// когда фейд доехал (или сразу, если анимации выключены).
-  Future<void> _rampVolume(AudioPlayer player, double from, double to) async {
+  /// Плавно перевести громкость от [from] к [to] за [over]. Возвращается,
+  /// когда фейд доехал (или сразу, если анимации выключены). Вызов отменяет
+  /// предыдущий фейд: его future тоже завершается, а не «висит».
+  Future<void> _rampVolume(
+    AudioPlayer player,
+    double from,
+    double to, {
+    required Duration over,
+  }) async {
     _fadeTimer?.cancel();
+    final gen = ++_rampGen;
     if (MotionPrefs.shouldReduceMotion) {
-      await player.setVolume(to);
+      try {
+        await player.setVolume(to);
+      } catch (_) {}
+      _vol = to;
       return;
     }
-    const steps = 24;
-    final stepMs = _fade.inMilliseconds ~/ steps;
+    const steps = 14;
+    final stepMs = (over.inMilliseconds / steps).round().clamp(1, 1000);
     var i = 0;
     final done = Completer<void>();
     _fadeTimer = Timer.periodic(Duration(milliseconds: stepMs), (t) async {
+      if (gen != _rampGen) {
+        t.cancel();
+        if (!done.isCompleted) done.complete();
+        return;
+      }
       i++;
-      final v = from + (to - from) * (i / steps);
+      final v = (from + (to - from) * (i / steps)).clamp(0.0, 1.0);
+      _vol = v;
       try {
-        await player.setVolume(v.clamp(0.0, 1.0));
+        await player.setVolume(v);
       } catch (_) {}
       if (i >= steps) {
         t.cancel();

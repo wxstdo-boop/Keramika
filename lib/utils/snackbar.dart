@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
+
 
 import 'package:flutter/material.dart';
 
@@ -329,23 +329,20 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                     ),
                   ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: BackdropFilter(
-                    // Полупрозрачность с размытием фона под плашкой: любой
-                    // снекбар приложения теперь «стеклянный», а не плотный.
-                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: widget.theme.colorScheme.primaryContainer
-                            .withValues(alpha: dark ? 0.66 : 0.72),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Row(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    // Простой полупрозрачный фон — без размытия. `BackdropFilter`
+                    // под анимацией пересобирал размытие каждый кадр и плашка
+                    // «мигала»; полупрозрачного цвета достаточно.
+                    color: widget.theme.colorScheme.primaryContainer
+                        .withValues(alpha: dark ? 0.86 : 0.90),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
                         children: [
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 280),
@@ -435,8 +432,6 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 }

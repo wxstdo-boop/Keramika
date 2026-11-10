@@ -6,7 +6,9 @@ import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/installer.dart';
 import '../services/update_service.dart';
+import '../utils/design_tokens.dart';
 import '../utils/snackbar.dart';
+import 'press_scale.dart';
 
 /// Компактная таблетка «Обновления» рядом с версией в
 /// Настройках.
@@ -86,30 +88,31 @@ class _UpdatePillState extends State<UpdatePill>
       // Спрашиваем разрешение ПЕРЕД загрузкой: пользователь просил, чтобы
       // приложение не ставило обновление само, а сначала предложило. Диалог
       // заменяет прежнюю «тихую» загрузку — согласие явное.
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showGeneralDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(
-            Translations.t('updateAvailable', ctx, 'Доступно обновление'),
-          ),
-          content: Text(
-            Translations.t(
-              'updateAvailableBody',
-              ctx,
-              'Установить v{v}?',
-            ).replaceAll('{v}', update.versionName),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(Translations.t('cancel', ctx, 'Отмена')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(Translations.t('install', ctx, 'Установить')),
-            ),
-          ],
+        barrierDismissible: true,
+        barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+        barrierColor: Colors.black.withValues(alpha: 0.42),
+        transitionDuration: const Duration(milliseconds: 240),
+        pageBuilder: (ctx, _, _) => _UpdateConfirmDialog(
+          version: update.versionName,
+          onConfirm: () => Navigator.pop(ctx, true),
+          onCancel: () => Navigator.pop(ctx, false),
         ),
+        transitionBuilder: (ctx, anim, _, child) {
+          final curved = CurvedAnimation(
+            parent: anim,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+              child: child,
+            ),
+          );
+        },
       );
       if (!mounted || confirmed != true) {
         pendingUpdate.value = null;
@@ -257,15 +260,13 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
-/// Значок таблетки: в покое — аккуратная «стрелка в лоток» (установка),
-/// в работе — плавно вращающееся кольцо с «хвостом-кометой».
+/// Значок таблетки: в покое — «искра обновления» (четырёхлучевая звезда с
+/// малой спутницей), в работе — плавно вращающееся кольцо с растворяющимся
+/// хвостом.
 ///
-/// Раньше здесь бежала нарисованная белка: у неё дёргались лапы и хвост, и
-/// на 13 px это читалось мельтешением, а не движением. Кольцо вращается
-/// непрерывно и равноускоренно — «идёт проверка/загрузка» понятно без текста
-/// и не мельтешит. Дуга рисуется теми же штрихами со скруглёнными концами,
-/// что и стрелка, поэтому переход «покой → работа» не меняет ни размер, ни
-/// вес значка: таблетка не «дёргает» лэйаут.
+/// Звезда читается как «свежее, новое» и заметно отличается от системной
+/// стрелки-в-лоток, но сохраняет размер и вес кольца, поэтому переход
+/// «покой → работа» не двигает лэйаут таблетки.
 class _UpdateGlyphPainter extends CustomPainter {
   const _UpdateGlyphPainter({
     required this.progress,
@@ -281,12 +282,6 @@ class _UpdateGlyphPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 1.4;
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.9
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = true;
 
     if (running) {
       // Кольцо-комета: сплошная дуга в 250° и растворяющийся хвост. Угол
@@ -316,25 +311,31 @@ class _UpdateGlyphPainter extends CustomPainter {
       return;
     }
 
-    // Покой: стрелка вниз в «лоток» — узнаваемый знак установки/загрузки.
-    final r = math.min(size.width, size.height) / 2;
-    canvas.drawLine(
-      Offset(center.dx, center.dy - r * 0.62),
-      Offset(center.dx, center.dy + r * 0.12),
-      stroke,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(center.dx - r * 0.36, center.dy - r * 0.16)
-        ..lineTo(center.dx, center.dy + r * 0.16)
-        ..lineTo(center.dx + r * 0.36, center.dy - r * 0.16),
-      stroke,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(center.dx - r * 0.6, center.dy + r * 0.62)
-        ..lineTo(center.dx + r * 0.6, center.dy + r * 0.62),
-      stroke,
+    // Покой: четырёхлучевая «искра» — две скрещённые дуги-линзы. Кончики
+    // сведены в одну точку, середина «толще»: звезда мягкая, не колючая.
+    void drawSpark(Offset c, double r, double w) {
+      final p = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+      final path = Path()
+        ..moveTo(c.dx, c.dy - r)
+        ..quadraticBezierTo(c.dx + r * 0.28, c.dy - r * 0.28, c.dx + r, c.dy)
+        ..quadraticBezierTo(c.dx + r * 0.28, c.dy + r * 0.28, c.dx, c.dy + r)
+        ..quadraticBezierTo(c.dx - r * 0.28, c.dy + r * 0.28, c.dx - r, c.dy)
+        ..quadraticBezierTo(c.dx - r * 0.28, c.dy - r * 0.28, c.dx, c.dy - r)
+        ..close();
+      canvas.drawPath(path, p);
+    }
+
+    drawSpark(center.translate(-0.4, -0.4), radius * 0.92, 1.5);
+    // Малая спутница снизу-справа — «ещё одна искра», живой акцент.
+    drawSpark(
+      center.translate(radius * 0.66, radius * 0.66),
+      radius * 0.34,
+      1.3,
     );
   }
 
@@ -343,4 +344,161 @@ class _UpdateGlyphPainter extends CustomPainter {
       oldDelegate.progress != progress ||
       oldDelegate.color != color ||
       oldDelegate.running != running;
+}
+
+/// Окно подтверждения обновления.
+///
+/// Вместо системного [AlertDialog]: своя карточка со скруглением, мягкая
+/// полупрозрачная обводка, текст подписи курсивом, а кнопки «отдать» при
+/// нажатии ([PressScale]) и «подтвердить» — залитая акцентом с плавной
+/// отдачей. Появление — всплытие с лёгким масштабом (см. [showGeneralDialog]).
+class _UpdateConfirmDialog extends StatelessWidget {
+  final String version;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const _UpdateConfirmDialog({
+    required this.version,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Container(
+            // Полупрозрачная градиентная обводка: акцент → прозрачность, как
+            // у «стеклянных» плашек приложения.
+            padding: const EdgeInsets.all(1.2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.xl),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  cs.primary.withValues(alpha: 0.55),
+                  cs.primary.withValues(alpha: 0.08),
+                  cs.tertiary.withValues(alpha: 0.40),
+                ],
+                stops: const <double>[0, 0.55, 1],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.shadowColor.withValues(alpha: 0.22),
+                  blurRadius: 28,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.lg,
+                Spacing.lg,
+                Spacing.lg,
+                Spacing.md,
+              ),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(Radii.xl - 1),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: cs.primaryContainer,
+                        ),
+                        child: Icon(
+                          Icons.system_update_alt_rounded,
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: Text(
+                          Translations.t(
+                            'updateAvailable',
+                            context,
+                            'Доступно обновление',
+                          ),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: Weights.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Spacing.sm),
+                  Text(
+                    Translations.t(
+                      'updateAvailableBody',
+                      context,
+                      'Установить v{v}?',
+                    ).replaceAll('{v}', version),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.lg),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: PressScale(
+                          pressedScale: 0.95,
+                          child: TextButton(
+                            onPressed: onCancel,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 46),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(Radii.md),
+                              ),
+                            ),
+                            child: Text(
+                              Translations.t('cancel', context, 'Отмена'),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: PressScale(
+                          pressedScale: 0.95,
+                          child: FilledButton(
+                            onPressed: onConfirm,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(0, 46),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(Radii.md),
+                              ),
+                            ),
+                            child: Text(
+                              Translations.t('install', context, 'Установить'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
