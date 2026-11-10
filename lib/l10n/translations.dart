@@ -822,139 +822,96 @@ class Translations {
       'changePrev2': 'PIN lock added',
       'changePrev3': 'Data export / import',
       'changePrev4': 'Nutrition module with 7-day history',
-      'motivationQuote1': 'Small steps every day lead to big changes.',
-      'motivationQuote2': 'Progress, not perfection.',
-      'motivationQuote3': 'You are stronger than you think.',
-      'motivationQuote4': 'Every expert was once a beginner.',
-      'motivationQuote5': 'Consistency beats intensity.',
-      'motivationQuote6': 'Focus on progress, not perfection.',
-      'motivationQuote7': 'You are capable of amazing things.',
-      'motivationQuote8': 'One day at a time.',
-      'motivationQuote9': 'Believe in yourself.',
-      'motivationQuote10': 'Dream big, start small.',
-      'motivationQuote11': 'Every moment is a fresh beginning.',
-      'motivationQuote12': 'Your only limit is you.',
-      'motivationQuote13': 'Make today count.',
-      'motivationQuote14': 'Small wins add up to big results.',
-      'motivationQuote15': 'Keep going, you are almost there.',
-      'motivationQuote16': 'Discipline is freedom.',
-      'motivationQuote17':
-          'You don\'t need to see the whole staircase — just take the first step.',
-      'motivationQuote18':
-          'The pain of discipline is less than the pain of regret.',
-      'motivationQuote19':
-          'Every habit you build is a vote for the person you want to become.',
-      'motivationQuote20':
-          'Success is the sum of small efforts repeated daily.',
-      'motivationQuote21':
-          'Don’t stare at the clock. Do what clocks do — keep going.',
-      'motivationQuote22':
-          'Your future self is watching you right now through memories.',
-      'motivationQuote23': 'A year from now you wish you had started today.',
-      'motivationQuote24':
-          'The only bad workout is the one that didn’t happen.',
-      'motivationQuote25':
-          'Small daily improvements are the key to staggering long-term results.',
-      'motivationQuote26': 'You are one decision away from a different life.',
-      'motivationQuote27':
-          'The best time to plant a tree was 20 years ago. The second best is now.',
-      'motivationQuote28':
-          'Your body can handle almost anything. It’s your mind you have to convince.',
-      'motivationQuote29':
-          'Don’t stop when you’re tired. Stop when you’re done.',
-      'motivationQuote30':
-          'Every day is a fresh start. No grudges with yesterday.',
-      'motivationQuote31':
-          'You are going through a struggle that is forging strength for tomorrow.',
-      'motivationQuote32': 'If it was easy, everyone would do it.',
-      'motivationQuote33':
-          'Focus on progress, not perfection. One percent better every day wins.',
-      'motivationQuote34':
-          'You don’t need motivation — you need discipline and a plan.',
-      'motivationQuote35':
-          'The pain of staying the same is greater than the pain of change.',
-      'motivationQuote36': 'Dreams don’t work unless you do.',
-      'motivationQuote37':
-          'Small actions, multiplied daily, lead to massive change.',
-      'motivationQuote38': 'Be proud of how far you have come. Keep going.',
-      'motivationQuote39': 'Effort today is strength tomorrow.',
-      'motivationQuote40': 'You’re not behind. You’re on your own path.',
-      'motivationQuote41': 'Action cures fear. Inaction feeds it.',
-      'motivationQuote42': 'The hardest step is the first one. Take it.',
-      'motivationQuote43':
-          'Consistency turns ordinary effort into outstanding results.',
-      'motivationQuote44': 'A goal without a plan is just a wish.',
-      'motivationQuote45': 'Where you are now is not the endpoint.',
-      'motivationQuote46':
-          'Your only competitor is the person you were yesterday.',
-      'motivationQuote47':
-          'Habits are the compound interest of self-improvement.',
-      'motivationQuote48': 'Success doesn’t come to you — you go to it.',
-      'motivationQuote49': 'Fall seven times, stand up eight.',
-      'motivationQuote50':
-          'You’ve survived 100% of your hardest days. You’ll survive this one too.',
-      'motivationQuote51':
-          'A seed planted today will become the tree you rest under tomorrow.',
-      'motivationQuote52':
-          'Your habits shape your character. Your character shapes your destiny.',
-      'motivationQuote53':
-          'Stop waiting for the perfect moment. Take the moment and make it perfect.',
-      'motivationQuote54': 'Small disciplines are gateways to great abilities.',
-      'motivationQuote55': 'Mind is everything. What you think, you become.',
-      'motivationQuote56':
-          'You can’t go back and change the beginning, but you can start where you are.',
-      'motivationQuote57': 'The road to success is always under construction.',
-      'motivationQuote58': 'Great things never come from comfort zones.',
-      'motivationQuote59': 'Believe you can and you’re halfway there.',
-      'motivationQuote60': 'Every master was once a disaster.',
-      'motivationQuote61': 'Don\'t count the days. Make the days count.',
-      'motivationQuote62':
-          'A journey of a thousand miles begins with a single step.',
-      'motivationQuote63':
-          'Hard work beats talent when talent doesn’t work hard.',
-      'motivationQuote64':
-          'The only limit to your impact is your imagination and commitment.',
-      'motivationQuote65': 'Focus on productivity, not just activity.',
-      'motivationQuote66':
-          'You’re not a victim of your habits — you’re the architect.',
-      'motivationQuote67': 'Do today what your future self will thank you for.',
-      'motivationQuote68':
-          'The difference between ordinary and extraordinary is a little extra effort.',
-      'motivationQuote69': 'You don’t have to be extreme — just consistent.',
-      'motivationQuote70': 'Your potential is unlimited. Your excuses are not.',
-      'motivationQuote71':
-          'Stop comparing your chapter 1 to someone else’s chapter 20.',
-      'motivationQuote72':
-          'The pain of discipline weighs ounces. The pain of regret weighs tons.',
-      'motivationQuote73':
-          'Small habits, repeated daily, transform life for years ahead.',
-      'motivationQuote74': 'Don’t seek motivation. Create it by showing up.',
-      'motivationQuote75': 'A goal is a dream with a deadline. Set yours.',
-      'motivationQuote76':
-          'Discipline is choosing what you want most over what you want now.',
-      'motivationQuote77':
-          'The only one who can beat you is you. And yesterday was their best day.',
-      'motivationQuote78':
-          'Success is built in private moments when nobody is watching.',
-      'motivationQuote79':
-          'If you keep doing what you’ve always done, you’ll keep getting what you’ve always got.',
-      'motivationQuote80':
-          'Don’t pray for an easy life. Pray for the strength to endure a hard one.',
-      'motivationQuote81':
-          'Every champion was once a contender that didn’t quit.',
-      'motivationQuote82':
-          'The future depends on what you do today, not tomorrow.',
-      'motivationQuote83':
-          'You become what you repeat. Make your repetitions meaningful.',
-      'motivationQuote84': 'Courage doesn’t remove fear — it acts despite it.',
-      'motivationQuote85':
-          'When you feel like quitting, remember why you started.',
-      'motivationQuote86':
-          'No one else is going to build your dreams. Get to work.',
-      'motivationQuote87': 'Rest, but don’t quit.',
-      'motivationQuote88': 'Consistency turns luck into design.',
-      'motivationQuote89': 'The harder you train, the luckier you get.',
-      'motivationQuote90': 'Your daily habits are the architecture of destiny.',
+      'motivationQuote1': 'An easy life begins with a simple “enough”.',
+      'motivationQuote2': 'You don’t have to fit everything in — a lot can simply be let go.',
+      'motivationQuote3': 'Breathe deeper: hurry doesn’t speed things up, it only tires you.',
+      'motivationQuote4': 'A small step without strain lasts longer than a sprint.',
+      'motivationQuote5': 'Let yourself rest without earning it first.',
+      'motivationQuote6': 'A simple morning makes the whole day lighter.',
+      'motivationQuote7': 'You don’t need to be the best — being real is enough.',
+      'motivationQuote8': 'Let go of what isn’t in your hands, and breathing gets easier.',
+      'motivationQuote9': 'Silence isn’t emptiness — it’s room for yourself.',
+      'motivationQuote10': 'Do less, but more calmly.',
+      'motivationQuote11': 'Ease isn’t laziness — it’s the right rhythm.',
+      'motivationQuote12': 'One kind deed is enough for today.',
+      'motivationQuote13': 'Don’t compare your path to someone else’s: everyone has their own pace.',
+      'motivationQuote14': 'Allow yourself not to know every answer.',
+      'motivationQuote15': 'A calm mind solves things faster than a tired one.',
+      'motivationQuote16': 'Clear away the extra, and life gets roomier.',
+      'motivationQuote17': 'Tell yourself “I’m managing”, and it gets easier.',
+      'motivationQuote18': 'Rest is part of the work, not a reward for it.',
+      'motivationQuote19': 'Gentleness with yourself is stronger than strictness.',
+      'motivationQuote20': 'Don’t race the day — live it.',
+      'motivationQuote21': 'Just because it’s easy doesn’t mean it’s wrong.',
+      'motivationQuote22': 'Start small and don’t rush the ending.',
+      'motivationQuote23': 'Your worth doesn’t depend on your speed.',
+      'motivationQuote24': 'Leave one worry behind today.',
+      'motivationQuote25': 'Live so that in the evening you want to exhale with a smile.',
+      'motivationQuote26': 'Simplicity is the most underrated luxury.',
+      'motivationQuote27': 'Don’t drag yesterday into a new day.',
+      'motivationQuote28': 'A smile is the shortest path to lightness.',
+      'motivationQuote29': 'Allow yourself a slow day without guilt.',
+      'motivationQuote30': 'It’s good where you’re not rushing.',
+      'motivationQuote31': 'One breath is already a small pause.',
+      'motivationQuote32': 'Do what gives you strength back.',
+      'motivationQuote33': 'Not every thought needs to be finished.',
+      'motivationQuote34': 'Ease is born from an honest “no”.',
+      'motivationQuote35': 'You have the right to a calm evening.',
+      'motivationQuote36': 'Less hustle — more life.',
+      'motivationQuote37': 'A mistake is just a turn, not a failure.',
+      'motivationQuote38': 'Be as kind to yourself as you are to a friend.',
+      'motivationQuote39': 'Your rhythm is right if you feel good in it.',
+      'motivationQuote40': 'Morning begins not with tasks, but with breathing.',
+      'motivationQuote41': 'Don’t fill every minute — leave room for wonder.',
+      'motivationQuote42': 'Ease is when you have nothing to prove.',
+      'motivationQuote43': 'Let the day be ordinary.',
+      'motivationQuote44': 'A quiet “all is well” is worth loud victories.',
+      'motivationQuote45': 'Rest before you want to, not after you collapse.',
+      'motivationQuote46': 'A clear desk, a clear head.',
+      'motivationQuote47': 'Let go of control where it only tires you.',
+      'motivationQuote48': 'Look at the sky at least once a day.',
+      'motivationQuote49': 'Less screen — more air.',
+      'motivationQuote50': 'A walk without a goal heals better than plans.',
+      'motivationQuote51': 'Thank your body for carrying you.',
+      'motivationQuote52': 'You don’t have to be productive every minute.',
+      'motivationQuote53': 'Boredom is sometimes rest for the soul.',
+      'motivationQuote54': 'Drink water, breathe, live now.',
+      'motivationQuote55': 'Don’t postpone joy to “someday”.',
+      'motivationQuote56': 'Do something today just for pleasure.',
+      'motivationQuote57': 'A quiet evening beats a noisy race.',
+      'motivationQuote58': 'Let yourself dream without a plan.',
+      'motivationQuote59': 'Warmth around you starts with warmth inside.',
+      'motivationQuote60': 'One thing at a time — and the world won’t collapse.',
+      'motivationQuote61': 'Tired? Rest, don’t quit.',
+      'motivationQuote62': 'Don’t demand more of yourself than of others.',
+      'motivationQuote63': 'Joy lives in small things, if you notice them.',
+      'motivationQuote64': 'Slower means more attentive.',
+      'motivationQuote65': 'Forgive yourself for yesterday’s tiredness.',
+      'motivationQuote66': 'An easy life is a choice, not luck.',
+      'motivationQuote67': 'Start the day with gratitude, not anxiety.',
+      'motivationQuote68': 'Home is where you feel calm.',
+      'motivationQuote69': 'Don’t chase everything — choose what’s yours.',
+      'motivationQuote70': 'Silence over a cup of tea is a conversation too.',
+      'motivationQuote71': 'Let go of others’ expectations — they aren’t yours.',
+      'motivationQuote72': 'Good sleep is half of an easy life.',
+      'motivationQuote73': 'Live so you don’t want to run from yourself.',
+      'motivationQuote74': 'Leave room in the day for nothing.',
+      'motivationQuote75': 'A simple “no” frees up a whole evening.',
+      'motivationQuote76': 'Don’t compare your beginning to someone’s middle.',
+      'motivationQuote77': 'Ease is trust in yourself.',
+      'motivationQuote78': 'Take a step, not a leap.',
+      'motivationQuote79': 'Smile for no reason — a reason will turn up.',
+      'motivationQuote80': 'You don’t have to get everything done today.',
+      'motivationQuote81': 'The day gets kinder when you don’t rush it.',
+      'motivationQuote82': 'Tenderness with yourself isn’t weakness.',
+      'motivationQuote83': 'Less noise, more meaning.',
+      'motivationQuote84': 'Live now — the past has already had its rest.',
+      'motivationQuote85': 'Let good things come without effort.',
+      'motivationQuote86': 'Rest is movement forward too.',
+      'motivationQuote87': 'Your calm matters more than others’ opinions.',
+      'motivationQuote88': 'Every breath is a new chance to begin gently.',
+      'motivationQuote89': 'An easy life begins with an easy gaze.',
+      'motivationQuote90': 'You are already enough. Just be.',
       'areYouSure': 'Are you sure?',
       'streakResetDone': 'Streak reset',
       'openSettings': 'Open settings',
@@ -1823,139 +1780,96 @@ class Translations {
       'changePrev2': 'Добавлен PIN-замок',
       'changePrev3': 'Экспорт/импорт данных',
       'changePrev4': 'Модуль питания с 7-дневной историей',
-      'motivationQuote1':
-          'Маленькие шаги каждый день ведут к большим переменам.',
-      'motivationQuote2': 'Прогресс, а не совершенство.',
-      'motivationQuote3': 'Ты сильнее, чем думаешь.',
-      'motivationQuote4': 'Каждый эксперт когда-то был новичком.',
-      'motivationQuote5': 'Постоянство бьёт интенсивность.',
-      'motivationQuote6': 'Фокус на прогрессе, а не на совершенстве.',
-      'motivationQuote7': 'Ты способен на удивительные вещи.',
-      'motivationQuote8': 'Один день за раз.',
-      'motivationQuote9': 'Верь в себя.',
-      'motivationQuote10': 'Мечтай по-крупному, начинай по-маленькому.',
-      'motivationQuote11': 'Каждый момент — свежее начало.',
-      'motivationQuote12': 'Твой единственный предел — ты сам.',
-      'motivationQuote13': 'Сделай сегодняшний день значимым.',
-      'motivationQuote14':
-          'Маленькие победы складываются в большие результаты.',
-      'motivationQuote15': 'Продолжай, ты уже почти у цели.',
-      'motivationQuote16': 'Дисциплина — это свобода.',
-      'motivationQuote17':
-          'Не нужно видеть всю лестницу — просто сделай первый шаг.',
-      'motivationQuote18': 'Боль от дисциплины меньше боли от сожалений.',
-      'motivationQuote19':
-          'Каждая привычка, которую ты строишь, — голос за того, кем хочешь стать.',
-      'motivationQuote20':
-          'Успех — это сумма маленьких усилий, повторённых ежедневно.',
-      'motivationQuote21':
-          'Не смотри на часы. Делай то, что они делают, — продолжай идти.',
-      'motivationQuote22':
-          'Твоё будущее «я» сейчас смотрит на тебя через воспоминания.',
-      'motivationQuote23': 'Через год ты пожалеешь, что не начал сегодня.',
-      'motivationQuote24':
-          'Единственное плохое упражнение — то, которое не было сделано.',
-      'motivationQuote25':
-          'Маленькие ежедневные улучшения — ключ к потрясающим долгосрочным результатам.',
-      'motivationQuote26': 'Ты на одном решении от другой жизни.',
-      'motivationQuote27':
-          'Лучшее время посадить дерево было 20 лет назад. Второе лучшее — сейчас.',
-      'motivationQuote28':
-          'Твоё тело выдержит почти всё. Нужно убедить в этом разум.',
-      'motivationQuote29':
-          'Не останавливайся, когда устал. Остановись, когда закончил.',
-      'motivationQuote30':
-          'Каждый день — свежее начало. Без обид на вчерашний день.',
-      'motivationQuote31':
-          'Сейчас ты проходишь через борьбу, которая закаляет силу для завтра.',
-      'motivationQuote32': 'Если бы это было легко, это делали бы все.',
-      'motivationQuote33':
-          'Фокус на прогрессе, а не совершенстве. Один процент лучше каждый день — это победа.',
-      'motivationQuote34':
-          'Тебе не нужна мотивация — тебе нужны дисциплина и план.',
-      'motivationQuote35':
-          'Боль от прежнего состояния больше, чем боль от перемен.',
-      'motivationQuote36': 'Мечты не работают, пока не работаешь ты.',
-      'motivationQuote37':
-          'Маленькие действия, умноженные ежедневно, приводят к массовым переменам.',
-      'motivationQuote38': 'Гордись тем, как далеко ты зашёл. Продолжай.',
-      'motivationQuote39': 'Усилия сегодня — сила завтра.',
-      'motivationQuote40': 'Ты не отстаёшь. Ты на своём пути.',
-      'motivationQuote41': 'Действие лечит страх. Бездействие кормит его.',
-      'motivationQuote42': 'Самый трудный шаг — первый. Сделай его.',
-      'motivationQuote43':
-          'Постоянство превращает обычные усилия в выдающиеся результаты.',
-      'motivationQuote44': 'Цель без плана — просто желание.',
-      'motivationQuote45': 'Твоё текущее положение — не конечная точка.',
-      'motivationQuote46': 'Единственный конкурент — тот, кем ты был вчера.',
-      'motivationQuote47':
-          'Привычки — это сложные проценты самосовершенствования.',
-      'motivationQuote48': 'Успех не приходит к тебе — ты идёшь к нему.',
-      'motivationQuote49': 'Падай семь раз — вставай восемь.',
-      'motivationQuote50':
-          'Ты пережил(а) 100% самых тяжёлых дней, которые у тебя были.',
-      'motivationQuote51':
-          'Семя, посаженное сегодня, вырастет в дерево, под которым ты отдохнёшь завтра.',
-      'motivationQuote52':
-          'Твои привычки формируют характер. Характер формирует судьбу.',
-      'motivationQuote53':
-          'Перестань ждать идеального момента. Возьми момент и сделай его идеальным.',
-      'motivationQuote54': 'Малые дисциплины — ворота к великим способностям.',
-      'motivationQuote55': 'Разум — это всё. Что ты думаешь, тем становишься.',
-      'motivationQuote56':
-          'Нельзя вернуться и изменить начало, но можно начать с того места, где ты есть.',
-      'motivationQuote57': 'Дорога к успеху всегда в строительстве.',
-      'motivationQuote58': 'Великие вещи никогда не приходят из зон комфорта.',
-      'motivationQuote59': 'Поверь, что можешь, — и уже на полпути.',
-      'motivationQuote60': 'Каждый мастер когда-то был катастрофой.',
-      'motivationQuote61': 'Не считай дни. Заставляй дни считаться.',
-      'motivationQuote62':
-          'Путешествие в тысячу миль начинается с одного шага.',
-      'motivationQuote63':
-          'Тяжёлая работа бьёт талант, когда талант не работает.',
-      'motivationQuote64':
-          'Единственный предел твоего влияния — воображение и обязательства.',
-      'motivationQuote65': 'Фокусируйся на продуктивности, а не на занятости.',
-      'motivationQuote66': 'Ты не жертва своих привычек — ты архитектор.',
-      'motivationQuote67':
-          'Сделай сегодня то, за что скажет спасибо твоё будущее «я».',
-      'motivationQuote68':
-          'Разница между обычным и выдающимся — немного дополнительных усилий.',
-      'motivationQuote69': 'Не нужно быть экстремальным — просто постоянным.',
-      'motivationQuote70': 'Твой потенциал безграничен. Твои оправдания — нет.',
-      'motivationQuote71':
-          'Перестань сравнивать свою главу 1 с главой 20 другого.',
-      'motivationQuote72':
-          'Боль дисциплины весит унции. Боль сожалений — тонны.',
-      'motivationQuote73':
-          'Малые привычки, повторяемые каждый день, меняют жизнь на годы вперёд.',
-      'motivationQuote74': 'Не ищи мотивацию. Создавай её, появляясь.',
-      'motivationQuote75': 'Цель — это мечта с дедлайном. Назначь свой.',
-      'motivationQuote76':
-          'Дисциплина выбирает то, чего хочешь больше всего, а не то, чего хочешь прямо сейчас.',
-      'motivationQuote77':
-          'Единственный, кто может победить тебя, — это ты. А вчера был их лучший день.',
-      'motivationQuote78':
-          'Успех строится в приватные моменты, когда никто не смотрит.',
-      'motivationQuote79':
-          'Если продолжаешь делать одно и то же — получаешь одно и то же.',
-      'motivationQuote80':
-          'Не моли об лёгкой жизни — моли о силе выдержать трудную.',
-      'motivationQuote81':
-          'Каждый чемпион когда-то был соперником, который не сдался.',
-      'motivationQuote82':
-          'Будущее зависит от того, что ты делаешь сегодня, а не завтра.',
-      'motivationQuote83':
-          'Ты становишься тем, что повторяешь. Делай повторения значимыми.',
-      'motivationQuote84':
-          'Смелость не убирает страх — она действует несмотря на него.',
-      'motivationQuote85': 'Когда захочется сдаться, вспомни, почему начал.',
-      'motivationQuote86': 'Никто другой не построит твои мечты. Работай.',
-      'motivationQuote87': 'Отдыхай, но не сдавайся.',
-      'motivationQuote88': 'Постоянство превращает удачу в дизайн.',
-      'motivationQuote89':
-          'Чем тяжелее тренируешься, тем удачливее становишься.',
-      'motivationQuote90': 'Твои ежедневные привычки — архитектура судьбы.',
+      'motivationQuote1': 'Лёгкая жизнь начинается с простого «достаточно».',
+      'motivationQuote2': 'Не всё нужно успеть — многое можно просто отпустить.',
+      'motivationQuote3': 'Дыши глубже: спешка не ускоряет, а только утомляет.',
+      'motivationQuote4': 'Маленький шаг без напряжения длится дольше рывка.',
+      'motivationQuote5': 'Позволь себе отдыхать, не заслужив этого.',
+      'motivationQuote6': 'Простое утро делает лёгким весь день.',
+      'motivationQuote7': 'Тебе не нужно быть лучшим — достаточно быть настоящим.',
+      'motivationQuote8': 'Отпусти то, что не в твоих руках, и станет легче дышать.',
+      'motivationQuote9': 'Тишина — не пустота, а место для себя.',
+      'motivationQuote10': 'Делай меньше, но спокойнее.',
+      'motivationQuote11': 'Лёгкость — это не лень, а верный ритм.',
+      'motivationQuote12': 'Сегодня достаточно одного доброго дела.',
+      'motivationQuote13': 'Не сравнивай свой путь с чужим: у каждого свой темп.',
+      'motivationQuote14': 'Разреши себе не знать всех ответов.',
+      'motivationQuote15': 'Спокойный ум решает быстрее усталого.',
+      'motivationQuote16': 'Убери лишнее — и жизнь станет просторнее.',
+      'motivationQuote17': 'Скажи себе «я справляюсь», и станет легче.',
+      'motivationQuote18': 'Отдых — часть работы, а не награда за неё.',
+      'motivationQuote19': 'Мягкость к себе сильнее строгости.',
+      'motivationQuote20': 'Не гони день — проживи его.',
+      'motivationQuote21': 'То, что легко, не значит «плохо».',
+      'motivationQuote22': 'Начни с малого и не торопи финал.',
+      'motivationQuote23': 'Твоя ценность не зависит от скорости.',
+      'motivationQuote24': 'Оставь на сегодня одну заботу меньше.',
+      'motivationQuote25': 'Живи так, чтобы вечером хотелось выдохнуть с улыбкой.',
+      'motivationQuote26': 'Простота — самая недооценённая роскошь.',
+      'motivationQuote27': 'Не тащи вчерашнее в новый день.',
+      'motivationQuote28': 'Улыбка — самый короткий путь к лёгкости.',
+      'motivationQuote29': 'Позволь себе медленный день без вины.',
+      'motivationQuote30': 'Хорошо там, где не спешишь.',
+      'motivationQuote31': 'Один вдох — уже маленькая пауза.',
+      'motivationQuote32': 'Делай то, что возвращает тебе силы.',
+      'motivationQuote33': 'Не всякую мысль нужно додумывать.',
+      'motivationQuote34': 'Лёгкость рождается из честного «нет».',
+      'motivationQuote35': 'Ты имеешь право на спокойный вечер.',
+      'motivationQuote36': 'Меньше суеты — больше жизни.',
+      'motivationQuote37': 'Ошибка — это просто поворот, а не провал.',
+      'motivationQuote38': 'Будь к себе таким же добрым, как к другу.',
+      'motivationQuote39': 'Твой ритм — правильный, если тебе в нём хорошо.',
+      'motivationQuote40': 'Утро начинается не с дел, а с дыхания.',
+      'motivationQuote41': 'Не заполняй каждую минуту — оставь место чуду.',
+      'motivationQuote42': 'Лёгкость — это когда не нужно ничего доказывать.',
+      'motivationQuote43': 'Позволь дню быть обычным.',
+      'motivationQuote44': 'Тихое «всё хорошо» стоит громких побед.',
+      'motivationQuote45': 'Отдыхай, пока не захочется, а не пока не свалишься.',
+      'motivationQuote46': 'Чистый стол — чистая голова.',
+      'motivationQuote47': 'Отпусти контроль там, где он только утомляет.',
+      'motivationQuote48': 'Смотри на небо хотя бы раз в день.',
+      'motivationQuote49': 'Меньше экрана — больше воздуха.',
+      'motivationQuote50': 'Прогулка без цели лечит лучше планов.',
+      'motivationQuote51': 'Скажи спасибо телу за то, что оно несёт тебя.',
+      'motivationQuote52': 'Ты не обязан быть продуктивным каждую минуту.',
+      'motivationQuote53': 'Скука иногда — это отдых для души.',
+      'motivationQuote54': 'Пей воду, дыши, живи сейчас.',
+      'motivationQuote55': 'Не откладывай радость на «когда-нибудь».',
+      'motivationQuote56': 'Сделай сегодня что-то просто для удовольствия.',
+      'motivationQuote57': 'Тихий вечер лучше шумной гонки.',
+      'motivationQuote58': 'Позволь себе мечтать без плана.',
+      'motivationQuote59': 'Тепло рядом начинается с тепла внутри.',
+      'motivationQuote60': 'Одно дело за раз — и мир не рухнет.',
+      'motivationQuote61': 'Устал — отдохни, а не сдавайся.',
+      'motivationQuote62': 'Не требуй от себя больше, чем от других.',
+      'motivationQuote63': 'Радость живёт в мелочах, если их замечать.',
+      'motivationQuote64': 'Медленнее — значит внимательнее.',
+      'motivationQuote65': 'Прости себя за вчерашнюю усталость.',
+      'motivationQuote66': 'Лёгкая жизнь — это выбор, а не удача.',
+      'motivationQuote67': 'Начни день с благодарности, а не с тревоги.',
+      'motivationQuote68': 'Дом там, где тебе спокойно.',
+      'motivationQuote69': 'Не гонись за всем — выбери своё.',
+      'motivationQuote70': 'Молчание за чашкой чая — тоже разговор.',
+      'motivationQuote71': 'Отпусти чужие ожидания — они не твои.',
+      'motivationQuote72': 'Хороший сон — половина лёгкой жизни.',
+      'motivationQuote73': 'Живи так, чтобы не хотелось убежать от себя.',
+      'motivationQuote74': 'Оставь в дне место для ничего.',
+      'motivationQuote75': 'Простое «нет» освобождает целый вечер.',
+      'motivationQuote76': 'Не сравнивай своё начало с чьей-то серединой.',
+      'motivationQuote77': 'Лёгкость — это доверие к себе.',
+      'motivationQuote78': 'Сделай шаг, а не прыжок.',
+      'motivationQuote79': 'Улыбнись без причины — причина найдётся.',
+      'motivationQuote80': 'Ты не должен всё успеть сегодня.',
+      'motivationQuote81': 'День становится добрее, когда его не торопишь.',
+      'motivationQuote82': 'Нежность к себе — не слабость.',
+      'motivationQuote83': 'Меньше шума, больше смысла.',
+      'motivationQuote84': 'Живи сейчас — прошлое уже отдохнуло.',
+      'motivationQuote85': 'Позволь хорошему приходить без усилий.',
+      'motivationQuote86': 'Отдых — это тоже движение вперёд.',
+      'motivationQuote87': 'Твоё спокойствие важнее чужого мнения.',
+      'motivationQuote88': 'Каждый вдох — новый шанс начать мягко.',
+      'motivationQuote89': 'Лёгкая жизнь начинается с лёгкого взгляда.',
+      'motivationQuote90': 'Ты уже достаточно. Просто будь.',
       'areYouSure': 'Уверены?',
       'streakResetDone': 'Стрик сброшен',
       'openSettings': 'Открыть настройки',
@@ -2838,157 +2752,96 @@ class Translations {
       'changePrev2': 'Verrou PIN ajouté',
       'changePrev3': 'Export / import des données',
       'changePrev4': 'Module de nutrition avec historique 7 jours',
-      'motivationQuote1':
-          'Les petits pas quotidiens mènent à de grands changements.',
-      'motivationQuote2': 'Le progrès, pas la perfection.',
-      'motivationQuote3': 'Vous êtes plus fort que vous ne le pensez.',
-      'motivationQuote4': 'Chaque expert a un jour été débutant.',
-      'motivationQuote5': 'La constance bat l’intensité.',
-      'motivationQuote6':
-          'Concentrez-vous sur le progrès, pas sur la perfection.',
-      'motivationQuote7': 'Vous êtes capable de choses étonnantes.',
-      'motivationQuote8': 'Un jour à la fois.',
-      'motivationQuote9': 'Croyez en vous.',
-      'motivationQuote10': 'Rêvez grand, commencez petit.',
-      'motivationQuote11': 'Chaque instant est un nouveau départ.',
-      'motivationQuote12': 'Votre seule limite, c’est vous.',
-      'motivationQuote13': 'Faites que la journée compte.',
-      'motivationQuote14':
-          'Les petites victoires s’accumulent en grands résultats.',
-      'motivationQuote15': 'Continuez, vous y êtes presque.',
-      'motivationQuote16': 'La discipline, c’est la liberté.',
-      'motivationQuote17':
-          'Pas besoin de voir tout l’escalier — faites juste le premier pas.',
-      'motivationQuote18':
-          'La douleur de la discipline est moindre que celle du regret.',
-      'motivationQuote19':
-          'Chaque habitude que vous bâtissez est un vote pour la personne que vous voulez devenir.',
-      'motivationQuote20':
-          'Le succès est la somme de petits efforts répétés chaque jour.',
-      'motivationQuote21':
-          'Ne fixez pas l’horloge. Faites ce qu’elle fait — continuez.',
-      'motivationQuote22': 'Votre futur vous regarde à travers les souvenirs.',
-      'motivationQuote23':
-          'Dans un an, vous regretterez de ne pas avoir commencé aujourd’hui.',
-      'motivationQuote24':
-          'Le seul mauvais entraînement est celui qui n’a pas eu lieu.',
-      'motivationQuote25':
-          'Les petites améliorations quotidiennes font les résultats impressionnants sur le long terme.',
-      'motivationQuote26': 'Vous êtes à une décision d’une autre vie.',
-      'motivationQuote27':
-          'Le meilleur moment pour planter un arbre était il y a 20 ans. Le deuxième meilleur, c’est maintenant.',
-      'motivationQuote28':
-          'Votre corps peut supporter presque tout. Il faut convaincre votre esprit.',
-      'motivationQuote29':
-          'Ne vous arrêtez pas quand vous êtes fatigué. Arrêtez-vous quand c’est terminé.',
-      'motivationQuote30':
-          'Chaque jour est un nouveau départ. Pas de rancune contre hier.',
-      'motivationQuote31':
-          'Vous traversez une lutte qui forge la force de demain.',
-      'motivationQuote32': 'Si c’était facile, tout le monde le ferait.',
-      'motivationQuote33':
-          'Cap sur le progrès, pas la perfection. Un pour cent mieux chaque jour suffit.',
-      'motivationQuote34':
-          'Vous n’avez pas besoin de motivation — il vous faut de la discipline et un plan.',
-      'motivationQuote35':
-          'La douleur de ne pas changer est plus grande que celle du changement.',
-      'motivationQuote36': 'Les rêves ne marchent que si vous travaillez.',
-      'motivationQuote37':
-          'Les petites actions multipliées chaque jour mènent à de grands changements.',
-      'motivationQuote38': 'Soyez fier du chemin parcouru. Continuez.',
-      'motivationQuote39': 'L’effort d’aujourd’hui est la force de demain.',
-      'motivationQuote40':
-          'Vous n’êtes pas en retard. Vous êtes sur votre propre chemin.',
-      'motivationQuote41': 'L’action soigne la peur. L’inaction la nourrit.',
-      'motivationQuote42': 'Le pas le plus dur est le premier. Faites-le.',
-      'motivationQuote43':
-          'La constance transforme un effort ordinaire en un résultat remarquable.',
-      'motivationQuote44': 'Un objectif sans plan n’est qu’un souhait.',
-      'motivationQuote45':
-          'L’endroit où vous êtes n’est pas la destination finale.',
-      'motivationQuote46':
-          'Votre seul concurrent est la personne que vous étiez hier.',
-      'motivationQuote47':
-          'Les habitudes sont les intérêts composés de la amélioration de soi.',
-      'motivationQuote48':
-          'Le succès ne vient pas à vous — vous allez vers lui.',
-      'motivationQuote49': 'Tombez sept fois, relevez-vous huit.',
-      'motivationQuote50':
-          'Vous avez surmonté 100 % de vos jours les plus durs.',
-      'motivationQuote51':
-          'La graine plantée aujourd’hui deviendra l’arbre sous lequel vous vous reposerez demain.',
-      'motivationQuote52':
-          'Vos habitudes forgent votre caractère. Le caractère forge votre destin.',
-      'motivationQuote53':
-          'Arrêtez d’attendre le moment parfait. Prenez le moment et rendez-le parfait.',
-      'motivationQuote54':
-          'Les petites disciplines ouvrent les grandes capacités.',
-      'motivationQuote55':
-          'Le mental est tout. Ce que vous pensez, vous le devenez.',
-      'motivationQuote56':
-          'Vous ne pouvez pas revenir changer le début, mais vous pouvez commencer là où vous êtes.',
-      'motivationQuote57': 'La route du succès est toujours en chantier.',
-      'motivationQuote58':
-          'Les grandes choses ne viennent jamais des zones de confort.',
-      'motivationQuote59': 'Croyez que vous pouvez et vous êtes à mi-chemin.',
-      'motivationQuote60': 'Chaque maître a un jour été un désastre.',
-      'motivationQuote61':
-          'Ne comptez pas les jours. Faites que les jours comptent.',
-      'motivationQuote62':
-          'Un voyage de mille lieues commence par un seul pas.',
-      'motivationQuote63':
-          'Le travail acharné bat le talent quand le talent ne travaille pas.',
-      'motivationQuote64':
-          'La seule limite de votre impact est votre imagination et votre engagement.',
-      'motivationQuote65':
-          'Concentrez-vous sur la productivité, pas seulement l’activité.',
-      'motivationQuote66':
-          'Vous n’êtes pas victime de vos habitudes — vous en êtes l’architecte.',
-      'motivationQuote67':
-          'Faites aujourd’hui ce dont votre futur vous remerciera.',
-      'motivationQuote68':
-          'La différence entre l’ordinaire et l’extraordinaire, c’est un peu plus d’effort.',
-      'motivationQuote69': 'Pas besoin d’être extrême — juste constant.',
-      'motivationQuote70':
-          'Votre potentiel est sans limites. Vos excuses, non.',
-      'motivationQuote71':
-          'Arrêtez de comparer votre chapitre 1 au chapitre 20 d’un autre.',
-      'motivationQuote72':
-          'La douleur de la discipline pèse des grammes. Celle du regret pèse des tonnes.',
-      'motivationQuote73':
-          'Les petites habitudes, répétées chaque jour, changent la vie pour des années.',
-      'motivationQuote74':
-          'Ne cherchez pas la motivation. Créez-la en vous montrant.',
-      'motivationQuote75':
-          'Un objectif est un rêve avec une échéance. Fixez la vôtre.',
-      'motivationQuote76':
-          'La discipline choisit ce que vous voulez le plus, pas ce que vous voulez maintenant.',
-      'motivationQuote77':
-          'Le seul capable de vous battre, c’est vous. Et hier était leur meilleur jour.',
-      'motivationQuote78':
-          'Le succès se construit dans les instants privés où personne ne regarde.',
-      'motivationQuote79':
-          'Si vous continuez à faire la même chose, vous obtenez la même chose.',
-      'motivationQuote80':
-          'Ne priez pas pour une vie facile. Priez pour la force d’en supporter une difficile.',
-      'motivationQuote81':
-          'Chaque champion a été un concurrent qui n’a pas abandonné.',
-      'motivationQuote82':
-          'Le futur dépend de ce que vous faites aujourd’hui, pas demain.',
-      'motivationQuote83':
-          'Vous devenez ce que vous répétez. Rendez vos répétitions significatives.',
-      'motivationQuote84':
-          'Le courage ne supprime pas la peur — il agit malgré elle.',
-      'motivationQuote85':
-          'Quand vous voulez abandonner, souvenez-vous pourquoi vous avez commencé.',
-      'motivationQuote86':
-          'Personne d’autre ne construira vos rêves. Travaillez.',
-      'motivationQuote87': 'Reposez-vous, mais n’abandonnez pas.',
-      'motivationQuote88': 'La constance transforme la chance en design.',
-      'motivationQuote89':
-          'Plus vous vous entraînez dur, plus vous avez de la chance.',
-      'motivationQuote90':
-          'Vos habitudes quotidiennes sont l’architecture du destin.',
+      'motivationQuote1': 'Une vie légère commence par un simple « assez ».',
+      'motivationQuote2': 'Tu n’as pas à tout caser — beaucoup de choses peuvent simplement s’en aller.',
+      'motivationQuote3': 'Respire plus profondément : la hâte n’accélère rien, elle fatigue.',
+      'motivationQuote4': 'Un petit pas sans effort dure plus longtemps qu’un sprint.',
+      'motivationQuote5': 'Permets-toi de te reposer sans l’avoir mérité.',
+      'motivationQuote6': 'Un matin simple allège toute la journée.',
+      'motivationQuote7': 'Tu n’as pas besoin d’être le meilleur — être vrai suffit.',
+      'motivationQuote8': 'Lâche ce qui n’est pas entre tes mains, et respirer devient plus facile.',
+      'motivationQuote9': 'Le silence n’est pas un vide — c’est une place pour toi.',
+      'motivationQuote10': 'Fais moins, mais plus calmement.',
+      'motivationQuote11': 'La légèreté n’est pas de la paresse — c’est le bon rythme.',
+      'motivationQuote12': 'Une bonne action suffit pour aujourd’hui.',
+      'motivationQuote13': 'Ne compare pas ton chemin à celui d’un autre : chacun a son rythme.',
+      'motivationQuote14': 'Permets-toi de ne pas connaître toutes les réponses.',
+      'motivationQuote15': 'Un esprit calme résout plus vite qu’un esprit fatigué.',
+      'motivationQuote16': 'Enlève le superflu, et la vie s’agrandit.',
+      'motivationQuote17': 'Dis-toi « je gère », et cela devient plus léger.',
+      'motivationQuote18': 'Le repos fait partie du travail, ce n’est pas une récompense.',
+      'motivationQuote19': 'La douceur envers soi est plus forte que la sévérité.',
+      'motivationQuote20': 'Ne cours pas après la journée — vis-la.',
+      'motivationQuote21': 'Ce qui est facile n’est pas pour autant mauvais.',
+      'motivationQuote22': 'Commence petit et ne précipite pas la fin.',
+      'motivationQuote23': 'Ta valeur ne dépend pas de ta vitesse.',
+      'motivationQuote24': 'Laisse un souci de côté aujourd’hui.',
+      'motivationQuote25': 'Vis de sorte qu’au soir tu aies envie de souffler avec un sourire.',
+      'motivationQuote26': 'La simplicité est le luxe le plus sous-estimé.',
+      'motivationQuote27': 'Ne traîne pas hier dans un nouveau jour.',
+      'motivationQuote28': 'Un sourire est le plus court chemin vers la légèreté.',
+      'motivationQuote29': 'Permets-toi une journée lente, sans culpabilité.',
+      'motivationQuote30': 'On est bien là où l’on ne se presse pas.',
+      'motivationQuote31': 'Une respiration, c’est déjà une petite pause.',
+      'motivationQuote32': 'Fais ce qui te rend des forces.',
+      'motivationQuote33': 'Toute pensée n’a pas besoin d’être terminée.',
+      'motivationQuote34': 'La légèreté naît d’un « non » honnête.',
+      'motivationQuote35': 'Tu as le droit à une soirée calme.',
+      'motivationQuote36': 'Moins d’agitation — plus de vie.',
+      'motivationQuote37': 'Une erreur est un virage, pas un échec.',
+      'motivationQuote38': 'Sois aussi bienveillant envers toi qu’envers un ami.',
+      'motivationQuote39': 'Ton rythme est le bon si tu t’y sens bien.',
+      'motivationQuote40': 'Le matin commence non par les tâches, mais par la respiration.',
+      'motivationQuote41': 'Ne remplis pas chaque minute — laisse une place à l’émerveillement.',
+      'motivationQuote42': 'La légèreté, c’est quand tu n’as rien à prouver.',
+      'motivationQuote43': 'Laisse la journée être ordinaire.',
+      'motivationQuote44': 'Un « tout va bien » tranquille vaut les grandes victoires.',
+      'motivationQuote45': 'Repose-toi avant d’en avoir envie, pas après l’épuisement.',
+      'motivationQuote46': 'Un bureau clair, une tête claire.',
+      'motivationQuote47': 'Lâche le contrôle là où il ne fait que fatiguer.',
+      'motivationQuote48': 'Regarde le ciel au moins une fois par jour.',
+      'motivationQuote49': 'Moins d’écran — plus d’air.',
+      'motivationQuote50': 'Une promenade sans but guérit mieux que les plans.',
+      'motivationQuote51': 'Remercie ton corps de te porter.',
+      'motivationQuote52': 'Tu n’es pas obligé d’être productif chaque minute.',
+      'motivationQuote53': 'L’ennui est parfois un repos pour l’âme.',
+      'motivationQuote54': 'Bois de l’eau, respire, vis maintenant.',
+      'motivationQuote55': 'Ne remets pas la joie à « un jour ».',
+      'motivationQuote56': 'Fais aujourd’hui quelque chose juste pour le plaisir.',
+      'motivationQuote57': 'Une soirée calme vaut mieux qu’une course bruyante.',
+      'motivationQuote58': 'Permets-toi de rêver sans plan.',
+      'motivationQuote59': 'La chaleur autour commence par la chaleur en dedans.',
+      'motivationQuote60': 'Une chose à la fois — et le monde ne s’écroulera pas.',
+      'motivationQuote61': 'Fatigué ? Repose-toi, n’abandonne pas.',
+      'motivationQuote62': 'N’exige pas plus de toi que des autres.',
+      'motivationQuote63': 'La joie vit dans les petites choses, si on les remarque.',
+      'motivationQuote64': 'Plus lentement, c’est plus attentif.',
+      'motivationQuote65': 'Pardonne-toi ta fatigue d’hier.',
+      'motivationQuote66': 'Une vie légère est un choix, pas une chance.',
+      'motivationQuote67': 'Commence la journée par la gratitude, pas par l’angoisse.',
+      'motivationQuote68': 'On est chez soi là où l’on se sent calme.',
+      'motivationQuote69': 'Ne cours pas après tout — choisis ce qui est à toi.',
+      'motivationQuote70': 'Le silence devant une tasse de thé est aussi une conversation.',
+      'motivationQuote71': 'Lâche les attentes des autres — elles ne sont pas à toi.',
+      'motivationQuote72': 'Un bon sommeil, c’est la moitié d’une vie légère.',
+      'motivationQuote73': 'Vis de sorte de ne pas vouloir te fuir.',
+      'motivationQuote74': 'Laisse dans la journée une place pour rien.',
+      'motivationQuote75': 'Un simple « non » libère toute une soirée.',
+      'motivationQuote76': 'Ne compare pas ton début au milieu de quelqu’un d’autre.',
+      'motivationQuote77': 'La légèreté, c’est la confiance en soi.',
+      'motivationQuote78': 'Fais un pas, pas un bond.',
+      'motivationQuote79': 'Souris sans raison — la raison viendra.',
+      'motivationQuote80': 'Tu n’as pas à tout terminer aujourd’hui.',
+      'motivationQuote81': 'La journée devient plus douce quand on ne la presse pas.',
+      'motivationQuote82': 'La tendresse envers soi n’est pas une faiblesse.',
+      'motivationQuote83': 'Moins de bruit, plus de sens.',
+      'motivationQuote84': 'Vis maintenant — le passé s’est déjà reposé.',
+      'motivationQuote85': 'Laisse le bon venir sans effort.',
+      'motivationQuote86': 'Le repos est aussi un pas en avant.',
+      'motivationQuote87': 'Ton calme compte plus que l’avis des autres.',
+      'motivationQuote88': 'Chaque souffle est une nouvelle chance de commencer en douceur.',
+      'motivationQuote89': 'Une vie légère commence par un regard léger.',
+      'motivationQuote90': 'Tu es déjà assez. Sois simplement.',
       'areYouSure': 'Êtes-vous sûr ?',
       'streakResetDone': 'Série réinitialisée',
       'openSettings': 'Ouvrir les paramètres',

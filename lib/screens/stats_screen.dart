@@ -388,16 +388,16 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
               ],
             ),
             const SizedBox(height: 16),
-            // Полоса-прогресс в тон кольцу: градиент идёт от акцента к
-            // третичному, но с тёмным краем — залитая «глубина» делает
-            // полосу контрастнее и читабельнее на любой теме (light и dark):
-            // налив темнее с каждой темой, дорожка — более тёмный контраст.
+            // Полоса-прогресс в тон кольцу, но МОНОТОННАЯ: раньше заливка
+            // шла градиентом с тёмным краем — «глубина» читалась как грязное
+            // пятно и спорила с тонкой обводкой карточки. Теперь один
+            // спокойный тон акцента, лишь чуть светлее к правому краю.
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Container(
-                height: 12,
+                height: 10,
                 color: theme.colorScheme.onSurface.withValues(
-                  alpha: theme.brightness == Brightness.dark ? 0.18 : 0.10,
+                  alpha: theme.brightness == Brightness.dark ? 0.16 : 0.09,
                 ),
                 alignment: Alignment.centerLeft,
                 child: FractionallySizedBox(
@@ -405,13 +405,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
                   heightFactor: 1,
                   child: Container(
                     decoration: BoxDecoration(
+                      // Один тон с еле заметным световым «швом» справа —
+                      // ровная заливка, без тёмных краёв и переливов.
                       gradient: LinearGradient(
                         colors: [
-                          Color.lerp(accent, Colors.black, 0.18)!,
                           accent,
-                          Color.lerp(theme.colorScheme.tertiary, Colors.black, 0.10)!,
+                          Color.lerp(accent, Colors.white, 0.10)!,
                         ],
-                        stops: const [0.0, 0.45, 1.0],
                       ),
                     ),
                   ),
@@ -443,7 +443,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
 /// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
 /// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
 /// Все прочие карточки — волосяные ([_hairline]).
-const double _hairline = 0.6;
+const double _hairline = 0.45;
 
 Widget _ringedCard({
   required ThemeData theme,
@@ -611,7 +611,10 @@ class _MonthChart extends StatelessWidget {
       if (total > maxV) maxV = total;
     }
     final habitColor = theme.colorScheme.primary.withValues(alpha: 0.95);
-    final taskColor = theme.colorScheme.secondary.withValues(alpha: 0.95);
+    // Задачи — ТРЕТИЧНЫЙ тон, а не `secondary`: в Material You вторичный
+    // почти сливается с основным, и две доли столбика читались как одно
+    // пятно («непонятно, что нарисовано»). Третичный даёт явный контраст.
+    final taskColor = theme.colorScheme.tertiary.withValues(alpha: 0.95);
 
     // Итоги за месяц.
     var activeDays = 0;
@@ -877,6 +880,22 @@ class _DaysBarPainter extends CustomPainter {
 
     final maxValue = math.max(1, maxV);
 
+    // Подложка «сегодня»: последняя колонка подсвечена — сразу видно, где
+    // сейчас, а не только по крошечной точке под осью.
+    final slotW = size.width / n;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          slotW * (n - 1) + slotW * 0.12,
+          chartTop - 6,
+          slotW * 0.76,
+          chartH + 6,
+        ),
+        const Radius.circular(6),
+      ),
+      Paint()..color = todayColor.withValues(alpha: 0.06),
+    );
+
     // Горизонтальные линии шкалы: четверть, половина, три четверти — без
     // подписей-цифр, чтобы не шуметь; ориентир даёт сама высота.
     final gridPaint = Paint()
@@ -951,14 +970,16 @@ class _DaysBarPainter extends CustomPainter {
         Paint()..color = taskColor,
       );
       canvas.restore();
-      // Тонкий контур — столбики не «слипаются» на тёмной теме.
+      // Тонкий контур — столбики не «слипаются» на тёмной теме. Волосяной:
+      // раньше линия 1 px на каждом столбике складывалась в «частокол» и
+      // график читался жирным.
       canvas.drawRRect(
         rect,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
+          ..strokeWidth = 0.5
           ..isAntiAlias = true
-          ..color = todayColor.withValues(alpha: 0.18),
+          ..color = todayColor.withValues(alpha: 0.14),
       );
 
       // «Сегодня» — последний столбик: подписываем дату акцентом.
