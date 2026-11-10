@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Конфиг сервиса чтения экрана: только события окна/контента,
-     извлечение текста включено, никаких жестов и фокуса ввода. -->
+     извлечение текста включено, никаких жестов и фокуса ввода.
+
+     Список возможностей намеренно минимален. Здесь НЕТ
+     flagReportViewIds (ресурсные id вью не читаются) и
+     flagRetrieveInteractiveWindows (getWindows() не вызывается): код
+     обходит дерево от event.source / rootInActiveWindow и читает только
+     text и contentDescription. Не добавлять их «на всякий случай» — чем
+     шире объявленный доступ, тем больше поводов у Play Protect счесть
+     приложение шпионским. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagDefault"
     android:canRetrieveWindowContent="true"
     android:notificationTimeout="300"
     android:description="@string/screen_reader_desc" />
