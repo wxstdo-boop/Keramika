@@ -73,25 +73,46 @@ class _SwipeToDeleteState extends State<SwipeToDelete> {
       confirmDismiss: widget.confirmDismiss,
       onDismissed: widget.onDismissed,
       onUpdate: (details) => _progress.value = details.progress,
-      background: Padding(
-        padding: widget.inset,
-        // Фон удаления изолирован от перерисовки содержимого карточки.
-        child: RepaintBoundary(
-          child: ValueListenableBuilder<double>(
-            valueListenable: _progress,
-            builder: (context, p, _) {
-              // Красный проявляется по ходу жеста: до 20 % пути плашки ещё
-              // не видно, дальше она наливается и к полному свайпу видна
-              // целиком. Альфа запекается в цвета (см.
-              // [animatedDeleteBackground]), без слоя Opacity.
-              final opacity = ((p - 0.20) / 0.80).clamp(0.0, 1.0);
-              return animatedDeleteBackground(
-                context,
-                borderRadius: widget.borderRadius,
-                opacity: opacity,
-              );
-            },
-          ),
+      background: RepaintBoundary(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+            final inset = widget.inset.resolve(TextDirection.ltr);
+            return ValueListenableBuilder<double>(
+              valueListenable: _progress,
+              builder: (context, p, _) {
+                // Красный проявляется по ходу жеста: до 20 % пути плашки ещё
+                // не видно, дальше она наливается и к полному свайпу видна
+                // целиком. Альфа запекается в цвета (см.
+                // [animatedDeleteBackground]), без слоя Opacity.
+                final opacity = ((p - 0.20) / 0.80).clamp(0.0, 1.0);
+                // Плашка РАСТЁТ вместе со свайпом: она прижата к ПРАВОМУ краю
+                // карточки и открывается влево ровно на столько, на сколько
+                // уехала карточка. Так левая кромка красного всегда совпадает
+                // с линией отсечения [Dismissible], а не «плывёт» отдельно.
+                final revealed = p.clamp(0.0, 1.0) * w;
+                if (revealed < 0.5) return const SizedBox.shrink();
+                return Stack(
+                  children: [
+                    Positioned(
+                      right: inset.right,
+                      width: revealed,
+                      top: inset.top,
+                      bottom: inset.bottom,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(widget.borderRadius),
+                        child: animatedDeleteBackground(
+                          context,
+                          borderRadius: widget.borderRadius,
+                          opacity: opacity,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
       child: widget.child,

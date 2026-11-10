@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 // Глобальный дедуп и мягкая замена: пока плашка висит, новое сообщение
@@ -327,92 +329,108 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                     ),
                   ],
                 ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: widget.theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 280),
-                      transitionBuilder: (child, anim) => ScaleTransition(
-                        scale: Tween<double>(
-                          begin: 0.6,
-                          end: 1.0,
-                        ).animate(anim),
-                        child: FadeTransition(opacity: anim, child: child),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: BackdropFilter(
+                    // Полупрозрачность с размытием фона под плашкой: любой
+                    // снекбар приложения теперь «стеклянный», а не плотный.
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
                       ),
-                      child: Icon(
-                        _icon,
-                        key: ValueKey(_icon.codePoint),
-                        size: 20,
-                        color: _iconColor,
+                      decoration: BoxDecoration(
+                        color: widget.theme.colorScheme.primaryContainer
+                            .withValues(alpha: dark ? 0.66 : 0.72),
+                        borderRadius: BorderRadius.circular(18),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        // 320 мс и ЧИСТЫЙ фейд без сдвига: общий префикс
-                        // сообщений («Привычка закреплена» → «…откреплена»)
-                        // остаётся на месте, буквы не «скачут» — меняется
-                        // только хвост, мягко проявляясь.
-                        duration: const Duration(milliseconds: 320),
-                        switchInCurve: Curves.easeInOutCubic,
-                        switchOutCurve: Curves.easeInOutCubic,
-                        // ВАЖНО: текст прижат ВЛЕВО и в стопке остаётся только
-                        // предыдущий вариант. Стандартная стопка центрировала
-                        // короткий текст, и при смене сообщения буквы уезжали
-                        // в сторону.
-                        layoutBuilder: (current, previous) => Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            if (previous.isNotEmpty) previous.last,
-                            ?current,
-                          ],
-                        ),
-                        transitionBuilder: (child, anim) =>
-                            FadeTransition(opacity: anim, child: child),
-                        child: Text(
-                          _message,
-                          key: ValueKey(_message),
-                          style: widget.theme.textTheme.bodyMedium?.copyWith(
-                            color: widget.theme.colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.w600,
-                            height: 1.3,
-                            // «Чуть крупнее»: глобальная тема намеренно
-                            // уменьшает bodyMedium (плотные разделы), но
-                            // снекбар — короткое служебное сообщение,
-                            // мелким быть не должно. +2 к базовому размеру
-                            // (учитывает и Caveat-тему, и системный скейл,
-                            // который применяется поверх при рендере).
-                            fontSize:
-                                (widget.theme.textTheme.bodyMedium?.fontSize ??
-                                    14) +
-                                2,
+                      child: Row(
+                        children: [
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            transitionBuilder: (child, anim) => ScaleTransition(
+                              scale: Tween<double>(
+                                begin: 0.6,
+                                end: 1.0,
+                              ).animate(anim),
+                              child: FadeTransition(opacity: anim, child: child),
+                            ),
+                            child: Icon(
+                              _icon,
+                              key: ValueKey(_icon.codePoint),
+                              size: 20,
+                              color: _iconColor,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              // 320 мс и ЧИСТЫЙ фейд без сдвига: общий префикс
+                              // сообщений («Привычка закреплена» → «…откреплена»)
+                              // остаётся на месте, буквы не «скачут» — меняется
+                              // только хвост, мягко проявляясь.
+                              duration: const Duration(milliseconds: 320),
+                              switchInCurve: Curves.easeInOutCubic,
+                              switchOutCurve: Curves.easeInOutCubic,
+                              // ВАЖНО: текст прижат ВЛЕВО и в стопке остаётся
+                              // только предыдущий вариант.
+                              layoutBuilder: (current, previous) => Stack(
+                                alignment: Alignment.centerLeft,
+                                children: [
+                                  if (previous.isNotEmpty) previous.last,
+                                  ?current,
+                                ],
+                              ),
+                              transitionBuilder: (child, anim) =>
+                                  FadeTransition(opacity: anim, child: child),
+                              child: Text(
+                                _message,
+                                key: ValueKey(_message),
+                                style: widget.theme.textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: widget
+                                          .theme
+                                          .colorScheme
+                                          .onPrimaryContainer,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.3,
+                                      // «Чуть крупнее»: снекбар — короткое
+                                      // служебное сообщение, мелким быть не
+                                      // должно. +2 к базовому размеру.
+                                      fontSize:
+                                          (widget
+                                                  .theme
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.fontSize ??
+                                              14) +
+                                          2,
+                                    ),
+                              ),
+                            ),
+                          ),
+                          if (hasAction) ...[
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: _onAction,
+                              style: TextButton.styleFrom(
+                                foregroundColor:
+                                    widget.theme.colorScheme.primary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                minimumSize: const Size(0, 36),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(_actionLabel!),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (hasAction) ...[
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: _onAction,
-                        style: TextButton.styleFrom(
-                          foregroundColor: widget.theme.colorScheme.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: const Size(0, 36),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(_actionLabel!),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
                 ),
               ),
             ),

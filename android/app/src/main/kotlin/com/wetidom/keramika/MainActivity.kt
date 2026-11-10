@@ -1,13 +1,10 @@
 package com.wetidom.keramika
 
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
-import android.content.pm.PackageInstaller
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,6 +19,7 @@ import android.provider.Settings
 import java.util.LinkedHashSet
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -771,13 +769,14 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "com.wetidom.keramika/updater",
         )
-        // Результат установки приходит асинхронно от InstallResultReceiver —
-        // подключаем мост, чтобы он мог отдать статус в Dart.
-        UpdaterBridge.attach(this, channel)
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                // Установку ставит обычный системный установщик
+                // (installWithSystemInstaller): система сама сообщает об
+                // итоге, придержанного результата сессии больше не бывает.
+                // Метод оставлен ради формы канала и всегда отдаёт null.
                 "consumeInstallResult" -> {
-                    result.success(UpdaterBridge.consume(this))
+                    result.success(null)
                 }
                 "appInfo" -> {
                     try {
@@ -882,7 +881,7 @@ class MainActivity : FlutterActivity() {
                             result.error("HASH_MISMATCH", actual, null)
                             return@setMethodCallHandler
                         }
-                        installViaSession(file)
+                        installWithSystemInstaller(file)
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e("MainActivity", "installApk failed: $e")
@@ -895,75 +894,41 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Установка скачанного APK через сессию PackageInstaller.
+     * Запускает установку скачанного APK ОБЫЧНЫМ системным установщиком
+     * (Intent.ACTION_VIEW через FileProvider).
      *
-     * Почему не Intent.ACTION_VIEW, как раньше: тот путь — «сторонний
-     * установщик». Система видит, что APK подсовывает неизвестное
-     * приложение, и Play Protect показывает предупреждение «недоверенный
-     * источник», а на части прошивок установка вообще блокируется.
+     * Почему не сессией PackageInstaller. Раньше здесь была сессия
+     * (`installViaSession`): она объявляет приложение ВЛАДЕЛЬЦЕМ своих
+     * обновлений и на части прошивок убирает лишнее подтверждение. Но вместе
+     * с ней система начинала трактовать установку как «самообновление в
+     * обход пользователя», и на незнакомом сайдлоаде Play Protect показывал
+     * «вредоносное приложение заблокировано» вместо обычной проверки. То есть
+     * цена ускорения — сама возможность обновиться.
      *
-     * Сессия PackageInstaller — штатный механизм для самообновления:
-     *  * setAppPackageName + INSTALL_REASON_USER сообщают системе, что мы
-     *    ставим сами себя по действию пользователя;
-     *  * setRequestUpdateOwnership(true) (API 34+) объявляет наше
-     *    приложение ВЛАДЕЛЬЦЕМ своих обновлений. Тогда для нас сохраняется
-     *    быстрый путь без лишних напоминаний, а сторонний установщик
-     *    обновить приложение уже не сможет;
-     *  * setRequireUserAction(USER_ACTION_REQUIRED) (API 31+) — показываем
-     *    ОБЫЧНЫЙ системный экран «Установить обновление?». Это осознанный
-     *    выбор: тихий путь (USER_ACTION_NOT_REQUIRED + разрешение
-     *    UPDATE_PACKAGES_WITHOUT_USER_ACTION) означает установку APK без
-     *    подтверждения, и именно этот набор Play Protect метит как поведение
-     *    вредоносного ПО — на незнакомом сайдлоаде вердикт менялся с
-     *    «требуется проверка» на «вредоносное приложение заблокировано».
-     *    Одно нажатие на системном экране сохраняет самообновление рабочим и
-     *    не выглядит как скрытая установка. Не возвращать NOT_REQUIRED;
-     *  * итог приходит не «файр-энд-форгет», а статусом в
-     *    [InstallResultReceiver], поэтому сбой установки виден в интерфейсе.
+     * Обычный путь честнее: система показывает СВОЙ экран «Установить
+     * обновление?» с проверкой Play Protect, а пользователь нажимает «Всё
+     * равно установить». Никаких разрешений на установку без подтверждения
+     * (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`) приложение не просит и не
+     * использует. Подтверждение может потребоваться один раз на версию —
+     * это ожидаемое поведение сайдлоада, а не «лишний диалог».
      *
-     * Разрешение ENFORCE_UPDATE_OWNERSHIP в манифесте — обычное (normal):
-     * система выдаёт его автоматически, запрашивать у пользователя нечего.
+     * Разрешение REQUEST_INSTALL_PACKAGES нужно и здесь: без него система не
+     * покажет даже экран установки для APK, пришедшего из приложения.
      */
-    private fun installViaSession(file: File) {
-        val installer = packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(
-            PackageInstaller.SessionParams.MODE_FULL_INSTALL,
+    private fun installWithSystemInstaller(file: File) {
+        val uri = FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file,
         )
-        params.setAppPackageName(packageName)
-        params.setSize(file.length())
-        params.setInstallReason(PackageManager.INSTALL_REASON_USER)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            params.setInstallScenario(PackageManager.INSTALL_SCENARIO_FAST)
-            // Обычный системный экран подтверждения. НЕ менять на
-            // USER_ACTION_NOT_REQUIRED: тихий путь без диалога Play Protect
-            // считает поведением вредоносного ПО (см. комментарий к методу).
-            params.setRequireUserAction(
-                PackageInstaller.SessionParams.USER_ACTION_REQUIRED,
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_ACTIVITY_NEW_TASK,
             )
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            params.setRequestUpdateOwnership(true)
-        }
-
-        val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            file.inputStream().use { input ->
-                session.openWrite("base.apk", 0, file.length()).use { output ->
-                    input.copyTo(output)
-                    session.fsync(output)
-                }
-            }
-            val statusIntent = Intent(this, InstallResultReceiver::class.java).apply {
-                action = InstallResultReceiver.ACTION_INSTALL_RESULT
-            }
-            val pending = PendingIntent.getBroadcast(
-                this,
-                sessionId,
-                statusIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-            )
-            session.commit(pending.intentSender)
-        }
+        startActivity(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -1004,14 +969,5 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Cancel notifications failed: $e")
         }
-    }
-
-    override fun onDestroy() {
-        // Придержанный результат установки НЕ теряем: если пользователь
-        // свернул приложение во время системного диалога, статус заберёт
-        // Dart вызовом consumeInstallResult после возврата. detach только
-        // снимает ссылку на мёртвый канал.
-        UpdaterBridge.detach()
-        super.onDestroy()
     }
 }

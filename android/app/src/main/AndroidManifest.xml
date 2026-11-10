@@ -3,22 +3,23 @@
     <!-- Установка скачанного APK (автообновление). Android 8+ покажет
          системный экран подтверждения — это и есть «предложение установить». -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
-    <!-- Владелец собственных обновлений: с API 34 приложение объявляет себя
-         update owner (см. MainActivity.installViaSession), чтобы система
-         не считала самообновление недоверенной установкой. Разрешение
-         обычное (normal) — выдаётся автоматически, диалога нет. -->
-    <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP"/>
-    <!-- ВАЖНО: разрешения UPDATE_PACKAGES_WITHOUT_USER_ACTION здесь быть НЕ
-         должно. Оно разрешает объявить сессию установки БЕЗ подтверждения
-         (USER_ACTION_NOT_REQUIRED) — то есть тихую самопереустановку. Именно
-         этот набор (установка APK + тихий путь без диалога) Play Protect
-         трактует как поведение вредоносного ПО и на незнакомом сайдлоаде
-         меняет вердикт с «требуется проверка» на «вредоносное приложение
-         заблокировано». Мы ставим обновление сессией PackageInstaller с
-         обычным системным экраном подтверждения (USER_ACTION_REQUIRED):
-         обновление проходит в одно нажатие и не выглядит как скрытая
-         установка. Не возвращать это разрешение и не переключать флаг в
-         MainActivity на USER_ACTION_NOT_REQUIRED — это и ломает установку. -->
+    <!-- ВАЖНО: разрешений UPDATE_PACKAGES_WITHOUT_USER_ACTION и
+         ENFORCE_UPDATE_OWNERSHIP здесь быть НЕ должно.
+         UPDATE_PACKAGES_WITHOUT_USER_ACTION разрешает объявить сессию
+         установки БЕЗ подтверждения (USER_ACTION_NOT_REQUIRED) — то есть
+         тихую самопереустановку. Именно этот набор (установка APK + тихий
+         путь без диалога) Play Protect трактует как поведение вредоносного
+         ПО и на незнакомом сайдлоаде меняет вердикт с «требуется проверка»
+         на «вредоносное приложение заблокировано». ENFORCE_UPDATE_OWNERSHIP
+         объявляет приложение владельцем своих обновлений — это ускоряет
+         установку, но система начинает трактовать её как самообновление в
+         обход пользователя, и вердикт Play Protect тоже ужесточается.
+         Обновление ставит ОБЫЧНЫЙ системный установщик
+         (Intent.ACTION_VIEW через FileProvider, см.
+         MainActivity.installWithSystemInstaller): система сама показывает
+         свой экран «Установить обновление?» с проверкой, а пользователь
+         подтверждает. Не возвращать ни одно из этих разрешений и не
+         возвращать сессию PackageInstaller — это и ломает установку. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
@@ -160,18 +161,10 @@
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:exported="false" />
 
-        <!-- Результат установки из сессии PackageInstaller (MainActivity.
-             installViaSession). Система присылает сюда статус по
-             PendingIntent — явному интенту на компонент, поэтому
-             intent-filter не нужен; exported=false закрывает приёмник от
-             чужих broadcast'ов. -->
-        <receiver
-            android:name=".InstallResultReceiver"
-            android:exported="false" />
-
-        <!-- FileProvider оставлен для совместимости: установка APK больше
-             через него не идёт (см. PackageInstaller-сессию), но он не
-             экспортирован и ничего не раздаёт без явного grantUriPermission. -->
+        <!-- FileProvider раздаёт скачанный APK системному установщику
+             (Intent.ACTION_VIEW) — без него система не получит файл.
+             exported=false + grantUriPermissions: доступ выдаётся точечно
+             флагом FLAG_GRANT_READ_URI_PERMISSION. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

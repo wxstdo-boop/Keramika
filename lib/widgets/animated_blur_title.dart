@@ -8,9 +8,10 @@ import 'online_dot.dart';
 
 /// Заголовок шапки главного экрана: «Keramika» или короткое имя юзера.
 ///
-/// Кружок онлайна сидит НАД последней буквой заголовка, справа сверху, и не
-/// касается глифа (см. [_TitleWithDot]) — по нему открывается профиль
-/// ([OnlineDot]). Новогодняя шапка Деда Мороза отсюда убрана.
+/// Кружок онлайна «растёт» из нижнего правого угла последней буквы заголовка,
+/// от буквы к нему идёт тонкий хвостик (см. [_TitleWithDot]) — по кружку
+/// открывается профиль ([OnlineDot]). Новогодняя шапка Деда Мороза отсюда
+/// убрана.
 ///
 /// Имя в профиле можно сменить на лету: заголовок меняется плавно
 /// (AnimatedSwitcher — кросс-фейд с лёгким масштабом), а не подменяется кадром.
@@ -112,11 +113,14 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
   }
 }
 
-/// Заголовок с кружком онлайна НАД последней буквой, справа сверху.
+/// Заголовок с кружком онлайна ВНИЗУ, справа от последней буквы.
 ///
 /// Позиция кружка считается по реальной геометрии текста ([TextPainter]):
-/// берём рамку последнего глифа и вешаем кружок чуть выше и правее её — так
-/// он не касается буквы и не «плавает» при смене имени или масштаба шрифта.
+/// берём рамку последнего глифа и вешаем кружок к её нижнему правому углу —
+/// он «растёт» из хвостика буквы, как ягодка на черешке, и не «плавает» при
+/// смене имени или масштаба шрифта. От буквы к кружку идёт тонкий хвостик
+/// ([_DotTailPainter]) — кружок читается продолжением росчерка, а не
+/// отдельной точкой рядом.
 class _TitleWithDot extends StatelessWidget {
   final String text;
   final TextStyle style;
@@ -131,7 +135,11 @@ class _TitleWithDot extends StatelessWidget {
 
   /// Зазор между правым краем последней буквы и центром кружка, px. Малый —
   /// кружок стоит почти вплотную к букве, справа от неё.
-  static const double _gapX = 3.0;
+  static const double _gapX = 4.0;
+
+  /// Насколько центр кружка ниже низа последней буквы, px. Кружок сидит у
+  /// нижней кромки глифа — «на хвостике», а не на середине высоты.
+  static const double _dropY = 1.0;
 
   @override
   Widget build(BuildContext context) {
@@ -149,12 +157,12 @@ class _TitleWithDot extends StatelessWidget {
       );
       if (boxes.isNotEmpty) lastGlyph = boxes.last.toRect();
     }
-    // Центр кружка: СПРАВА от последней буквы, почти вплотную, и по СЕРЕДИНЕ
-    // её высоты (раньше висел над буквой). Зона тапа OnlineDot — квадрат 30×30
-    // с глифом по центру.
+    // Центр кружка: СПРАВА от последней буквы и у её НИЗА — кружок «идёт от
+    // хвостика» буквы (раньше висел справа на середине высоты). Зона тапа
+    // OnlineDot — квадрат 30×30 с глифом по центру.
     final tapHalf = OnlineDot.tapTarget / 2;
     final dotCx = (lastGlyph?.right ?? painter.width) + _gapX;
-    final dotCy = lastGlyph?.center.dy ?? painter.height / 2;
+    final dotCy = (lastGlyph?.bottom ?? painter.height) + _dropY;
 
     // Stack хит-тестит только ВНУТРИ своих границ: кружок, вынесенный за
     // границы, было бы не нажать. Поэтому раздуваем рамку на недостающие поля,
@@ -163,6 +171,14 @@ class _TitleWithDot extends StatelessWidget {
     final padTop = math.max(0.0, tapHalf - dotCy);
     final padBottom = math.max(0.0, dotCy + tapHalf - painter.height);
     final padRight = math.max(0.0, dotCx + tapHalf - painter.width);
+    // Хвостик ведём от нижнего правого угла буквы к центру кружка: рисуем его
+    // ПОД кружком в том же Stack, поэтому кружок накрывает конец росчерка и
+    // шов не виден.
+    final tailFrom = Offset(
+      lastGlyph?.right ?? painter.width,
+      (lastGlyph?.bottom ?? painter.height) - 1,
+    );
+    final tailTo = Offset(dotCx - 2.2, dotCy - 2.2);
     return SizedBox(
       width: painter.width + padRight,
       height: painter.height + padTop + padBottom,
@@ -180,6 +196,18 @@ class _TitleWithDot extends StatelessWidget {
             ),
           ),
           if (lastGlyph != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _DotTailPainter(
+                    from: tailFrom.translate(0, padTop),
+                    to: tailTo.translate(0, padTop),
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
+          if (lastGlyph != null)
             Positioned(
               left: dotCx - tapHalf,
               top: dotCy - tapHalf + padTop,
@@ -189,4 +217,50 @@ class _TitleWithDot extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Тонкий «хвостик» от буквы заголовка к кружку онлайна: короткая дуга с
+/// лёгким изгибом вниз — росчерк, из которого «вырастает» кружок.
+///
+/// Цвет берётся из темы с малой альфой: на светлой теме хвостик тёмный и
+/// деликатный, на тёмной — светлый; он не спорит с глифом, а только ведёт
+/// взгляд от буквы к статусу.
+class _DotTailPainter extends CustomPainter {
+  const _DotTailPainter({
+    required this.from,
+    required this.to,
+    required this.color,
+  });
+
+  final Offset from;
+  final Offset to;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Контрольная точка «под» хвостиком: линия получается выпуклой вниз, как
+    // росчерк пера, а не прямой штрих.
+    final mid = Offset(
+      (from.dx + to.dx) / 2 + 1.6,
+      (from.dy + to.dy) / 2 + 3.2,
+    );
+    final path = Path()
+      ..moveTo(from.dx, from.dy)
+      ..quadraticBezierTo(mid.dx, mid.dy, to.dx, to.dy);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.45)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DotTailPainter oldDelegate) =>
+      oldDelegate.from != from ||
+      oldDelegate.to != to ||
+      oldDelegate.color != color;
 }

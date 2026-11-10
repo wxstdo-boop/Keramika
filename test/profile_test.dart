@@ -127,7 +127,7 @@ void main() {
     expect(board.last.name, 'Слабак');
   });
 
-  testWidgets('кружок онлайна есть НАД последней буквой и открывает профиль', (
+  testWidgets('кружок онлайна внизу у последней буквы и открывает профиль', (
     tester,
   ) async {
     var opened = false;
@@ -145,19 +145,19 @@ void main() {
     expect(find.byType(OnlineDot), findsOneWidget);
     expect(find.textContaining('🎅'), findsNothing);
 
-    // Кружок — справа сверху от заголовка: он выше и правее центра текста.
-    // Так он висит над последней буквой и не касается глифов.
+    // Кружок — справа от заголовка и у его НИЗА: он «идёт от хвостика»
+    // последней буквы, а не висит над ней.
     final dotCenter = tester.getCenter(find.byType(OnlineDot));
     final titleCenter = tester.getCenter(find.text('Keramika'));
     expect(
       dotCenter.dy,
-      lessThan(titleCenter.dy),
-      reason: 'кружок должен быть сверху, а не под буквами',
+      greaterThan(titleCenter.dy),
+      reason: 'кружок должен быть внизу, от хвостика буквы',
     );
     expect(
       dotCenter.dx,
       greaterThan(titleCenter.dx),
-      reason: 'кружок должен быть справа, над последней буквой',
+      reason: 'кружок должен быть справа от заголовка',
     );
 
     await tester.tap(find.byType(OnlineDot));

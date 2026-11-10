@@ -11,10 +11,10 @@ import '../utils/snackbar.dart';
 /// Компактная таблетка «Обновления» рядом с версией в
 /// Настройках.
 ///
-/// По тапу: тихо проверяет GitHub-релиз; если версия новее — БЕЗ диалогов
-/// скачивает APK (показывая прогресс прямо в таблетке) и сразу показывает
-/// системную установку («предложить установить»). Если обновления нет — тихо
-/// сообщает, что версия последняя.
+/// По тапу: тихо проверяет GitHub-релиз; если версия новее — спрашивает
+/// подтверждение, затем скачивает APK (показывая прогресс прямо в таблетке) и
+/// запускает системную установку («предложить установить»). Если обновления
+/// нет — тихо сообщает, что версия последняя.
 class UpdatePill extends StatefulWidget {
   const UpdatePill({super.key});
 
@@ -25,14 +25,14 @@ class UpdatePill extends StatefulWidget {
 class _UpdatePillState extends State<UpdatePill>
     with SingleTickerProviderStateMixin {
   bool _busy = false;
-  late final AnimationController _squirrel = AnimationController(
+  late final AnimationController _spin = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 680),
   );
 
   @override
   void dispose() {
-    _squirrel.dispose();
+    _spin.dispose();
     super.dispose();
   }
 
@@ -40,7 +40,7 @@ class _UpdatePillState extends State<UpdatePill>
     if (_busy) return;
     Haptics.light();
     setState(() => _busy = true);
-    _squirrel.repeat();
+    _spin.repeat();
     try {
       final info = await Installer.appInfo();
       if (!mounted) return;
@@ -83,7 +83,40 @@ class _UpdatePillState extends State<UpdatePill>
         return;
       }
 
-      // Молча качаем — без подтверждений и лишних диалогов.
+      // Спрашиваем разрешение ПЕРЕД загрузкой: пользователь просил, чтобы
+      // приложение не ставило обновление само, а сначала предложило. Диалог
+      // заменяет прежнюю «тихую» загрузку — согласие явное.
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(
+            Translations.t('updateAvailable', ctx, 'Доступно обновление'),
+          ),
+          content: Text(
+            Translations.t(
+              'updateAvailableBody',
+              ctx,
+              'Установить v{v}?',
+            ).replaceAll('{v}', update.versionName),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(Translations.t('cancel', ctx, 'Отмена')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(Translations.t('install', ctx, 'Установить')),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) {
+        pendingUpdate.value = null;
+        return;
+      }
+
+      // Качаем после согласия.
       final path = await UpdateService.instance.download(update);
       if (!mounted) return;
       if (path == null) {
@@ -131,8 +164,8 @@ class _UpdatePillState extends State<UpdatePill>
       _toast(Translations.t('updateError', context, 'Ошибка обновления'));
     } finally {
       if (mounted) {
-        _squirrel.stop();
-        _squirrel.value = 0;
+        _spin.stop();
+        _spin.value = 0;
         setState(() {
           _busy = false;
         });
@@ -189,12 +222,11 @@ class _UpdatePillState extends State<UpdatePill>
                   width: 13,
                   height: 13,
                   child: AnimatedBuilder(
-                    animation: _squirrel,
+                    animation: _spin,
                     builder: (context, _) => CustomPaint(
-                      painter: _RunningSquirrelPainter(
-                        phase: _busy ? _squirrel.value : 0,
+                      painter: _UpdateGlyphPainter(
+                        progress: _busy ? _spin.value : 0,
                         color: cs.onPrimaryContainer,
-                        detailColor: cs.primaryContainer,
                         running: _busy,
                       ),
                     ),
@@ -225,131 +257,90 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
-/// Tiny custom-drawn runner: tail swishes and feet cycle without changing the
-/// pill's layout, so its label stays perfectly still while an update runs.
-class _RunningSquirrelPainter extends CustomPainter {
-  const _RunningSquirrelPainter({
-    required this.phase,
+/// Значок таблетки: в покое — аккуратная «стрелка в лоток» (установка),
+/// в работе — плавно вращающееся кольцо с «хвостом-кометой».
+///
+/// Раньше здесь бежала нарисованная белка: у неё дёргались лапы и хвост, и
+/// на 13 px это читалось мельтешением, а не движением. Кольцо вращается
+/// непрерывно и равноускоренно — «идёт проверка/загрузка» понятно без текста
+/// и не мельтешит. Дуга рисуется теми же штрихами со скруглёнными концами,
+/// что и стрелка, поэтому переход «покой → работа» не меняет ни размер, ни
+/// вес значка: таблетка не «дёргает» лэйаут.
+class _UpdateGlyphPainter extends CustomPainter {
+  const _UpdateGlyphPainter({
+    required this.progress,
     required this.color,
-    required this.detailColor,
     required this.running,
   });
 
-  final double phase;
+  final double progress;
   final Color color;
-  final Color detailColor;
   final bool running;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = math.min(size.width / 24, size.height / 24);
-    canvas.save();
-    canvas.translate(
-      (size.width - 24 * scale) / 2,
-      (size.height - 24 * scale) / 2,
-    );
-    canvas.scale(scale);
-    final paint = Paint()
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 1.4;
+    final stroke = Paint()
       ..color = color
-      ..style = PaintingStyle.fill
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.9
+      ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
-    final stridePhase = phase * math.pi * 2;
-    final bounce = running ? math.sin(stridePhase) * 0.45 : 0.0;
-    final tailSway = running ? math.sin(stridePhase - 0.45) * 0.8 : 0.0;
-    canvas.translate(0, -bounce);
 
-    // Curled plume tail, behind the body.
-    final tail = Path()
-      ..moveTo(7.8, 15.8)
-      ..cubicTo(2.8, 16.4, 2.5 + tailSway, 11.7, 5.4, 9.2)
-      ..cubicTo(8.4, 6.4, 12.3, 8.0, 11.2, 10.6)
-      ..cubicTo(10.6, 12.0, 8.5, 11.4, 8.8, 10.3)
-      ..cubicTo(9.0, 9.6, 10.1, 9.6, 10.4, 10.1)
-      ..cubicTo(10.8, 7.7, 7.6, 7.0, 5.6, 9.5)
-      ..cubicTo(3.3, 12.4, 4.8, 15.0, 8.1, 14.4)
-      ..close();
-    canvas.drawPath(tail, paint);
-    canvas.drawPath(
-      Path()
-        ..moveTo(5.0, 14.2)
-        ..cubicTo(3.8, 11.5, 6.4, 8.2, 9.1, 8.7)
-        ..cubicTo(10.6, 8.9, 11.1, 10.1, 10.1, 10.9),
-      Paint()
-        ..color = detailColor.withValues(alpha: 0.78)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.25
-        ..strokeCap = StrokeCap.round,
-    );
+    if (running) {
+      // Кольцо-комета: сплошная дуга в 250° и растворяющийся хвост. Угол
+      // растёт линейно, поэтому вращение ровное, без рывка на стыке.
+      final start = -math.pi / 2 + progress * math.pi * 2;
+      const sweep = math.pi * 1.38;
+      final steps = 26;
+      for (var i = 0; i < steps; i++) {
+        final t0 = i / steps;
+        final t1 = (i + 1) / steps;
+        final a0 = start + sweep * t0;
+        final a1 = start + sweep * t1;
+        final alpha = 0.25 + 0.75 * t0;
+        canvas.drawArc(
+          Rect.fromCircle(center: center, radius: radius),
+          a0,
+          a1 - a0,
+          false,
+          Paint()
+            ..color = color.withValues(alpha: alpha)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.9
+            ..strokeCap = StrokeCap.round
+            ..isAntiAlias = true,
+        );
+      }
+      return;
+    }
 
-    // Feet alternate while running; their fixed bounds prevent layout jitter.
-    final stride = running ? math.sin(stridePhase) * 1.8 : 0.0;
-    final legs = Path()
-      ..moveTo(13.1, 15.8)
-      ..quadraticBezierTo(13.0 + stride * 0.45, 18.0, 11.8 + stride, 20.1)
-      ..moveTo(17.0, 15.7)
-      ..quadraticBezierTo(17.2 - stride * 0.45, 17.8, 19.2 - stride, 19.4);
-    canvas.drawPath(
-      legs,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..isAntiAlias = true,
-    );
+    // Покой: стрелка вниз в «лоток» — узнаваемый знак установки/загрузки.
+    final r = math.min(size.width, size.height) / 2;
     canvas.drawLine(
-      Offset(11.8 + stride, 20.1),
-      Offset(13.6 + stride, 20.1),
-      Paint()
-        ..color = color
-        ..strokeWidth = 2.1
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawLine(
-      Offset(19.2 - stride, 19.4),
-      Offset(21.0 - stride, 19.4),
-      Paint()
-        ..color = color
-        ..strokeWidth = 2.1
-        ..strokeCap = StrokeCap.round,
-    );
-
-    canvas.drawOval(const Rect.fromLTWH(8.2, 10.1, 11.4, 7.2), paint);
-    canvas.drawOval(
-      const Rect.fromLTWH(13.0, 12.0, 5.4, 4.2),
-      Paint()..color = detailColor.withValues(alpha: 0.55),
-    );
-    canvas.drawOval(const Rect.fromLTWH(14.1, 5.6, 7.0, 7.1), paint);
-    canvas.drawPath(
-      Path()
-        ..moveTo(15.0, 6.2)
-        ..lineTo(15.0, 2.8)
-        ..quadraticBezierTo(17.6, 3.2, 17.2, 6.0)
-        ..close(),
-      paint,
+      Offset(center.dx, center.dy - r * 0.62),
+      Offset(center.dx, center.dy + r * 0.12),
+      stroke,
     );
     canvas.drawPath(
       Path()
-        ..moveTo(18.4, 5.9)
-        ..lineTo(20.2, 3.6)
-        ..quadraticBezierTo(21.5, 5.0, 20.6, 6.7)
-        ..close(),
-      paint,
+        ..moveTo(center.dx - r * 0.36, center.dy - r * 0.16)
+        ..lineTo(center.dx, center.dy + r * 0.16)
+        ..lineTo(center.dx + r * 0.36, center.dy - r * 0.16),
+      stroke,
     );
-    canvas.drawOval(
-      const Rect.fromLTWH(18.8, 8.0, 1.0, 1.0),
-      Paint()..color = Colors.white,
+    canvas.drawPath(
+      Path()
+        ..moveTo(center.dx - r * 0.6, center.dy + r * 0.62)
+        ..lineTo(center.dx + r * 0.6, center.dy + r * 0.62),
+      stroke,
     );
-    canvas.drawCircle(const Offset(19.3, 8.5), 0.34, Paint()..color = color);
-    canvas.drawCircle(const Offset(21.5, 10.1), 0.85, paint);
-    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _RunningSquirrelPainter oldDelegate) =>
-      oldDelegate.phase != phase ||
+  bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
       oldDelegate.color != color ||
-      oldDelegate.detailColor != detailColor ||
       oldDelegate.running != running;
 }

@@ -552,8 +552,17 @@ class _TasksScreenState extends State<TasksScreen>
     List<Task> all,
   ) {
     final empty = tasks.isEmpty;
-    final active = tasks.where((t) => !t.done).toList();
-    final done = tasks.where((t) => t.done).toList();
+    // Архивная полка живёт ТОЛЬКО в «Все»: в пользовательской категории
+    // список не делится, выполненные остаются в общем порядке. Иначе в
+    // отдельной категории появлялась полка «Архивные», которой там быть не
+    // должно (пользователь просил «архивные только в категории Все»).
+    final archiveEnabled = _filter == '';
+    final active = archiveEnabled
+        ? tasks.where((t) => !t.done).toList()
+        : tasks;
+    final done = archiveEnabled
+        ? tasks.where((t) => t.done).toList()
+        : const <Task>[];
 
     // Архивная полка (заголовок + её список) появляется ПЛАВНО: фейд
     // целиком, а верхний зазор растёт через SizeTransition — список ниже не
@@ -585,7 +594,7 @@ class _TasksScreenState extends State<TasksScreen>
             ),
           ),
         ),
-        _taskSliver(context, theme, done, all, reveal: _splitFade),
+        if (archiveEnabled) _taskSliver(context, theme, done, all, reveal: _splitFade),
       ],
     );
 
@@ -609,7 +618,7 @@ class _TasksScreenState extends State<TasksScreen>
         // подписывать их «Активные» значит подписывать очевидное. Заголовок
         // несёт только архивная полка, чтобы отличаться от остального.
         _taskSliver(context, theme, active, all),
-        if (_archiveVisible)
+        if (archiveEnabled && _archiveVisible)
           SliverFadeTransition(opacity: _splitFade, sliver: completedGroup),
         const SliverToBoxAdapter(child: SizedBox(height: 4)),
       ],

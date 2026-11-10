@@ -78,6 +78,9 @@ class Translations {
       'updateHashMissing':
           'The release has no valid SHA-256 digest. Installation was cancelled.',
       'updateInstalled': 'Updated to v{v}',
+      'updateAvailable': 'Update available',
+      'updateAvailableBody': 'Install v{v}?',
+      'install': 'Install',
       'updateInstallBlocked':
           'The system blocked the update. Allow installs for this app and try again.',
       'updateInstallCancelled': 'Update cancelled',
@@ -1034,6 +1037,9 @@ class Translations {
       'updateHashMissing':
           'У релиза нет корректного SHA-256. Установка отменена.',
       'updateInstalled': 'Обновлено до v{v}',
+      'updateAvailable': 'Доступно обновление',
+      'updateAvailableBody': 'Установить v{v}?',
+      'install': 'Установить',
       'updateInstallBlocked':
           'Система заблокировала обновление. Разрешите установку из этого источника и попробуйте снова.',
       'updateInstallCancelled': 'Обновление отменено',
@@ -1999,6 +2005,9 @@ class Translations {
       'updateHashMissing':
           'La version ne fournit pas de SHA-256 valide. Installation annulée.',
       'updateInstalled': 'Mis à jour vers v{v}',
+      'updateAvailable': 'Mise à jour disponible',
+      'updateAvailableBody': 'Installer la v{v} ?',
+      'install': 'Installer',
       'updateInstallBlocked':
           'Le système a bloqué la mise à jour. Autorisez l’installation depuis cette source et réessayez.',
       'updateInstallCancelled': 'Mise à jour annulée',

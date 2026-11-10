@@ -233,48 +233,42 @@ arm64). Приложение сравнивает сначала `versionName` (
 `versionCode`. Скачанный APK сверяется по SHA-256 из `digest` релиза —
 если `digest` нет, обновление отменяется с `FormatException`.
 
-### Доверенная установка: сессия PackageInstaller, а не ACTION_VIEW
+### Установка: обычный системный установщик, а НЕ сессия PackageInstaller
 
-Установку APK запускает НЕ `Intent.ACTION_VIEW` через `FileProvider` (это
-общая «сайдлоад»-дорога, которую Play Protect не доверяет и блокирует
-диалогом «Приложение может быть небезопасно»). Вместо неё — сессия
-`PackageInstaller` (`MainActivity.installViaSession`):
+Установку APK запускает `Intent.ACTION_VIEW` через `FileProvider`
+(`MainActivity.installWithSystemInstaller`): система сама показывает свой
+экран «Установить обновление?» с проверкой Play Protect, а пользователь
+подтверждает.
 
-- `SessionParams(MODE_FULL_INSTALL)` + `setAppPackageName(packageName)` —
-  система видит, что приложение ставит само себя;
-- `setInstallReason(INSTALL_REASON_USER)`;
-- на API 31+ `setInstallScenario(INSTALL_SCENARIO_FAST)` и
-  `setRequireUserAction(USER_ACTION_REQUIRED)` — система показывает обычный
-  экран «Установить обновление?». Так и надо: `USER_ACTION_NOT_REQUIRED`
-  вместе с разрешением `UPDATE_PACKAGES_WITHOUT_USER_ACTION` даёт установку
-  APK БЕЗ подтверждения, а это ровно то поведение, по которому Play Protect
-  метит незнакомый сайдлоад как вредоносное ПО (см. ниже). Разрешения
-  `UPDATE_PACKAGES_WITHOUT_USER_ACTION` в манифесте быть не должно;
-- на API 34+ `setRequestUpdateOwnership(true)` + разрешение
-  `ENFORCE_UPDATE_OWNERSHIP` (protectionLevel `normal`). Это «быть владельцем
-  своих обновлений»: система не считает самообновление чужой установкой;
-- `commit()` с `PendingIntent` на `InstallResultReceiver`.
+Раньше здесь была сессия `PackageInstaller` (`installViaSession`) с
+`setRequestUpdateOwnership(true)` и разрешением `ENFORCE_UPDATE_OWNERSHIP`:
+она объявляла приложение владельцем своих обновлений и убирала лишнее
+подтверждение, но система начинала трактовать установку как самообновление в
+обход пользователя — и на незнакомом сайдлоаде Play Protect показывал
+«вредоносное приложение заблокировано». Сессию, приёмник её результата
+(`InstallResultReceiver`) и разрешение `ENFORCE_UPDATE_OWNERSHIP` убрали:
+цена ускорения — сама возможность обновиться.
 
-Обычный экран подтверждения — это НЕ «диалог на каждом обновлении, который
-надо убрать». Убрать его можно только тихим путём, а он и ломает установку:
-Play Protect блокирует саму попытку. Одно нажатие на системном экране
-сохраняет самообновление рабочим и не выглядит как скрытая установка.
+Что осталось:
 
-Приёмник вызывается ДВАЖДЫ: сперва `STATUS_PENDING_USER_ACTION` с
-`EXTRA_INTENT` (системный экран «Установить?» — его обязан показать сам
-приёмник), затем настоящий итог. Результат буферизуется в
-`SharedPreferences` (`UpdaterBridge`), потому что после УСПЕШНОЙ установки
-Android подменяет процесс и Dart ещё не подписан. Доставка двухканальная:
-push-вызов `onInstallResult` и pull-метод `consumeInstallResult`
-(`Installer.listen()` + `Installer.outcomes`). Итог показывает глобальный
-слушатель в `main.dart` (`_watchInstallOutcome`), а не таблетка — виджет,
-запустивший установку, к моменту финала уже не существует.
+- разрешение `REQUEST_INSTALL_PACKAGES` в манифесте — без него система не
+  покажет даже экран установки для APK, пришедшего из приложения;
+- `FileProvider` (`${applicationId}.fileprovider`, `exported=false`,
+  `grantUriPermissions=true`) — раздаёт скачанный APK системному установщику
+  точечно, флагом `FLAG_GRANT_READ_URI_PERMISSION`;
+- `UpdaterBridge` и приёмник результата сессии удалены вместе с самой сессией.
+  Dart-метод `consumeInstallResult` остался ради формы канала и всегда отдаёт
+  `null`; при обычном системном установщике итог сообщает сама система. Поток
+  `Installer.listen()` + `Installer.outcomes` тоже сохранён ради формы, а
+  глобальный слушатель в `main.dart` (`_watchInstallOutcome`) показывает итог,
+  если он когда-нибудь появится.
 
 Грабли, на которые не наступать: FileProvider-путь не удалять «за
 ненадобностью» молча — он оставлен в манифесте неэкспортированным; при
 смене ключа подписи старый APK поверх нового не встанет (см. раздел про
 keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показывается как
-ошибка.
+ошибка. Не возвращать сессию `PackageInstaller`, `ENFORCE_UPDATE_OWNERSHIP`
+и тихий путь: регресс-тест `test/trusted_update_test.dart` это ловит.
 
 ### Play Protect: «вредоносное приложение заблокировано» — не баг установщика
 
@@ -294,13 +288,18 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
 2. включили тихий путь (`USER_ACTION_NOT_REQUIRED` +
    `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, коммит «тихий путь владельца
    обновлений») → вердикт сменился на «вредоносное приложение
-   заблокировано». Установка перестала проходить вообще.
+   заблокировано». Установка перестала проходить вообще;
+3. добавили владение обновлениями (`setRequestUpdateOwnership` +
+   `ENFORCE_UPDATE_OWNERSHIP`) → система снова увидела самообновление в обход
+   пользователя, вердикт опять ужесточился. Сессию и приёмник её результата
+   убрали, установку перевели на обычный `Intent.ACTION_VIEW`.
 
 Вывод: **разрешение `UPDATE_PACKAGES_WITHOUT_USER_ACTION` и флаг
 `USER_ACTION_NOT_REQUIRED` — это и есть триггер**, а не способ запуска
 установки. Их вернули назад. Регресс-тест `test/trusted_update_test.dart`
 теперь проверяет ОБРАТНОЕ: разрешения нет в манифесте, флаг —
-`USER_ACTION_REQUIRED`.
+`USER_ACTION_REQUIRED`, сессии `PackageInstaller` и `ENFORCE_UPDATE_OWNERSHIP`
+в коде нет.
 
 Что ещё влияет на вердикт и что в наших руках:
 

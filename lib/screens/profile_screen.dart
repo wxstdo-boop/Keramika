@@ -675,7 +675,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            ProfileAvatar(index: f.colorIndex, size: 36),
+            PressScale(
+              pressedScale: 0.88,
+              duration: const Duration(milliseconds: 180),
+              releaseDuration: const Duration(milliseconds: 340),
+              // Себя не редактируем — по своей строке отдачи нет.
+              enabled: !isMe,
+              child: ProfileAvatar(index: f.colorIndex, size: 36),
+            ),
             const SizedBox(width: Spacing.sm),
             Expanded(
               child: Text(
@@ -837,26 +844,34 @@ class _AvatarPickerSheet extends StatelessWidget {
                 itemCount: profileAvatarVariants.length,
                 itemBuilder: (context, i) {
                   final isSelected = i == selected;
-                  return GestureDetector(
-                    onTap: () => onPick(i),
-                    // Обводка выбора перетекает плавно (AnimatedContainer), а
-                    // не появляется кадром: тап по аватарке не «щёлкает».
-                    child: AnimatedContainer(
-                      duration: MotionPrefs.shouldReduceMotion
-                          ? Duration.zero
-                          : Motion.normal,
-                      curve: Curves.easeOutCubic,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected
-                              ? theme.colorScheme.primary
-                              : Colors.transparent,
-                          width: 2.5,
+                  return PressScale(
+                    // Кружки отдают под пальцем и мягко возвращаются: тап по
+                    // аватарке читается как нажатие, а не как «мёртвый» выбор.
+                    // Возврат длиннее вдавливания — отпускание не щёлкает.
+                    pressedScale: 0.86,
+                    duration: const Duration(milliseconds: 180),
+                    releaseDuration: const Duration(milliseconds: 340),
+                    child: GestureDetector(
+                      onTap: () => onPick(i),
+                      // Обводка выбора перетекает плавно (AnimatedContainer), а
+                      // не появляется кадром: тап по аватарке не «щёлкает».
+                      child: AnimatedContainer(
+                        duration: MotionPrefs.shouldReduceMotion
+                            ? Duration.zero
+                            : Motion.normal,
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            width: 2.5,
+                          ),
                         ),
+                        padding: const EdgeInsets.all(2),
+                        child: ProfileAvatar(index: i, size: 40),
                       ),
-                      padding: const EdgeInsets.all(2),
-                      child: ProfileAvatar(index: i, size: 40),
                     ),
                   );
                 },
@@ -966,24 +981,29 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                   scrollDirection: Axis.horizontal,
                   itemCount: profileAvatarVariants.length,
                   separatorBuilder: (_, _) => const SizedBox(width: Spacing.xs),
-                  itemBuilder: (context, i) => GestureDetector(
-                    onTap: () => setState(() => _avatar = i),
-                    child: AnimatedContainer(
-                      duration: MotionPrefs.shouldReduceMotion
-                          ? Duration.zero
-                          : Motion.normal,
-                      curve: Curves.easeOutCubic,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: i == _avatar
-                              ? theme.colorScheme.primary
-                              : Colors.transparent,
-                          width: 2.5,
+                  itemBuilder: (context, i) => PressScale(
+                    pressedScale: 0.86,
+                    duration: const Duration(milliseconds: 180),
+                    releaseDuration: const Duration(milliseconds: 340),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _avatar = i),
+                      child: AnimatedContainer(
+                        duration: MotionPrefs.shouldReduceMotion
+                            ? Duration.zero
+                            : Motion.normal,
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: i == _avatar
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            width: 2.5,
+                          ),
                         ),
+                        padding: const EdgeInsets.all(2),
+                        child: ProfileAvatar(index: i, size: 34),
                       ),
-                      padding: const EdgeInsets.all(2),
-                      child: ProfileAvatar(index: i, size: 34),
                     ),
                   ),
                 ),

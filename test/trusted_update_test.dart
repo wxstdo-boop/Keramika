@@ -4,19 +4,22 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Регресс-тест на самообновление и на профиль возможностей установки APK.
 ///
-/// История: сперва установка шла сессией `PackageInstaller` с обычным
-/// подтверждением — Play Protect показывал «требуется проверка», и это было
-/// терпимо. Затем был включён ТИХИЙ путь
-/// (`USER_ACTION_NOT_REQUIRED` + разрешение
-/// `UPDATE_PACKAGES_WITHOUT_USER_ACTION`), и вердикт сменился на «вредоносное
-/// приложение заблокировано»: установка APK без подтверждения — это ровно то
-/// поведение, по которому Play Protect метит незнакомые сайдлоады как malware.
+/// История вердиктов Play Protect:
+///  * сессия `PackageInstaller` с обычным подтверждением — «требуется
+///    проверка», установка шла, но система считала нас владельцем своих
+///    обновлений (`ENFORCE_UPDATE_OWNERSHIP`) и трактовала установку как
+///    самообновление в обход пользователя;
+///  * тихий путь (`USER_ACTION_NOT_REQUIRED` + разрешение
+///    `UPDATE_PACKAGES_WITHOUT_USER_ACTION`) — вердикт сменился на
+///    «вредоносное приложение заблокировано», установка перестала проходить.
 ///
-/// Поэтому инвариант обратный: разрешения на тихую установку в манифесте быть
-/// НЕ должно, а сессия обязана запрашивать обычный системный экран. Проверяем
-/// тексты файлов: собрать APK и установить его в CI негде.
+/// Итог: самообновление ставит ОБЫЧНЫЙ системный установщик
+/// (`Intent.ACTION_VIEW` через FileProvider). Никаких разрешений на установку
+/// без подтверждения и никакого объявления себя владельцем обновлений в
+/// манифесте быть не должно — именно они ужесточают вердикт. Проверяем тексты
+/// файлов: собрать APK и установить его в CI негде.
 void main() {
-  test('манифест не объявляет разрешение тихой самопереустановки', () {
+  test('манифест не просит разрешений, ужесточающих вердикт Play Protect', () {
     final file = File('android/app/src/main/AndroidManifest.xml');
     expect(
       file.existsSync(),
@@ -28,26 +31,31 @@ void main() {
     // Считаем только действующие объявления: строка `uses-permission` с этим
     // именем. Упоминание в комментарии (объяснение, почему разрешения нет)
     // тестом не считается.
-    final declared = RegExp(
-      r'<uses-permission[^>]*android\.permission\.UPDATE_PACKAGES_WITHOUT_USER_ACTION',
-    ).hasMatch(manifest);
-    expect(
-      declared,
-      isFalse,
-      reason:
-          'Разрешение UPDATE_PACKAGES_WITHOUT_USER_ACTION вернулось в манифест: '
-          'тихая установка APK без подтверждения — триггер Play Protect '
-          '«вредоносное приложение»',
-    );
+    for (final perm in const [
+      'UPDATE_PACKAGES_WITHOUT_USER_ACTION',
+      'ENFORCE_UPDATE_OWNERSHIP',
+    ]) {
+      final declared = RegExp(
+        r'<uses-permission[^>]*android\.permission\.$perm',
+      ).hasMatch(manifest);
+      expect(
+        declared,
+        isFalse,
+        reason:
+            'Разрешение $perm вернулось в манифест: оно включает установку без '
+            'подтверждения/в обход пользователя — триггер Play Protect '
+            '«вредоносное приложение»',
+      );
+    }
 
     expect(
       manifest,
       contains('android.permission.REQUEST_INSTALL_PACKAGES'),
-      reason: 'Без REQUEST_INSTALL_PACKAGES самообновление не работает вовсе',
+      reason: 'Без REQUEST_INSTALL_PACKAGES система не покажет экран установки',
     );
   });
 
-  test('сессия установки запрашивает обычное подтверждение', () {
+  test('установку ставит обычный системный установщик, а не сессия', () {
     final file = File(
       'android/app/src/main/kotlin/com/wetidom/keramika/MainActivity.kt',
     );
@@ -56,23 +64,32 @@ void main() {
       isTrue,
       reason: 'Не найден MainActivity.kt — тест запущен не из корня проекта',
     );
-    // Комментарии объясняют, почему тихий путь НЕ используется, и содержат
-    // имя константы. Проверяем только код: строки комментариев отбрасываем,
-    // иначе тест ловил бы собственное пояснение.
+    // Комментарии объясняют, почему сессии нет, и содержат её имя. Проверяем
+    // только код: строки комментариев отбрасываем, иначе тест ловил бы
+    // собственное пояснение.
     final code = file
         .readAsLinesSync()
         .where((line) {
           final t = line.trimLeft();
-          return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+          return !t.startsWith('//') &&
+              !t.startsWith('*') &&
+              !t.startsWith('/*');
         })
         .join('\n');
 
     expect(
       code,
-      contains('USER_ACTION_REQUIRED,'),
+      contains('installWithSystemInstaller'),
       reason:
-          'Сессия установки больше не запрашивает системный экран — вернулся '
-          'тихий путь, который Play Protect метит как вредоносное ПО',
+          'Установка больше не идёт обычным системным установщиком — вернулась '
+          'сессия PackageInstaller, которая ужесточает вердикт Play Protect',
+    );
+    expect(
+      code,
+      isNot(contains('PackageInstaller.SessionParams')),
+      reason:
+          'В коде снова создаётся сессия PackageInstaller — самообновление '
+          'опять выглядит как установка в обход пользователя',
     );
     expect(
       code,
@@ -83,25 +100,44 @@ void main() {
     );
   });
 
-  test('при блокировке установки есть путь в настройки Play Protect', () {
+  test('приёмник и мост сессии PackageInstaller удалены', () {
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
     final mainActivity = File(
       'android/app/src/main/kotlin/com/wetidom/keramika/MainActivity.kt',
     ).readAsStringSync();
-    final installer = File('lib/services/installer.dart').readAsStringSync();
 
     expect(
-      mainActivity,
-      contains('openPlayProtectSettings'),
+      manifest,
+      isNot(contains('InstallResultReceiver')),
       reason:
-          'Нативный канал больше не умеет открыть Play Protect — тупик при '
-          'блокировке установки вернётся',
+          'Приёмник результатов сессии снова объявлен в манифесте: система '
+          'опять увидит путь самообновления через PackageInstaller',
     );
     expect(
-      installer,
-      contains('openPlayProtectSettings'),
+      File(
+        'android/app/src/main/kotlin/com/wetidom/keramika/'
+        'InstallResultReceiver.kt',
+      ).existsSync(),
+      isFalse,
       reason:
-          'Installer больше не пробрасывает openPlayProtectSettings в '
-          'интерфейс — кнопка «Открыть» в снекбаре перестанет работать',
+          'Файл приёмника сессии вернулся — это запасной путь тихой установки, '
+          'который ужесточает вердикт Play Protect',
+    );
+    expect(
+      File(
+        'android/app/src/main/kotlin/com/wetidom/keramika/UpdaterBridge.kt',
+      ).existsSync(),
+      isFalse,
+      reason:
+          'Мост сессии вернулся — значит в код снова пишется придержанный '
+          'результат установки, то есть вернулся путь PackageInstaller',
+    );
+    expect(
+      mainActivity,
+      isNot(contains('UpdaterBridge')),
+      reason: 'MainActivity снова тянется к мосту сессии PackageInstaller',
     );
   });
 }

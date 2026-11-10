@@ -31,24 +31,35 @@ Widget animatedDeleteBackground(
     ),
     alignment: Alignment.centerRight,
     padding: const EdgeInsets.only(right: 24),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.delete_outline,
-          color: Colors.white.withValues(alpha: a),
-          size: 24,
+    // Плашка может быть УЖЕ своей подписи (она растёт вместе со свайпом),
+    // поэтому содержимое не сжимается, а «уезжает» вправо и обрезается:
+    // иконка с надписью прижаты к правому краю, левый край отсекает
+    // ClipRect — без этого Row переполнялся и рисовал полосы переполнения.
+    child: ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.centerRight,
+        minWidth: 0,
+        maxWidth: double.infinity,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.delete_outline,
+              color: Colors.white.withValues(alpha: a),
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              Translations.deleteOf(context),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: a),
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Text(
-          Translations.deleteOf(context),
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: a),
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-          ),
-        ),
-      ],
+      ),
     ),
   );
 }
