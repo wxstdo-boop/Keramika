@@ -30,7 +30,7 @@ class _UpdatePillState extends State<UpdatePill>
   bool _busy = false;
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1250),
+    duration: const Duration(milliseconds: 1450),
   );
 
   @override
@@ -288,22 +288,34 @@ class _UpdateGlyphPainter extends CustomPainter {
   final Color hole;
   final bool running;
 
+  /// Доля цикла, которую занимает сам прыжок. Остаток зайчик стоит на земле:
+  /// без паузы он «молотит» без остановки, и движение читается как дёрганье,
+  /// а не как прыжок.
+  static const double _hopSpan = 0.58;
+
   @override
   void paint(Canvas canvas, Size size) {
     final p = running ? progress : 0.0;
-    // Фаза прыжка: один прыжок за цикл, приземление на обоих концах.
-    final hop = running ? math.sin(math.pi * p) : 0.0;
-    // Приседание на земле (hop=0) и вытягивание в полёте (hop=1).
+    // Профиль прыжка: sin(π·x) держит нулевую скорость на обоих концах, а
+    // easeInOut убирает «ступеньку» в начале разгона — зайчик поднимается и
+    // опускается мягко, без рывка.
+    final hp = (p / _hopSpan).clamp(0.0, 1.0);
+    final arc = math.sin(math.pi * Curves.easeInOut.transform(hp));
+    final hop = running ? arc : 0.0;
+    // Приседание на земле (hop=0) и вытягивание в полёте (hop=1). Амплитуда
+    // умеренная: крупный squash в крошечной таблетке выглядел дрожанием.
     final squash = running ? (hop - 0.5) : 0.0;
-    final scaleY = 1 + squash * 0.22;
-    final scaleX = 1 - squash * 0.14;
-    final lift = hop * size.height * 0.22;
+    final scaleY = 1 + squash * 0.16;
+    final scaleX = 1 - squash * 0.10;
+    final lift = hop * size.height * 0.20;
 
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(Icons.cruelty_free.codePoint),
         style: TextStyle(
-          fontSize: size.shortestSide * 1.12,
+          // Глиф чуть меньше окна: при прыжке у него остаётся запас, и он не
+          // упирается в границы таблетки.
+          fontSize: size.shortestSide * 0.98,
           fontFamily: Icons.cruelty_free.fontFamily,
           package: Icons.cruelty_free.fontPackage,
           color: color,

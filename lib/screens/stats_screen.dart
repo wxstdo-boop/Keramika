@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
+import '../widgets/press_scale.dart';
 import '../utils/motion_prefs.dart';
 import '../services/reality_check_service.dart';
 import '../services/habit_service.dart';
@@ -107,25 +108,15 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     // pull-to-refresh работал и на коротком контенте. Сверх этого —
     // [_StretchScroll]: при протяжке края контент физически ТЯНЕТСЯ
     // (сверху и снизу), как блок разделов на главном экране.
+    // Растяжение — ВНЕШНИЙ слой над скроллом (иначе уведомления скролла до
+    // него не доходят). Верхняя плашка едет в [header] и НЕ растягивается:
+    // при протяжке края тянется только содержимое ниже, а сводка стоит на
+    // месте — иначе она «плыла» под пальцем и читалась как рывок.
     final bodyContent = _StretchScroll(
       controller: _scrollCtrl,
-      child: SingleChildScrollView(
-      controller: _scrollCtrl,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        // Нижний отступ до навбара: контент при свайпе не «залезает»
-        // за полосу навигации и не обрезается ею.
-        16 + MediaQuery.paddingOf(context).bottom,
-      ),
+      header: _buildOverallSummary(context, theme, overallPct),
       child: Column(
         children: [
-          _buildOverallSummary(context, theme, overallPct),
-          const SizedBox(height: 16),
           _MonthChart(days: monthDays, glitch: _glitchCtrl, theme: theme),
           const SizedBox(height: 16),
           // Daily Motivation Card — верхняя панель и сама цитата сидят на
@@ -250,7 +241,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
           ),
         ],
       ),
-      ),
     );
 
     return Scaffold(
@@ -276,9 +266,18 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     ThemeData theme,
     double pct,
   ) {
-    return _ringedCard(
+    // Отдача «вдавливанием»: под пальцем карточка мягко уменьшается и так же
+    // возвращается — карточки статистики отзываются на нажатие, как везде.
+    return PressScale(
+      pressedScale: 0.975,
+      duration: const Duration(milliseconds: 220),
+      releaseDuration: const Duration(milliseconds: 320),
+      child: _ringedCard(
       theme: theme,
       accent: theme.colorScheme.primary,
+      // Единственная карточка с ПЛОТНОЙ обводкой: общий прогресс — главная
+      // цифра экрана, её рамка читается акцентом, остальные — волосяные.
+      thick: true,
       child: Card(
         color: theme.colorScheme.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -320,6 +319,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
         ),
       ),
       ),
+      ),
     );
   }
 
@@ -334,7 +334,11 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     required Animation<double> glitch,
   }) {
     final pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 0.0;
-    return _ringedCard(
+    return PressScale(
+      pressedScale: 0.975,
+      duration: const Duration(milliseconds: 220),
+      releaseDuration: const Duration(milliseconds: 320),
+      child: _ringedCard(
       theme: theme,
       accent: accent,
       child: Card(
@@ -425,6 +429,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
         ),
       ),
       ),
+      ),
     );
   }
 }
@@ -433,22 +438,34 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
 /// плоской рамки — мягкий перелив по периметру, читается и на светлой, и
 /// на тёмной теме. Тень одна (у кольца), чтобы не было грязного двойного
 /// ореола. Внутренний радиус на толщину кольца меньше, иначе в стыке
-/// видна щель. Толщина кольца теперь тонкая (0.8): «обводка тоньше» —
-/// перелив стал деликатнее, без жирного края.
+/// видна щель.
+///
+/// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
+/// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
+/// Все прочие карточки — волосяные ([_hairline]).
+const double _hairline = 0.6;
+
 Widget _ringedCard({
   required ThemeData theme,
   required Widget child,
   required Color accent,
   double radius = 20,
+  bool thick = false,
 }) {
-  // Обводка карточек — тоньше и прозрачнее прежней: цветной «кант» должен
-  // читаться как лёгкая подсветка у грани, а не как рамка. Раньше он был
-  // заметно плотнее (толщина 0.8, альфа до 0.55) и «обводил» карточку.
-  // Ещё тоньше: 0.35 — кант почти волосяной, карточки не выглядят
-  // «окантованными».
-  const thickness = 0.35;
+  final thickness = thick ? 1.6 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
+  // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
+  // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
+  final aTop = thick
+      ? (dark ? 0.75 : 0.60)
+      : (dark ? 0.42 : 0.30);
+  final aMid = thick
+      ? (dark ? 0.30 : 0.22)
+      : (dark ? 0.10 : 0.08);
+  final aEnd = thick
+      ? (dark ? 0.55 : 0.42)
+      : (dark ? 0.30 : 0.18);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius + thickness),
@@ -456,9 +473,9 @@ Widget _ringedCard({
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: <Color>[
-          accent.withValues(alpha: dark ? 0.30 : 0.20),
-          accent.withValues(alpha: dark ? 0.05 : 0.04),
-          cs.tertiary.withValues(alpha: dark ? 0.20 : 0.12),
+          accent.withValues(alpha: aTop),
+          accent.withValues(alpha: aMid),
+          cs.tertiary.withValues(alpha: aEnd),
         ],
         stops: const <double>[0, 0.55, 1],
       ),
@@ -608,7 +625,11 @@ class _MonthChart extends StatelessWidget {
     final totalHabit = days.fold(0, (a, b) => a + b.habits);
     final totalTask = days.fold(0, (a, b) => a + b.tasks);
 
-    return _ringedCard(
+    return PressScale(
+      pressedScale: 0.975,
+      duration: const Duration(milliseconds: 220),
+      releaseDuration: const Duration(milliseconds: 320),
+      child: _ringedCard(
       theme: theme,
       accent: theme.colorScheme.primary,
       child: Card(
@@ -712,8 +733,35 @@ class _MonthChart extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            // Пояснение к графику — мелким полупрозрачным текстом. Появляется
+            // плавно, с той же длительностью, что и рост столбиков: сначала
+            // глаз читает картинку, потом — подпись.
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOut,
+              builder: (context, fade, child) => Opacity(
+                opacity: fade,
+                child: child,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  Translations.t('monthChartHint', context),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 11,
+                    height: 1.35,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.62,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
+      ),
       ),
       ),
     );
@@ -915,14 +963,23 @@ class _DaysBarPainter extends CustomPainter {
 
       // «Сегодня» — последний столбик: подписываем дату акцентом.
       final isToday = i == n - 1;
-      if (bestIndex == i && grow > 0.85) {
-        // Метка «лучший день»: маленькая звёздочка над столбиком.
-        _drawStar(
-          canvas,
-          Offset(cx, chartBottom - h - 8),
-          4.2,
-          todayColor.withValues(alpha: 0.9 * grow),
+      if (bestIndex == i && grow > 0.45) {
+        // Метка «лучший день»: звёздочка над столбиком. Появляется ПЛАВНО —
+        // проявляется и «разгорается» вместе с ростом столбиков, а не
+        // вспыхивает на последнем кадре. Мягкий ореол делает появление
+        // свечением, а не рывком.
+        final st = ((grow - 0.45) / 0.55).clamp(0.0, 1.0);
+        final ease = Curves.easeOutCubic.transform(st);
+        final starC = Offset(cx, chartBottom - h - 8);
+        final r = 4.2 * (0.5 + 0.5 * ease);
+        canvas.drawCircle(
+          starC,
+          r * 2.1,
+          Paint()
+            ..color = todayColor.withValues(alpha: 0.12 * ease)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
         );
+        _drawStar(canvas, starC, r, todayColor.withValues(alpha: 0.92 * ease));
       }
       if (isToday) {
         canvas.drawCircle(
@@ -994,9 +1051,16 @@ class _DaysBarPainter extends CustomPainter {
 /// и pull-to-refresh не задеты.
 class _StretchScroll extends StatefulWidget {
   final ScrollController controller;
+
+  /// Неподвижная верхняя часть: не растягивается при протяжке края.
+  final Widget header;
   final Widget child;
 
-  const _StretchScroll({required this.controller, required this.child});
+  const _StretchScroll({
+    required this.controller,
+    required this.header,
+    required this.child,
+  });
 
   @override
   State<_StretchScroll> createState() => _StretchScrollState();
@@ -1004,7 +1068,9 @@ class _StretchScroll extends StatefulWidget {
 
 class _StretchScrollState extends State<_StretchScroll>
     with SingleTickerProviderStateMixin {
-  /// Величина протяжки 0..1 (0 — покой, 1 — предел деформации).
+  /// Сглаженная величина протяжки 0..1 (0 — покой, 1 — предел деформации).
+  /// Именно она рисуется: мгновенный замер дрожит от кадра к кадру, и
+  /// деформация, повторяющая его в лоб, читалась как лаги.
   final ValueNotifier<double> _pull = ValueNotifier<double>(0);
 
   late final Ticker _ticker = createTicker(_sample);
@@ -1013,12 +1079,21 @@ class _StretchScrollState extends State<_StretchScroll>
   /// угла контент «растягивается».
   bool _atTop = true;
 
-  /// Кадров подряд в границах: двух достаточно, чтобы считать движение
+  /// Текущее сглаженное значение и время предыдущего кадра — для
+  /// экспоненциального сглаживания, независимого от частоты кадров.
+  double _raw = 0;
+  Duration _last = Duration.zero;
+
+  /// Кадров подряд в покое: двух достаточно, чтобы считать движение
   /// завершённым и остановить тикер (в простое не тратим кадры).
   int _calm = 0;
 
   /// Ход протяжки, на котором деформация достигает предела, px.
   static const double _fullPull = 220;
+
+  /// Скорость «догона» сглаженного значения за замером, 1/с. Больше — резче
+  /// (ближе к мгновенному замеру), меньше — плавнее.
+  static const double _smooth = 18;
 
   @override
   void dispose() {
@@ -1027,8 +1102,9 @@ class _StretchScrollState extends State<_StretchScroll>
     super.dispose();
   }
 
-  /// Один замер позиции: переносим «выход за границу» в деформацию.
-  void _sample(Duration _) {
+  /// Один замер позиции: переносим «выход за границу» в деформацию и мягко
+  /// подтягиваем к нему сглаженное значение.
+  void _sample(Duration elapsed) {
     final pos = widget.controller.hasClients
         ? widget.controller.position
         : null;
@@ -1040,12 +1116,21 @@ class _StretchScrollState extends State<_StretchScroll>
     final double beyondBottom = pos.pixels - pos.maxScrollExtent;
     final double beyond = math.max(beyondTop, beyondBottom);
     _atTop = beyondTop >= beyondBottom;
-    _pull.value = (beyond / _fullPull).clamp(0.0, 1.0);
-    if (beyond <= 0.5) {
-      if (++_calm >= 2) {
-        _pull.value = 0;
-        _ticker.stop();
-      }
+    final double target = (beyond / _fullPull).clamp(0.0, 1.0);
+
+    // Шаг сглаживания от реального dt: на 120 Гц и на 60 Гц деформация
+    // меняется одинаково по времени, а не по числу кадров.
+    final double dt = ((elapsed - _last).inMicroseconds / 1e6).clamp(0.0, 0.05);
+    _last = elapsed;
+    final double k = 1 - math.exp(-dt * _smooth);
+    _raw += (target - _raw) * k;
+    // У самого нуля обрезаем «хвост»: иначе к нулю сходим бесконечно и
+    // тикер не останавливается.
+    if (target == 0 && _raw < 0.002) _raw = 0;
+    _pull.value = _raw;
+
+    if (target == 0 && _raw == 0) {
+      if (++_calm >= 2) _ticker.stop();
     } else {
       _calm = 0;
     }
@@ -1057,10 +1142,11 @@ class _StretchScrollState extends State<_StretchScroll>
         n is ScrollUpdateNotification ||
         n is ScrollEndNotification) {
       _calm = 0;
-      if (!_ticker.isActive) _ticker.start();
-      // Замер сразу, не дожидаясь следующего кадра: тикер успевает только
-      // к следующему фрейму, а деформация должна быть видна уже на этом.
-      _sample(Duration.zero);
+      if (!_ticker.isActive) {
+        // Отсчёт кадров сглаживания начинается заново вместе с тикером.
+        _last = Duration.zero;
+        _ticker.start();
+      }
     }
     return false;
   }
@@ -1069,27 +1155,50 @@ class _StretchScrollState extends State<_StretchScroll>
   Widget build(BuildContext context) {
     return NotificationListener<ScrollNotification>(
       onNotification: _onNotification,
-      child: ValueListenableBuilder<double>(
-        valueListenable: _pull,
-        builder: (context, raw, child) {
-          final p = Curves.easeOutCubic.transform(raw);
-          // Transform присутствует ВСЕГДА (в покое — единичный): если
-          // убирать/вставлять его на ходу, дерево под пальцем меняется, и
-          // жест обрывается. Поэтому «покой» — это масштаб 1, а не
-          // отсутствие виджета.
-          return Transform.scale(
-            // Ключ — точка опоры для тестов растяжения: по нему находят
-            // именно эту деформацию, не путая с прочими Transform на экране.
-            key: const ValueKey('stats_stretch'),
-            // Растяжка вдоль оси протяжки + лёгкое сжатие поперёк —
-            // «резина», а не просто сдвиг.
-            scaleX: 1 - 0.018 * p,
-            scaleY: 1 + 0.030 * p,
-            alignment: _atTop ? Alignment.topCenter : Alignment.bottomCenter,
-            child: child,
-          );
-        },
-        child: widget.child,
+      child: SingleChildScrollView(
+        controller: widget.controller,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          // Нижний отступ до навбара: контент при свайпе не «залезает»
+          // за полосу навигации и не обрезается ею.
+          16 + MediaQuery.paddingOf(context).bottom,
+        ),
+        child: Column(
+          children: [
+            widget.header,
+            const SizedBox(height: 16),
+            ValueListenableBuilder<double>(
+              valueListenable: _pull,
+              builder: (context, raw, child) {
+                final p = Curves.easeOutCubic.transform(raw);
+                // Transform присутствует ВСЕГДА (в покое — единичный): если
+                // убирать/вставлять его на ходу, дерево под пальцем меняется,
+                // и жест обрывается. Поэтому «покой» — это масштаб 1, а не
+                // отсутствие виджета.
+                return Transform.scale(
+                  // Ключ — точка опоры для тестов растяжения: по нему находят
+                  // именно эту деформацию, не путая с прочими Transform.
+                  key: const ValueKey('stats_stretch'),
+                  // Растяжка вдоль оси протяжки + лёгкое сжатие поперёк —
+                  // «резина», а не просто сдвиг. Амплитуда умеренная: крупный
+                  // масштаб на весь экран выглядел «резиновым» и дёрганым.
+                  scaleX: 1 - 0.014 * p,
+                  scaleY: 1 + 0.026 * p,
+                  alignment: _atTop
+                      ? Alignment.topCenter
+                      : Alignment.bottomCenter,
+                  child: child,
+                );
+              },
+              child: widget.child,
+            ),
+          ],
+        ),
       ),
     );
   }

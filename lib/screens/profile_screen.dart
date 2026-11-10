@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:ui' show ImageFilter;
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -409,81 +407,26 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       body: AnimatedBuilder(
         animation: _service,
-        builder: (context, _) => Stack(
+        builder: (context, _) => ListView(
+          controller: _scrollCtrl,
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.sm,
+            Spacing.md,
+            Spacing.xxl,
+          ),
           children: [
-            ListView(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(
-                Spacing.md,
-                Spacing.sm,
-                Spacing.md,
-                Spacing.xxl,
-              ),
-              children: [
-                _headerCard(theme),
-                const SizedBox(height: Spacing.md),
-                _nameCard(theme),
-                const SizedBox(height: Spacing.md),
-                _onlineCard(theme),
-                const SizedBox(height: Spacing.md),
-                _musicCard(theme),
-                const SizedBox(height: Spacing.md),
-                _leaderboardCard(theme),
-                const SizedBox(height: Spacing.md),
-                _eventsCard(theme),
-              ],
-            ),
-            // Верхняя «полка»: при прокрутке контент уходит под матовое
-            // стекло — аватарка и шапка мягко расплываются (Blur) и гаснут,
-            // как под полупрозрачной полосой AppBar. Слой прозрачный в покое
-            // (offset == 0) и включается только с началом прокрутки.
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _scrollCtrl,
-                  builder: (context, _) {
-                    final t = _scrollCtrl.hasClients
-                        ? (_scrollCtrl.offset / 120).clamp(0.0, 1.0)
-                        : 0.0;
-                    if (t <= 0.001) return const SizedBox.shrink();
-                    final h = kToolbarHeight + MediaQuery.paddingOf(context).top;
-                    return ClipRect(
-                      child: SizedBox(
-                        height: h,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            BackdropFilter(
-                              filter: ImageFilter.blur(
-                                sigmaX: 8 * t,
-                                sigmaY: 8 * t,
-                              ),
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      theme.scaffoldBackgroundColor
-                                          .withValues(alpha: 0.92 * t),
-                                      theme.scaffoldBackgroundColor
-                                          .withValues(alpha: 0.0),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
+            _headerCard(theme),
+            const SizedBox(height: Spacing.md),
+            _nameCard(theme),
+            const SizedBox(height: Spacing.md),
+            _onlineCard(theme),
+            const SizedBox(height: Spacing.md),
+            _musicCard(theme),
+            const SizedBox(height: Spacing.md),
+            _leaderboardCard(theme),
+            const SizedBox(height: Spacing.md),
+            _eventsCard(theme),
           ],
         ),
       ),
@@ -514,10 +457,23 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: GestureDetector(
               onTap: _pickAvatar,
               behavior: HitTestBehavior.opaque,
-              child: ProfileAvatar(
-                index: _service.avatarIndex,
-                size: 96,
-                imagePath: _service.avatarImagePath,
+              // Параллакс: при прокрутке экрана содержимое аватарки мягко
+              // «плывёт» внутри круга (обводка стоит на месте). Смещение —
+              // доля от прокрутки, ограниченная по модулю, чтобы картинка не
+              // уезжала из окна.
+              child: AnimatedBuilder(
+                animation: _scrollCtrl,
+                builder: (context, _) {
+                  final dy = _scrollCtrl.hasClients
+                      ? (_scrollCtrl.offset * 0.16).clamp(-26.0, 26.0)
+                      : 0.0;
+                  return ProfileAvatar(
+                    index: _service.avatarIndex,
+                    size: 96,
+                    imagePath: _service.avatarImagePath,
+                    parallax: dy,
+                  );
+                },
               ),
             ),
           ),
@@ -759,16 +715,20 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ? ListTile(
                       key: const ValueKey('music_row'),
                       contentPadding: EdgeInsets.zero,
-                      leading: MusicPulseRing(
-                        active: playing,
-                        child: PressScale(
-                          pressedScale: 0.88,
+                      leading: PressScale(
+                        pressedScale: 0.88,
+                        child: MusicPulseRing(
+                          active: playing,
                           child: IconButton.filledTonal(
                             onPressed: _toggleMusicPlayback,
-                            // Скруглённый фон (круг), а не квадрат: под
-                            // пальцем подсветка повторяет форму кнопки.
+                            // Прозрачный фон + круг: под пальцем виден только
+                            // круглый отклик, а не квадратная заливка.
                             style: IconButton.styleFrom(
                               shape: const CircleBorder(),
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: theme.colorScheme.primary,
+                              highlightColor: theme.colorScheme.primary
+                                  .withValues(alpha: 0.12),
                             ),
                             icon: AnimatedSwitcher(
                               // Значок плей/пауза сменяется медленно и мягко,
@@ -799,14 +759,28 @@ class _ProfileScreenState extends State<ProfileScreen>
                       // Заголовок карточки — «Твоя музыка», а строка трека
                       // подписана «Играет бодрый звук»: понятно, что это не
                       // имя файла, а состояние проигрывания.
-                      title: Text(
-                        Translations.t(
-                          'profileMusicPlaying',
-                          context,
-                          'Играет бодрый звук',
+                      title: AnimatedSwitcher(
+                        duration: MotionPrefs.shouldReduceMotion
+                            ? Duration.zero
+                            : Motion.normal,
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
+                        child: Text(
+                          playing
+                              ? Translations.t(
+                                  'profileMusicPlaying',
+                                  context,
+                                  'Играет…',
+                                )
+                              : Translations.t(
+                                  'profileMusicPaused',
+                                  context,
+                                  'Пауза',
+                                ),
+                          key: ValueKey('music_state_$playing'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       trailing: PressScale(
                         pressedScale: 0.86,

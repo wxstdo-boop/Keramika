@@ -17,8 +17,8 @@ class MusicPulseRing extends StatefulWidget {
   final bool active;
   final Widget child;
 
-  /// Толщина кольца в покое и на пике пульса, px. Тонкое кольцо — акцент, а
-  /// не «бублик» вокруг кнопки.
+  /// Толщина кольца в покое и на пике пульса, px. Совсем тонкое кольцо —
+  /// лёгкий акцент, а не «бублик» вокруг кнопки.
   final double baseWidth;
   final double pulseWidth;
 
@@ -26,8 +26,8 @@ class MusicPulseRing extends StatefulWidget {
     super.key,
     required this.active,
     required this.child,
-    this.baseWidth = 1.7,
-    this.pulseWidth = 0.7,
+    this.baseWidth = 1.0,
+    this.pulseWidth = 0.4,
   });
 
   @override

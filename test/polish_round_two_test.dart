@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/screens/profile_screen.dart';
+import 'package:keramika/widgets/profile_avatar.dart';
 import 'package:keramika/screens/settings_screen.dart';
 import 'package:keramika/services/json_file.dart';
 import 'package:keramika/main.dart';
@@ -137,7 +138,7 @@ void main() {
     );
   });
 
-  testWidgets('профиль: при прокрутке появляется верхний blur-слой', (
+  testWidgets('профиль: аватарка плывёт при прокрутке (параллакс, без размытия)', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(411, 891) * 3;
@@ -156,23 +157,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 900));
 
-    // В покое верхнего слоя нет — контент чист.
+    // Верхнего размывающего слоя нет НИ в покое, ни при прокрутке: «полку»
+    // из профиля убрали — она читалась как лишнее стекло над контентом.
     expect(find.byType(BackdropFilter), findsNothing);
 
+    double parallax() => tester
+        .widget<ProfileAvatar>(find.byType(ProfileAvatar).first)
+        .parallax;
+
+    expect(parallax(), 0.0, reason: 'в покое аватарка не смещена');
+
+    // Сдвигаем умеренно (шапка ещё видна): у большого сдвига заголовочная
+    // карточка уходит из окна, и ListView её размонтирует.
     final list = find.byType(ListView);
     final g = await tester.startGesture(tester.getCenter(list));
-    for (var i = 0; i < 6; i++) {
-      await g.moveBy(const Offset(0, -50));
+    for (var i = 0; i < 3; i++) {
+      await g.moveBy(const Offset(0, -30));
       await tester.pump(const Duration(milliseconds: 16));
     }
     await tester.pump(const Duration(milliseconds: 100));
-
-    // С прокруткой верх «расплывается»: появляется размывающий слой.
+    // С прокруткой содержимое аватарки «плывёт» внутри круга.
     expect(
-      find.byType(BackdropFilter),
-      findsOneWidget,
-      reason: 'при прокрутке аватарка уходит под размывающую полку',
+      parallax(),
+      isNot(0.0),
+      reason: 'при прокрутке аватарка должна плыть (параллакс)',
     );
+    expect(find.byType(BackdropFilter), findsNothing);
 
     await g.up();
     await tester.pump(const Duration(milliseconds: 300));

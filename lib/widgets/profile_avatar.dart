@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -107,9 +106,13 @@ IconData profileAvatarIcon(int index) {
 /// сгенерированный «стеклянный» шар — красный градиент с блестящими пятнами и
 /// чистой обводкой, как у кружков привычек.
 ///
-/// Смена — плавный «РАЗРЫВ»: аватарка расходится по горизонтальному шву на две
-/// половины и снова сходится, без размытия (saveLayer на слабом GPU дорог и
-/// читался как «мыло»). Эффект собран на клипах и сдвигах — дёшево и чётко.
+/// Смена варианта — мягкий кросс-фейд с лёгким «проявлением» (без разрывов и
+/// разрезов): картинка меняется плавно и цельно.
+///
+/// [parallax] сдвигает содержимое внутри круга: при прокрутке экрана аватарка
+/// «плывёт» — своя фотография панорамируется в круглом окне, а у
+/// сгенерированного шара мягко уезжают значок и блики. Обводка при этом
+/// стоит на месте, поэтому круг не «дышит» размером.
 class ProfileAvatar extends StatelessWidget {
   final int index;
   final double size;
@@ -119,12 +122,16 @@ class ProfileAvatar extends StatelessWidget {
   /// сгенерированный вариант.
   final String? imagePath;
 
+  /// Вертикальный сдвиг содержимого внутри круга, px (для параллакса).
+  final double parallax;
+
   const ProfileAvatar({
     super.key,
     required this.index,
     this.size = 44,
     this.showIcon = true,
     this.imagePath,
+    this.parallax = 0,
   });
 
   @override
@@ -132,7 +139,7 @@ class ProfileAvatar extends StatelessWidget {
     final reduce = MotionPrefs.shouldReduceMotion;
     final hasImage = imagePath != null && imagePath!.isNotEmpty;
     return AnimatedSwitcher(
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 460),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 340),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       layoutBuilder: (current, previous) => Stack(
@@ -140,8 +147,14 @@ class ProfileAvatar extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [...previous, ?current],
       ),
-      transitionBuilder: (child, anim) =>
-          _AvatarTear(progress: anim.value, size: size, child: child),
+      // Мягкая проявка с лёгким масштабом — смена читается плавно и цельно.
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1).animate(anim),
+          child: child,
+        ),
+      ),
       child: SizedBox(
         key: ValueKey(hasImage ? 'img:$imagePath' : 'v:$index'),
         width: size,
@@ -155,20 +168,34 @@ class ProfileAvatar extends StatelessWidget {
   /// сгенерированных вариантов, — аватарка не выбивается из ряда.
   Widget _imageAvatar() {
     final file = File(imagePath!);
+    // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
+    // круга не оголяются.
+    final over = size * 0.30;
+    final dy = parallax.clamp(-over / 2, over / 2);
     return DecoratedBox(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.70), width: 2),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.70),
+          width: 2,
+        ),
       ),
       child: ClipOval(
-        child: Image.file(
-          file,
+        child: SizedBox(
           width: size,
           height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, _, _) => _generatedAvatar(null),
+          child: Transform.translate(
+            offset: Offset(0, dy),
+            child: Image.file(
+              file,
+              width: size,
+              height: size + over,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (_, _, _) => _generatedAvatar(null),
+            ),
+          ),
         ),
       ),
     );
@@ -176,6 +203,9 @@ class ProfileAvatar extends StatelessWidget {
 
   Widget _generatedAvatar(BuildContext? context) {
     final color = profileAvatarColors(index).first;
+    // Значок и блики уезжают вместе с содержимым, но слабее: шар остаётся
+    // узнаваемым, а движение читается как «плавание».
+    final dy = (parallax * 0.55).clamp(-size * 0.14, size * 0.14);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -189,7 +219,11 @@ class ProfileAvatar extends StatelessWidget {
                 center: const Alignment(-0.4, -0.5),
                 radius: 1.1,
                 colors: [
-                  Color.lerp(color, Colors.white, 0.55)!.withValues(alpha: 0.72),
+                  Color.lerp(
+                    color,
+                    Colors.white,
+                    0.55,
+                  )!.withValues(alpha: 0.72),
                   color.withValues(alpha: 0.34),
                   color.withValues(alpha: 0.20),
                 ],
@@ -202,25 +236,35 @@ class ProfileAvatar extends StatelessWidget {
             ),
           ),
         ),
-        if (showIcon)
-          Center(
-            child: Icon(
-              profileAvatarIcon(index),
-              size: size * 0.44,
-              color: Colors.white.withValues(alpha: 0.92),
+        Positioned.fill(
+          child: Transform.translate(
+            offset: Offset(0, dy),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (showIcon)
+                  Center(
+                    child: Icon(
+                      profileAvatarIcon(index),
+                      size: size * 0.44,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                // Блестящие пятна: яркий «зайчик» и вторичный, слабее —
+                // аватарка читается как объёмный стеклянный шарик.
+                Positioned(
+                  left: size * 0.22,
+                  top: size * 0.18,
+                  child: _gloss(size * 0.20, 0.60),
+                ),
+                Positioned(
+                  left: size * 0.42,
+                  top: size * 0.33,
+                  child: _gloss(size * 0.09, 0.40),
+                ),
+              ],
             ),
           ),
-        // Блестящие пятна: яркий «зайчик» и вторичный, слабее — аватарка
-        // читается как объёмный стеклянный шарик.
-        Positioned(
-          left: size * 0.22,
-          top: size * 0.18,
-          child: _gloss(size * 0.20, 0.60),
-        ),
-        Positioned(
-          left: size * 0.42,
-          top: size * 0.33,
-          child: _gloss(size * 0.09, 0.40),
         ),
       ],
     );
@@ -234,76 +278,4 @@ class ProfileAvatar extends StatelessWidget {
       color: Colors.white.withValues(alpha: alpha),
     ),
   );
-}
-
-/// «Разрыв» аватарки при смене: две половины (верх/низ) расходятся по
-/// горизонтальному шву и снова сходятся. [progress] 1 — целый кадр, 0 —
-/// максимально разведённый. Без blur и saveLayer: только ClipRect + сдвиг,
-/// поэтому на бюджетнике эффект остаётся чётким и дешёвым.
-class _AvatarTear extends StatelessWidget {
-  final double progress;
-  final double size;
-  final Widget child;
-
-  const _AvatarTear({
-    required this.progress,
-    required this.size,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Curves.easeOutCubic.transform(progress.clamp(0.0, 1.0));
-    // Максимальный развод половин — заметный, но не «распад».
-    final tear = (1 - t) * size * 0.34;
-    // Яркий шов в момент расхождения: тонкая линия по месту разрыва.
-    final seam = math.sin(math.pi * t) * 0.55;
-    return Opacity(
-      // Лёгкая проявка поверх разрыва — смена читается мягче.
-      opacity: 0.55 + 0.45 * t,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          ClipRect(
-            child: Align(
-              alignment: Alignment.topCenter,
-              heightFactor: 0.5,
-              child: Transform.translate(
-                offset: Offset(-tear * 0.5, -tear * 0.35),
-                child: SizedBox(width: size, height: size, child: child),
-              ),
-            ),
-          ),
-          ClipRect(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              heightFactor: 0.5,
-              child: Transform.translate(
-                offset: Offset(tear * 0.5, tear * 0.35),
-                child: SizedBox(width: size, height: size, child: child),
-              ),
-            ),
-          ),
-          if (seam > 0.01)
-            Positioned(
-              top: size / 2 - 1,
-              left: size * 0.12,
-              right: size * 0.12,
-              child: Container(
-                height: 1.4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: seam),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: seam * 0.6),
-                      blurRadius: 6,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 }
