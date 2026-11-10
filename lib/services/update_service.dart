@@ -342,13 +342,28 @@ class UpdateService {
       // что человеку важно в «Что нового». Срезаем её: пункт читается
       // живой фразой, а не протоколом.
       text = text.replaceFirst(RegExp(r'\s*\([^()]*\)\s*$'), '').trim();
+      // Префикс conventional-commit («feat:», «fix(scope):») — это машинная
+      // метка для истории, а не то, что человеку важно в «Что нового».
+      // Оставленный, он читается ровно как «иишный» сырой git log.
+      //
+      // Служебные типы (`ci:`, `chore(deps):`, `release:`, …) отсеиваем ДО
+      // снятия префикса: после снятия от метки ничего не остаётся, и коммит
+      // выглядел бы полезной заметкой.
+      if (_isInternalNote(text)) continue;
+      text = text.replaceFirst(
+        RegExp(
+          r'^(feat|fix|perf|refactor|style|docs|chore|build|ci|test|'
+          r'polish|improve|tweak)(\([^)]*\))?!?:\s+',
+          caseSensitive: false,
+        ),
+        '',
+      ).trim();
       // Хвостовая точка/запятая/точка с запятой в списке лишняя.
       text = text.replaceAll(RegExp(r'[.;,]+$'), '').trim();
       if (text.isEmpty) continue;
       // Первая буква — заглавная: в списке изменений пункты с маленькой
       // буквы («поправил рывок…») читаются как обрывки сырого git log.
       text = _capitalize(text);
-      if (_isInternalNote(text)) continue;
       // Дубликаты не показываем.
       if (!seen.add(text.toLowerCase())) continue;
       out.add(text);
