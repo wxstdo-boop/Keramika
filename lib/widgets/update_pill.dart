@@ -29,7 +29,7 @@ class _UpdatePillState extends State<UpdatePill>
   bool _busy = false;
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 680),
+    duration: const Duration(milliseconds: 1250),
   );
 
   @override
@@ -230,6 +230,7 @@ class _UpdatePillState extends State<UpdatePill>
                       painter: _UpdateGlyphPainter(
                         progress: _busy ? _spin.value : 0,
                         color: cs.onPrimaryContainer,
+                        hole: cs.primaryContainer,
                         running: _busy,
                       ),
                     ),
@@ -260,82 +261,105 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
-/// Значок таблетки: в покое — «искра обновления» (четырёхлучевая звезда с
-/// малой спутницей), в работе — плавно вращающееся кольцо с растворяющимся
-/// хвостом.
-///
-/// Звезда читается как «свежее, новое» и заметно отличается от системной
-/// стрелки-в-лоток, но сохраняет размер и вес кольца, поэтому переход
-/// «покой → работа» не двигает лэйаут таблетки.
+/// Значок таблетки: ракета. В покое стоит, при обновлении — «летит вверх»:
+/// мягко покачивается, пламя пульсирует, из сопла вниз уходят дымки. Никакого
+/// вращающегося кольца — движение читается как подъём, а не как «крутится
+/// колёсико».
 class _UpdateGlyphPainter extends CustomPainter {
   const _UpdateGlyphPainter({
     required this.progress,
     required this.color,
+    required this.hole,
     required this.running,
   });
 
   final double progress;
   final Color color;
+
+  /// Цвет «окна» ракеты — фон таблетки, чтобы иллюминатор читался дыркой.
+  final Color hole;
   final bool running;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2 - 1.4;
+    final r = size.shortestSide / 2;
 
+    // Покачивание вверх-вниз: sin проходит цикл ровно за один оборот
+    // прогресса, поэтому на стыке 1→0 нет рывка.
+    final bob = running ? math.sin(progress * math.pi * 2) * r * 0.12 : 0.0;
+    final cx = center.dx;
+    final cy = center.dy + bob;
+
+    final body = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    // Дымки из сопла: две точки уходят вниз и растворяются. Смещение и
+    // прозрачность привязаны к прогрессу — цикл замкнутый, без скачка.
     if (running) {
-      // Кольцо-комета: сплошная дуга в 250° и растворяющийся хвост. Угол
-      // растёт линейно, поэтому вращение ровное, без рывка на стыке.
-      final start = -math.pi / 2 + progress * math.pi * 2;
-      const sweep = math.pi * 1.38;
-      final steps = 26;
-      for (var i = 0; i < steps; i++) {
-        final t0 = i / steps;
-        final t1 = (i + 1) / steps;
-        final a0 = start + sweep * t0;
-        final a1 = start + sweep * t1;
-        final alpha = 0.25 + 0.75 * t0;
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          a0,
-          a1 - a0,
-          false,
-          Paint()
-            ..color = color.withValues(alpha: alpha)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.9
-            ..strokeCap = StrokeCap.round
-            ..isAntiAlias = true,
+      for (var i = 0; i < 2; i++) {
+        final p = (progress + i * 0.5) % 1.0;
+        final puff = Paint()
+          ..color = color.withValues(alpha: (1 - p) * 0.45)
+          ..isAntiAlias = true;
+        canvas.drawCircle(
+          Offset(cx, cy + r * (0.55 + p * 0.55)),
+          r * (0.16 + p * 0.10),
+          puff,
         );
       }
-      return;
     }
 
-    // Покой: четырёхлучевая «искра» — две скрещённые дуги-линзы. Кончики
-    // сведены в одну точку, середина «толще»: звезда мягкая, не колючая.
-    void drawSpark(Offset c, double r, double w) {
-      final p = Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = w
-        ..strokeCap = StrokeCap.round
-        ..isAntiAlias = true;
-      final path = Path()
-        ..moveTo(c.dx, c.dy - r)
-        ..quadraticBezierTo(c.dx + r * 0.28, c.dy - r * 0.28, c.dx + r, c.dy)
-        ..quadraticBezierTo(c.dx + r * 0.28, c.dy + r * 0.28, c.dx, c.dy + r)
-        ..quadraticBezierTo(c.dx - r * 0.28, c.dy + r * 0.28, c.dx - r, c.dy)
-        ..quadraticBezierTo(c.dx - r * 0.28, c.dy - r * 0.28, c.dx, c.dy - r)
-        ..close();
-      canvas.drawPath(path, p);
-    }
+    // Пламя: у покоя короткое, в полёте пульсирует.
+    final flamePulse = running
+        ? 0.5 + 0.5 * math.sin(progress * math.pi * 4)
+        : 0.0;
+    final flameLen = r * (0.34 + 0.42 * flamePulse);
+    final flame = Path()
+      ..moveTo(cx - r * 0.26, cy + r * 0.40)
+      ..quadraticBezierTo(cx, cy + r * 0.40 + flameLen, cx + r * 0.26, cy + r * 0.40)
+      ..close();
+    canvas.drawPath(
+      flame,
+      Paint()
+        ..color = color.withValues(alpha: 0.55)
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
 
-    drawSpark(center.translate(-0.4, -0.4), radius * 0.92, 1.5);
-    // Малая спутница снизу-справа — «ещё одна искра», живой акцент.
-    drawSpark(
-      center.translate(radius * 0.66, radius * 0.66),
-      radius * 0.34,
-      1.3,
+    // Корпус: заострённый нос и прямые борта.
+    final hull = Path()
+      ..moveTo(cx, cy - r * 0.95)
+      ..lineTo(cx + r * 0.40, cy - r * 0.22)
+      ..lineTo(cx + r * 0.40, cy + r * 0.40)
+      ..lineTo(cx - r * 0.40, cy + r * 0.40)
+      ..lineTo(cx - r * 0.40, cy - r * 0.22)
+      ..close();
+    canvas.drawPath(hull, body);
+
+    // Крылья-стабилизаторы у основания.
+    final leftFin = Path()
+      ..moveTo(cx - r * 0.38, cy + r * 0.06)
+      ..lineTo(cx - r * 0.74, cy + r * 0.62)
+      ..lineTo(cx - r * 0.38, cy + r * 0.42)
+      ..close();
+    final rightFin = Path()
+      ..moveTo(cx + r * 0.38, cy + r * 0.06)
+      ..lineTo(cx + r * 0.74, cy + r * 0.62)
+      ..lineTo(cx + r * 0.38, cy + r * 0.42)
+      ..close();
+    canvas.drawPath(leftFin, body);
+    canvas.drawPath(rightFin, body);
+
+    // Иллюминатор — «дырка» в цвет фона таблетки.
+    canvas.drawCircle(
+      Offset(cx, cy - r * 0.26),
+      r * 0.19,
+      Paint()
+        ..color = hole
+        ..isAntiAlias = true,
     );
   }
 
@@ -343,6 +367,7 @@ class _UpdateGlyphPainter extends CustomPainter {
   bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.color != color ||
+      oldDelegate.hole != hole ||
       oldDelegate.running != running;
 }
 

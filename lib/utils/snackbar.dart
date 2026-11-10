@@ -335,11 +335,11 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
                     vertical: 14,
                   ),
                   decoration: BoxDecoration(
-                    // Простой полупрозрачный фон — без размытия. `BackdropFilter`
-                    // под анимацией пересобирал размытие каждый кадр и плашка
-                    // «мигала»; полупрозрачного цвета достаточно.
+                    // Заметно прозрачный фон: сквозь плашку виден экран под
+                    // ней. Без размытия — `BackdropFilter` под анимацией
+                    // пересобирал размытие каждый кадр и плашка «мигала».
                     color: widget.theme.colorScheme.primaryContainer
-                        .withValues(alpha: dark ? 0.86 : 0.90),
+                        .withValues(alpha: dark ? 0.72 : 0.78),
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Row(

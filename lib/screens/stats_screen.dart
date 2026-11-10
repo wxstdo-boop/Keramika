@@ -73,13 +73,21 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
         ? (totalDone / totalItems).clamp(0.0, 1.0)
         : 0.0;
 
-    // Daily motivation quote based on day of year
+    // Daily motivation quote based on day of year. Всего цитат 90 (было
+    // захардкожено 15 — из-за этого месяц за месяцем показывались ОДНИ И ТЕ ЖЕ
+    // пять-шесть цитат, «мотивация дня» выглядела сломанной). Индекс берём по
+    // полному числу цитат и примешиваем год, чтобы порядок не повторялся год
+    // в год.
+    const quoteCount = 90;
     final dayOfYear = DateTime.now()
         .difference(DateTime(DateTime.now().year, 1, 1))
         .inDays;
-    final quoteIndex = (dayOfYear + DateTime.now().year) % 15;
-    final motivationKeys = List.generate(15, (i) => 'motivationQuote${i + 1}');
-    final motivationQuote = Translations.t(motivationKeys[quoteIndex], context);
+    final quoteIndex =
+        (dayOfYear * 7 + DateTime.now().year * 3) % quoteCount;
+    final motivationQuote = Translations.t(
+      'motivationQuote${quoteIndex + 1}',
+      context,
+    );
 
     // 30 дней берём ВСЕГДА: lastDays сам дозаполняет дыры из streak
     // привычек, поэтому график виден даже при пустом логе (новая
@@ -87,13 +95,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     final monthDays = _logSvc.lastDays(30);
 
     final bodyContent = SingleChildScrollView(
-      // Края клампятся (Clamping) БЕЗ резинового растяжения: стретч-эффект
-      // (StretchingOverscrollIndicator) убран полностью — свайп у края просто
-      // клампит, без «дёрнутого» подрагивания. AlwaysScrollable сверху —
-      // чтобы верхний край продолжал отдавать OverscrollNotification для
-      // RefreshIndicator (pull-to-refresh работает), а низ — просто упирается.
+      // Физика — как на ОСТАЛЬНЫХ экранах (привычки, задачи, будильники):
+      // упругий BouncingScrollPhysics. Раньше здесь стоял ClampingScrollPhysics,
+      // и статистика «не отдавала» край — при протяжке не было того мягкого
+      // натяжения/сжатия, к которому привыкли на других списках. AlwaysScrollable
+      // поверх — чтобы pull-to-refresh работал и на коротком контенте.
       physics: const AlwaysScrollableScrollPhysics(
-        parent: ClampingScrollPhysics(),
+        parent: BouncingScrollPhysics(),
       ),
       padding: EdgeInsets.fromLTRB(
         16,
@@ -328,13 +336,20 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
               children: [
                 Icon(icon, size: 24, color: accent),
                 const SizedBox(width: 12),
-                Text(
-                  label,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+                // Заголовок под защитой: длинная подпись («Проверки
+                // реальности») не выпирает за карточку — ужимается
+                // многоточием, а счётчик справа остаётся целым.
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 ClipRect(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 350),
@@ -414,7 +429,10 @@ Widget _ringedCard({
   required Color accent,
   double radius = 20,
 }) {
-  const thickness = 0.8;
+  // Обводка карточек — тоньше и прозрачнее прежней: цветной «кант» должен
+  // читаться как лёгкая подсветка у грани, а не как рамка. Раньше он был
+  // заметно плотнее (толщина 0.8, альфа до 0.55) и «обводил» карточку.
+  const thickness = 0.6;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   return Container(
@@ -424,9 +442,9 @@ Widget _ringedCard({
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: <Color>[
-          accent.withValues(alpha: dark ? 0.55 : 0.38),
-          accent.withValues(alpha: dark ? 0.10 : 0.09),
-          cs.tertiary.withValues(alpha: dark ? 0.40 : 0.26),
+          accent.withValues(alpha: dark ? 0.38 : 0.26),
+          accent.withValues(alpha: dark ? 0.07 : 0.06),
+          cs.tertiary.withValues(alpha: dark ? 0.26 : 0.16),
         ],
         stops: const <double>[0, 0.55, 1],
       ),
@@ -585,83 +603,26 @@ class _MonthChart extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            // Площадка графика: Улучшенная композиция — тонкая сетка и
-            // плавная линия тренда со свечением рисуются CustomPaint'ом
-            // в тех же координатах, что и столбцы; метки дней — отдельной
-            // строкой под площадкой.
+            // Площадка «галактики»: 30 дней уложены в спираль — свежий день
+            // в ядре, старые расходятся по рукавам. Вместо столбиков —
+            // светящиеся звёзды: размер и яркость даёт активность дня
+            // (привычки + задачи), а цвет — состав дня, поэтому легенда
+            // внизу честная. Спираль медленно вращается и «дышит».
             SizedBox(
-              height: 156,
+              height: 300,
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
                 duration: const Duration(milliseconds: 900),
                 curve: Curves.easeOutCubic,
-                builder: (context, grow, _) {
-                  final values = [
-                    for (final d in days) (d.habits + d.tasks) / maxV,
-                  ];
-                  // Каскадный рост: столбики слева направо чуть запаздывают —
-                  // площадка «прорастает» волной, а не одним комом.
-                  final grows = [
-                    for (var i = 0; i < days.length; i++)
-                      (grow * 1.22 - i * 0.0075).clamp(0.0, 1.0).toDouble(),
-                  ];
-                  return Column(
-                    children: [
-                      SizedBox(
-                        height: 136,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: _ChartDecorPainter(
-                                  values: values,
-                                  grows: grows,
-                                  gridColor: theme.colorScheme.onSurface
-                                      .withValues(alpha: 0.055),
-                                  lineColor: theme.colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  for (var i = 0; i < days.length; i++)
-                                    Expanded(
-                                      child: _stackedBar(
-                                        days[i],
-                                        maxV,
-                                        habitColor,
-                                        taskColor,
-                                        grows[i],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      // Метки под столбцами: день недели по каждой 5-й
-                      // колонке, «сегодня» — точка. Горизонтальные отступы
-                      // по краям — 30-я колонка/символ не упираются в грань.
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Row(
-                          children: [
-                            for (var i = 0; i < days.length; i++)
-                              Expanded(child: Center(child: _dayLabel(i))),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                builder: (context, grow, _) => _GalaxyView(
+                  days: days,
+                  maxV: maxV,
+                  grow: grow,
+                  glitch: glitch,
+                  theme: theme,
+                  habitColor: habitColor,
+                  taskColor: taskColor,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -705,119 +666,6 @@ class _MonthChart extends StatelessWidget {
     );
   }
 
-  /// Объёмный столбик: нижний фрагмент — задачи, верхний — привычки.
-  /// «Объём» — правая/нижняя тёмная грань (сдвиг на 3px по диагонали)
-  /// и лёгкий вертикальный градиент на лицевой части.
-  Widget _stackedBar(
-    DayCompletion d,
-    int maxV,
-    Color habitColor,
-    Color taskColor,
-    double grow,
-  ) {
-    final habitH = maxV <= 0
-        ? 0.0
-        : (d.habits / maxV).clamp(0.0, 1.0) * 136 * grow;
-    final taskH = maxV <= 0
-        ? 0.0
-        : (d.tasks / maxV).clamp(0.0, 1.0) * 136 * grow;
-    final total = habitH + taskH;
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: SizedBox(
-        // БЕЗ «призрачного» тёмного столбика позади: объём даёт мягкий
-        // градиент на самой колонке. Ширина чуть больше — спокойнее.
-        width: 13,
-        height: 136,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            // Единый столбик: привычки (верх) + задачи (низ), со скруглением
-            // ВСЕХ углов (верхние — у верхнего фрагмента, нижние — у
-            // нижнего). Лёгкий градиент на каждом фрагменте даёт «объём».
-            if (total > 0)
-              Positioned(
-                left: 0,
-                top: 136 - total,
-                width: 13,
-                height: total,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (habitH > 0)
-                      _face(
-                        height: habitH,
-                        color: habitColor,
-                        radius: const BorderRadius.vertical(
-                          top: Radius.circular(6),
-                        ),
-                      ),
-                    if (taskH > 0)
-                      _face(
-                        height: taskH,
-                        color: taskColor,
-                        radius: const BorderRadius.vertical(
-                          bottom: Radius.circular(6),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _face({
-    required double height,
-    required Color color,
-    required BorderRadius radius,
-  }) {
-    final top = Color.lerp(color, Colors.white, 0.20)!;
-    final bottom = Color.lerp(color, Colors.black, 0.12)!;
-    return Container(
-      width: 13,
-      height: height,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [top, color, bottom],
-        ),
-        borderRadius: radius,
-      ),
-    );
-  }
-
-  Widget _dayLabel(int i) {
-    final isToday = i == days.length - 1;
-    if (isToday) {
-      return Container(
-        width: 5,
-        height: 5,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
-          shape: BoxShape.circle,
-        ),
-      );
-    }
-    // Каждая 5-я колонка — буква дня недели.
-    if ((days.length - 1 - i) % 5 != 0) return const SizedBox(height: 5);
-    const names = ['П', 'В', 'С', 'Ч', 'П', 'С', 'В'];
-    final wd = HabitService.mskNow().weekday;
-    // weekday: 1=Пн..7=Вс
-    final label = names[(wd - 1 - (days.length - 1 - i)) % 7];
-    return Text(
-      label,
-      style: theme.textTheme.labelSmall?.copyWith(
-        fontSize: 9,
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
-
   Widget _legend(
     BuildContext context,
     Color color,
@@ -840,113 +688,232 @@ class _MonthChart extends StatelessWidget {
   }
 }
 
-/// Декор площадки графика: тонкая сетка (25/50/75 % по высоте и каждая
-/// 5-я колонка) плюс плавная линия тренда со свечением и мягкой заливкой
-/// под ней. Координаты совпадают со столбцами: по X — 30 равных колонок
-/// с центром в (i + 0.5) * cellW, по Y — от низа площадки вверх.
-class _ChartDecorPainter extends CustomPainter {
-  final List<double> values; // нормированные суммы дня: 0..1
-  final List<double> grows; // пополосный прогресс роста (каскад) 0..1
-  final Color gridColor;
-  final Color lineColor;
 
-  _ChartDecorPainter({
-    required this.values,
-    required this.grows,
-    required this.gridColor,
-    required this.lineColor,
+/// «Галактика»: 30 дней последнего месяца, уложенные в спираль. Самый
+/// свежий день — в ядре, старые расходятся по рукавам. Вместо столбиков —
+/// светящиеся звёзды: размер и яркость даёт активность дня (привычки +
+/// задачи), а цвет — состав дня, поэтому легенда под графиком честная.
+/// Спираль медленно вращается и «дышит» от [glitch]; при включённом
+/// «убрать анимации» кадр замирает, но картинка остаётся читаемой.
+class _GalaxyView extends StatelessWidget {
+  final List<DayCompletion> days;
+  final int maxV;
+  final double grow;
+  final Animation<double> glitch;
+  final ThemeData theme;
+  final Color habitColor;
+  final Color taskColor;
+
+  const _GalaxyView({
+    required this.days,
+    required this.maxV,
+    required this.grow,
+    required this.glitch,
+    required this.theme,
+    required this.habitColor,
+    required this.taskColor,
   });
 
   @override
+  Widget build(BuildContext context) {
+    final cs = theme.colorScheme;
+    // Значения нормируем на максимум месяца: «лучший день» — самая крупная
+    // звезда, остальные — пропорционально.
+    final values = <double>[
+      for (final d in days)
+        maxV <= 0 ? 0.0 : ((d.habits + d.tasks) / maxV).clamp(0.0, 1.0),
+    ];
+    // Доля привычек в дне: цвет звезды честно отражает состав дня.
+    final habitRatios = <double>[
+      for (final d in days)
+        (d.habits + d.tasks) == 0 ? 0.5 : d.habits / (d.habits + d.tasks),
+    ];
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: glitch,
+        builder: (context, _) => CustomPaint(
+          painter: _GalaxyPainter(
+            values: values,
+            habitRatios: habitRatios,
+            grow: grow,
+            phase: glitch.value,
+            habitColor: habitColor,
+            taskColor: taskColor,
+            coreColor: cs.primary,
+            dustColor: cs.onSurfaceVariant,
+          ),
+          size: Size.infinite,
+        ),
+      ),
+    );
+  }
+}
+
+/// Художник «галактики». Дни кладём по спирали: `t = i / (n-1)` — 0 у самого
+/// старого дня (внешний рукав), 1 у сегодняшнего (ядро). Размер и яркость
+/// точки растут к ядру и вместе со значением дня.
+class _GalaxyPainter extends CustomPainter {
+  final List<double> values; // активность дня 0..1 (0 — старый, n-1 — свежий)
+  final List<double> habitRatios; // доля привычек в дне 0..1 (цвет звезды)
+  final double grow; // прогресс входа 0..1 (анимация «прорастания»)
+  final double phase; // 0..1 — вечный цикл вращения/дыхания
+  final Color habitColor;
+  final Color taskColor;
+  final Color coreColor;
+  final Color dustColor;
+
+  _GalaxyPainter({
+    required this.values,
+    required this.habitRatios,
+    required this.grow,
+    required this.phase,
+    required this.habitColor,
+    required this.taskColor,
+    required this.coreColor,
+    required this.dustColor,
+  });
+
+  static const double _turns = 1.8;
+
+  @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    if (w <= 0 || h <= 0 || values.isEmpty) return;
-    final cellW = w / values.length;
+    final n = values.length;
+    if (n == 0 || size.width <= 0 || size.height <= 0) return;
+    final center = Offset(size.width / 2, size.height / 2);
+    final maxR = math.min(size.width, size.height) / 2 - 10;
+    final minR = math.max(6.0, math.min(size.width, size.height) * 0.045);
 
-    // Сетка: горизонтали на 25/50/75 % и вертикали каждые 5 дней.
-    final gridPaint = Paint()
-      ..color = gridColor
-      ..strokeWidth = 1;
-    for (final f in [0.25, 0.5, 0.75]) {
-      final y = h * (1 - f);
-      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
-    }
-    for (var i = 0; i < values.length; i += 5) {
-      final x = (i + 0.5) * cellW;
-      canvas.drawLine(Offset(x, 0), Offset(x, h), gridPaint);
-    }
+    // Полный оборот за цикл: sin/cos замкнуты на стыке 1→0, поэтому
+    // вращение идёт без рывка.
+    final spin = phase * 2 * math.pi;
+    final breath = math.sin(spin);
 
-    // Точки тренда: центр каждой колонки на высоте значения — растут тем
-    // же каскадом, что и столбики.
-    final pts = <Offset>[];
-    for (var i = 0; i < values.length; i++) {
-      final v = (values[i] * grows[i]).clamp(0.0, 1.0);
-      pts.add(Offset((i + 0.5) * cellW, h * (1 - v)));
-    }
-    if (pts.length < 2) return;
+    double radiusOf(double t) => minR + (maxR - minR) * (1 - t);
+    double angleOf(double t) =>
+        -math.pi / 2 + _turns * 2 * math.pi * t + spin * 0.35;
 
-    // Плавная линия: сплайн Кэтмулла-Рома (кубические через каждые две
-    // точки) — мягче квадратичных дуг, без изломов на пиках.
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (var i = 0; i < pts.length - 1; i++) {
-      final p0 = pts[i == 0 ? 0 : i - 1];
-      final p1 = pts[i];
-      final p2 = pts[i + 1];
-      final p3 = pts[i + 2 < pts.length ? i + 2 : pts.length - 1];
-      final c1 = Offset(
-        p1.dx + (p2.dx - p0.dx) / 6,
-        p1.dy + (p2.dy - p0.dy) / 6,
-      );
-      final c2 = Offset(
-        p2.dx - (p3.dx - p1.dx) / 6,
-        p2.dy - (p3.dy - p1.dy) / 6,
-      );
-      path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+    // Фоновая пыль: неподвижные тусклые звёзды — глубина кадра. Позиции
+    // детерминированы индексом, чтобы картинка не «кипела» между кадрами.
+    final dustPaint = Paint()..isAntiAlias = true;
+    for (var s = 0; s < 60; s++) {
+      final a = (s * 2.399963) % (math.pi * 2); // золотой угол — ровная россыпь
+      final rr = maxR * (0.18 + 0.82 * ((s * 37 % 100) / 100));
+      final p = center + Offset(math.cos(a), math.sin(a)) * rr;
+      final twinkle = 0.3 + 0.7 * ((s * 53 % 100) / 100);
+      dustPaint.color = dustColor.withValues(alpha: 0.05 + 0.10 * twinkle);
+      canvas.drawCircle(p, 0.6 + 0.8 * twinkle, dustPaint);
     }
 
-    // Мягкая заливка под линией — от цвета линии до прозрачного.
-    final area = Path.from(path)
-      ..lineTo(pts.last.dx, h)
-      ..lineTo(pts.first.dx, h)
-      ..close();
-    canvas.drawPath(
-      area,
+    // Два рукава спирали — тонкие ленты, на которых «сидят» дни. Угол
+    // считаем непрерывно от t, иначе лента «ломается» ступеньками.
+    final armPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+    for (var arm = 0; arm < 2; arm++) {
+      final path = Path();
+      for (var s = 0; s <= 96; s++) {
+        final t = s / 96;
+        final r = radiusOf(t);
+        final a = angleOf(t) + arm * math.pi;
+        final p = center + Offset(math.cos(a), math.sin(a)) * r;
+        if (s == 0) {
+          path.moveTo(p.dx, p.dy);
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      armPaint
+        ..color = coreColor.withValues(alpha: 0.16)
+        ..strokeWidth = math.min(size.width, size.height) * 0.028;
+      canvas.drawPath(path, armPaint);
+    }
+
+    // Ядро: мягкое светящееся пятно в центре — «сегодня» вырастает из него.
+    final coreR = math.min(size.width, size.height) * 0.10;
+    canvas.drawCircle(
+      center,
+      coreR * (0.9 + 0.1 * breath),
       Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+        ..shader = RadialGradient(
           colors: [
-            lineColor.withValues(alpha: 0.16),
-            lineColor.withValues(alpha: 0.0),
+            coreColor.withValues(alpha: 0.36 + 0.07 * breath),
+            coreColor.withValues(alpha: 0.0),
           ],
-        ).createShader(Offset.zero & size),
+        ).createShader(Rect.fromCircle(center: center, radius: coreR)),
     );
 
-    // Свечение и сама линия тренда.
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = lineColor.withValues(alpha: 0.30)
-        ..strokeWidth = 5
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = lineColor
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke,
-    );
+    // Дни: от старого (внешний рукав) к свежему (ядро).
+    for (var i = 0; i < n; i++) {
+      final t = n == 1 ? 1.0 : i / (n - 1);
+      final v = values[i].clamp(0.0, 1.0);
+      // Каскад: свежие дни «загораются» позже старых — волна из центра.
+      final local = (grow * 1.3 - (1 - t) * 0.3).clamp(0.0, 1.0);
+      final a = angleOf(t);
+      final r = radiusOf(t);
+      final p = center + Offset(math.cos(a), math.sin(a)) * r;
+
+      final ratio = habitRatios[i].clamp(0.0, 1.0);
+      final color = v <= 0
+          ? dustColor.withValues(alpha: 0.22)
+          : Color.lerp(taskColor, habitColor, ratio)!;
+
+      // Размер: пустой день — точка, плотный — крупная звезда. Ближе к
+      // ядру дни чуть крупнее: перспектива «вглубь».
+      final base = 2.4 + 6.8 * v + 1.6 * t;
+      final dotR = base * local * (0.92 + 0.08 * breath);
+
+      if (v > 0) {
+        // Свечение вокруг звезды — тем сильнее, чем плотнее день.
+        canvas.drawCircle(
+          p,
+          dotR * (2.2 + 1.4 * v),
+          Paint()
+            ..isAntiAlias = true
+            ..shader = RadialGradient(
+              colors: [
+                color.withValues(alpha: (0.40 + 0.30 * v) * local),
+                color.withValues(alpha: 0.0),
+              ],
+            ).createShader(
+              Rect.fromCircle(center: p, radius: dotR * (2.2 + 1.4 * v)),
+            ),
+        );
+      }
+      canvas.drawCircle(
+        p,
+        dotR,
+        Paint()
+          ..isAntiAlias = true
+          ..color = color.withValues(alpha: v <= 0 ? 1.0 : 0.95 * local),
+      );
+    }
+
+    // Кольцо «сегодня»: тонкий контур вокруг последней (самой свежей) точки
+    // в ядре — отмечает текущий день, не перегружая картинку подписью.
+    if (n > 0) {
+      final a = angleOf(1.0);
+      final r = radiusOf(1.0);
+      final p = center + Offset(math.cos(a), math.sin(a)) * r;
+      final ringR = (3.4 + 6.0 * values[n - 1].clamp(0.0, 1.0)) * grow + 3.4;
+      canvas.drawCircle(
+        p,
+        ringR,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3
+          ..isAntiAlias = true
+          ..color = coreColor.withValues(alpha: 0.85 * grow),
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _ChartDecorPainter old) =>
+  bool shouldRepaint(covariant _GalaxyPainter old) =>
+      old.grow != grow ||
+      old.phase != phase ||
       old.values != values ||
-      old.grows != grows ||
-      old.gridColor != gridColor ||
-      old.lineColor != lineColor;
+      old.habitRatios != habitRatios ||
+      old.habitColor != habitColor ||
+      old.taskColor != taskColor;
 }

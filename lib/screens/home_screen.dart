@@ -147,7 +147,10 @@ class _HomeScreenState extends State<HomeScreen>
     // РП-тумблер живёт в ChangeNotifier — слушаем его, чтобы вкладка
     // появлялась/исчезала СРАЗУ при переключении в настройках.
     RealityCheckService().addListener(_onRcChanged);
-    _showWelcomeOnce();
+    // Приветствие показываем ПОСЛЕ первого кадра: showDialog синхронно
+    // строит диалог и обращается к Localizations, а во время initState
+    // наследованные виджеты ещё недоступны — это роняло экран в debug.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeOnce());
   }
 
   void _onPillSnapTarget() {
@@ -567,7 +570,7 @@ class _HomeScreenState extends State<HomeScreen>
             duration: const Duration(milliseconds: 200),
             child: SmoothTooltip(
               message: Translations.refreshOf(context),
-              preferredAbove: true,
+              preferredAbove: false,
               child: IconButton(
                 icon: const Icon(Icons.refresh_outlined),
                 onPressed: () => KeramikaApp.of(context).refreshApp(),
@@ -583,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen>
               duration: const Duration(milliseconds: 200),
               child: SmoothTooltip(
                 message: Translations.t('statistics', context, 'Статистика'),
-                preferredAbove: true,
+                preferredAbove: false,
                 child: IconButton(
                   icon: const Icon(Icons.bar_chart_outlined),
                   onPressed: () => Navigator.of(context).push(
@@ -599,7 +602,7 @@ class _HomeScreenState extends State<HomeScreen>
               duration: const Duration(milliseconds: 200),
               child: SmoothTooltip(
                 message: Translations.t('nutrition', context, 'Питание'),
-                preferredAbove: true,
+                preferredAbove: false,
                 child: IconButton(
                   icon: const Icon(Icons.restaurant_outlined),
                   onPressed: () => Navigator.of(context).push(
@@ -613,7 +616,7 @@ class _HomeScreenState extends State<HomeScreen>
               duration: const Duration(milliseconds: 200),
               child: SmoothTooltip(
                 message: Translations.t('settings', context, 'Настройки'),
-                preferredAbove: true,
+                preferredAbove: false,
                 child: IconButton(
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () => Navigator.of(

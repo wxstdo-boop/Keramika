@@ -1280,6 +1280,7 @@ class _OverlayChatState extends State<_OverlayChat>
                 children: [
                   SmoothTyping(
                     controller: _inputCtrl,
+                    cursorColor: cs.primary,
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.3,
@@ -1338,7 +1339,6 @@ class _OverlayChatState extends State<_OverlayChat>
                           });
                         }
                       },
-                      cursorColor: cs.primary,
                       // Каретка мигает плавно (fade), а не резко вкл/выкл.
                       cursorOpacityAnimates: true,
                       decoration: InputDecoration(

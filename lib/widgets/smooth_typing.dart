@@ -58,6 +58,11 @@ class SmoothTyping extends StatefulWidget {
   /// Выключить эффект (например, для полей-паролей со «звёздочками»).
   final bool enabled;
 
+  /// Цвет каретки. По умолчанию — `primary` темы (как у [TextField]). Здесь,
+  /// а не в `TextField.cursorColor`, потому что именно тут каретка получает
+  /// плавное появление: значение поля перебило бы наследованный цвет.
+  final Color? cursorColor;
+
   /// Строит само поле. Полученный стиль обязательно подставить в
   /// `TextField.style` — в нём спрятан (или возвращён) цвет текста.
   final Widget Function(TextStyle style) builder;
@@ -68,6 +73,7 @@ class SmoothTyping extends StatefulWidget {
     required this.builder,
     this.style,
     this.color,
+    this.cursorColor,
     this.duration = const Duration(milliseconds: 190),
     this.ghosts = true,
     this.enabled = true,
@@ -123,8 +129,20 @@ class _Ghost {
 }
 
 class _SmoothTypingState extends State<SmoothTyping>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final GlobalKey _fieldKey = GlobalKey();
+
+  /// Плавное появление каретки. Flutter при входе в фокус ставит
+  /// непрозрачность «палки» сразу в 1 — она возникает кадром. Здесь цвет
+  /// каретки разгоняется от прозрачного за [_caretFade]: единственная точка,
+  /// где это можно сделать одинаково для ВСЕХ полей приложения, раз все они
+  /// идут через этот виджет. В покое значение 1 — каретка обычная.
+  late final AnimationController _caretCtrl = AnimationController(
+    vsync: this,
+    duration: _caretFade,
+    value: 1.0,
+  );
+  static const Duration _caretFade = Duration(milliseconds: 220);
   final GlobalKey _overlayKey = GlobalKey();
 
   /// Перерисовка слоя букв без пересборки дерева — например, когда поле
@@ -184,6 +202,7 @@ class _SmoothTypingState extends State<SmoothTyping>
   void dispose() {
     widget.controller.removeListener(_onControllerChanged);
     _attachedOffset?.removeListener(_ping);
+    _caretCtrl.dispose();
     for (final p in _ghostPainters.values) {
       p.dispose();
     }
@@ -377,39 +396,68 @@ class _SmoothTypingState extends State<SmoothTyping>
       MediaQuery.textScalerOf(context),
     );
 
+    // Цвет каретки: явный, иначе как у [TextField] — `primary` темы. Через
+    // [DefaultSelectionStyle], а не `TextField.cursorColor`: последний
+    // перебивает унаследованное значение, и плавность бы пропала.
+    final caretBase = widget.cursorColor ?? theme.colorScheme.primary;
+
     // Дерево одинаковое в обоих режимах: поле всегда первый ребёнок Stack.
     // Иначе при переключении эффекта (например, «глазок» у ключа) поле
     // пересоздавалось бы и теряло фокус.
-    return Stack(
-      fit: StackFit.loose,
-      children: <Widget>[
-        field,
-        if (widget.enabled)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: _overlayKey,
-                  painter: _SmoothTypingPainter(
-                    repaint: _repaint,
-                    fieldKey: _fieldKey,
-                    overlayKey: _overlayKey,
-                    glyphs: _glyphs,
-                    ghosts: _ghosts,
-                    ghostPainters: _ghostPainters,
-                    styler: _styler,
-                    style: effective.copyWith(color: visible),
-                    nowGetter: () => _now,
-                    duration: _dur,
-                    needBoxes: _boxedText != widget.controller.text,
-                    onBoxes: _storeBoxes,
-                    onOffset: _attachOffset,
+    return Focus(
+      // Слушатель фокуса поля: вход — каретка проявляется, выход — гаснет.
+      // `canRequestFocus: false` — сам узел фокус не забирает и не мешает
+      // настоящему полю, он только сообщает о его фокусе (hasFocus включает
+      // фокусных потомков).
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (focused) {
+        if (focused) {
+          _caretCtrl.forward(from: 0);
+        } else {
+          _caretCtrl.value = 1.0;
+        }
+      },
+      child: AnimatedBuilder(
+        animation: _caretCtrl,
+        // Пересобирается ТОЛЬКО обёртка цвета каретки: Stack и поле идут
+        // готовым `child` и не трогаются на каждом кадре фейда.
+        child: Stack(
+          fit: StackFit.loose,
+          children: <Widget>[
+            field,
+            if (widget.enabled)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      key: _overlayKey,
+                      painter: _SmoothTypingPainter(
+                        repaint: _repaint,
+                        fieldKey: _fieldKey,
+                        overlayKey: _overlayKey,
+                        glyphs: _glyphs,
+                        ghosts: _ghosts,
+                        ghostPainters: _ghostPainters,
+                        styler: _styler,
+                        style: effective.copyWith(color: visible),
+                        nowGetter: () => _now,
+                        duration: _dur,
+                        needBoxes: _boxedText != widget.controller.text,
+                        onBoxes: _storeBoxes,
+                        onOffset: _attachOffset,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        ),
+        builder: (context, child) => DefaultSelectionStyle(
+          cursorColor: caretBase.withValues(alpha: _caretCtrl.value),
+          child: child!,
+        ),
+      ),
     );
   }
 }

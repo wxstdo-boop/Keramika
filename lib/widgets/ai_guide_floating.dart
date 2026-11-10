@@ -667,6 +667,7 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                     // Каждую букву рисует SmoothTyping (как в основном чате).
                     SmoothTyping(
                       controller: _inputCtrl,
+                      cursorColor: cs.primary,
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.3,
@@ -686,7 +687,6 @@ class _AiFloatingBubbleState extends State<AiFloatingBubble>
                         // Автопробел клавиатуры — убираем подсказки.
                         enableSuggestions: false,
                         autocorrect: false,
-                        cursorColor: cs.primary,
                         // Каретка мигает плавно (fade), а не резко вкл/выкл.
                         cursorOpacityAnimates: true,
                         decoration: InputDecoration(

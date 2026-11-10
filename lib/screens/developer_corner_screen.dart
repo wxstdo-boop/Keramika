@@ -329,9 +329,9 @@ class _DeveloperModePasswordDialogState
                                 style: theme.textTheme.bodyLarge,
                                 duration: const Duration(milliseconds: 190),
                                 ghosts: true,
+                                cursorColor: accent,
                                 builder: (typingStyle) => TextField(
                                   style: typingStyle,
-                                  cursorColor: accent,
                                   controller: _controller,
                                   focusNode: _focusNode,
                                   autofocus: false,

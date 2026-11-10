@@ -376,18 +376,14 @@ class _NutritionScreenState extends State<NutritionScreen>
                   // высота прыгала к финальной, а текст «Пока нет приёмов пищи»
                   // дёргался вниз/вверх. Positioned не участвует в размере стека,
                   // поэтому высота = текущему ребёнку, и её ведёт AnimatedSize.
+                  // В стопке держим ТОЛЬКО текущего ребёнка: уходящий,
+                  // оставленный сверху, накладывал текст «Пока нет приёмов
+                  // пищи» на строки истории — это и читалось как мигание.
+                  // Высоту по-прежнему ведёт AnimatedSize, поэтому переход
+                  // остаётся плавным и без наложения.
                   layoutBuilder: (child, previous) => Stack(
                     alignment: Alignment.topCenter,
-                    children: [
-                      for (final c in previous)
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: IgnorePointer(child: c),
-                        ),
-                      ?child,
-                    ],
+                    children: [?child],
                   ),
                   child: !_loaded
                       ? const SizedBox(key: ValueKey('meals_loading'))

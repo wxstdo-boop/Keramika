@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,8 @@ import '../utils/context_menu.dart';
 import '../utils/design_tokens.dart';
 import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
+import '../widgets/inline_keyboard.dart';
+import '../widgets/music_pulse_ring.dart';
 import '../widgets/online_dot.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/profile_avatar.dart';
@@ -88,6 +91,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   final _music = MusicService();
   final _nameCtrl = TextEditingController();
 
+  /// Позиция скролла профиля. Нужна для «расплытия» аватарки под верхней
+  /// полкой: с ростом прокрутки верх списка мягко размывается и подтухает —
+  /// аватарка буквально «уходит под матовое стекло» шапки, а не просто
+  /// уползает за край.
+  final _scrollCtrl = ScrollController();
+
   /// Прозрачность подсказки «Как вас звать?»: видна, пока поле НЕ в фокусе.
   /// Подсказка гаснет плавно, как только пользователь открыл поле, и так же
   /// плавно возвращается, когда он его закрыл, — отдельный контроллер, потому
@@ -104,16 +113,17 @@ class _ProfileScreenState extends State<ProfileScreen>
   void _syncHint() {
     // Подсказка видна, пока поле ЗАКРЫТО и пусто: открыл поле — гаснет,
     // закрыл — возвращается. Пока в поле есть имя, подсказку не показываем —
-    // иначе она легла бы поверх текста.
+    // иначе она легла бы поверх текста. `_hintCtrl.value` — это и есть
+    // прозрачность подсказки: 1 показана, 0 скрыта.
     final shown = !_nameFocus.hasFocus && _nameCtrl.text.isEmpty;
     if (MotionPrefs.shouldReduceMotion) {
       _hintCtrl.value = shown ? 1 : 0;
       return;
     }
     if (shown) {
-      _hintCtrl.reverse();
-    } else {
       _hintCtrl.forward();
+    } else {
+      _hintCtrl.reverse();
     }
   }
 
@@ -134,24 +144,6 @@ class _ProfileScreenState extends State<ProfileScreen>
       url: kKeramikaSiteUrl,
       banner: true,
     ),
-    _KeramikaEvent(
-      title: Translations.t('eventCeramics', context, 'Керамическая ярмарка'),
-      subtitle: Translations.t(
-        'eventCeramicsDesc',
-        context,
-        'Мастер-классы и обжиг для новичков',
-      ),
-      url: kKeramikaSiteUrl,
-    ),
-    _KeramikaEvent(
-      title: Translations.t('eventCommunity', context, 'Встреча сообщества'),
-      subtitle: Translations.t(
-        'eventCommunityDesc',
-        context,
-        'Онлайн-сбор керамика-юзеров раз в месяц',
-      ),
-      url: kKeramikaSiteUrl,
-    ),
   ];
 
   @override
@@ -159,11 +151,13 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.initState();
     _music.addListener(_onMusicChanged);
     _nameCtrl.text = _service.name;
+    _nameCtrl.addListener(_syncHint);
     _nameFocus.addListener(_syncHint);
     if (!_service.loaded) {
       _service.load().then((_) {
         if (mounted) {
           _nameCtrl.text = _service.name;
+          _syncHint();
         }
       });
     }
@@ -174,10 +168,12 @@ class _ProfileScreenState extends State<ProfileScreen>
     // Плеер НЕ останавливаем и не уничтожаем: музыка — общий сервис, она
     // должна продолжать играть при уходе с экрана (см. [MusicService]).
     _music.removeListener(_onMusicChanged);
+    _nameCtrl.removeListener(_syncHint);
     _nameFocus.removeListener(_syncHint);
     _nameFocus.dispose();
     _nameCtrl.dispose();
     _hintCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -361,25 +357,81 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       body: AnimatedBuilder(
         animation: _service,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.fromLTRB(
-            Spacing.md,
-            Spacing.sm,
-            Spacing.md,
-            Spacing.xxl,
-          ),
+        builder: (context, _) => Stack(
           children: [
-            _headerCard(theme),
-            const SizedBox(height: Spacing.md),
-            _nameCard(theme),
-            const SizedBox(height: Spacing.md),
-            _onlineCard(theme),
-            const SizedBox(height: Spacing.md),
-            _musicCard(theme),
-            const SizedBox(height: Spacing.md),
-            _leaderboardCard(theme),
-            const SizedBox(height: Spacing.md),
-            _eventsCard(theme),
+            ListView(
+              controller: _scrollCtrl,
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.sm,
+                Spacing.md,
+                Spacing.xxl,
+              ),
+              children: [
+                _headerCard(theme),
+                const SizedBox(height: Spacing.md),
+                _nameCard(theme),
+                const SizedBox(height: Spacing.md),
+                _onlineCard(theme),
+                const SizedBox(height: Spacing.md),
+                _musicCard(theme),
+                const SizedBox(height: Spacing.md),
+                _leaderboardCard(theme),
+                const SizedBox(height: Spacing.md),
+                _eventsCard(theme),
+              ],
+            ),
+            // Верхняя «полка»: при прокрутке контент уходит под матовое
+            // стекло — аватарка и шапка мягко расплываются (Blur) и гаснут,
+            // как под полупрозрачной полосой AppBar. Слой прозрачный в покое
+            // (offset == 0) и включается только с началом прокрутки.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _scrollCtrl,
+                  builder: (context, _) {
+                    final t = _scrollCtrl.hasClients
+                        ? (_scrollCtrl.offset / 120).clamp(0.0, 1.0)
+                        : 0.0;
+                    if (t <= 0.001) return const SizedBox.shrink();
+                    final h = kToolbarHeight + MediaQuery.paddingOf(context).top;
+                    return ClipRect(
+                      child: SizedBox(
+                        height: h,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: 8 * t,
+                                sigmaY: 8 * t,
+                              ),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      theme.scaffoldBackgroundColor
+                                          .withValues(alpha: 0.92 * t),
+                                      theme.scaffoldBackgroundColor
+                                          .withValues(alpha: 0.0),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -490,6 +542,14 @@ class _ProfileScreenState extends State<ProfileScreen>
             // стирании.
             child: Stack(
               children: [
+                // Невидимое поле ловит тап и отдаёт фокус: тап по подсказке
+                // должен открывать ввод, иначе «поле не работает».
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => _nameFocus.requestFocus(),
+                  ),
+                ),
                 SmoothTyping(
                   controller: _nameCtrl,
                   style: theme.textTheme.bodyLarge,
@@ -643,31 +703,34 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ? ListTile(
                       key: const ValueKey('music_row'),
                       contentPadding: EdgeInsets.zero,
-                      leading: PressScale(
-                        pressedScale: 0.88,
-                        child: IconButton.filledTonal(
-                          onPressed: _toggleMusicPlayback,
-                          icon: AnimatedSwitcher(
-                            // Значок плей/пауза сменяется медленно и мягко, а
-                            // не подменой кадром.
-                            duration: MotionPrefs.shouldReduceMotion
-                                ? Duration.zero
-                                : const Duration(milliseconds: 380),
-                            transitionBuilder: (child, anim) => FadeTransition(
-                              opacity: anim,
-                              child: ScaleTransition(
-                                scale: Tween<double>(
-                                  begin: 0.8,
-                                  end: 1,
-                                ).animate(anim),
-                                child: child,
+                      leading: MusicPulseRing(
+                        active: playing,
+                        child: PressScale(
+                          pressedScale: 0.88,
+                          child: IconButton.filledTonal(
+                            onPressed: _toggleMusicPlayback,
+                            icon: AnimatedSwitcher(
+                              // Значок плей/пауза сменяется медленно и мягко,
+                              // а не подменой кадром.
+                              duration: MotionPrefs.shouldReduceMotion
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 380),
+                              transitionBuilder: (child, anim) => FadeTransition(
+                                opacity: anim,
+                                child: ScaleTransition(
+                                  scale: Tween<double>(
+                                    begin: 0.8,
+                                    end: 1,
+                                  ).animate(anim),
+                                  child: child,
+                                ),
                               ),
-                            ),
-                            child: Icon(
-                              playing
-                                  ? Icons.pause
-                                  : Icons.play_arrow_rounded,
-                              key: ValueKey(playing),
+                              child: Icon(
+                                playing
+                                    ? Icons.pause
+                                    : Icons.play_arrow_rounded,
+                                key: ValueKey(playing),
+                              ),
                             ),
                           ),
                         ),
@@ -742,7 +805,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       selfFallback: Translations.t('profileMe', context, 'Я'),
     );
     return _Card(
-      title: Translations.t('profileLeaderboard', context, 'Рейтинг друзей'),
+      title: Translations.t('profileLeaderboard', context, 'Рейтинг'),
       icon: Icons.emoji_events_outlined,
       trailing: PressScale(
         pressedScale: 0.86,
@@ -792,50 +855,51 @@ class _ProfileScreenState extends State<ProfileScreen>
     required bool isMe,
   }) {
     final cs = theme.colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(Radii.sm),
-      onTap: isMe ? null : () => _editFriend(f),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 22,
-              child: Text(
-                '$rank',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: rank <= 3 ? cs.primary : cs.onSurfaceVariant,
+    return PressScale(
+      // Строка друга мягко уменьшается под пальцем и так же плавно
+      // возвращается: зажатие карточки читается как нажатие.
+      pressedScale: 0.97,
+      duration: const Duration(milliseconds: 180),
+      releaseDuration: const Duration(milliseconds: 320),
+      enabled: !isMe,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.sm),
+        onTap: isMe ? null : () => _editFriend(f),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                child: Text(
+                  '$rank',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: rank <= 3 ? cs.primary : cs.onSurfaceVariant,
+                    fontWeight: Weights.bold,
+                  ),
+                ),
+              ),
+              ProfileAvatar(index: f.colorIndex, size: 36),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: Text(
+                  f.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: isMe ? Weights.bold : Weights.regular,
+                  ),
+                ),
+              ),
+              Text(
+                '${f.score}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: cs.primary,
                   fontWeight: Weights.bold,
                 ),
               ),
-            ),
-            PressScale(
-              pressedScale: 0.88,
-              duration: const Duration(milliseconds: 180),
-              releaseDuration: const Duration(milliseconds: 340),
-              // Себя не редактируем — по своей строке отдачи нет.
-              enabled: !isMe,
-              child: ProfileAvatar(index: f.colorIndex, size: 36),
-            ),
-            const SizedBox(width: Spacing.sm),
-            Expanded(
-              child: Text(
-                f.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: isMe ? Weights.bold : Weights.regular,
-                ),
-              ),
-            ),
-            Text(
-              '${f.score}',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: cs.primary,
-                fontWeight: Weights.bold,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -843,7 +907,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _eventsCard(ThemeData theme) {
     return _Card(
-      title: Translations.t('profileEvents', context, 'События keramika.ru'),
+      title: Translations.t('profileEvents', context, 'События'),
       icon: Icons.event_outlined,
       child: Column(
         children: [
@@ -1035,6 +1099,12 @@ class _FriendDraft {
   const _FriendDraft(this.name, this.colorIndex, this.score);
 }
 
+/// Максимальная длина имени друга.
+const int _kFriendNameMax = 30;
+
+/// Максимальное число знаков в очках рейтинга.
+const int _kFriendScoreMax = 7;
+
 /// Добавление друга: имя, аватарка, стартовые очки.
 class _AddFriendSheet extends StatefulWidget {
   const _AddFriendSheet();
@@ -1046,13 +1116,77 @@ class _AddFriendSheet extends StatefulWidget {
 class _AddFriendSheetState extends State<_AddFriendSheet> {
   final _ctrl = TextEditingController();
   int _avatar = 0;
-  final _scoreCtrl = TextEditingController(text: '0');
+  final _scoreCtrl = TextEditingController();
+
+  /// Какое поле печатает встроенная клавиатура. Системная панель тут не
+  /// нужна: лист везёт собственную (см. [InlineKeyboard]), а поля — readOnly.
+  _FriendField _target = _FriendField.name;
+  final _nameFocus = FocusNode();
+  final _scoreFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Очки при открытии — «весёлое» число из имени-заглушки, а не сухой ноль.
+    _scoreCtrl.text = _funScore('');
+    _nameFocus.addListener(_syncTarget);
+    _scoreFocus.addListener(_syncTarget);
+  }
+
+  void _syncTarget() {
+    if (_nameFocus.hasFocus) {
+      setState(() => _target = _FriendField.name);
+    } else if (_scoreFocus.hasFocus) {
+      setState(() => _target = _FriendField.score);
+    }
+  }
+
+  /// «Весёлые» очки: стабильный, но живой разброс от 40 до 990 — счёт не
+  /// выглядит пустым нулём, а рейтинг сразу оживает.
+  String _funScore(String seed) {
+    var h = 7;
+    for (final c in seed.codeUnits) {
+      h = (h * 31 + c) & 0x7fffffff;
+    }
+    final v = 40 + (h % 951);
+    return '$v';
+  }
 
   @override
   void dispose() {
+    _nameFocus.removeListener(_syncTarget);
+    _scoreFocus.removeListener(_syncTarget);
+    _nameFocus.dispose();
+    _scoreFocus.dispose();
     _ctrl.dispose();
     _scoreCtrl.dispose();
     super.dispose();
+  }
+
+  void _insert(String ch) {
+    final ctrl = _target == _FriendField.name ? _ctrl : _scoreCtrl;
+    final max = _target == _FriendField.name
+        ? _kFriendNameMax
+        : _kFriendScoreMax;
+    // В очки пускаем только цифры.
+    if (_target == _FriendField.score && !RegExp(r'^\d$').hasMatch(ch)) return;
+    if (ctrl.text.length >= max) return;
+    ctrl.text = ctrl.text + ch;
+    ctrl.selection = TextSelection.collapsed(offset: ctrl.text.length);
+  }
+
+  void _backspace() {
+    final ctrl = _target == _FriendField.name ? _ctrl : _scoreCtrl;
+    if (ctrl.text.isEmpty) return;
+    ctrl.text = ctrl.text.substring(0, ctrl.text.length - 1);
+    ctrl.selection = TextSelection.collapsed(offset: ctrl.text.length);
+  }
+
+  void _space() {
+    if (_target != _FriendField.name) return;
+    if (_ctrl.text.length >= _kFriendNameMax) return;
+    _ctrl.text = '${_ctrl.text} ';
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
   }
 
   void _submit() {
@@ -1065,133 +1199,202 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: Radii.sheetTop,
       ),
       child: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: Radii.sheetTop,
-          ),
-          padding: const EdgeInsets.all(Spacing.md),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                Translations.t('profileAddFriend', context, 'Добавить друга'),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: Weights.bold,
-                ),
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                Spacing.sm,
               ),
-              const SizedBox(height: Spacing.md),
-              Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ProfileAvatar(index: _avatar, size: 52),
-                  const SizedBox(width: Spacing.md),
-                  Expanded(
-                    child: SmoothTyping(
-                      controller: _ctrl,
-                      style: theme.textTheme.bodyLarge,
-                      builder: (style) => TextField(
-                        controller: _ctrl,
-                        style: style,
-                        magnifierConfiguration:
-                            TextMagnifierConfiguration.disabled,
-                        contextMenuBuilder: minimalContextMenuBuilder,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _submit(),
-                        cursorOpacityAnimates: true,
-                        decoration: _fieldDecoration(
-                          theme,
-                          hint: Translations.t(
-                            'profileFriendName',
-                            context,
-                            'Имя друга',
+                  Text(
+                    Translations.t('profileAddFriend', context, 'Добавить друга'),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: Weights.bold,
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  Row(
+                    children: [
+                      ProfileAvatar(index: _avatar, size: 52),
+                      const SizedBox(width: Spacing.md),
+                      Expanded(
+                        child: SmoothTyping(
+                          controller: _ctrl,
+                          style: theme.textTheme.bodyLarge,
+                          builder: (style) => TextField(
+                            controller: _ctrl,
+                            style: style,
+                            focusNode: _nameFocus,
+                            readOnly: true,
+                            showCursor: true,
+                            magnifierConfiguration:
+                                TextMagnifierConfiguration.disabled,
+                            contextMenuBuilder: minimalContextMenuBuilder,
+                            cursorOpacityAnimates: true,
+                            maxLength: _kFriendNameMax,
+                            inputFormatters: [
+                              LengthLimitingTextInputFormatter(
+                                _kFriendNameMax,
+                              ),
+                            ],
+                            decoration: _fieldDecoration(
+                              theme,
+                              hint: Translations.t(
+                                'profileFriendName',
+                                context,
+                                'Имя друга',
+                              ),
+                            ),
                           ),
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  SizedBox(
+                    height: 46,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: profileAvatarVariants.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(width: Spacing.xs),
+                      itemBuilder: (context, i) => PressScale(
+                        pressedScale: 0.86,
+                        duration: const Duration(milliseconds: 180),
+                        releaseDuration: const Duration(milliseconds: 340),
+                        child: GestureDetector(
+                          onTap: () => setState(() => _avatar = i),
+                          child: AnimatedContainer(
+                            duration: MotionPrefs.shouldReduceMotion
+                                ? Duration.zero
+                                : Motion.normal,
+                            curve: Curves.easeOutCubic,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: i == _avatar
+                                    ? theme.colorScheme.primary
+                                    : Colors.transparent,
+                                width: 2.5,
+                              ),
+                            ),
+                            padding: const EdgeInsets.all(2),
+                            child: ProfileAvatar(index: i, size: 34),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: SmoothTyping(
+                          controller: _scoreCtrl,
+                          style: theme.textTheme.bodyLarge,
+                          ghosts: false,
+                          builder: (style) => TextField(
+                            controller: _scoreCtrl,
+                            style: style,
+                            focusNode: _scoreFocus,
+                            readOnly: true,
+                            showCursor: true,
+                            magnifierConfiguration:
+                                TextMagnifierConfiguration.disabled,
+                            contextMenuBuilder: minimalContextMenuBuilder,
+                            cursorOpacityAnimates: true,
+                            maxLength: _kFriendScoreMax,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(
+                                _kFriendScoreMax,
+                              ),
+                            ],
+                            decoration: _fieldDecoration(
+                              theme,
+                              label: Translations.t(
+                                'profileFriendScore',
+                                context,
+                                'Очки рейтинга',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.xs),
+                      PressScale(
+                        pressedScale: 0.9,
+                        child: IconButton.filledTonal(
+                          tooltip: Translations.t(
+                            'profileFriendScoreRandom',
+                            context,
+                            'Случайные очки',
+                          ),
+                          onPressed: () => setState(
+                            () => _scoreCtrl.text = _funScore(_ctrl.text),
+                          ),
+                          icon: const Icon(Icons.casino_outlined),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Spacing.xs),
+                  Text(
+                    Translations.t(
+                      'profileFriendScoreHint',
+                      context,
+                      'Очки — за активность: привычки, задачи, дни в логе. '
+                          'Чем больше — тем выше в рейтинге.',
+                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    child: PressScale(
+                      pressedScale: 0.96,
+                      child: FilledButton.tonal(
+                        onPressed: _submit,
+                        style: _roundButtonStyle(),
+                        child: Text(Translations.t('add', context, 'Добавить')),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: Spacing.md),
-              SizedBox(
-                height: 46,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: profileAvatarVariants.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: Spacing.xs),
-                  itemBuilder: (context, i) => PressScale(
-                    pressedScale: 0.86,
-                    duration: const Duration(milliseconds: 180),
-                    releaseDuration: const Duration(milliseconds: 340),
-                    child: GestureDetector(
-                      onTap: () => setState(() => _avatar = i),
-                      child: AnimatedContainer(
-                        duration: MotionPrefs.shouldReduceMotion
-                            ? Duration.zero
-                            : Motion.normal,
-                        curve: Curves.easeOutCubic,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: i == _avatar
-                                ? theme.colorScheme.primary
-                                : Colors.transparent,
-                            width: 2.5,
-                          ),
-                        ),
-                        padding: const EdgeInsets.all(2),
-                        child: ProfileAvatar(index: i, size: 34),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: Spacing.md),
-              SmoothTyping(
-                controller: _scoreCtrl,
-                style: theme.textTheme.bodyLarge,
-                ghosts: false,
-                builder: (style) => TextField(
-                  controller: _scoreCtrl,
-                  style: style,
-                  keyboardType: TextInputType.number,
-                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
-                  contextMenuBuilder: minimalContextMenuBuilder,
-                  cursorOpacityAnimates: true,
-                  decoration: _fieldDecoration(
-                    theme,
-                    label: Translations.t(
-                      'profileFriendScore',
-                      context,
-                      'Очки рейтинга',
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: Spacing.md),
-              SizedBox(
-                width: double.infinity,
-                child: PressScale(
-                  pressedScale: 0.96,
-                  child: FilledButton.tonal(
-                    onPressed: _submit,
-                    style: _roundButtonStyle(),
-                    child: Text(Translations.t('add', context, 'Добавить')),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+            // Клавиатура — в самом низу листа, под тему приложения.
+            InlineKeyboard(
+              onChar: _insert,
+              onBackspace: _backspace,
+              onSpace: _space,
+            ),
+          ],
         ),
       ),
     );
   }
 }
+
+/// Поле, которое печатает встроенная клавиатура листа «Добавить друга».
+enum _FriendField { name, score }
 
 /// Действия над другом: изменить очки или удалить.
 class _FriendActionsSheet extends StatelessWidget {
@@ -1259,69 +1462,138 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
     text: '${widget.friend.score}',
   );
 
+  /// «Весёлые» очки — тот же расчёт, что в листе добавления: счёт не
+  /// выглядит сухим, а кнопка-кубик даёт живой разброс.
+  String _funScore(String seed) {
+    var h = 7;
+    for (final c in seed.codeUnits) {
+      h = (h * 31 + c) & 0x7fffffff;
+    }
+    return '${40 + (h % 951)}';
+  }
+
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
   }
 
+  void _insert(String ch) {
+    if (!RegExp(r'^\d$').hasMatch(ch)) return;
+    if (_ctrl.text.length >= _kFriendScoreMax) return;
+    _ctrl.text = _ctrl.text + ch;
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+  }
+
+  void _backspace() {
+    if (_ctrl.text.isEmpty) return;
+    _ctrl.text = _ctrl.text.substring(0, _ctrl.text.length - 1);
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: Radii.sheetTop,
       ),
       child: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: Radii.sheetTop,
-          ),
-          padding: const EdgeInsets.all(Spacing.md),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SmoothTyping(
-                controller: _ctrl,
-                style: theme.textTheme.bodyLarge,
-                ghosts: false,
-                builder: (style) => TextField(
-                  controller: _ctrl,
-                  style: style,
-                  keyboardType: TextInputType.number,
-                  magnifierConfiguration: TextMagnifierConfiguration.disabled,
-                  contextMenuBuilder: minimalContextMenuBuilder,
-                  cursorOpacityAnimates: true,
-                  decoration: _fieldDecoration(
-                    theme,
-                    label: Translations.t(
-                      'profileFriendScore',
-                      context,
-                      'Очки рейтинга',
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                Spacing.sm,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: SmoothTyping(
+                          controller: _ctrl,
+                          style: theme.textTheme.bodyLarge,
+                          ghosts: false,
+                          builder: (style) => TextField(
+                            controller: _ctrl,
+                            style: style,
+                            readOnly: true,
+                            showCursor: true,
+                            magnifierConfiguration:
+                                TextMagnifierConfiguration.disabled,
+                            contextMenuBuilder: minimalContextMenuBuilder,
+                            cursorOpacityAnimates: true,
+                            maxLength: _kFriendScoreMax,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(
+                                _kFriendScoreMax,
+                              ),
+                            ],
+                            decoration: _fieldDecoration(
+                              theme,
+                              label: Translations.t(
+                                'profileFriendScore',
+                                context,
+                                'Очки рейтинга',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.xs),
+                      PressScale(
+                        pressedScale: 0.9,
+                        child: IconButton.filledTonal(
+                          tooltip: Translations.t(
+                            'profileFriendScoreRandom',
+                            context,
+                            'Случайные очки',
+                          ),
+                          onPressed: () => setState(
+                            () => _ctrl.text = _funScore(widget.friend.name),
+                          ),
+                          icon: const Icon(Icons.casino_outlined),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    child: PressScale(
+                      pressedScale: 0.96,
+                      child: FilledButton.tonal(
+                        onPressed: () {
+                          final score = int.tryParse(_ctrl.text.trim()) ?? 0;
+                          Navigator.of(
+                            context,
+                          ).pop(widget.friend.copyWith(score: score));
+                        },
+                        style: _roundButtonStyle(),
+                        child: Text(
+                          Translations.t('save', context, 'Сохранить'),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: Spacing.md),
-              SizedBox(
-                width: double.infinity,
-                child: PressScale(
-                  pressedScale: 0.96,
-                  child: FilledButton.tonal(
-                    onPressed: () {
-                      final score = int.tryParse(_ctrl.text.trim()) ?? 0;
-                      Navigator.of(
-                        context,
-                      ).pop(widget.friend.copyWith(score: score));
-                    },
-                    style: _roundButtonStyle(),
-                    child: Text(Translations.t('save', context, 'Сохранить')),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+            InlineKeyboard(
+              onChar: _insert,
+              onBackspace: _backspace,
+              onSpace: () {},
+            ),
+          ],
         ),
       ),
     );

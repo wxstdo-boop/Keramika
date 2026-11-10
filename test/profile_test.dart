@@ -237,13 +237,13 @@ void main() {
     // Остальные блоки ниже сгиба — доскролливаем, а не притворяемся, что
     // они на первом экране.
     await tester.dragUntilVisible(
-      find.text('События keramika.ru'),
+      find.text('События'),
       find.byType(ListView),
       const Offset(0, -200),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Рейтинг друзей'), findsOneWidget);
-    expect(find.text('События keramika.ru'), findsOneWidget);
+    expect(find.text('Рейтинг'), findsOneWidget);
+    expect(find.text('События'), findsOneWidget);
     // Свой ник в рейтинге идёт первым, пока друзей нет.
     expect(find.text('Я'), findsOneWidget);
   });

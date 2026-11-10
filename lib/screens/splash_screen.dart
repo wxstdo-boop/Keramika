@@ -672,9 +672,12 @@ class _PaintSplatPainter extends CustomPainter {
     final env = (0.72 * settle + 0.28 * flash) * strength;
     if (env <= 0.004) return;
 
-    // Разлёт: кляксы растут быстро и чуть перерастают цель (easeOutBack),
-    // затем оседают к своему размеру — к концу хода пятно стоит на месте.
-    final grow = Curves.easeOutBack.transform(t.clamp(0.0, 1.0));
+    // Разлёт: кляксы быстро растекаются и ЗАМИРАЮТ в максимальном размере.
+    // Раньше кривая easeOutBack к t=1 возвращалась к 1.0, и пятна в конце
+    // сплэша заметно уменьшались. Теперь рост монотонный (easeOutCubic), а
+    // лёгкий перелёт задан постоянным множителем — к концу хода пятна
+    // крупнее всего и стоят на месте.
+    final grow = Curves.easeOutCubic.transform(t.clamp(0.0, 1.0)) * 1.12;
     final short = size.shortestSide;
 
     canvas.save();
@@ -706,9 +709,10 @@ class _PaintSplatPainter extends CustomPainter {
       canvas.drawPath(_blob(c, short * b.$3 * grow, b.$4), paint);
     }
     // Сателлиты — мельче и чуть позже основных клякс (фаза роста со сдвигом).
-    final dropGrow = Curves.easeOutBack.transform(
-      ((t - 0.12) / 0.88).clamp(0.0, 1.0),
-    );
+    // Кривая та же, что у основных: монотонный рост без «усыхания» на конце.
+    final dropGrow =
+        Curves.easeOutCubic.transform(((t - 0.12) / 0.88).clamp(0.0, 1.0)) *
+        1.12;
     final dropPaint = Paint()..color = _blood.withValues(alpha: 0.48 * env);
     for (final d in _drops) {
       canvas.drawCircle(

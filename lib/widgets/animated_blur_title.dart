@@ -133,9 +133,10 @@ class _TitleWithDot extends StatelessWidget {
     required this.onDotTap,
   });
 
-  /// Зазор между правым краем последней буквы и центром кружка, px. Кружок
-  /// стоит справа от буквы, с небольшим воздухом.
-  static const double _gapX = 7.0;
+  /// Зазор между правым краем последней буквы и ЛЕВЫМ краем кружка, px.
+  /// Кружок стоит справа с воздухом — на букву не налезает. Считается от
+  /// диаметра кружка: он растёт, а зазор должен оставаться прежним.
+  static const double _gapLeft = 3.0;
 
   /// Смещение центра кружка от СЕРЕДИНЫ высоты последней буквы, px.
   /// Отрицательное — приподнимает кружок над серединой («ещё над»).
@@ -160,7 +161,11 @@ class _TitleWithDot extends StatelessWidget {
     // Центр кружка: СПРАВА от последней буквы, у СЕРЕДИНЫ её высоты (чуть
     // выше середины — «ещё над»). Зона тапа OnlineDot — квадрат 30×30.
     final tapHalf = OnlineDot.tapTarget / 2;
-    final dotCx = (lastGlyph?.right ?? painter.width) + _gapX;
+    // Левый край кружка ставим в фиксированный зазор от буквы: диаметр кружка
+    // может меняться, а воздух до буквы должен оставаться тем же.
+    final dotRadius = OnlineDot.dotSize / 2;
+    final dotCx =
+        (lastGlyph?.right ?? painter.width) + _gapLeft + dotRadius;
     final dotCy = ((lastGlyph?.top ?? 0) + (lastGlyph?.bottom ?? painter.height)) / 2 + _dropY;
 
     // Stack хит-тестит только ВНУТРИ своих границ: кружок, вынесенный за

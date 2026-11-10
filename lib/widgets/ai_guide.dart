@@ -1771,6 +1771,7 @@ class _AiChatBodyState extends State<_AiChatBody>
                         // выделение и клавиатуру.
                         SmoothTyping(
                           controller: _inputCtrl,
+                          cursorColor: cs.primary,
                           style: TextStyle(
                             fontSize: 18,
                             height: 1.4,
@@ -1802,7 +1803,6 @@ class _AiChatBodyState extends State<_AiChatBody>
                             // EditableText при каждом кадре IME: лист уже
                             // сам двигается.
                             scrollPadding: EdgeInsets.zero,
-                            cursorColor: cs.primary,
                             // Каретка мигает ПЛАВНО (fade-переход, а не
                             // резкое вкл/выкл) — «палка» не дёргается.
                             cursorOpacityAnimates: true,
