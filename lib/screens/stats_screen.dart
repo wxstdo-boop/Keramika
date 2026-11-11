@@ -13,7 +13,6 @@ import '../services/task_service.dart';
 import '../services/completion_log_service.dart';
 import '../l10n/translations.dart';
 
-
 class RealityCheckStatsScreen extends StatefulWidget {
   const RealityCheckStatsScreen({super.key});
 
@@ -105,8 +104,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
     final dayOfYear = DateTime.now()
         .difference(DateTime(DateTime.now().year, 1, 1))
         .inDays;
-    final quoteIndex =
-        (dayOfYear * 7 + DateTime.now().year * 3) % quoteCount;
+    final quoteIndex = (dayOfYear * 7 + DateTime.now().year * 3) % quoteCount;
     final motivationQuote = Translations.t(
       'motivationQuote${quoteIndex + 1}',
       context,
@@ -287,55 +285,57 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
       duration: const Duration(milliseconds: 220),
       releaseDuration: const Duration(milliseconds: 320),
       child: _ringedCard(
-      theme: theme,
-      accent: theme.colorScheme.primary,
-      // Единственная карточка с ПЛОТНОЙ обводкой: общий прогресс — главная
-      // цифра экрана, её рамка читается акцентом, остальные — волосяные.
-      thick: true,
-      child: Card(
-        // elevation 0: кольцо-кант даёт `_ringedCard`, а штатная тень
-        // `Card` добавляла ВТОРОЙ край — обводка читалась жирной.
-        elevation: 0,
-        color: theme.colorScheme.primaryContainer,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Text(
-              Translations.t('overallCompletion', context),
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ClipRect(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                // Без Transform.translate(-10px): внутри ClipRect текст при
-                // подъёме обрезался сверху — «половины цифр не видно».
-                // Чистый fade не режет цифры.
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                child: _GlitchText(
-                  '${(pct * 100).toInt()}%',
-                  key: ValueKey('overall_${(pct * 100).toInt()}'),
-                  ctrl: _glitchPhase,
-                  style: theme.textTheme.headlineLarge?.copyWith(
+        theme: theme,
+        accent: theme.colorScheme.primary,
+        // Единственная карточка с ПЛОТНОЙ обводкой: общий прогресс — главная
+        // цифра экрана, её рамка читается акцентом, остальные — волосяные.
+        thick: true,
+        child: Card(
+          // elevation 0: кольцо-кант даёт `_ringedCard`, а штатная тень
+          // `Card` добавляла ВТОРОЙ край — обводка читалась жирной.
+          elevation: 0,
+          color: theme.colorScheme.primaryContainer,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Text(
+                  Translations.t('overallCompletion', context),
+                  style: theme.textTheme.titleMedium?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    height: 1.05,
                   ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                ClipRect(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    // Без Transform.translate(-10px): внутри ClipRect текст при
+                    // подъёме обрезался сверху — «половины цифр не видно».
+                    // Чистый fade не режет цифры.
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: _GlitchText(
+                      '${(pct * 100).toInt()}%',
+                      key: ValueKey('overall_${(pct * 100).toInt()}'),
+                      ctrl: _glitchPhase,
+                      style: theme.textTheme.headlineLarge?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                        height: 1.05,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -356,101 +356,106 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
       duration: const Duration(milliseconds: 220),
       releaseDuration: const Duration(milliseconds: 320),
       child: _ringedCard(
-      theme: theme,
-      accent: accent,
-      child: Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.7)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        theme: theme,
+        accent: accent,
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18.7),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 24, color: accent),
-                const SizedBox(width: 12),
-                // Заголовок под защитой: длинная подпись («Проверки
-                // реальности») не выпирает за карточку — ужимается
-                // многоточием, а счётчик справа остаётся целым.
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    Icon(icon, size: 24, color: accent),
+                    const SizedBox(width: 12),
+                    // Заголовок под защитой: длинная подпись («Проверки
+                    // реальности») не выпирает за карточку — ужимается
+                    // многоточием, а счётчик справа остаётся целым.
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ClipRect(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 350),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          );
+                        },
+                        child: _GlitchText(
+                          '$done / $total',
+                          key: ValueKey('count_$done/$total'),
+                          ctrl: glitch,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Полоса-прогресс РОВНАЯ и монотонная: один тон акцента, без
+                // градиента и световых «швов». Прежняя заливка с тёмным краем
+                // читалась как грязное пятно, а «шов» справа — как блик на
+                // пластике; плоский тон читается спокойно и чисто.
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    height: 10,
+                    color: theme.colorScheme.onSurface.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.16 : 0.09,
+                    ),
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: pct.clamp(0.0, 1.0),
+                      heightFactor: 1,
+                      child: Container(color: accent),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                ClipRect(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 350),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                    child: _GlitchText(
-                      '$done / $total',
-                      key: ValueKey('count_$done/$total'),
-                      ctrl: glitch,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                const SizedBox(height: 8),
+                Text(
+                  '${(pct * 100).toInt()}% ${Translations.t('completed', context)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            // Полоса-прогресс РОВНАЯ и монотонная: один тон акцента, без
-            // градиента и световых «швов». Прежняя заливка с тёмным краем
-            // читалась как грязное пятно, а «шов» справа — как блик на
-            // пластике; плоский тон читается спокойно и чисто.
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                height: 10,
-                color: theme.colorScheme.onSurface.withValues(
-                  alpha: theme.brightness == Brightness.dark ? 0.16 : 0.09,
-                ),
-                alignment: Alignment.centerLeft,
-                child: FractionallySizedBox(
-                  widthFactor: pct.clamp(0.0, 1.0),
-                  heightFactor: 1,
-                  child: Container(color: accent),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${(pct * 100).toInt()}% ${Translations.t('completed', context)}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
 }
 
-/// Обводка-кольцо: тонкий градиент по краю (акцент → третичный) вместо
-/// плоской рамки — мягкий перелив по периметру, читается и на светлой, и
-/// на тёмной теме. Тень одна (у кольца), чтобы не было грязного двойного
-/// ореола. Внутренний радиус на толщину кольца меньше, иначе в стыке
-/// видна щель.
+/// Кант карточки: ОДНА тонкая линия ровного цвета по всему периметру.
 ///
-/// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
-/// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
-/// Все прочие карточки — волосяные ([_hairline]).
-const double _hairline = 0.09;
+/// Раньше здесь был диагональный градиент (акцент → прозрачность → третичный):
+/// по периметру он давал РАЗНЫЙ цвет на каждой стороне — верх-лево красное,
+/// низ-право зелёное — и кант читался пёстрым «иероглифом», а не рамкой.
+/// Теперь линия однородна и волосяная; акцент оставлен лишь лёгкой тенью.
+///
+/// Тень одна (у канта), чтобы не было грязного двойного ореола. Внутренний
+/// радиус на толщину канта меньше, иначе в стыке видна щель.
+const double _hairline = 0.7;
 
 Widget _ringedCard({
   required ThemeData theme,
@@ -459,50 +464,27 @@ Widget _ringedCard({
   double radius = 20,
   bool thick = false,
 }) {
-  // Кант — совсем тонкий. У «главной» плашки он лишь чуть плотнее волосяного:
-  // заметно толстая рамка читалась как «коробка», пользователь просил тоньше
-  // и у неё тоже. 0.3 px на плотности 3.0 — это почти целый физический
-  // пиксель, и при растяжении контента линия «толстела» ещё заметнее.
-  final thickness = thick ? 0.14 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
-  // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
-  // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
-  final aTop = thick
-      ? (dark ? 0.28 : 0.20)
-      : (dark ? 0.16 : 0.10);
-  final aMid = thick
-      ? (dark ? 0.08 : 0.06)
-      : (dark ? 0.03 : 0.02);
-  final aEnd = thick
-      ? (dark ? 0.20 : 0.13)
-      : (dark ? 0.10 : 0.06);
+  // Волосяная линия нейтрального тона: рамка читается рамкой на обеих темах
+  // и не спорит с содержимым. «Главная» плашка (thick) — чуть плотнее.
+  final borderColor = cs.outlineVariant.withValues(
+    alpha: thick ? (dark ? 0.55 : 0.50) : (dark ? 0.34 : 0.30),
+  );
   return Container(
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(radius + thickness),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: <Color>[
-          accent.withValues(alpha: aTop),
-          accent.withValues(alpha: aMid),
-          cs.tertiary.withValues(alpha: aEnd),
-        ],
-        stops: const <double>[0, 0.55, 1],
-      ),
+      borderRadius: BorderRadius.circular(radius + _hairline),
+      border: Border.all(color: borderColor, width: _hairline),
       boxShadow: <BoxShadow>[
         BoxShadow(
-          // Тень мягкая и почти незаметная: кант читается линией, а не
-          // «объёмом» — плотная тень давала серую кайму, спорящую с тонкой
-          // обводкой.
-          color: Colors.black.withValues(alpha: dark ? 0.20 : 0.045),
-          blurRadius: 8,
-          spreadRadius: -5,
+          color: Colors.black.withValues(alpha: dark ? 0.18 : 0.035),
+          blurRadius: 10,
+          spreadRadius: -6,
           offset: const Offset(0, 4),
         ),
       ],
     ),
-    padding: EdgeInsets.all(thickness),
+    padding: EdgeInsets.zero,
     child: child,
   );
 }
@@ -585,157 +567,157 @@ class _MonthChart extends StatelessWidget {
       duration: const Duration(milliseconds: 220),
       releaseDuration: const Duration(milliseconds: 320),
       child: _ringedCard(
-      theme: theme,
-      accent: theme.colorScheme.primary,
-      child: Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.7)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.bar_chart_rounded,
-                    size: 22,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  // Заголовок ужимается многоточием, а сумма справа — своей
-                  // шириной: раньше заголовок был жёстким (274 px при 288
-                  // доступных), строка переполнялась на 19 px, и последняя
-                  // цифра суммы вылезала за карточку — читалась «иероглифом».
-                  Expanded(
-                    child: Text(
-                      Translations.t('monthChartTitle', context),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+        theme: theme,
+        accent: theme.colorScheme.primary,
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18.7),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.bar_chart_rounded,
+                        size: 22,
+                        color: theme.colorScheme.primary,
                       ),
+                      const SizedBox(width: 10),
+                      // Заголовок ужимается многоточием, а сумма справа — своей
+                      // шириной: раньше заголовок был жёстким (274 px при 288
+                      // доступных), строка переполнялась на 19 px, и последняя
+                      // цифра суммы вылезала за карточку — читалась «иероглифом».
+                      Expanded(
+                        child: Text(
+                          Translations.t('monthChartTitle', context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Суммарные значения месяца — живые числа. Потолок ширины +
+                      // FittedBox: даже при больших суммах число не упирается
+                      // в правую грань карточки и не обрезается.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 132),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: _GlitchText(
+                            '$totalHabit + $totalTask',
+                            ctrl: glitch,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Интуитивный столбчатый график за 30 дней: высота столбика —
+                // активность дня, а его две части — привычки (снизу) и задачи
+                // (сверху). Так видно и «сколько всего», и «из чего сложилось»,
+                // без легенды-головоломки: что закрашено — то и сделано.
+                // Плавный рост при входе, подписи дат по краям, отметка
+                // «лучшего дня» и «сегодня».
+                SizedBox(
+                  height: 190,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, grow, _) => _DaysBarChart(
+                      days: days,
+                      maxV: maxV,
+                      grow: grow,
+                      theme: theme,
+                      habitColor: habitColor,
+                      taskColor: taskColor,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Суммарные значения месяца — живые числа. Потолок ширины +
-                  // FittedBox: даже при больших суммах число не упирается
-                  // в правую грань карточки и не обрезается.
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 132),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: _GlitchText(
-                        '$totalHabit + $totalTask',
-                        ctrl: glitch,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
+                ),
+                const SizedBox(height: 12),
+                // Легенда и счётчик делят строку: легенды ужимаются многоточием,
+                // счётчик — своей шириной (и мелким кеглем внутри FittedBox).
+                // Раньше обе легенды были жёсткими, и строка переполнялась на
+                // узком экране: «дней выполнено» вылезало за карточку.
+                Row(
+                  children: [
+                    Flexible(
+                      child: _legend(
+                        context,
+                        habitColor,
+                        Icons.check_circle_outline,
+                        Translations.t('monthChartHabits', context),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: _legend(
+                        context,
+                        taskColor,
+                        Icons.checklist_outlined,
+                        Translations.t('monthChartTasks', context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 104),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: _GlitchText(
+                          '$activeDays ${Translations.t('monthChartDays', context)}',
+                          ctrl: glitch,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            // Интуитивный столбчатый график за 30 дней: высота столбика —
-            // активность дня, а его две части — привычки (снизу) и задачи
-            // (сверху). Так видно и «сколько всего», и «из чего сложилось»,
-            // без легенды-головоломки: что закрашено — то и сделано.
-            // Плавный рост при входе, подписи дат по краям, отметка
-            // «лучшего дня» и «сегодня».
-            SizedBox(
-              height: 190,
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: 1),
-                duration: const Duration(milliseconds: 900),
-                curve: Curves.easeOutCubic,
-                builder: (context, grow, _) => _DaysBarChart(
-                  days: days,
-                  maxV: maxV,
-                  grow: grow,
-                  theme: theme,
-                  habitColor: habitColor,
-                  taskColor: taskColor,
+                  ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Легенда и счётчик делят строку: легенды ужимаются многоточием,
-            // счётчик — своей шириной (и мелким кеглем внутри FittedBox).
-            // Раньше обе легенды были жёсткими, и строка переполнялась на
-            // узком экране: «дней выполнено» вылезало за карточку.
-            Row(
-              children: [
-                Flexible(
-                  child: _legend(
-                    context,
-                    habitColor,
-                    Icons.check_circle_outline,
-                    Translations.t('monthChartHabits', context),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: _legend(
-                    context,
-                    taskColor,
-                    Icons.checklist_outlined,
-                    Translations.t('monthChartTasks', context),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 104),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: _GlitchText(
-                      '$activeDays ${Translations.t('monthChartDays', context)}',
-                      ctrl: glitch,
+                const SizedBox(height: 10),
+                // Пояснение к графику — мелким полупрозрачным текстом. Появляется
+                // плавно, с той же длительностью, что и рост столбиков: сначала
+                // глаз читает картинку, потом — подпись.
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOut,
+                  builder: (context, fade, child) =>
+                      Opacity(opacity: fade, child: child),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      Translations.t('monthChartHint', context),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        height: 1.35,
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.62,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            // Пояснение к графику — мелким полупрозрачным текстом. Появляется
-            // плавно, с той же длительностью, что и рост столбиков: сначала
-            // глаз читает картинку, потом — подпись.
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 900),
-              curve: Curves.easeOut,
-              builder: (context, fade, child) => Opacity(
-                opacity: fade,
-                child: child,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  Translations.t('monthChartHint', context),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
-                    height: 1.35,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.62,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -767,8 +749,6 @@ class _MonthChart extends StatelessWidget {
     );
   }
 }
-
-
 
 /// Столбчатый график «последние 30 дней»: один столбик на день, высота —
 /// суммарная активность (привычки + задачи), стек — привычки снизу, задачи
@@ -979,7 +959,12 @@ class _DaysBarPainter extends CustomPainter {
             ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
         );
         if (r > 0.05) {
-          _drawStar(canvas, starC, r, todayColor.withValues(alpha: 0.92 * ease));
+          _drawStar(
+            canvas,
+            starC,
+            r,
+            todayColor.withValues(alpha: 0.92 * ease),
+          );
         }
       }
       if (isToday) {
@@ -993,11 +978,29 @@ class _DaysBarPainter extends CustomPainter {
 
     // Подписи дат по краям: первый и последний день диапазона. Короткие
     // числа («1», «30») — без нагромождения.
-    _label(canvas, size, days.first.date, chartBottom + _bottomPad - 4, TextAlign.left);
-    _label(canvas, size, days.last.date, chartBottom + _bottomPad - 4, TextAlign.right);
+    _label(
+      canvas,
+      size,
+      days.first.date,
+      chartBottom + _bottomPad - 4,
+      TextAlign.left,
+    );
+    _label(
+      canvas,
+      size,
+      days.last.date,
+      chartBottom + _bottomPad - 4,
+      TextAlign.right,
+    );
   }
 
-  void _label(Canvas canvas, Size size, String date, double y, TextAlign align) {
+  void _label(
+    Canvas canvas,
+    Size size,
+    String date,
+    double y,
+    TextAlign align,
+  ) {
     // date приходит в формате 'yyyy-MM-dd' — берём день месяца.
     final day = date.length >= 10 ? date.substring(8, 10) : date;
     // Кэш раскладок: `TextPainter.layout()` — шейпинг шрифта, а painter
@@ -1037,7 +1040,12 @@ class _DaysBarPainter extends CustomPainter {
       }
     }
     path.close();
-    canvas.drawPath(path, Paint()..color = color..isAntiAlias = true);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..isAntiAlias = true,
+    );
   }
 
   @override
@@ -1048,7 +1056,6 @@ class _DaysBarPainter extends CustomPainter {
       old.habitColor != habitColor ||
       old.taskColor != taskColor;
 }
-
 
 /// «Растяжение» края скролла: при протяжке за верхнюю/нижнюю границу
 /// содержимое мягко тянется вдоль оси (и слегка сжимается поперёк), а на

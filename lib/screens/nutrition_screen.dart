@@ -18,7 +18,6 @@ import '../widgets/nutrition_trends.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/rolling_counter.dart';
 
-
 /// Какое из числовых полей редактирует встроенная клавиатура.
 enum _PadField { calories, water }
 
@@ -48,7 +47,7 @@ class _NutritionScreenState extends State<NutritionScreen>
   /// истории идут РОВНО этой длительностью и кривой. Разные значения означали
   /// две анимации высоты, тянущие один слот вразнобой — на стыке строка
   /// коротко вспыхивала («мигает при удалении»).
-  static const Duration _mealCollapse = Duration(milliseconds: 240);
+  static const Duration _mealCollapse = Duration(milliseconds: 320);
   static const Curve _mealCollapseCurve = Curves.easeOutCubic;
 
   /// Поле, открытое под встроенной клавиатурой, и сама открыта ли панель.
@@ -369,9 +368,11 @@ class _NutritionScreenState extends State<NutritionScreen>
                 alignment: Alignment.topCenter,
                 clipBehavior: Clip.hardEdge,
                 child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
+                  // Та же длительность, что у AnimatedSize: смена «история ↔
+                  // пусто» идёт одной волной с высотой блока.
+                  duration: _mealCollapse,
                   switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
+                  switchOutCurve: Curves.easeOutCubic,
                   transitionBuilder: (child, animation) =>
                       FadeTransition(opacity: animation, child: child),
                   // Свое расположение: уходящий ребёнок кладём Positioned.
@@ -386,10 +387,8 @@ class _NutritionScreenState extends State<NutritionScreen>
                   // пищи» на строки истории — это и читалось как мигание.
                   // Высоту по-прежнему ведёт AnimatedSize, поэтому переход
                   // остаётся плавным и без наложения.
-                  layoutBuilder: (child, previous) => Stack(
-                    alignment: Alignment.topCenter,
-                    children: [?child],
-                  ),
+                  layoutBuilder: (child, previous) =>
+                      Stack(alignment: Alignment.topCenter, children: [?child]),
                   child: !_loaded
                       ? const SizedBox(key: ValueKey('meals_loading'))
                       : meals.isEmpty
@@ -1137,8 +1136,8 @@ class _NutritionScreenState extends State<NutritionScreen>
       // раньше эта красная плашка «заедала» в конце на все 350 мс.
       background: AnimatedOpacity(
         opacity: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
+        duration: _mealCollapse,
+        curve: _mealCollapseCurve,
         child: Container(
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1164,8 +1163,8 @@ class _NutritionScreenState extends State<NutritionScreen>
       ),
       secondaryBackground: AnimatedOpacity(
         opacity: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
+        duration: _mealCollapse,
+        curve: _mealCollapseCurve,
         child: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1305,7 +1304,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           child: TweenAnimationBuilder<double>(
             // Въезд (opacity + мягкий сдвиг) — только у новой записи.
             duration: isJustAdded
-                ? const Duration(milliseconds: 380)
+                ? const Duration(milliseconds: 320)
                 : Duration.zero,
             curve: Curves.easeOutCubic,
             tween: isJustAdded
@@ -1353,8 +1352,8 @@ class _NutritionScreenState extends State<NutritionScreen>
                   begin: 1.0,
                   end: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
                 ),
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeInOutCubic,
+                duration: _mealCollapse,
+                curve: _mealCollapseCurve,
                 builder: (context, fade, child) =>
                     Opacity(opacity: fade.clamp(0.0, 1.0), child: child),
                 child: PressScale(
@@ -1790,11 +1789,7 @@ class _NutritionScreenState extends State<NutritionScreen>
       },
       {
         'icon': Icons.cake_outlined,
-        'title': Translations.t(
-          'tipSugarSwapTitle',
-          context,
-          'Swap the sugar',
-        ),
+        'title': Translations.t('tipSugarSwapTitle', context, 'Swap the sugar'),
         'body': Translations.t(
           'tipSugarSwapBody',
           context,
@@ -1865,11 +1860,7 @@ class _NutritionScreenState extends State<NutritionScreen>
       },
       {
         'icon': Icons.directions_walk,
-        'title': Translations.t(
-          'tipMoveBloatTitle',
-          context,
-          'Move to drain',
-        ),
+        'title': Translations.t('tipMoveBloatTitle', context, 'Move to drain'),
         'body': Translations.t(
           'tipMoveBloatBody',
           context,
@@ -2086,7 +2077,9 @@ class _GrowIntoPlaceState extends State<_GrowIntoPlace>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 420),
+    // Ровно как [_mealCollapse]/`AnimatedSize` над блоком истории: рост
+    // карточки и рост блока идут одной волной, без «скукоживания».
+    duration: const Duration(milliseconds: 320),
   );
   late final Animation<double> _anim = CurvedAnimation(
     parent: _ctrl,

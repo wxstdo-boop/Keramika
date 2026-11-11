@@ -36,14 +36,14 @@ const String kKeramikaSiteUrl = 'https://keramika.ru';
 /// дёрганой; кубика дешёвая и мягкая, а вход чуть длиннее — лист «выезжает»,
 /// а не выскакивает.
 AnimationStyle _sheetStyle() => AnimationStyle(
-  // Быстрое всплытие с мягким торможением. Прежние 420 мс с easeOutQuart
-  // тянулись заметно дольше, чем лист проходит путь, и читались
-  // «подторможенным» появлением; 300 мс с easeOutCubic успевает и плавно,
-  // и собранно. Выход ещё короче — уход не должен «висеть».
-  curve: Curves.easeOutCubic,
-  duration: const Duration(milliseconds: 300),
-  reverseCurve: Curves.easeInCubic,
-  reverseDuration: const Duration(milliseconds: 240),
+  // Мягкое всплытие с торможением. Прежние 300 мс при коротком пути листа
+  // читались рывком; 360 мс с easeOutQuint дают спокойный, «дорогой» ход.
+  // Выход заметно длиннее прежнего: уход раньше «щёлкал» и выглядел
+  // тормознутым обрывом.
+  curve: Curves.easeOutQuint,
+  duration: const Duration(milliseconds: 360),
+  reverseCurve: Curves.easeInOutCubic,
+  reverseDuration: const Duration(milliseconds: 300),
 );
 
 /// Округлая (капсульная) форма кнопок профиля — та же «отдача фоном», что у
@@ -228,6 +228,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final picked = await showModalBottomSheet<Object>(
       context: context,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.32),
       isScrollControlled: true,
       sheetAnimationStyle: _sheetStyle(),
       builder: (ctx) => _AvatarPickerSheet(
@@ -433,6 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.32),
       sheetAnimationStyle: _sheetStyle(),
       builder: (ctx) => _FriendActionsSheet(friend: friend),
     );
@@ -442,9 +444,16 @@ class _ProfileScreenState extends State<ProfileScreen>
       Haptics.light();
     } else if (action == 'score') {
       if (!mounted) return;
+      // Лист действий уже получил pop, но его барьер ещё гаснет (обратная
+      // анимация). Если открыть лист очков сразу, оба затемнения коротко
+      // складываются — читается как «второй чёрный фон» позади окна. Ждём
+      // ровно обратный ход листа действий.
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      if (!mounted) return;
       final updated = await showModalBottomSheet<ProfileFriend>(
         context: context,
         backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.32),
         isScrollControlled: true,
         sheetAnimationStyle: _sheetStyle(),
         builder: (ctx) => _FriendScoreSheet(friend: friend),
@@ -1725,7 +1734,9 @@ class _FriendActionsSheet extends StatelessWidget {
                 theme,
                 icon: Icons.tune,
                 label: Translations.t('profileFriendSetScore', context, 'Очки'),
-                onTap: () => Navigator.of(context).pop('score'),
+                // Даём отдаче проиграть вдавливание, прежде чем закрыть лист:
+                // раньше pop случался в тот же кадр, и нажатие не читалось.
+                onTap: () => _popAfterPress(context, 'score'),
               ),
               _actionTile(
                 context,
@@ -1733,13 +1744,22 @@ class _FriendActionsSheet extends StatelessWidget {
                 icon: Icons.delete_outline,
                 label: Translations.t('delete', context, 'Удалить'),
                 danger: true,
-                onTap: () => Navigator.of(context).pop('remove'),
+                onTap: () => _popAfterPress(context, 'remove'),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Закрыть лист через короткую паузу: палец успевает увидеть вдавливание.
+  static Future<void> _popAfterPress(
+    BuildContext context,
+    String result,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (context.mounted) Navigator.of(context).pop(result);
   }
 
   Widget _actionTile(
@@ -1754,13 +1774,20 @@ class _FriendActionsSheet extends StatelessWidget {
         ? theme.colorScheme.error
         : theme.colorScheme.onSurface;
     return PressScale(
-      pressedScale: 0.97,
-      duration: const Duration(milliseconds: 150),
-      releaseDuration: const Duration(milliseconds: 260),
-      child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(label, style: TextStyle(color: color)),
-        onTap: onTap,
+      // Медленнее и глубже: строка ощутимо «уходит» под палец и мягко
+      // возвращается — раньше 150 мс читались как резкий щелчок.
+      pressedScale: 0.95,
+      duration: const Duration(milliseconds: 240),
+      releaseDuration: const Duration(milliseconds: 380),
+      child: Material(
+        // Свой Material: без него чернильная волна ListTile уходила под фон
+        // `Container` листа, и Flutter ругался на невидимые splashes.
+        type: MaterialType.transparency,
+        child: ListTile(
+          leading: Icon(icon, color: color),
+          title: Text(label, style: TextStyle(color: color)),
+          onTap: onTap,
+        ),
       ),
     );
   }

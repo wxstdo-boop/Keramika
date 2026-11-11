@@ -29,7 +29,8 @@ class _UpdatePillState extends State<UpdatePill>
   bool _busy = false;
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1450),
+    // Медленнее прежнего: прыжок читается плавным, а не торопливым.
+    duration: const Duration(milliseconds: 1750),
   );
 
   @override
@@ -94,14 +95,13 @@ class _UpdatePillState extends State<UpdatePill>
         barrierLabel: MaterialLocalizations.of(
           context,
         ).modalBarrierDismissLabel,
-        // Барьер ПРОЗРАЧНЫЙ, а не чёрный: штатный барьер маршрута не участвует
-        // в анимации и вспыхивает/гаснет мгновенно — фон «мигает» чёрным.
-        // Затемнение рисует сам transitionBuilder той же кривой, что и окно
-        // (как в локскрине и новогоднем баннере).
-        barrierColor: Colors.transparent,
-        // Чуть длиннее прежнего: появление читается как мягкое «всплытие», а
-        // не как рывок.
-        transitionDuration: const Duration(milliseconds: 300),
+        // Затемнение — ОДНИМ барьером маршрута с мягкой альфой. Раньше барьер
+        // был прозрачным, а затемнение рисовал transitionBuilder: два слоя
+        // складывались, и на входе/выходе окно «вспыхивало» (та самая
+        // жалоба на мигание). Теперь слой ровно один и он же плавно гаснет.
+        barrierColor: Colors.black.withValues(alpha: 0.42),
+        // Длиннее прежнего: окно читается как мягкое всплытие, без рывка.
+        transitionDuration: const Duration(milliseconds: 360),
         pageBuilder: (ctx, _, _) => _UpdateConfirmDialog(
           version: update.versionName,
           onConfirm: () => Navigator.pop(ctx, true),
@@ -116,28 +116,16 @@ class _UpdatePillState extends State<UpdatePill>
             curve: Curves.easeOutCubic,
             reverseCurve: Curves.easeInCubic,
           );
-          final theme = Theme.of(ctx);
-          final dim = (theme.brightness == Brightness.dark
-                  ? Colors.black
-                  : theme.colorScheme.surface)
-              .withValues(alpha: 0.30 * curved.value);
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              // Затемнение едет ВМЕСТЕ с окном: проявляется и гаснет плавно,
-              // без мгновенной вспышки барьера.
-              IgnorePointer(child: ColoredBox(color: dim)),
-              FadeTransition(
-                opacity: curved,
-                child: ScaleTransition(
-                  // Ход масштаба меньше (0.96): крупное окно при большом
-                  // разлёте читалось «выпрыгивающим». Теперь это лёгкое
-                  // всплытие, а не скачок размера.
-                  scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
-                  child: child,
-                ),
-              ),
-            ],
+          // Только окно: фон затемняет барьер маршрута, поэтому второго
+          // затемняющего слоя нет — окно не «вспыхивает» на переходе.
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              // Ход масштаба меньше (0.96): крупное окно при большом разлёте
+              // читалось «выпрыгивающим». Теперь это лёгкое всплытие.
+              scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+              child: child,
+            ),
           );
         },
       );
@@ -288,12 +276,12 @@ class _UpdatePillState extends State<UpdatePill>
                     // (не busy) слоя вообще не трогаем.
                     child: AnimatedBuilder(
                       animation: _spin,
-                      // Округляем смещение до целых пикселей: дробный сдвиг
-                      // заставляет растеризатор пересэмплировать кэшированный
-                      // слой каждый кадр — именно это и «мылило» и дёргало
-                      // мелкий глиф. Целый пиксель — чистый перенос.
+                      // Дробное смещение: округление до целых пикселей на
+                      // прыжке в 4 px давало всего пять ступеней, и зайчик
+                      // «дёргался» — читалось как лаг. Дробный сдвиг кэш-слоя
+                      // GPU переносит плавно.
                       builder: (context, child) => Transform.translate(
-                        offset: Offset(0, -_hopLift(_spin.value).roundToDouble()),
+                        offset: Offset(0, -_hopLift(_spin.value)),
                         child: child,
                       ),
                       child: RepaintBoundary(
@@ -341,8 +329,8 @@ class _UpdatePillState extends State<UpdatePill>
 /// короткая пауза отделяет прыжки, чтобы движение читалось как прыжок, а не
 /// как «молотьба».
 double _hopLift(double t) {
-  const hopSpan = 0.5;
-  const amplitude = 4.0;
+  const hopSpan = 0.55;
+  const amplitude = 3.6;
   // Чистая полуволна синуса: ровно 0 → 1 → 0 с нулевой скоростью на обоих
   // концах. Прежняя формула перемножала `h·(1-h)` и `sin(π·h)` — двойной
   // «горб» давал неровный разгон и читался дёрганым.
@@ -466,118 +454,114 @@ class _UpdateConfirmDialog extends StatelessWidget {
               // полупрозрачной подложкой: тот же вид, но без пересборки
               // фильтра, поэтому всплытие идёт ровно.
               child: Container(
-                  decoration: BoxDecoration(
-                    // Полупрозрачно: сквозь окно виден фон, но текст остаётся
-                    // читаемым — стекло без мерцания.
-                    color: cs.surfaceContainerHigh.withValues(alpha: 0.86),
-                    borderRadius: BorderRadius.circular(Radii.xl - 1),
-                    border: Border.all(
-                      color: cs.onSurface.withValues(alpha: 0.14),
-                    ),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(
-                    Spacing.lg,
-                    Spacing.lg,
-                    Spacing.lg,
-                    Spacing.md,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: cs.primary.withValues(alpha: 0.16),
-                            ),
-                            child: Icon(
-                              Icons.system_update_alt_rounded,
-                              color: cs.primary,
-                            ),
-                          ),
-                          const SizedBox(width: Spacing.sm),
-                          Expanded(
-                            child: Text(
-                              Translations.t(
-                                'updateAvailable',
-                                context,
-                                'Доступно обновление',
-                              ),
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: Weights.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: Spacing.sm),
-                      Text(
-                        Translations.t(
-                          'updateAvailableBody',
-                          context,
-                          'Установить v{v}?',
-                        ).replaceAll('{v}', version),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: Spacing.lg),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: PressScale(
-                              pressedScale: 0.95,
-                              child: TextButton(
-                                onPressed: onCancel,
-                                style: TextButton.styleFrom(
-                                  minimumSize: const Size(0, 46),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      Radii.md,
-                                    ),
-                                  ),
-                                ),
-                                child: Text(
-                                  Translations.t('cancel', context, 'Отмена'),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: Spacing.sm),
-                          Expanded(
-                            child: PressScale(
-                              pressedScale: 0.95,
-                              child: FilledButton(
-                                onPressed: onConfirm,
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size(0, 46),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      Radii.md,
-                                    ),
-                                  ),
-                                ),
-                                child: Text(
-                                  Translations.t(
-                                    'install',
-                                    context,
-                                    'Установить',
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                decoration: BoxDecoration(
+                  // Полупрозрачно: сквозь окно виден фон, но текст остаётся
+                  // читаемым — стекло без мерцания.
+                  color: cs.surfaceContainerHigh.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(Radii.xl - 1),
+                  border: Border.all(
+                    color: cs.onSurface.withValues(alpha: 0.14),
                   ),
                 ),
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  Spacing.lg,
+                  Spacing.lg,
+                  Spacing.md,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: cs.primary.withValues(alpha: 0.16),
+                          ),
+                          child: Icon(
+                            Icons.system_update_alt_rounded,
+                            color: cs.primary,
+                          ),
+                        ),
+                        const SizedBox(width: Spacing.sm),
+                        Expanded(
+                          child: Text(
+                            Translations.t(
+                              'updateAvailable',
+                              context,
+                              'Доступно обновление',
+                            ),
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: Weights.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      Translations.t(
+                        'updateAvailableBody',
+                        context,
+                        'Установить v{v}?',
+                      ).replaceAll('{v}', version),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PressScale(
+                            pressedScale: 0.95,
+                            child: TextButton(
+                              onPressed: onCancel,
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(0, 46),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(Radii.md),
+                                ),
+                              ),
+                              child: Text(
+                                Translations.t('cancel', context, 'Отмена'),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: Spacing.sm),
+                        Expanded(
+                          child: PressScale(
+                            pressedScale: 0.95,
+                            child: FilledButton(
+                              onPressed: onConfirm,
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(0, 46),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(Radii.md),
+                                ),
+                              ),
+                              child: Text(
+                                Translations.t(
+                                  'install',
+                                  context,
+                                  'Установить',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

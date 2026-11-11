@@ -41,9 +41,9 @@ class _MusicPulseRingState extends State<MusicPulseRing>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    // Чуть быстрее прежнего: пульс должен читаться как «дыхание в такт», а не
-    // как едва заметное мерцание.
-    duration: const Duration(milliseconds: 1800),
+    // Заметно медленнее прежнего: пульс читается как спокойное «дыхание», а
+    // не как торопливое мерцание.
+    duration: const Duration(milliseconds: 2600),
   );
 
   @override
@@ -94,10 +94,12 @@ class _MusicPulseRingState extends State<MusicPulseRing>
                 animation: _ctrl,
                 builder: (context, _) {
                   final t = _ctrl.value;
-                  // Пульс 0…1: два «удара» за цикл, оба конца замкнуты.
+                  // Пульс 0…1: ОДИН мягкий «вдох» за цикл, оба конца
+                  // замкнуты. Два удара на цикл читались как дрожь; один —
+                  // как дыхание.
                   final pulse = reduce
                       ? 0.0
-                      : (0.5 + 0.5 * math.sin(t * math.pi * 2));
+                      : (0.5 - 0.5 * math.cos(t * math.pi * 2));
                   // Медленный поворот градиента: цвет «перетекает» по кругу.
                   final turn = t * 2 * math.pi;
                   final lead = _wheel(a, b, c, math.sin(turn));
@@ -108,13 +110,9 @@ class _MusicPulseRingState extends State<MusicPulseRing>
                       tail: tail,
                       turn: turn,
                       // Пульс — ТОЛЩИНОЙ: от волосяной линии до заметного, но
-                      // всё ещё тонкого кольца. Раньше менялось только
-                      // свечение, и пульс почти не читался.
+                      // всё ещё тонкого кольца.
                       stroke: widget.baseWidth + widget.pulseWidth * pulse,
                       glow: 0.10 + 0.30 * pulse,
-                      // Фаза «бегущих» пятен сияния: их угловое положение
-                      // привязано к тому же контроллеру, поэтому кольцо живёт
-                      // одним ритмом, а не двумя несогласованными.
                       phase: t,
                     ),
                   );
@@ -178,6 +176,11 @@ class _RingPainter extends CustomPainter {
       ],
     ).createShader(rect);
     // Мягкое свечение: та же линия с блюром, низкой прозрачностью.
+    //
+    // Сигма блюра ПОСТОЯННА: раньше она зависела от пульса (2 + glow*10) и
+    // менялась каждый кадр — растр кольца пересобирался целиком, и пульс
+    // «лагал». Пульс теперь читается только прозрачностью свечения, а растр
+    // берётся из кэша.
     canvas.drawCircle(
       rect.center,
       r,
@@ -185,7 +188,7 @@ class _RingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..shader = sweep(glow)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 + glow * 10),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
     // Сама обводка — тонкая и чёткая. Никаких «пятен сияния»: кольцо должно
     // читаться идеально ровным кругом, а бегущие блики по периметру выглядели
