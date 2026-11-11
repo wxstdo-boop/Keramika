@@ -232,6 +232,49 @@ class ProfileAvatar extends StatelessWidget {
   ///
   /// Сигма размытия КВАНТУЕТСЯ: непрерывное значение пересобирало фильтр
   /// каждый кадр прокрутки, и размытие «лагало». На ступенях пересборки нет.
+  /// Максимальная сигма расфокуса. Кросс-фейд считает долю от неё, поэтому
+  /// значение должно совпадать с верхом [_sigma] в режиме [motion].
+  static const double _maxBlurSigma = 9;
+
+  /// Слой картинки с расфокусом.
+  ///
+  /// Анимированное размытие — КРОСС-ФЕЙД двух готовых слоёв: резкого и
+  /// заранее размытого на постоянную сигму. `ImageFiltered` пересобирает
+  /// фильтр при каждом новом значении сигмы, а прокрутка меняет её каждый
+  /// кадр — именно это и «тормозило». Теперь сигма у слоя НЕ меняется (фильтр
+  /// кэширован), а каждый кадр меняется только `Opacity` — дешёвая операция
+  /// поверх готового растра. Статический [blur] (без прокрутки) рисуется
+  /// напрямую: там сигма постоянна и пересборки нет.
+  Widget _blurLayer(Widget image, double sigma, {required bool animated}) {
+    if (sigma <= 0.2 || MotionPrefs.shouldReduceMotion) return image;
+    if (!animated) {
+      return ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: image,
+      );
+    }
+    final amount = (sigma / _maxBlurSigma).clamp(0.0, 1.0);
+    return Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        image,
+        Opacity(
+          opacity: amount,
+          child: RepaintBoundary(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(
+                sigmaX: _maxBlurSigma,
+                sigmaY: _maxBlurSigma,
+              ),
+              child: image,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _imageAvatar(BuildContext context) {
     final file = File(imagePath!);
     // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
@@ -260,22 +303,12 @@ class ProfileAvatar extends StatelessWidget {
         width: size,
         height: size,
         child: Transform.translate(
+          // Ключ оставлен для тестов/отладки: наружу видно именно смещение.
           key: const ValueKey('avatar_motion'),
           offset: Offset(0, dy),
-          // Размытие — вокруг САМОЙ картинки, под клипом: слой кэшируется
-          // (`RepaintBoundary`), а сдвиг параллакса лишь переносит готовый
-          // размытый слой, не пересобирая фильтр.
-          child: RepaintBoundary(
-            child: sigma > 0 && !MotionPrefs.shouldReduceMotion
-                ? ImageFiltered(
-                    imageFilter: ui.ImageFilter.blur(
-                      sigmaX: sigma,
-                      sigmaY: sigma,
-                    ),
-                    child: image,
-                  )
-                : image,
-          ),
+          // Размытие — вокруг САМОЙ картинки, под клипом. Сдвиг параллакса —
+          // чистый перенос готового слоя, фильтр не пересобирается.
+          child: _blurLayer(image, sigma, animated: motion != null),
         ),
       ),
     );

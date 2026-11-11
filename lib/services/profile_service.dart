@@ -214,11 +214,20 @@ class ProfileService extends ChangeNotifier {
 
   Future<void> toggleOnline() => setOnline(!online);
 
-  Future<void> addFriend({
+  /// Предел числа друзей. За ним список просто перестаёт принимать новых:
+  /// иначе рейтинг превращается в бесконечную ленту, а карточка — в тормоз.
+  static const int maxFriends = 50;
+
+  bool get canAddFriend => _friends.length < maxFriends;
+
+  /// Добавляет друга. Возвращает `false`, если список уже полон — вызывающий
+  /// показывает мягкое сообщение, а не молча роняет действие.
+  Future<bool> addFriend({
     required String name,
     required int colorIndex,
     required int score,
   }) async {
+    if (!canAddFriend) return false;
     _friends.add(
       ProfileFriend(
         id: 'f${DateTime.now().microsecondsSinceEpoch}',
@@ -229,6 +238,7 @@ class ProfileService extends ChangeNotifier {
     );
     notifyListeners();
     await _save();
+    return true;
   }
 
   Future<void> updateFriend(ProfileFriend friend) async {

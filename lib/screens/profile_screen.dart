@@ -36,10 +36,13 @@ const String kKeramikaSiteUrl = 'https://keramika.ru';
 /// дёрганой; кубика дешёвая и мягкая, а вход чуть длиннее — лист «выезжает»,
 /// а не выскакивает.
 AnimationStyle _sheetStyle() => AnimationStyle(
-  curve: Curves.easeOutCubic,
-  duration: const Duration(milliseconds: 340),
-  reverseCurve: Curves.easeInCubic,
-  reverseDuration: const Duration(milliseconds: 260),
+  // Мягкое всплытие с долгим «торможением»: лист рейтинга поднимается
+  // ровно и без рывка в конце. Выход чуть короче входа — уход собранный,
+  // но не резкий (прежний easeInCubic «щёлкал» в самом конце).
+  curve: Curves.easeOutQuart,
+  duration: const Duration(milliseconds: 420),
+  reverseCurve: Curves.easeInOutCubic,
+  reverseDuration: const Duration(milliseconds: 300),
 );
 
 /// Округлая (капсульная) форма кнопок профиля — та же «отдача фоном», что у
@@ -308,18 +311,12 @@ class _ProfileScreenState extends State<ProfileScreen>
           '${soundsDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await File(srcPath).copy(newPath);
       final title = picked.name.isNotEmpty ? picked.name : 'Моя музыка';
-      // Смена трека идёт ПЛАВНО: старый гаснет (состояние и плеер — в фоне),
-      // и только затем карточка переключается на новый файл. Прежний код
-      // менял состояние мгновенно — карточка «щёлкала».
+      // Останавливаем старый трек и сразу ставим новый. Прежде между ними
+      // была искусственная пауза с «пустым» состоянием: карточка успевала
+      // показать заглушку, потом прыгала на трек — читалось как рывок и
+      // мигание текста. Переход между состояниями делает сам
+      // `AnimatedSwitcher` карточки, без ручной задержки.
       await _music.stop();
-      if (!mounted) return;
-      // Даём «пустому» состоянию проявиться и лишь потом ставим новый трек:
-      // так между старым и новым проходит мягкий переход, а не подмена.
-      await Future<void>.delayed(
-        MotionPrefs.shouldReduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 180),
-      );
       if (!mounted) return;
       await _service.setMusic(path: newPath, title: title);
       if (!mounted) return;
@@ -407,11 +404,23 @@ class _ProfileScreenState extends State<ProfileScreen>
     // снимаем фокус, иначе система поднимет системную панель в профиле.
     _dropFocus();
     if (result == null) return;
-    await _service.addFriend(
+    final ok = await _service.addFriend(
       name: result.name,
       colorIndex: result.colorIndex,
       score: result.score,
     );
+    if (!mounted) return;
+    if (!ok) {
+      _toast(
+        Translations.t(
+          'profileFriendsFull',
+          context,
+          'В рейтинге уже 50 друзей',
+        ),
+        icon: Icons.groups_outlined,
+      );
+      return;
+    }
     Haptics.light();
   }
 
@@ -747,14 +756,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                   : Motion.normal,
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: SizeTransition(
-                  sizeFactor: anim,
-                  alignment: Alignment.topCenter,
-                  child: child,
-                ),
-              ),
+              // Только проявка: высоту тянет внешний `AnimatedSize`, и
+              // второй `SizeTransition` внутри спорил с ним — карточка
+              // дёргала текст при добавлении/удалении трека.
+              transitionBuilder: (child, anim) =>
+                  FadeTransition(opacity: anim, child: child),
               child: hasMusic
                   // Гасим чернильные всплески ListTile: без этого при тапе по
                   // строке под пальцем вспыхивал прямоугольник на всю ширину
@@ -800,30 +806,24 @@ class _ProfileScreenState extends State<ProfileScreen>
                                   alignment: Alignment.center,
                                   children: [...previous, ?current],
                                 ),
-                                // Уходящий значок гаснет и «проворачивается»
-                                // назад, входящий — проявляется, вырастает и
-                                // доворачивается. Смена читается как один
-                                // поворот, а не как подмена картинки: резкого
-                                // «щелчка» между плей и паузой нет.
-                                transitionBuilder: (child, anim) {
-                                  final isIncoming =
-                                      child.key == ValueKey(playing);
-                                  final curved = isIncoming
-                                      ? Curves.easeOutBack.transform(anim.value)
-                                      : Curves.easeInCubic.transform(anim.value);
-                                  final a = isIncoming ? curved : 1 - curved;
-                                  return Opacity(
-                                    opacity: a.clamp(0.0, 1.0),
-                                    child: Transform.rotate(
-                                      angle: (isIncoming ? 1 - curved : curved) *
-                                          -0.6,
-                                      child: Transform.scale(
-                                        scale: 0.62 + 0.38 * curved,
-                                        child: child,
-                                      ),
-                                    ),
-                                  );
-                                },
+                                // Мягкая смена: входящий значок проявляется и
+                                // чуть подрастает, уходящий так же плавно
+                                // гаснет. Считаем ПРОСТО по `anim` (без
+                                // сравнения ключей): прежний вариант с
+                                // `child.key == ValueKey(playing)` при быстром
+                                // двойном тапе путал «входящий/уходящий» и
+                                // оставлял значок с нулевой прозрачностью —
+                                // кнопка на миг пропадала.
+                                transitionBuilder: (child, anim) => FadeTransition(
+                                  opacity: anim,
+                                  child: ScaleTransition(
+                                    scale: Tween<double>(
+                                      begin: 0.75,
+                                      end: 1,
+                                    ).animate(anim),
+                                    child: child,
+                                  ),
+                                ),
                                 child: Icon(
                                   playing
                                       ? Icons.pause
@@ -941,14 +941,23 @@ class _ProfileScreenState extends State<ProfileScreen>
       trailing: PressScale(
         pressedScale: 0.86,
         child: IconButton(
-          onPressed: _addFriend,
+          // На пределе (50 друзей) кнопка гаснет: понятно, что дальше
+          // добавлять некуда, и не приходится жать «в пустоту».
+          onPressed: _service.canAddFriend ? _addFriend : null,
           icon: const Icon(Icons.person_add_alt_1_outlined),
-          tooltip: Translations.t('profileAddFriend', context, 'Добавить друга'),
+          tooltip: _service.canAddFriend
+              ? Translations.t('profileAddFriend', context, 'Добавить друга')
+              : Translations.t(
+                  'profileFriendsFull',
+                  context,
+                  'В рейтинге уже 50 друзей',
+                ),
         ),
       ),
-      // Строки рейтинга вставляются/переезжают ПЛАВНО: AnimatedSize тянет
-      // высоту, AnimatedSwitcher кросс-фейдит состав при добавлении/удалении
-      // друга — карточка не «щёлкает» раскладкой.
+      // Строки рейтинга ПЕРЕЕЗЖАЮТ плавно: каждая строка лежит в общем
+      // «слое» на своей вертикальной позиции (`AnimatedPositioned` по ключу
+      // друга), поэтому смена очков меняет места анимацией, а не мгновенной
+      // перестановкой. AnimatedSize тянет высоту при добавлении/удалении.
       child: AnimatedSize(
         duration: MotionPrefs.shouldReduceMotion
             ? Duration.zero
@@ -956,24 +965,52 @@ class _ProfileScreenState extends State<ProfileScreen>
         curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
         child: Column(
-        children: [
-          for (var i = 0; i < rows.length; i++)
-            _leaderRow(theme, rows[i], rank: i + 1, isMe: rows[i].id == 'me'),
-          if (_service.friends.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: Spacing.xs),
-              child: Text(
-                Translations.t(
-                  'profileNoFriends',
-                  context,
-                  'Добавьте друзей, чтобы сравнивать прогресс',
-                ),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: rows.length * _leaderRowHeight,
+              child: Stack(
+                children: [
+                  for (var i = 0; i < rows.length; i++)
+                    AnimatedPositioned(
+                      // Ключ — id друга: при смене очков Flutter видит тот же
+                      // виджет на новой позиции и анимирует переезд.
+                      key: ValueKey(rows[i].id),
+                      duration: MotionPrefs.shouldReduceMotion
+                          ? Duration.zero
+                          : Motion.glide,
+                      curve: Curves.easeOutCubic,
+                      left: 0,
+                      right: 0,
+                      top: i * _leaderRowHeight,
+                      child: SizedBox(
+                        height: _leaderRowHeight,
+                        child: _leaderRow(
+                          theme,
+                          rows[i],
+                          rank: i + 1,
+                          isMe: rows[i].id == 'me',
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-        ],
+            if (_service.friends.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: Spacing.xs),
+                child: Text(
+                  Translations.t(
+                    'profileNoFriends',
+                    context,
+                    'Добавьте друзей, чтобы сравнивать прогресс',
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -1335,6 +1372,10 @@ const int _kFriendNameMax = 30;
 
 /// Максимальное число знаков в очках рейтинга.
 const int _kFriendScoreMax = 7;
+
+/// Высота одной строки рейтинга. Фиксирована: строки живут в общем «слое»
+/// на вычисленных позициях, и переезд при смене очков — это анимация `top`.
+const double _leaderRowHeight = 52;
 
 /// Случайные «весёлые» очки 40…990.
 ///

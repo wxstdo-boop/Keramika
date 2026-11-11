@@ -159,9 +159,6 @@ class _RingPainter extends CustomPainter {
     required this.phase,
   });
 
-  /// Сколько пятен сияния бежит по кругу.
-  static const int _spotCount = 3;
-
   @override
   void paint(Canvas canvas, Size size) {
     final r = math.min(size.width, size.height) / 2 - stroke / 2;
@@ -190,7 +187,9 @@ class _RingPainter extends CustomPainter {
         ..shader = sweep(glow)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 + glow * 10),
     );
-    // Сама обводка — тонкая и чёткая.
+    // Сама обводка — тонкая и чёткая. Никаких «пятен сияния»: кольцо должно
+    // читаться идеально ровным кругом, а бегущие блики по периметру выглядели
+    // как грязь на обводке.
     canvas.drawCircle(
       rect.center,
       r,
@@ -199,26 +198,6 @@ class _RingPainter extends CustomPainter {
         ..strokeWidth = stroke
         ..shader = sweep(0.9),
     );
-    // «Пятна сияния»: несколько мягких размытых огоньков бегут по периметру.
-    // Они дают кольцу объём и жизнь, оставаясь за пределами залитой
-    // обводки — центр кнопки по-прежнему пустой.
-    final spotR = math.max(2.0, stroke * 2.6);
-    for (var i = 0; i < _spotCount; i++) {
-      final ang = (phase + i / _spotCount) * 2 * math.pi;
-      final c = Offset(
-        rect.center.dx + math.cos(ang) * r,
-        rect.center.dy + math.sin(ang) * r,
-      );
-      canvas.drawCircle(
-        c,
-        spotR,
-        Paint()
-          ..color = i.isEven
-              ? lead.withValues(alpha: 0.30 * (0.6 + 0.4 * glow / 0.40))
-              : tail.withValues(alpha: 0.26 * (0.6 + 0.4 * glow / 0.40))
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, spotR),
-      );
-    }
   }
 
   @override

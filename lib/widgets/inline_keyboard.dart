@@ -54,7 +54,9 @@ class InlineKeyboard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
+        // Полупрозрачная панель: сквозь клавиатуру просвечивает лист, и она
+        // читается «подложкой», а не глухой плитой.
+        color: cs.surfaceContainer.withValues(alpha: 0.82),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(Radii.xl)),
         border: Border(
           top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
@@ -194,29 +196,45 @@ class _KeyState extends State<_Key> {
   Widget build(BuildContext context) {
     final theme = widget.theme;
     final cs = theme.colorScheme;
+    // Полупрозрачные КРАСНЫЕ клавиши: тон primary (у Keramika он алый),
+    // сильно разбавленный, — кнопки читаются «стеклянно-красными» на любом
+    // фоне. Отдача и повтор — в [PressScale]/InkWell ниже.
+    final keyColor = Color.alphaBlend(
+      cs.primary.withValues(alpha: 0.16),
+      cs.surfaceContainerHighest.withValues(alpha: 0.55),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: PressScale(
         pressedScale: 0.9,
         duration: const Duration(milliseconds: 90),
         releaseDuration: const Duration(milliseconds: 180),
-        child: Material(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(Radii.sm),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(Radii.sm),
-            onTap: () {
-              Haptics.select();
-              widget.onTap();
-            },
-            onTapDown: (_) => _startHold(),
-            onTapUp: (_) => _stopHold(),
-            onTapCancel: _stopHold,
+        // Отдачу рисует сам PressScale: `Material`+`InkWell` на каждую клавишу
+        // — лишние слои и чернильные всплески. Держим только один «блик»
+        // нажатия через `Listener` внутри PressScale, а тап отдаёт GestureDetector.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            Haptics.select();
+            widget.onTap();
+          },
+          onTapDown: (_) => _startHold(),
+          onTapUp: (_) => _stopHold(),
+          onTapCancel: _stopHold,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: keyColor,
+              borderRadius: BorderRadius.circular(Radii.sm),
+            ),
             child: Container(
               height: widget.height,
               alignment: Alignment.center,
               child: widget.icon != null
-                  ? Icon(widget.icon, size: 18, color: cs.onSurfaceVariant)
+                  ? Icon(
+                      widget.icon,
+                      size: 18,
+                      color: cs.primary.withValues(alpha: 0.85),
+                    )
                   : Text(
                       widget.label!,
                       style: theme.textTheme.titleMedium?.copyWith(

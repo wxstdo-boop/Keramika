@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -267,33 +268,38 @@ class _UpdatePillState extends State<UpdatePill>
                 // primaryContainer (0.72/0.78) на светлой теме читался
                 // «непрозрачной заливкой» — снизили альфу и добавили
                 // лёгкий поверхностный тон, чтобы текст остался контрастным.
-                color: Color.alphaBlend(
-                  cs.surface.withValues(alpha: dark ? 0.34 : 0.42),
-                  cs.primaryContainer.withValues(
-                    alpha: dark ? 0.52 : 0.50,
-                  ),
+                color: cs.primaryContainer.withValues(
+                  alpha: dark ? 0.34 : 0.38,
                 ),
                 borderRadius: BorderRadius.circular(998),
               ),
               child: Row(
                 children: [
                   SizedBox(
-                    // Окно глифа чуть больше самого глифа: в прыжке у зайчика
-                    // остаётся запас сверху, и он не «прищемляется» о край
-                    // таблетки (это и читалось как рывок в верхней точке).
-                    width: 15,
-                    height: 15,
-                    // Свой слой + painter, слушающий контроллер НАПРЯМУЮ: прыжок
-                    // — чистая перерисовка, дерево виджетов при этом не
-                    // перестраивается каждый кадр (раньше `AnimatedBuilder`
-                    // пересобирал таблетку на каждом кадре — это и «лагало»).
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: _UpdateGlyphPainter(
-                          progress: _spin,
-                          color: cs.onPrimaryContainer,
-                          hole: cs.primaryContainer,
-                          running: _busy,
+                    // Окно глифа с запасом: в прыжке зайчику есть куда уехать
+                    // вверх, и он не «прищемляется» о край таблетки.
+                    width: 18,
+                    height: 18,
+                    // САМОЕ ВАЖНОЕ для плавности: глиф рисуется один раз в
+                    // постоянный слой (`RepaintBoundary`), а прыжок — это
+                    // `Transform.translate` над готовым слоем. GPU просто
+                    // переносит закэшированную растровую картинку, БЕЗ
+                    // повторной растеризации глифа каждый кадр. Раньше painter
+                    // слушал контроллер напрямую (`super(repaint:)`) и
+                    // перерисовывал значок на КАЖДОМ кадре в новой дробной
+                    // позиции — мелкий глиф мерцал и «дёргался»; в покое
+                    // (не busy) слоя вообще не трогаем.
+                    child: AnimatedBuilder(
+                      animation: _spin,
+                      builder: (context, child) => Transform.translate(
+                        offset: Offset(0, -_hopLift(_spin.value)),
+                        child: child,
+                      ),
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _RabbitGlyphPainter(
+                            color: cs.onPrimaryContainer,
+                          ),
                         ),
                       ),
                     ),
@@ -324,41 +330,35 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
+/// Вертикальный подъём зайчика для доли цикла [t] (0…1).
+///
+/// Прыжок — ОДНА функция: 0 → 1 → 0. Скорость в нижних точках нулевая
+/// (потолок в `sin(π·h)` и множителе `h·(1-h)`), в верхней — тоже, поэтому
+/// отрыв и касание земли мягкие, без отскока. Остаток цикла зайчик стоит:
+/// короткая пауза отделяет прыжки, чтобы движение читалось как прыжок, а не
+/// как «молотьба».
+double _hopLift(double t) {
+  const hopSpan = 0.58;
+  const amplitude = 3.2;
+  final h = (t / hopSpan).clamp(0.0, 1.0);
+  return h * (1 - h) * 4 * math.sin(math.pi * h) * amplitude;
+}
+
 /// Значок таблетки: ЗАЙЧИК. В покое сидит, при обновлении — подпрыгивает и
-/// мягко садится обратно (скорость в обеих крайних точках равна нулю, поэтому
-/// нет ни отскока, ни рывка на стыке цикла).
+/// мягко садится обратно.
 ///
 /// Глиф рисуется векторным шрифтом иконок ([Icons.cruelty_free]) — он чёткий
-/// на любом размере (никакого «мыла» растрового холста), а прыжок — чистая
-/// трансляция вокруг центра: без масштабирования, от которого пиксели
-/// маленького значка смазывались и движение «тормозило».
-class _UpdateGlyphPainter extends CustomPainter {
-  _UpdateGlyphPainter({
-    required this.progress,
-    required this.color,
-    required this.hole,
-    required this.running,
-  }) : super(repaint: progress);
+/// на любом размере. Painter НЕ анимируется: он рисует значок один раз в
+/// постоянный слой, а прыжок — это `Transform.translate` над готовым слоем
+/// (см. `UpdatePill`), поэтому кадры прыжка не растеризуют глиф заново.
+class _RabbitGlyphPainter extends CustomPainter {
+  _RabbitGlyphPainter({required this.color});
 
-  /// Драйвер прыжка. Painter слушает его НАПРЯМУЮ (`super(repaint:)`): прыжок
-  /// перерисовывает только глиф, без перестройки дерева виджетов на каждый кадр.
-  final Animation<double> progress;
   final Color color;
 
-  /// Цвет «окна» — фон таблетки. Оставлен для совместимости: у зайчика
-  /// сквозных деталей нет, глиф залит целиком.
-  final Color hole;
-  final bool running;
-
-  /// Доля цикла, которую занимает сам прыжок. Остаток зайчик стоит на земле:
-  /// короткая пауза отделяет прыжки друг от друга, чтобы движение читалось
-  /// как прыжок, а не как непрерывная «молотьба».
-  static const double _hopSpan = 0.58;
-
-  /// Кэш разложенного глифа. `TextPainter.layout()` — это шейпинг шрифта, и
-  /// делать его КАЖДЫЙ кадр анимации (60–120 Гц) — лишняя работа: на слабых
-  /// устройствах кадры проседали, и прыжок читался дёрганым. Держим последний
-  /// разложенный глиф и переиспользуем, пока не сменились цвет или размер.
+  /// Кэш разложенного глифа: `TextPainter.layout()` — шейпинг шрифта, и делать
+  /// его каждый кадр незачем. Держим последний разложенный глиф и
+  /// переиспользуем, пока не сменились цвет или размер.
   static TextPainter? _cached;
   static Color? _cachedColor;
   static double _cachedSize = 0;
@@ -372,8 +372,6 @@ class _UpdateGlyphPainter extends CustomPainter {
       text: TextSpan(
         text: String.fromCharCode(Icons.cruelty_free.codePoint),
         style: TextStyle(
-          // Глиф заметно меньше окна: при прыжке у него остаётся запас, и он
-          // не упирается в границы таблетки.
           fontSize: fontSize,
           fontFamily: Icons.cruelty_free.fontFamily,
           package: Icons.cruelty_free.fontPackage,
@@ -390,35 +388,18 @@ class _UpdateGlyphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = running ? progress.value : 0.0;
-    // Прыжок целиком по ОДНОЙ функции `hop`: 0 → 1 → 0. Скорость в нижних
-    // точках равна нулю (потолок в `cos(π·hp)` и множителе `hp·(1-hp)`), а
-    // скорость в верхней точке — нулю по построению. Значит отрыв и касание
-    // земли мягкие, без «отскока» внизу, который читался как дёрганье.
-    final hp = (p / _hopSpan).clamp(0.0, 1.0);
-    final hop = running ? hp * (1 - hp) * 4 * math.sin(math.pi * hp) : 0.0;
-    // Никакой деформации: любое масштабирование глифа в таблетке высотой
-    // ~15 px смазывало пиксели и «лагало». Двигаем только вверх-вниз.
-    final lift = hop * size.height * 0.16;
-
     final tp = _glyph(color, size.shortestSide * 0.84);
+    // Глиф прижат к НИЗУ окна: вверх он уезжает прыжком, и запас сверху
+    // остаётся свободным. Рисуем ровно один раз — слой кэшируется.
     canvas.save();
-    // Смещение НЕ округляем до целого физического пикселя: амплитуда прыжка
-    // — около двух пикселей, и привязка к сетке превращала движение в
-    // «ступеньки» из 5–6 позиций, что и читалось как «зайчик тормозит».
-    // Дробный сдвиг Skia растеризует с антиалиасингом — движение остаётся
-    // плавным, а глиф чётким. Горизонтальный центр тоже дробный, иначе
-    // глиф дрожал бы по X между кадрами при нечётной ширине окна.
-    canvas.translate(size.width / 2, size.height / 2 - lift);
+    canvas.translate(size.width / 2, size.height / 2);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
-      oldDelegate.color != color ||
-      oldDelegate.hole != hole ||
-      oldDelegate.running != running;
+  bool shouldRepaint(covariant _RabbitGlyphPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 /// Окно подтверждения обновления.
@@ -471,113 +452,127 @@ class _UpdateConfirmDialog extends StatelessWidget {
                 ),
               ],
             ),
-            child: Container(
-              // Обычная подложка диалога: нейтральный тон поверхности, чуть
-              // полупрозрачный. Прежний «стеклянный» primaryContainer давал
-              // цветной отблеск на тёмной теме — окно должно читаться как
-              // обычное, без переливов.
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh.withValues(alpha: 0.94),
-                borderRadius: BorderRadius.circular(Radii.xl - 1),
-              ),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg,
-                  Spacing.lg,
-                  Spacing.lg,
-                  Spacing.md,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: cs.primary.withValues(alpha: 0.16),
-                          ),
-                          child: Icon(
-                            Icons.system_update_alt_rounded,
-                            color: cs.primary,
-                          ),
-                        ),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: Text(
-                            Translations.t(
-                              'updateAvailable',
-                              context,
-                              'Доступно обновление',
-                            ),
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: Weights.bold,
-                            ),
-                          ),
-                        ),
-                      ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(Radii.xl - 1),
+              // Настоящее «стекло»: под окном размывается то, что за ним, и
+              // только потом ложится полупрозрачная подложка. Раньше окно
+              // было залито плотным surfaceContainerHigh (0.94) — читалось
+              // непрозрачной плашкой, фон под ним не угадывался.
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  decoration: BoxDecoration(
+                    // Заметно полупрозрачно: сквозь окно виден размытый фон,
+                    // а не глухая заливка. Нейтральный тон поверхности, без
+                    // цветных отблесков primaryContainer.
+                    color: cs.surfaceContainerHigh.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(Radii.xl - 1),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.35),
                     ),
-                    const SizedBox(height: Spacing.sm),
-                    Text(
-                      Translations.t(
-                        'updateAvailableBody',
-                        context,
-                        'Установить v{v}?',
-                      ).replaceAll('{v}', version),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontStyle: FontStyle.italic,
-                        height: 1.35,
+                  ),
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.lg,
+                    Spacing.lg,
+                    Spacing.lg,
+                    Spacing.md,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: cs.primary.withValues(alpha: 0.16),
+                            ),
+                            child: Icon(
+                              Icons.system_update_alt_rounded,
+                              color: cs.primary,
+                            ),
+                          ),
+                          const SizedBox(width: Spacing.sm),
+                          Expanded(
+                            child: Text(
+                              Translations.t(
+                                'updateAvailable',
+                                context,
+                                'Доступно обновление',
+                              ),
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: Weights.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: Spacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: PressScale(
-                            pressedScale: 0.95,
-                            child: TextButton(
-                              onPressed: onCancel,
-                              style: TextButton.styleFrom(
-                                minimumSize: const Size(0, 46),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(Radii.md),
-                                ),
-                              ),
-                              child: Text(
-                                Translations.t('cancel', context, 'Отмена'),
-                              ),
-                            ),
-                          ),
+                      const SizedBox(height: Spacing.sm),
+                      Text(
+                        Translations.t(
+                          'updateAvailableBody',
+                          context,
+                          'Установить v{v}?',
+                        ).replaceAll('{v}', version),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                          height: 1.35,
                         ),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: PressScale(
-                            pressedScale: 0.95,
-                            child: FilledButton(
-                              onPressed: onConfirm,
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(0, 46),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(Radii.md),
+                      ),
+                      const SizedBox(height: Spacing.lg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: PressScale(
+                              pressedScale: 0.95,
+                              child: TextButton(
+                                onPressed: onCancel,
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(0, 46),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      Radii.md,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                Translations.t(
-                                  'install',
-                                  context,
-                                  'Установить',
+                                child: Text(
+                                  Translations.t('cancel', context, 'Отмена'),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: Spacing.sm),
+                          Expanded(
+                            child: PressScale(
+                              pressedScale: 0.95,
+                              child: FilledButton(
+                                onPressed: onConfirm,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size(0, 46),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      Radii.md,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  Translations.t(
+                                    'install',
+                                    context,
+                                    'Установить',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
