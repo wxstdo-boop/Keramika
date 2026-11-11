@@ -329,7 +329,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// вместо стандартной анимации выпадашки.
   Future<void> _showLanguageMenu(
     BuildContext context,
-    KeramikaAppState appState,
+    AgyshaAppState appState,
   ) async {
     // Язык выбирается БЕЗ закрытия окна: тап по пункту сразу переключает
     // язык и плавно обновляет фон/галочку, а само меню закрывается ТОЛЬКО
@@ -460,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _showFontMenu(
     BuildContext context,
-    KeramikaAppState appState,
+    AgyshaAppState appState,
   ) async {
     // Шрифт выбирается ТАК ЖЕ, как язык: меню-квадрат с иконками и
     // плавной обводкой/галочкой, которое не закрывается при выборе —
@@ -880,7 +880,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           onSet: () {
             Navigator.of(context).pop();
             _checkPin();
-            KeramikaApp.of(context).lock();
+            AgyshaApp.of(context).lock();
           },
         ),
       ),
@@ -926,7 +926,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     // строкой — нам нужен только факт успешного сохранения.
     final savedUri = await FilePicker.saveFile(
       dialogTitle: exportTitle,
-      fileName: 'keramika-backup.json',
+      fileName: 'agysha-backup.json',
       bytes: Uint8List.fromList(bytes),
     );
     systemUiActive = false;
@@ -1186,7 +1186,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       // navigatorKey уже ПОСЛЕ пересоздания — он плавно выезжает и плавно
       // уходит на новом дереве.
       if (!mounted) return;
-      await KeramikaApp.of(context).refreshApp();
+      await AgyshaApp.of(context).refreshApp();
       final rootCtx = navigatorKey.currentContext;
       if (rootCtx != null && rootCtx.mounted) {
         // Небольшая пауза: новый Overlay успевает построиться после
@@ -1217,7 +1217,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// при остановке на новой странице тема переключается штатной
   /// анимацией MaterialApp — без вспышек и размытий.
   Widget _buildThemeCarousel(BuildContext context) {
-    final appState = KeramikaApp.of(context);
+    final appState = AgyshaApp.of(context);
     final entries = <_ThemeEntry>[
       // MUTILATED — САМАЯ ПЕРВАЯ тема, не переводится.
       const _ThemeEntry(
@@ -1300,7 +1300,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     bool specialMutilated = false,
     VoidCallback? extraOnSelected,
   }) {
-    final appState = KeramikaApp.of(context);
+    final appState = AgyshaApp.of(context);
     final isSelected = appState.themeKey == key;
     // Для MUTILATED — зажатие 10 секунд показывает плашную «Вы элегант?»
     // с переводами. Плавно появляется, держится 3 секунды, плавно уходит.
@@ -1387,7 +1387,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final appState = KeramikaApp.of(context);
+    final appState = AgyshaApp.of(context);
     final theme = Theme.of(context);
     // Список собирается заранее, но рендерится ЛЕНИВО (ListView.builder):
     // экран настроек открывается без подлагивания — за кадром строятся
@@ -1613,7 +1613,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 12),
-              // «Keramika FOSS» — приписку FOSS выделяем розовым,
+              // «Agysha FOSS» — приписку FOSS выделяем розовым,
               // как она была на сплэше.
               Text.rich(
                 TextSpan(
@@ -1622,7 +1622,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     letterSpacing: 0.2,
                   ),
                   children: [
-                    const TextSpan(text: 'Keramika '),
+                    const TextSpan(text: 'Agysha '),
                     const TextSpan(
                       text: 'FOSS',
                       style: TextStyle(
@@ -1802,7 +1802,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 releaseDuration: const Duration(milliseconds: 320),
                 child: InkWell(
                   onTap: () => _openLink(
-                    'https://gitflic.ru/project/wetcorporation/keramika',
+                    'https://gitflic.ru/project/wetcorporation/agysha',
                   ),
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
@@ -2405,7 +2405,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   );
                 }
                 if (context.mounted) {
-                  KeramikaApp.of(context).refreshApp();
+                  AgyshaApp.of(context).refreshApp();
                 }
               },
             ),
@@ -3060,7 +3060,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
-                    'Keramika',
+                    'Agysha',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant.withValues(
                         alpha: 0.5,
@@ -3290,7 +3290,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             subtitle: Translations.t(
               'devToolsSubtitle',
               routeContext,
-              'Hidden controls for tuning the Keramika experience.',
+              'Hidden controls for tuning the Agysha experience.',
             ),
             disableLabel: Translations.t(
               'devModeDisable',
@@ -3729,7 +3729,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     showConfettiBurst(context);
     showBeautifulSnackBar(
       context,
-      message: 'Ты нашёл пасхалку. Keramika — свободное приложение.',
+      message: 'Ты нашёл пасхалку. Agysha — свободное приложение.',
       icon: Icons.celebration_outlined,
       duration: const Duration(milliseconds: 2600),
     );

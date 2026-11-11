@@ -543,7 +543,7 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
 }
 
 /// Writes [bytes] to a user-visible location.
-/// Android → Download/Keramika via MediaStore; desktop → Downloads/Keramika;
+/// Android → Download/Agysha via MediaStore; desktop → Downloads/Agysha;
 /// final fallback → app documents.
 Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
   if (kIsWeb) {
@@ -557,7 +557,7 @@ Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
           .invokeMethod<String>('saveToDownloads', {
             'fileName': fileName,
             'bytes': Uint8List.fromList(bytes),
-            'subDir': 'Keramika',
+            'subDir': 'Agysha',
           });
       debugPrint('[auto-export] saveToDownloads native -> $path');
       if (path != null && path.isNotEmpty) return path;
@@ -570,7 +570,7 @@ Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
   try {
     final downloads = await getDownloadsDirectory();
     if (downloads != null) {
-      dir = Directory('${downloads.path}${Platform.pathSeparator}Keramika');
+      dir = Directory('${downloads.path}${Platform.pathSeparator}Agysha');
     }
   } catch (_) {}
 
@@ -598,8 +598,8 @@ Future<String> _performAutoExport({bool showSnack = false}) async {
   final out = await buildBackupPayload();
   final bytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(out));
   // Fixed name so each hourly export overwrites the previous one —
-  // easy to find in Download/Keramika/.
-  const fileName = 'keramika-auto-backup.json';
+  // easy to find in Download/Agysha/.
+  const fileName = 'agysha-auto-backup.json';
   // БЫЛ БАГ: saveBackupBytes возвращает Future, но он не awaited — ошибки
   // записи терялись (не попадали в try/catch), а снекбар показывал
   // строковое представление Future вместо пути. Теперь ждём результат.
@@ -611,7 +611,7 @@ Future<String> _performAutoExport({bool showSnack = false}) async {
       final label = Translations.t(
         'autoExportDone',
         ctx,
-        'Backup saved to Download/Keramika',
+        'Backup saved to Download/Agysha',
       );
       showBeautifulSnackBar(
         ctx,
@@ -861,7 +861,7 @@ Future<void> _removeLegacyDemoData() async {
 /// Предзагружает логотип в кэш изображений ДО первого кадра,
 /// чтобы сплэш-экран показывал картинку сразу, а не после белой паузы.
 Future<void> _precacheLogo() async {
-  final provider = const AssetImage('assets/keramika.png');
+  final provider = const AssetImage('assets/agysha.png');
   final completer = Completer<void>();
   final stream = provider.resolve(ImageConfiguration.empty);
   late final ImageStreamListener listener;
@@ -952,7 +952,7 @@ class _StartupState {
 /// не успевает прогрузиться к началу сплэша и картинка мигает.
 Future<void> _predecodeSplashLogo() async {
   try {
-    final data = await rootBundle.load('assets/keramika.png');
+    final data = await rootBundle.load('assets/agysha.png');
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
     final frame = await codec.getNextFrame();
     preDecodedLogo = frame.image;
@@ -1118,7 +1118,7 @@ Future<void> _restoreStartupBackup(Map<String, dynamic> backup) async {
   final startup = await _loadStartupState();
   _alarmBootPayload = await _readAlarmBootPayload();
   runApp(
-    KeramikaApp(
+    AgyshaApp(
       initialLocked: startup.hasPin,
       initialTheme: startup.theme,
       initialLanguageCode: startup.lang,
@@ -1211,7 +1211,7 @@ Future<void> _startApp() async {
   _alarmBootPayload = await _readAlarmBootPayload();
 
   runApp(
-    KeramikaApp(
+    AgyshaApp(
       initialLocked: startup.hasPin,
       initialTheme: startup.theme,
       initialLanguageCode: startup.lang,
@@ -1317,7 +1317,7 @@ Future<void> _startApp() async {
 /// будильника при `onNewIntent` (тап по уведомлению, когда приложение уже
 /// запущено) и `onBootCompleted` (перезагрузка телефона/обновление APK).
 ///
-/// Регистрируется при монтировании [KeramikaAppState] — раньше это стояло в
+/// Регистрируется при монтировании [AgyshaAppState] — раньше это стояло в
 /// [_startApp] ПОСЛЕ `runApp` и молча не срабатывало: канал был `late final`
 /// и первый же `setMethodCallHandler` падал с LateInitializationError, из-за
 /// чего тап по уведомлению не открывал экран задачи. Каналы теперь создаются
@@ -1366,7 +1366,7 @@ class _AppScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-class KeramikaApp extends StatefulWidget {
+class AgyshaApp extends StatefulWidget {
   final bool initialLocked;
   final String initialTheme;
   final String initialLanguageCode;
@@ -1377,7 +1377,7 @@ class KeramikaApp extends StatefulWidget {
   /// старт по full-screen intent или по тапу на уведомление).
   final String? alarmBootPayload;
 
-  const KeramikaApp({
+  const AgyshaApp({
     super.key,
     this.initialLocked = false,
     this.initialTheme = 'light',
@@ -1388,14 +1388,14 @@ class KeramikaApp extends StatefulWidget {
   });
 
   @override
-  State<KeramikaApp> createState() => KeramikaAppState();
+  State<AgyshaApp> createState() => AgyshaAppState();
 
-  static KeramikaAppState of(BuildContext context) {
-    return context.findAncestorStateOfType<KeramikaAppState>()!;
+  static AgyshaAppState of(BuildContext context) {
+    return context.findAncestorStateOfType<AgyshaAppState>()!;
   }
 }
 
-class KeramikaAppState extends State<KeramikaApp>
+class AgyshaAppState extends State<AgyshaApp>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   late String _themeKey;
   late String _languageCode;
@@ -1838,7 +1838,7 @@ class KeramikaAppState extends State<KeramikaApp>
     final cachedKey = isDark ? _darkThemeCacheKey : _lightThemeCacheKey;
     if (cached != null && cachedKey == cacheKey) return cached;
 
-    final built = buildKeramikaTheme(
+    final built = buildAgyshaTheme(
       scheme,
       isDark: isDark,
       isGrokStyle: isGrokStyle,
@@ -2113,7 +2113,7 @@ class KeramikaAppState extends State<KeramikaApp>
 
         return MaterialApp(
           key: _appKey,
-          title: 'Keramika',
+          title: 'Agysha',
           debugShowCheckedModeBanner: false,
           navigatorKey: navigatorKey,
           navigatorObservers: [_jankObserver],

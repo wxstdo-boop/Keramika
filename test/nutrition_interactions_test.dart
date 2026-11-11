@@ -6,15 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/nutrition_screen.dart';
-import 'package:keramika/services/nutrition_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/widgets/norm_sheet.dart';
-import 'package:keramika/widgets/nutrition_trends.dart';
-import 'package:keramika/widgets/number_pad.dart';
-import 'package:keramika/widgets/rolling_counter.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/nutrition_screen.dart';
+import 'package:agysha/services/nutrition_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/widgets/norm_sheet.dart';
+import 'package:agysha/widgets/nutrition_trends.dart';
+import 'package:agysha/widgets/number_pad.dart';
+import 'package:agysha/widgets/rolling_counter.dart';
 
 /// Ввод в питании: встроенная клавиатура, лист нормы и добавление приёма
 /// пищи через экран. Тесты держат поведение, которое легко сломать при
@@ -29,7 +29,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_nutrition_test');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_nutrition_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

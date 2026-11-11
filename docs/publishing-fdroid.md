@@ -1,4 +1,4 @@
-# Публикация Keramika в каталогах приложений
+# Публикация Agysha в каталогах приложений
 
 Документ описывает, что уже готово в репозитории, куда подавать приложение и в
 каком порядке. Цель — попасть в F-Droid (и через него в Neo Store и другие
@@ -11,14 +11,14 @@
 | `fdroid/metadata/com.wetcorp.agysha.yml` | Готовый рецепт сборки для fdroiddata — копируется в MR как есть |
 | `fastlane/metadata/android/{en-US,ru,fr}/` | Иконка, скриншоты, короткое и полное описание, changelog — в формате, который читает и F-Droid, и IzzyOnDroid |
 | `docs/screenshots/` + `tool/screenshots/render_screenshots.dart` | Скриншоты рисуются из кода без устройства |
-| `lib/services/update_service.dart` | Флаг `KERAMIKA_NO_SELF_UPDATE` выключает самообновление в сборке для F-Droid (см. ниже) |
+| `lib/services/update_service.dart` | Флаг `AGYSHA_NO_SELF_UPDATE` выключает самообновление в сборке для F-Droid (см. ниже) |
 
 ## Почему самообновление нужно выключать в F-Droid-сборке
 
 F-Droid и IzzyOnDroid запрещают приложения, которые скачивают и устанавливают
-исполняемые файлы без явного согласия пользователя. У Keramika есть встроенное
+исполняемые файлы без явного согласия пользователя. У Agysha есть встроенное
 обновление с GitHub Releases. Поэтому рецепт собирает APK с
-`--dart-define=KERAMIKA_NO_SELF_UPDATE=true`: в этой сборке `kSelfUpdateEnabled`
+`--dart-define=AGYSHA_NO_SELF_UPDATE=true`: в этой сборке `kSelfUpdateEnabled`
 равен `false`, поэтому не показывается таблетка обновления в Настройках и не
 запускается тихая ежедневная проверка релизов (`silentDailyCheck` в `main.dart`).
 Обновления приходят через сам F-Droid.
@@ -45,7 +45,7 @@ Neo Store, Droid-ify и других клиентах F-Droid.
    ```
    pip install fdroidserver
    git clone https://gitlab.com/<ваш-логин>/fdroiddata && cd fdroiddata
-   cp /path/to/Keramika/fdroid/metadata/com.wetcorp.agysha.yml metadata/
+   cp /path/to/Agysha/fdroid/metadata/com.wetcorp.agysha.yml metadata/
    fdroid readmeta
    fdroid checkupdates com.wetcorp.agysha
    fdroid build -v -l com.wetcorp.agysha
@@ -89,7 +89,7 @@ IzzyOnDroid раздаёт бинарники разработчика (соби
 говорит: «Apps acting as front-end for LLMs… or integrate with such services,
 will be rejected» и «Vibe-coded apps will be rejected». Формулировка жёсткая и
 без исключений для необязательных функций — решение принимает человек, но по
-букве политики Keramika с Адой под неё попадает. Отсюда практический вывод:
+букве политики Agysha с Адой под неё попадает. Отсюда практический вывод:
 подача туда **сейчас бессмысленна** и может лишь создать отказ, который потом
 будет сложнее переиграть.
 
@@ -133,7 +133,7 @@ Codeberg) со ссылкой на APK-релиз. Лимит на APK — 30 М
 
 Этот список (≈1.2k звёзд) принимает любые FOSS-приложения без порога по
 звёздам, а в его категории Productivity уже стоят Loop Habit Tracker и
-Tasks.org — Keramika там на месте. Редактируется ровно один файл `apps.json`,
+Tasks.org — Agysha там на месте. Редактируется ровно один файл `apps.json`,
 записи в категории идут по алфавиту.
 
 Готовая запись для категории `productivity` (вставить по алфавиту, между
@@ -142,7 +142,7 @@ Tasks.org — Keramika там на месте. Редактируется ров
 ```json
 {
     "host": "GitHub",
-    "name": "Keramika",
+    "name": "Agysha",
     "description": "An offline alarm clock that will not let you fall back asleep, plus habit tracking, tasks and focus sessions in one app. Includes an optional AI assistant, disabled by default. No account, no ads, no trackers; everything works offline.",
     "stars_link": "https://img.shields.io/github/stars/wxstdo-boop/agysha.svg?label=★&style=flat",
     "source": "https://github.com/wxstdo-boop/agysha",
@@ -153,8 +153,8 @@ Tasks.org — Keramika там на месте. Редактируется ров
 Поля `playstore`/`website` удалены (их нет). Поле `fdroid` станет рабочим
 после приёма в F-Droid; если подаёте в `foss-apps` раньше — удалите и его.
 
-Шаги: форк `https://github.com/albertomosconi/foss-apps`, ветка `Keramika`,
-правка `apps/productivity.json`, коммит `app: add Keramika in Productivity`,
+Шаги: форк `https://github.com/albertomosconi/foss-apps`, ветка `Agysha`,
+правка `apps/productivity.json`, коммит `app: add Agysha in Productivity`,
 PR в `main` по их шаблону.
 
 > Почему не `awesome-flutter`: их правила требуют минимум 35 звёзд у проекта.
@@ -176,11 +176,11 @@ PR в `main` по их шаблону.
 - [ ] Коммит в рецепте (`commit:`) указывает на тот же код, что и релиз, и
       содержит `fastlane/` (F-Droid читает метаданные из этого коммита).
 - [ ] `fdroid build` локально проходит.
-- [ ] Самообновление в F-Droid-сборке выключено (`KERAMIKA_NO_SELF_UPDATE`).
+- [ ] Самообновление в F-Droid-сборке выключено (`AGYSHA_NO_SELF_UPDATE`).
 
 ### Важная зависимость порядка
 
-`fastlane/` и флаг `KERAMIKA_NO_SELF_UPDATE` живут в коде на `main`, а рецепт
+`fastlane/` и флаг `AGYSHA_NO_SELF_UPDATE` живут в коде на `main`, а рецепт
 обязан указывать `commit:` на коммит, где они уже есть. Поэтому порядок такой:
 
 1. Сначала релиз, который содержит `fastlane/` и флаг (любой пуш в `main`).
@@ -210,17 +210,17 @@ PR в `main` по их шаблону.
 ### Вариант A (рекомендуется для первого раза) — RFP-issue
 
 Открыть новое issue (заголовок уже подставлен, надо только войти и вставить
-описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Keramika%20(com.wetcorp.agysha)
+описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Agysha%20(com.wetcorp.agysha)
 
 Без подстановки: https://gitlab.com/fdroid/rfp/-/issues/new
 
-**Title:** `Keramika (com.wetcorp.agysha)`
+**Title:** `Agysha (com.wetcorp.agysha)`
 
 **Description:**
 
 ```markdown
 ### App information
-- Name: Keramika
+- Name: Agysha
 - Package ID: com.wetcorp.agysha
 - Source: https://github.com/wxstdo-boop/agysha
 - License: MIT
@@ -244,7 +244,7 @@ Build notes:
 - Needs Android SDK `platforms;android-37.0` and `build-tools;36.0.0`
   (AGP 9.1.1 default), installed in prebuild via sdkmanager.
 - NDK 28.2.13676358.
-- F-Droid build disables self-update with `--dart-define=KERAMIKA_NO_SELF_UPDATE=true`
+- F-Droid build disables self-update with `--dart-define=AGYSHA_NO_SELF_UPDATE=true`
   and strips `REQUEST_INSTALL_PACKAGES` and `ENFORCE_UPDATE_OWNERSHIP`, so no
   in-app APK installation.
 - Signing config is removed automatically by fdroidserver; no keystore needed.

@@ -1,11 +1,11 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-    Ротация ключа подписи Keramika: новый keystore, новые пароли, готовые
+    Ротация ключа подписи Agysha: новый keystore, новые пароли, готовые
     значения для секретов GitHub.
 
 .DESCRIPTION
-    Старый ключ (keramika-release.jks) лежит в истории публичного репозитория
+    Старый ключ (agysha-release.jks) лежит в истории публичного репозитория
     и читается через `git show`. Пока он жив, любой клон может собрать
     «обновление», которое телефон примет как настоящее. Этот скрипт выпускает
     НОВЫЙ ключ и складывает старый в резервную папку вне репозитория.
@@ -31,7 +31,7 @@
     дерево: только на консоль и в файлы вне репозитория.
 
 .PARAMETER Force
-    Заменить существующий android/app/keramika-release.jks без вопроса
+    Заменить существующий android/app/agysha-release.jks без вопроса
     (резервная копия всё равно делается).
 
 .EXAMPLE
@@ -39,18 +39,18 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Alias = 'keramika',
-    [string]$DName = 'CN=Keramika, OU=Release, O=Keramika, C=RU',
+    [string]$Alias = 'agysha',
+    [string]$DName = 'CN=Agysha, OU=Release, O=Agysha, C=RU',
     [int]$ValidityDays = 10000,
     [string]$Keytool = '',
-    [string]$BackupRoot = (Join-Path $env:USERPROFILE 'keramika-keystore-backup'),
+    [string]$BackupRoot = (Join-Path $env:USERPROFILE 'agysha-keystore-backup'),
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $androidDir = Join-Path $repoRoot 'android'
-$ksPath = Join-Path $androidDir 'app\keramika-release.jks'
+$ksPath = Join-Path $androidDir 'app\agysha-release.jks'
 $propsPath = Join-Path $androidDir 'key.properties'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupDir = Join-Path $BackupRoot "before-rotation-$stamp"
@@ -108,7 +108,7 @@ function New-StrongPassword {
     return $sb.ToString()
 }
 
-Write-Host '=== Ротация ключа подписи Keramika ===' -ForegroundColor Cyan
+Write-Host '=== Ротация ключа подписи Agysha ===' -ForegroundColor Cyan
 
 $keytoolExe = Find-Keytool -Explicit $Keytool
 Write-Host "keytool : $keytoolExe"
@@ -143,7 +143,7 @@ if (-not (Test-Path $ksPath)) {
 # --- 2. Новый keystore -------------------------------------------------------
 $storePassword = New-StrongPassword
 $keyPassword = $storePassword          # PKCS12: пароль ключа = пароль хранилища
-$tmpKs = Join-Path $backupDir 'keramika-release.jks.new'
+$tmpKs = Join-Path $backupDir 'agysha-release.jks.new'
 
 $null = Invoke-Keytool -Arguments @(
     '-genkeypair',
@@ -166,14 +166,14 @@ Copy-Item $tmpKs $ksPath -Force
     "storePassword=$storePassword"
     "keyPassword=$keyPassword"
     "keyAlias=$Alias"
-    "storeFile=keramika-release.jks"
+    "storeFile=agysha-release.jks"
 ) | Set-Content -Path $propsPath -Encoding ASCII
 
 # --- 4. Значения для секретов GitHub ----------------------------------------
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($ksPath))
 $secretsFile = Join-Path $backupDir 'GITHUB_SECRETS.txt'
 @(
-    '# Секреты репозитория Keramika (Settings -> Secrets and variables -> Actions)',
+    '# Секреты репозитория Agysha (Settings -> Secrets and variables -> Actions)',
     '# Задать ровно как есть: пробелы и переводы строк не тримятся.',
     '',
     "KEYSTORE_BASE64=$b64",

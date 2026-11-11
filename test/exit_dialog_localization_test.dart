@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/lock_screen.dart';
-import 'package:keramika/services/pin_service.dart';
-import 'package:keramika/services/prefs.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/lock_screen.dart';
+import 'package:agysha/services/pin_service.dart';
+import 'package:agysha/services/prefs.dart';
 
 /// Диалог подтверждения выхода живёт поверх PIN-экрана, но его строки обязаны
 /// приходить из [Translations] ровно как у кнопок: раньше текст был вшит

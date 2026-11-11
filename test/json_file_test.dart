@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/services/json_file.dart';
+import 'package:agysha/services/json_file.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -10,7 +10,7 @@ void main() {
 
   setUp(() async {
     JsonFile.resetForTesting();
-    directory = await Directory.systemTemp.createTemp('keramika_json_test');
+    directory = await Directory.systemTemp.createTemp('agysha_json_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -41,7 +41,7 @@ void main() {
       final stored = await File(
         '${directory.path}/profile.json',
       ).readAsString();
-      expect(stored, contains('keramika-json-v1'));
+      expect(stored, contains('agysha-json-v1'));
       expect(stored, isNot(contains('private data')));
       expect(await JsonFile.read('profile'), value);
     },
@@ -53,8 +53,25 @@ void main() {
 
     expect(await JsonFile.read('profile'), value);
     final stored = await File('${directory.path}/profile.json').readAsString();
-    expect(stored, contains('keramika-json-v1'));
+    expect(stored, contains('agysha-json-v1'));
     expect(stored, isNot(contains('legacy')));
+  });
+
+  test('reads envelopes written under the legacy Keramika format', () async {
+    const value = '{"profile":"from older build"}';
+    await JsonFile.write('profile', value);
+
+    final file = File('${directory.path}/profile.json');
+    final migrated = (await file.readAsString()).replaceAll(
+      'agysha-json-v1',
+      'keramika-json-v1',
+    );
+    await file.writeAsString(migrated);
+
+    JsonFile.resetForTesting();
+    JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 7));
+
+    expect(await JsonFile.read('profile'), value);
   });
 
   test('refuses a wrong key and leaves the encrypted file untouched', () async {

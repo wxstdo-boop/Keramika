@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/utils/icon_map.dart';
+import 'package:agysha/utils/icon_map.dart';
 
 /// Набор иконок привычек/задач: полный список и сетка выбора.
 void main() {

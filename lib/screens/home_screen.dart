@@ -354,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Открывает профиль «керамика-юзера» (тап по кружку онлайна в шапке).
+  /// Открывает профиль «Agysha-юзера» (тап по кружку онлайна в шапке).
   void _openProfile() {
     if (!mounted) return;
     Navigator.of(context).push(slideSideRoute(const ProfileScreen()));
@@ -573,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen>
               preferredAbove: false,
               child: IconButton(
                 icon: const Icon(Icons.refresh_outlined),
-                onPressed: () => KeramikaApp.of(context).refreshApp(),
+                onPressed: () => AgyshaApp.of(context).refreshApp(),
               ),
             ),
           ),

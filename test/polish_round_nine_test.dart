@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/profile_screen.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/profile_service.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/profile_screen.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/profile_service.dart';
 
 /// Регрессы полировки девятого круга:
 ///  * рейтинг ограничен 50 друзьями — дальше `addFriend` отказывает, а кнопка
@@ -25,7 +25,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 9));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_round_nine');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_round_nine');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

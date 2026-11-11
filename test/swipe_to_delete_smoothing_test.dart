@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/widgets/swipe_to_delete.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/widgets/swipe_to_delete.dart';
 
 /// Свайп-удаление: карточка едет 1:1 за пальцем, красная плашка ПРОЯВЛЯЕТСЯ
 /// по ходу жеста, а возврат идёт мягко (без мгновенного щелчка).

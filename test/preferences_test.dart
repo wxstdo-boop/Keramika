@@ -5,12 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/services/haptics.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/settings_service.dart';
-import 'package:keramika/services/sounds.dart';
-import 'package:keramika/utils/motion_prefs.dart';
+import 'package:agysha/services/haptics.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/settings_service.dart';
+import 'package:agysha/services/sounds.dart';
+import 'package:agysha/utils/motion_prefs.dart';
 
 /// Виджет с вечным декоративным циклом — минимальная обёртка вокруг
 /// [MotionAwareRepeat], чтобы проверить остановку по тумблеру.
@@ -48,7 +48,7 @@ void main() {
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 7));
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await initPrefs();
-    tmpDir = await Directory.systemTemp.createTemp('keramika_prefs');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_prefs');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

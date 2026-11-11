@@ -16,9 +16,9 @@ const String kUpdateRepoName = 'agysha';
 
 /// Включено ли самообновление. F-Droid/IzzyOnDroid переподписывают APK своим
 /// ключом, поэтому GitHub-APK поверх такой сборки не встанет — в этих сборках
-/// самообновление выключено через `--dart-define=KERAMIKA_NO_SELF_UPDATE=true`.
+/// самообновление выключено через `--dart-define=AGYSHA_NO_SELF_UPDATE=true`.
 const bool kSelfUpdateEnabled = !bool.fromEnvironment(
-  'KERAMIKA_NO_SELF_UPDATE',
+  'AGYSHA_NO_SELF_UPDATE',
 );
 
 /// Описание доступного обновления из последнего GitHub-релиза.
@@ -82,7 +82,7 @@ class UpdateService {
           uri,
           headers: const {
             // GitHub требует User-Agent, иначе отдаёт 403.
-            'User-Agent': 'Keramika',
+            'User-Agent': 'Agysha',
             'Accept': 'application/vnd.github+json',
             'X-GitHub-Api-Version': '2022-11-28',
           },
@@ -221,7 +221,7 @@ class UpdateService {
           .get(
             uri,
             headers: const {
-              'User-Agent': 'Keramika',
+              'User-Agent': 'Agysha',
               'Accept': 'application/vnd.github+json',
               'X-GitHub-Api-Version': '2022-11-28',
             },
@@ -402,7 +402,7 @@ class UpdateService {
       );
     }
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/keramika-${info.versionName}.apk');
+    final file = File('${dir.path}/agysha-${info.versionName}.apk');
     if (await file.exists()) {
       try {
         await file.delete();
@@ -412,7 +412,7 @@ class UpdateService {
     IOSink? sink;
     try {
       final req = http.Request('GET', Uri.parse(info.downloadUrl));
-      req.headers['User-Agent'] = 'Keramika';
+      req.headers['User-Agent'] = 'Agysha';
       final res = await client
           .send(req)
           // Таймаут на открытие соединения: сервер может принять запрос и

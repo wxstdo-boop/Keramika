@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/main.dart';
-import 'package:keramika/models/alarm.dart';
-import 'package:keramika/screens/wake_task_screen.dart';
-import 'package:keramika/services/alarm_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
+import 'package:agysha/main.dart';
+import 'package:agysha/models/alarm.dart';
+import 'package:agysha/screens/wake_task_screen.dart';
+import 'package:agysha/services/alarm_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
 
 /// Регресс: тап по уведомлению будильника, когда приложение УЖЕ запущено,
 /// обязан открыть экран задачи (полноэкранный звонок).
@@ -78,7 +78,7 @@ void main() {
     });
 
     // Монтируем приложение: initState вешает обработчик канала.
-    await tester.pumpWidget(const KeramikaApp(initialLanguageCode: 'en'));
+    await tester.pumpWidget(const AgyshaApp(initialLanguageCode: 'en'));
     await tester.pump();
 
     // Нативная сторона шлёт payload (onNewIntent при живом приложении).
@@ -111,7 +111,7 @@ void main() {
   testWidgets('payload неизвестного будильника не открывает экран', (
     tester,
   ) async {
-    await tester.pumpWidget(const KeramikaApp(initialLanguageCode: 'en'));
+    await tester.pumpWidget(const AgyshaApp(initialLanguageCode: 'en'));
     await tester.pump();
 
     await tester.runAsync(() async {

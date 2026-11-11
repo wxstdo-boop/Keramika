@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/widgets/sliding_picker.dart';
+import 'package:agysha/widgets/sliding_picker.dart';
 
 class _BounceScrollBehavior extends MaterialScrollBehavior {
   const _BounceScrollBehavior();

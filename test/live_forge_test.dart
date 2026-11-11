@@ -14,8 +14,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:keramika/services/forge_agent.dart';
-import 'package:keramika/services/forge_service.dart';
+import 'package:agysha/services/forge_agent.dart';
+import 'package:agysha/services/forge_service.dart';
 
 class _ScriptedChat implements ForgeChat {
   _ScriptedChat(this.replies);

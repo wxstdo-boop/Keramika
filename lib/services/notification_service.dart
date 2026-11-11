@@ -360,22 +360,22 @@ class NotificationService extends ChangeNotifier {
   void _createChannels() {
     const channels = [
       AndroidNotificationChannel(
-        'keramika_alarm',
+        'agysha_alarm',
         'Alarms',
         description: 'Alarm notifications',
         importance: Importance.max,
         playSound: false,
       ),
       AndroidNotificationChannel(
-        'keramika_rc',
+        'agysha_rc',
         'Reality Checks',
         description: 'Reality check reminders',
         importance: Importance.max,
         enableVibration: true,
       ),
       AndroidNotificationChannel(
-        'keramika_main',
-        'Keramika',
+        'agysha_main',
+        'Agysha',
         description: 'App notifications',
         importance: Importance.high,
       ),
@@ -616,8 +616,8 @@ class NotificationService extends ChangeNotifier {
     if (!_enabled || !_initialized || !_supported) return;
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'keramika_main',
-        'Keramika',
+        'agysha_main',
+        'Agysha',
         channelDescription: 'App notifications',
         importance: Importance.high,
         priority: Priority.high,
@@ -729,7 +729,7 @@ class NotificationService extends ChangeNotifier {
         id: alarm.id.hashCode,
         title: title,
         body: body,
-        channelId: 'keramika_alarm',
+        channelId: 'agysha_alarm',
         channelName: 'Alarms',
         soundName: soundName,
         vibrate: alarm.vibrate,
@@ -778,8 +778,8 @@ class NotificationService extends ChangeNotifier {
         alarm.soundName == 'Custom' && alarm.customSoundPath != null;
     final fbSound = _rawSoundName(alarm);
     final fbChannel = isCustomFallback
-        ? 'keramika_alarm_fb_custom_${alarm.customSoundPath!.hashCode}'
-        : 'keramika_alarm_fb_$fbSound';
+        ? 'agysha_alarm_fb_custom_${alarm.customSoundPath!.hashCode}'
+        : 'agysha_alarm_fb_$fbSound';
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         fbChannel,
@@ -924,7 +924,7 @@ class NotificationService extends ChangeNotifier {
             id: id,
             title: title,
             body: q,
-            channelId: 'keramika_rc',
+            channelId: 'agysha_rc',
             channelName: 'Reality Checks',
             // Системный звук уведомлений телефона, а не встроенный
             // будильниковый — пользователь управляет им в настройках ОС.
@@ -942,7 +942,7 @@ class NotificationService extends ChangeNotifier {
           final tzScheduled = tz.TZDateTime.from(scheduled, tz.local);
           final details = NotificationDetails(
             android: AndroidNotificationDetails(
-              'keramika_rc',
+              'agysha_rc',
               'Reality Checks',
               channelDescription: 'Reality check reminders',
               importance: Importance.high,
@@ -969,7 +969,7 @@ class NotificationService extends ChangeNotifier {
         final tzScheduled = tz.TZDateTime.from(scheduled, tz.local);
         final details = NotificationDetails(
           android: AndroidNotificationDetails(
-            'keramika_rc',
+            'agysha_rc',
             'Reality Checks',
             channelDescription: 'Reality check reminders',
             importance: Importance.high,

@@ -20,7 +20,7 @@ import 'package:path_provider/path_provider.dart';
 /// Кадр дольше 16.6мс не успевает в 60 Гц — такие и пишутся.
 ///
 /// Файл падает в подкаталог `perf/`, читается без root:
-/// `adb shell cat /sdcard/Android/data/com.wetcorp.agysha/files/perf/keramika_jank.txt`
+/// `adb shell cat /sdcard/Android/data/com.wetcorp.agysha/files/perf/agysha_jank.txt`
 class JankProbe {
   JankProbe._();
 
@@ -134,7 +134,7 @@ class JankProbe {
       final dir = Directory('${ext.path}${Platform.pathSeparator}perf');
       if (!await dir.exists()) await dir.create(recursive: true);
       final file = File(
-        '${dir.path}${Platform.pathSeparator}keramika_jank.txt',
+        '${dir.path}${Platform.pathSeparator}agysha_jank.txt',
       );
       // Новый замер = новый файл: иначе старые кадры смешиваются с новыми и
       // цифры врут после каждой пересборки.

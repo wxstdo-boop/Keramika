@@ -5,18 +5,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/models/alarm.dart';
-import 'package:keramika/models/habit.dart';
-import 'package:keramika/screens/home_screen.dart';
-import 'package:keramika/services/alarm_service.dart';
-import 'package:keramika/services/habit_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/task_service.dart';
-import 'package:keramika/widgets/animated_fab_row.dart';
-import 'package:keramika/widgets/section_pill.dart';
-import 'package:keramika/widgets/icons/keramika_icons.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/models/alarm.dart';
+import 'package:agysha/models/habit.dart';
+import 'package:agysha/screens/home_screen.dart';
+import 'package:agysha/services/alarm_service.dart';
+import 'package:agysha/services/habit_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/task_service.dart';
+import 'package:agysha/widgets/animated_fab_row.dart';
+import 'package:agysha/widgets/section_pill.dart';
+import 'package:agysha/widgets/icons/agysha_icons.dart';
 
 /// Таблетка разделов теперь ВСЕГДА полная: она не срезается по скроллу.
 /// Раньше ClipRect+heightFactor оставлял на середине прокрутки половину
@@ -39,7 +39,7 @@ void main() {
       'last_home_tab': 0,
     });
     await initPrefs();
-    tmpDir = await Directory.systemTemp.createTemp('keramika_pill_transition');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_pill_transition');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -163,7 +163,7 @@ void main() {
     await swipePage(tester, left: true);
     expect(sectionCurrentIndex.value, 1);
 
-    await tester.tap(find.byType(KkAlarmIcon).first);
+    await tester.tap(find.byType(AgAlarmIcon).first);
     await tester.pump(const Duration(milliseconds: 700));
     await tester.pump(const Duration(milliseconds: 700));
 

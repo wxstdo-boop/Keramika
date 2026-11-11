@@ -54,9 +54,9 @@ android {
             // android/app/proguard-rules.pro.
             //
             // Быстрые сборки для установки на телефон (БЕЗ R8, в разы
-            // быстрее):  KERAMIKA_NO_R8=1 flutter build apk --release
+            // быстрее):  AGYSHA_NO_R8=1 flutter build apk --release
             // Финальный релиз собирается как обычно (с R8).
-            isMinifyEnabled = System.getenv("KERAMIKA_NO_R8") != "1"
+            isMinifyEnabled = System.getenv("AGYSHA_NO_R8") != "1"
             // ВАЖНО: сжатие ресурсов ОТКЛЮЧЕНО. R8 с isShrinkResources
             // вырезал res/raw/*.wav (звуки будильника ссылаются строкой
             // "android.resource://pkg/raw/alarm_default", шинкер их не видит)

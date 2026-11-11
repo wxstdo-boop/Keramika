@@ -8,7 +8,7 @@ import 'json_file.dart';
 import 'prefs.dart';
 import 'task_service.dart';
 
-/// Друг в рейтинге «керамика-юзеров».
+/// Друг в рейтинге «Agysha-юзеров».
 ///
 /// Хранится локально: у приложения пока нет своего сервера, поэтому список
 /// друзей и их очки живут на устройстве. Модель готова к синхронизации —
@@ -27,7 +27,7 @@ class ProfileFriend {
   /// Индекс градиента аватарки в [profileAvatarVariants].
   final int colorIndex;
 
-  /// Очки «керамика-рейтинга» (см. [ProfileService.localScore]).
+  /// Очки «Agysha-рейтинга» (см. [ProfileService.localScore]).
   final int score;
 
   ProfileFriend copyWith({String? name, int? colorIndex, int? score}) =>
@@ -53,7 +53,7 @@ class ProfileFriend {
   );
 }
 
-/// Профиль «керамика-юзера» и его локальный рейтинг.
+/// Профиль «Agysha-юзера» и его локальный рейтинг.
 ///
 /// Своё имя и цвет аватарки, список друзей с очками, своя музыка для
 /// профиля — всё хранится в одном зашифрованном файле ([JsonFile]), как и
@@ -88,7 +88,7 @@ class ProfileService extends ChangeNotifier {
   String? get avatarImagePath => _avatarImagePath;
   List<ProfileFriend> get friends => List.unmodifiable(_friends);
 
-  /// Короткое имя для показа: пустое поле заменяем на «Керамика-юзер».
+  /// Короткое имя для показа: пустое поле заменяем на «Agysha-юзер».
   String get displayName => _name.trim().isEmpty ? '' : _name.trim();
 
   /// Показывать ли красный кружок онлайна. Хранится отдельно и переживает
@@ -255,7 +255,7 @@ class ProfileService extends ChangeNotifier {
     await _save();
   }
 
-  /// Локальный счёт «керамика-рейтинга»: сумма текущих стриков привычек и
+  /// Локальный счёт «Agysha-рейтинга»: сумма текущих стриков привычек и
   /// числа выполненных задач плюс бонус за активные дни в логе выполнения.
   ///
   /// Считается из реальной активности, а не вводится руками, — иначе рейтинг

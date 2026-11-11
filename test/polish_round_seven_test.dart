@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/theme/app_theme.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
+import 'package:agysha/theme/app_theme.dart';
+import 'package:agysha/widgets/profile_avatar.dart';
 
 /// Регрессы полировки седьмого круга:
 ///  * карточки снова читаются тенью (`elevation` > 0) — плоский кант на
@@ -17,7 +17,7 @@ void main() {
   late File imgFile;
 
   setUp(() async {
-    tmpDir = await Directory.systemTemp.createTemp('keramika_round_seven');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_round_seven');
     imgFile = File('${tmpDir.path}/ava.png');
     await imgFile.writeAsBytes(const <int>[
       0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -39,7 +39,7 @@ void main() {
   });
 
   testWidgets('карточки читаются тенью, а не плоским кантом', (tester) async {
-    final theme = buildKeramikaTheme(
+    final theme = buildAgyshaTheme(
       ColorScheme.fromSeed(seedColor: const Color(0xFFB3261E)),
       isDark: false,
       isGrokStyle: false,

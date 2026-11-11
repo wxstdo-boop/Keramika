@@ -277,8 +277,8 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
 
   /// Состояние приложения (текущая тема) — nullable: окно ивента живёт в
   /// диалог-роуте, и кидать из-за отсутствующего предка нельзя.
-  KeramikaAppState? _state() =>
-      mounted ? context.findAncestorStateOfType<KeramikaAppState>() : null;
+  AgyshaAppState? _state() =>
+      mounted ? context.findAncestorStateOfType<AgyshaAppState>() : null;
 
   void _say(String message, IconData icon) {
     if (!mounted) return;

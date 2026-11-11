@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/widgets/music_pulse_ring.dart';
+import 'package:agysha/widgets/music_pulse_ring.dart';
 
 /// Регресс-тест круга 12: жалобы на плавность и на «иероглиф» в кантах.
 ///

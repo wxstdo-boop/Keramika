@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/developer_corner_screen.dart';
-import 'package:keramika/widgets/smooth_typing.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/developer_corner_screen.dart';
+import 'package:agysha/widgets/smooth_typing.dart';
 
 void main() {
   testWidgets('developer code stays masked and can be accepted', (

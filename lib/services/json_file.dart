@@ -25,8 +25,14 @@ class JsonFileConflictException extends JsonFileException {
 }
 
 class JsonFile {
-  static const _format = 'keramika-json-v1';
-  static const _keyName = 'keramika_database_key_v1';
+  static const _format = 'agysha-json-v1';
+  static const _keyName = 'agysha_database_key_v1';
+  // Формат и ключ прежнего бренда (Keramika). Их ОБЯЗАТЕЛЬНО читать: у
+  // обновившихся пользователей файлы и ключ уже записаны под этими именами.
+  // Без обратной совместимости приложение увидело бы «пустое» хранилище,
+  // сгенерировало новый ключ и потеряло привычки, задачи и будильники.
+  static const _legacyFormat = 'keramika-json-v1';
+  static const _legacyKeyName = 'keramika_database_key_v1';
   static const _recoveryModeKey = 'json_storage_recovery_v1';
   static const _recoveryCompleteKey = 'json_storage_recovery_complete_v1';
   static const _recoveryGenerationKey = 'json_storage_recovery_generation_v1';
@@ -114,14 +120,14 @@ class JsonFile {
     // `v1` is the store used by earlier recovery builds.
     final generation = globalPrefs.getString(_recoveryGenerationKey) ?? 'v1';
     _recoverySecureStorage = _recoveryStorageFor(generation);
-    _dir = Directory('${documents.path}/keramika_recovery_$generation');
+    _dir = Directory('${documents.path}/agysha_recovery_$generation');
     _activeSecureStorage = _recoverySecureStorage;
   }
 
   static FlutterSecureStorage _recoveryStorageFor(String generation) =>
       FlutterSecureStorage(
         aOptions: AndroidOptions(
-          storageNamespace: 'keramika_recovery_$generation',
+          storageNamespace: 'agysha_recovery_$generation',
           resetOnError: false,
           migrateOnAlgorithmChange: true,
           migrateWithBackup: true,
@@ -146,7 +152,7 @@ class JsonFile {
 
   static Future<SecretKey> _encryptionKey() =>
       _keyFuture ??= _withKeyLock(_keyName, () async {
-        final stored = await _activeSecureStorage.read(key: _keyName);
+        final stored = await _readStoredKey();
         if (stored != null) {
           try {
             final bytes = base64Decode(stored);
@@ -177,6 +183,18 @@ class JsonFile {
         return SecretKey(bytes);
       });
 
+  /// Читает ключ шифрования: сначала под текущим именем, затем под прежним
+  /// (Keramika) и переносит найденный на текущее имя, чтобы обновление не
+  /// оставило данные нечитаемыми.
+  static Future<String?> _readStoredKey() async {
+    final current = await _activeSecureStorage.read(key: _keyName);
+    if (current != null) return current;
+    final legacy = await _activeSecureStorage.read(key: _legacyKeyName);
+    if (legacy == null) return null;
+    await _activeSecureStorage.write(key: _keyName, value: legacy);
+    return legacy;
+  }
+
   static Future<bool> _hasEncryptedData() async {
     if (kIsWeb) {
       for (final key in globalPrefs.getKeys()) {
@@ -203,9 +221,10 @@ class JsonFile {
   static bool _isEncryptedEnvelope(String raw) {
     try {
       final decoded = jsonDecode(raw);
-      return decoded is Map && decoded['format'] == _format;
+      return decoded is Map &&
+          (decoded['format'] == _format || decoded['format'] == _legacyFormat);
     } on FormatException {
-      return raw.contains(_format);
+      return raw.contains(_format) || raw.contains(_legacyFormat);
     }
   }
 
@@ -340,7 +359,9 @@ class JsonFile {
       );
     }
 
-    if (parsed is Map && parsed['format'] == _format) {
+    if (parsed is Map &&
+        (parsed['format'] == _format ||
+            parsed['format'] == _legacyFormat)) {
       try {
         final box = SecretBox(
           base64Decode(parsed['ciphertext'] as String),

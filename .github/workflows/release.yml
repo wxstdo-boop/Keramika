@@ -163,7 +163,7 @@ jobs:
           cd build/app/outputs/flutter-apk
           for f in *-release.apk; do
             abi="${f%-release.apk}"
-            mv "$f" "Keramika-${{ inputs.version_name }}+${{ inputs.version_code }}-${abi}.apk"
+            mv "$f" "Agysha-${{ inputs.version_name }}+${{ inputs.version_code }}-${abi}.apk"
           done
           ls -la
 
@@ -212,7 +212,7 @@ jobs:
         if: ${{ inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v5
         with:
-          name: Keramika-${{ inputs.tag }}
+          name: Agysha-${{ inputs.tag }}
           path: build/app/outputs/flutter-apk/*.apk
 
       - name: Публикация релиза

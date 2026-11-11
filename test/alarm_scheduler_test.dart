@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/services/alarm_scheduler.dart';
+import 'package:agysha/services/alarm_scheduler.dart';
 
 /// Тесты моста постановки будильников в Android (`AlarmManager`).
 ///

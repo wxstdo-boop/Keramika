@@ -5,13 +5,13 @@ import '../utils/design_tokens.dart';
 
 /// Единый построитель темы приложения.
 ///
-/// Раньше это был приватный метод `_buildCachedTheme` внутри `KeramikaApp`.
+/// Раньше это был приватный метод `_buildCachedTheme` внутри `AgyshaApp`.
 /// Вынесен наружу, чтобы тесты и генератор скриншотов строили РОВНО ту же
 /// тему, что и приложение: иначе «витрина» расходилась с реальным видом
 /// (другие радиусы, шрифты, тултипы).
 ///
-/// Кэш по-прежнему живёт в `KeramikaApp` — здесь только чистая сборка.
-ThemeData buildKeramikaTheme(
+/// Кэш по-прежнему живёт в `AgyshaApp` — здесь только чистая сборка.
+ThemeData buildAgyshaTheme(
   ColorScheme scheme, {
   required bool isDark,
   required bool isGrokStyle,

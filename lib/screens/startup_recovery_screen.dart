@@ -24,10 +24,10 @@ class _StartupRecoveryScreenState extends State<StartupRecoveryScreen> {
     });
     try {
       final file = await FilePicker.pickFile(
-        dialogTitle: 'Выберите резервную копию Keramika',
+        dialogTitle: 'Выберите резервную копию Agysha',
         type: FileType.custom,
         allowedExtensions: const ['json'],
-        initialDirectory: '/storage/emulated/0/Download/Keramika',
+        initialDirectory: '/storage/emulated/0/Download/Agysha',
       );
       if (file == null) return;
       final bytes = await file.readAsBytes();
@@ -46,7 +46,7 @@ class _StartupRecoveryScreenState extends State<StartupRecoveryScreen> {
         'app_pin',
       };
       if (!backup.keys.any(dataKeys.contains)) {
-        throw const FormatException('No Keramika data found in this file');
+        throw const FormatException('No Agysha data found in this file');
       }
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
@@ -108,7 +108,7 @@ class _StartupRecoveryScreenState extends State<StartupRecoveryScreen> {
                   const Text(
                     'После обновления Android не смог открыть старый ключ '
                     'шифрования. Данные в приложении не удалены, но для '
-                    'запуска нужна JSON-копия из Download/Keramika. PIN и '
+                    'запуска нужна JSON-копия из Download/Agysha. PIN и '
                     'настройки восстановятся из выбранной копии.',
                     textAlign: TextAlign.center,
                   ),

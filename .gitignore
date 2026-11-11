@@ -30,7 +30,7 @@ android/app/*.jks
 *.swp
 .DS_Store
 
-# Keramika local build artifacts
+# Agysha local build artifacts
 build_logs/
 
 # Служебные каталоги внешних инструментов на машине разработчика.
@@ -52,7 +52,7 @@ android/.kotlin/
 # Служебные файлы Flutter CLI
 .flutter_tool_state
 
-# Keramika локальные черновики: одноразовые скрипты правок, логи прогонов,
+# Agysha локальные черновики: одноразовые скрипты правок, логи прогонов,
 # дампы adb и собранные APK. Лежат в корне и к коду приложения не относятся —
 # в репозиторий не едут. (tools/ и lib/ с живым кодом — НЕ здесь.)
 /*.apk
@@ -65,7 +65,7 @@ android/.kotlin/
 /*.jpg
 
 # Отладочные скриншоты в корне (не для репозитория; уже отслеживаемые файлы не затрагивает).
-/keramika_shot*.png
+/agysha_shot*.png
 /screen_*.png
 tools/_*/
 $null

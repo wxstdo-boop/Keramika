@@ -5,13 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/profile_screen.dart';
-import 'package:keramika/screens/stats_screen.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
-import 'package:keramika/widgets/update_pill.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/profile_screen.dart';
+import 'package:agysha/screens/stats_screen.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/widgets/profile_avatar.dart';
+import 'package:agysha/widgets/update_pill.dart';
 
 /// Регрессы полировки одиннадцатого круга:
 ///  * экран статистики больше НЕ крутит вечный «глитч»: числа статичны, а
@@ -31,7 +31,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 11));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_round_eleven');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_round_eleven');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

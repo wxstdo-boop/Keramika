@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set PROJECT=C:\Games\keramika
+set PROJECT=C:\Games\agysha
 set JAVA_HOME=C:\Users\Грэйсик\jdk-21\jdk-21.0.5+11-beta
 set PATH=%JAVA_HOME%\bin;%PATH%
 

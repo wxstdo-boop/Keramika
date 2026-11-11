@@ -26,7 +26,7 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
         // часто блокируется, поэтому полагаться на Dart-перепланировку
         // после boot нельзя.
         const val MANIFEST_KEY = "alarm_manifest"
-        const val PREFS_NAME = "keramika_schedule"
+        const val PREFS_NAME = "agysha_schedule"
 
         /** Ключ списка прозвеневших одноразовых будильников (id.hashCode). */
         const val FIRED_ONESHOT_KEY = "fired_one_shots"
@@ -113,7 +113,7 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
         val id = call.argument<Int>("id") ?: 0
         val title = call.argument<String>("title") ?: "Alarm"
         val body = call.argument<String>("body") ?: ""
-        val channelId = call.argument<String>("channelId") ?: "keramika_alarm"
+        val channelId = call.argument<String>("channelId") ?: "agysha_alarm"
         val channelName = call.argument<String>("channelName") ?: "Alarms"
         val rawSoundName = call.argument<String>("soundName") ?: "alarm_default"
         val soundName = mapSoundName(rawSoundName)

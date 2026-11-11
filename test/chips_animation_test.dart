@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/widgets/category_chip.dart';
-import 'package:keramika/widgets/item_reveal.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/utils/wide_dash_formatter.dart';
-import 'package:keramika/widgets/priority_selector.dart';
+import 'package:agysha/widgets/category_chip.dart';
+import 'package:agysha/widgets/item_reveal.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/utils/wide_dash_formatter.dart';
+import 'package:agysha/widgets/priority_selector.dart';
 
 /// Проверки «плавности» на уровне геометрии: между кадрами элементы не
 /// должны прыгать. Это регресс-тесты на жалобы «кнопка расширяется

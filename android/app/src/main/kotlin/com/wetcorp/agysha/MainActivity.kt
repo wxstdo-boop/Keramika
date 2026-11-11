@@ -320,7 +320,7 @@ class MainActivity : FlutterActivity() {
                             ?: throw IllegalArgumentException("fileName required")
                         val bytes = call.argument<ByteArray>("bytes")
                             ?: throw IllegalArgumentException("bytes required")
-                        val subDir = call.argument<String>("subDir") ?: "Keramika"
+                        val subDir = call.argument<String>("subDir") ?: "Agysha"
                         val path = saveBytesToDownloads(fileName, bytes, subDir)
                         result.success(path)
                     } catch (e: Exception) {
@@ -576,7 +576,7 @@ class MainActivity : FlutterActivity() {
             // Удаляем предыдущие файлы с тем же именем, ВКЛЮЧАЯ «зависшие»
             // PENDING-строки от оборванных бэкапов: MediaStore по умолчанию
             // прячет их в запросах, и они копились — файл-менеджер показывал
-            // «PENDING keramika-auto-backup.json» вместо нормального имени.
+            // «PENDING agysha-auto-backup.json» вместо нормального имени.
             // Ищем и точное имя, и временные имена «.pending-<id>-<имя>».
             val exactSel =
                 "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
@@ -637,7 +637,7 @@ class MainActivity : FlutterActivity() {
             // Прямая запись БЕЗ PENDING-фазы. Раньше: insert(IS_PENDING=1) →
             // байты → снять флаг. На MIUI/HyperOS снятие флага ненадёжно
             // (update возвращает 0), и файл навсегда оставался в шторке
-            // файлового менеджера как «.pending-<ts>-keramika-auto-backup.json»
+            // файлового менеджера как «.pending-<ts>-agysha-auto-backup.json»
             // — бэкап выглядел сломанным. Небольшой JSON пишется целиком
             // за один вызов: риск «полузаписанного» файла минимален, зато
             // бэкап ВСЕГДА появляется под нормальным именем.
@@ -676,13 +676,13 @@ class MainActivity : FlutterActivity() {
 
     /**
      * Оставляет в Download/[relativePath] не более 2 файлов бэкапа
-     * (имена начинаются с "keramika"), удаляя более старые копии.
+     * (имена начинаются с "agysha"), удаляя более старые копии.
      */
     private fun trimBackupCopies(resolver: android.content.ContentResolver, relativePath: String) {
         try {
             val selection =
                 "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-            val args = arrayOf("$relativePath/", "keramika%")
+            val args = arrayOf("$relativePath/", "agysha%")
             // Сначала обычные (новые сверху), затем «зависшие» PENDING-хвосты
             // (по определению старые) — они чистятся первыми и не забивают
             // лимит 2 копий.

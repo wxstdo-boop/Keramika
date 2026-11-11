@@ -954,7 +954,7 @@ class _AiChatBodyState extends State<_AiChatBody>
         title: const Text('Ада видит экран'),
         content: const Text(
           'Чтобы Ада могла подсказать ответ собеседнику (например, в '
-          'мессенджере), разреши Keramika «Специальные возможности».\n\n'
+          'мессенджере), разреши Agysha «Специальные возможности».\n\n'
           'Текст экрана не сохраняется и никуда не отправляется — он '
           'попадает в Аду только вместе с твоим сообщением.',
         ),
@@ -1239,7 +1239,7 @@ class _AiChatBodyState extends State<_AiChatBody>
               message: Translations.t(
                 'aiOverlayPermissionHint',
                 ctx,
-                'Allow Keramika to draw over other apps to enable the mini window',
+                'Allow Agysha to draw over other apps to enable the mini window',
               ),
               icon: Icons.warning_amber_rounded,
               iconColor: Theme.of(ctx).colorScheme.error,

@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/widgets/music_pulse_ring.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
+import 'package:agysha/widgets/music_pulse_ring.dart';
+import 'package:agysha/widgets/profile_avatar.dart';
 
 /// Регрессы полировки:
 ///  * своя аватарка при размытии (скролл) рисуется через [ImageFiltered] —
@@ -20,7 +20,7 @@ void main() {
   late File imgFile;
 
   setUp(() async {
-    tmpDir = await Directory.systemTemp.createTemp('keramika_round_five');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_round_five');
     imgFile = File('${tmpDir.path}/ava.png');
     // Крошечный валидный PNG (1×1, прозрачный).
     await imgFile.writeAsBytes(const <int>[

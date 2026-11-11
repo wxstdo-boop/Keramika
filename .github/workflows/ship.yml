@@ -227,7 +227,7 @@ jobs:
         if: ${{ inputs.dry_run != 'true' }}
         run: |
           set -euo pipefail
-          git config user.name "keramika-ship"
+          git config user.name "agysha-ship"
           git config user.email "ship@users.noreply.github.com"
           # kAppVersion обновляется бампом вместе с pubspec.yaml — иначе
           # следующий же регрессионный тест упадёт на расхождении версий.

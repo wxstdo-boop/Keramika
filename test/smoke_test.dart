@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/main.dart';
+import 'package:agysha/main.dart';
 
 void main() {
-  testWidgets('Keramika app boots without exception', (
+  testWidgets('Agysha app boots without exception', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const KeramikaApp(initialLanguageCode: 'en'));
-    expect(find.byType(KeramikaApp), findsOneWidget);
+    await tester.pumpWidget(const AgyshaApp(initialLanguageCode: 'en'));
+    expect(find.byType(AgyshaApp), findsOneWidget);
   });
 }

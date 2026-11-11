@@ -13,7 +13,7 @@ SourceCode: https://github.com/wxstdo-boop/agysha
 IssueTracker: https://github.com/wxstdo-boop/agysha/issues
 Changelog: https://github.com/wxstdo-boop/agysha/releases
 
-AutoName: Keramika
+AutoName: Agysha
 
 RepoType: git
 Repo: https://github.com/wxstdo-boop/agysha.git
@@ -48,7 +48,7 @@ Builds:
       - .pub-cache
     build:
       - export PUB_CACHE=$(pwd)/.pub-cache
-      - $$flutter$$/bin/flutter build apk --release --dart-define=KERAMIKA_NO_SELF_UPDATE=true
+      - $$flutter$$/bin/flutter build apk --release --dart-define=AGYSHA_NO_SELF_UPDATE=true
     ndk: 28.2.13676358
 
 AutoUpdateMode: Version

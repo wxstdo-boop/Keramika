@@ -207,7 +207,7 @@ class BootReceiver : BroadcastReceiver() {
         putExtra("alarm_id", code)
         putExtra("title", title)
         putExtra("body", body)
-        putExtra("channel_id", "keramika_alarm")
+        putExtra("channel_id", "agysha_alarm")
         putExtra("channel_name", "Alarms")
         putExtra("sound_name", soundName)
         putExtra("vibrate", vibrate)

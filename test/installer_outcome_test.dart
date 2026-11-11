@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/services/installer.dart';
+import 'package:agysha/services/installer.dart';
 
 /// Итог самообновления приходит из натива двумя путями: push-вызовом
 /// `onInstallResult` и pull-методом `consumeInstallResult` (после подмены

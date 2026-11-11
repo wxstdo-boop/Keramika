@@ -5,14 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/profile_screen.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/profile_service.dart';
-import 'package:keramika/utils/animated_delete.dart';
-import 'package:keramika/widgets/inline_keyboard.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/profile_screen.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/profile_service.dart';
+import 'package:agysha/utils/animated_delete.dart';
+import 'package:agysha/widgets/inline_keyboard.dart';
+import 'package:agysha/widgets/profile_avatar.dart';
 
 /// Регрессы полировки десятого круга:
 ///  * фон свайп-удаления — ПОЛУПРОЗРАЧНО-красный, а не глухая заливка;
@@ -30,7 +30,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 10));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_round_ten');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_round_ten');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

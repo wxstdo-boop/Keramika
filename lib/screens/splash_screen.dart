@@ -118,7 +118,7 @@ class _SplashScreenState extends State<SplashScreen>
     // въезда сплэша и давал бы спайк кадра (то самое «подлагивание»).
     if (preDecodedLogo == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        precacheImage(const AssetImage('assets/keramika.png'), context);
+        precacheImage(const AssetImage('assets/agysha.png'), context);
       });
     }
     // Переходим на главную сразу после окончания анимации: 1950 мс, когда
@@ -297,7 +297,7 @@ class _SplashScreenState extends State<SplashScreen>
                                             filterQuality: FilterQuality.high,
                                           )
                                         : Image.asset(
-                                            'assets/keramika.png',
+                                            'assets/agysha.png',
                                             width: 94,
                                             height: 94,
                                             cacheWidth: 512,

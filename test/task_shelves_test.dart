@@ -6,12 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/models/task.dart';
-import 'package:keramika/screens/tasks_screen.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/task_service.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/models/task.dart';
+import 'package:agysha/screens/tasks_screen.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/task_service.dart';
 
 /// Активные задачи идут одним списком БЕЗ заголовка. Как только появляется
 /// хотя бы одна выполненная, внизу вырастает архивная полка с заголовком
@@ -27,7 +27,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 3));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_task_shelves');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_task_shelves');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

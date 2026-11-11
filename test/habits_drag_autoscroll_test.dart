@@ -5,12 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/models/habit.dart';
-import 'package:keramika/screens/habits_screen.dart';
-import 'package:keramika/services/habit_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/models/habit.dart';
+import 'package:agysha/screens/habits_screen.dart';
+import 'package:agysha/services/habit_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
 
 /// Глобальная физика приложения (main.dart) — BouncingScrollPhysics.
 class _Bouncing extends MaterialScrollBehavior {
@@ -34,7 +34,7 @@ void main() {
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 7));
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
-    tmpDir = await Directory.systemTemp.createTemp('keramika_as');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_as');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

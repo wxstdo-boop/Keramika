@@ -360,7 +360,7 @@ class AlarmForegroundService : Service() {
     private fun acquireWakeLock() {
         try {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "keramika:alarm_ring")
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "agysha:alarm_ring")
                 .apply { acquire(MAX_RING_MS + 30_000) }
         } catch (_: Exception) {}
     }
@@ -397,7 +397,7 @@ class AlarmForegroundService : Service() {
     }
 
     companion object {
-        private const val CHANNEL = "keramika_alarm_ring"
+        private const val CHANNEL = "agysha_alarm_ring"
         private const val NOTIFICATION_ID = 66667
 
         /** Долже звонить, чем «проспать», но и не вечно. */

@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="assets/keramika.png" alt="Keramika" width="128" height="128" />
+  <img src="assets/agysha.png" alt="Agysha" width="128" height="128" />
 
-  <h1>Keramika</h1>
+  <h1>Agysha</h1>
 
   <p><strong>Будильник, который не даёт уснуть обратно.</strong><br />
   Задачи, привычки, питание и ИИ-ассистент Ада — в одном приложении.</p>
@@ -114,7 +114,7 @@
 
 ### Готовый APK
 1. Открой [Releases](https://github.com/wxstdo-boop/agysha/releases/latest)
-2. Скачай `Keramika-<версия>-<abi>.apk` под свой процессор
+2. Скачай `Agysha-<версия>-<abi>.apk` под свой процессор
    (`arm64-v8a` — почти все современные телефоны, `armeabi-v7a` — старые,
    `x86_64` — эмуляторы)
 3. Разреши установку из этого источника, если попросит
@@ -127,7 +127,7 @@
 > или «вредоносное приложение». Это не означает, что в приложении есть
 > что-то плохое — так Play Protect ведёт себя с любым сайдлоадом. Нажми
 > «Всё равно установить», а если система заблокировала установку — открой
-> Настройки → Безопасность (Play Protect) и разреши установку для Keramika:
+> Настройки → Безопасность (Play Protect) и разреши установку для Agysha:
 > в приложении есть кнопка, ведущая прямо туда.
 
 ### Автообновление через Obtainium
@@ -156,7 +156,7 @@ F-Droid собирается из исходников без встроенно
 
 ```bash
 git clone https://github.com/wxstdo-boop/agysha.git
-cd Keramika
+cd Agysha
 flutter pub get
 flutter run
 ```
@@ -245,7 +245,7 @@ flutter test --concurrency=1
 Релизы собирает GitHub Actions по тегу вида `v1.6.49+45121`
 (тот же формат, что в `pubspec.yaml`). Workflow восстанавливает keystore из
 секретов, собирает `--split-per-abi`, переименовывает ассеты в
-`Keramika-<версия>-<abi>.apk` и публикует в Releases.
+`Agysha-<версия>-<abi>.apk` и публикует в Releases.
 
 ```bash
 git tag v1.6.49+45121

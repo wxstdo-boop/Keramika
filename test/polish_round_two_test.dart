@@ -5,16 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/profile_screen.dart';
-import 'package:keramika/screens/settings_screen.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/main.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/widgets/animated_blur_title.dart';
-import 'package:keramika/widgets/music_pulse_ring.dart';
-import 'package:keramika/widgets/online_dot.dart';
-import 'package:keramika/widgets/press_scale.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/profile_screen.dart';
+import 'package:agysha/screens/settings_screen.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/main.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/widgets/animated_blur_title.dart';
+import 'package:agysha/widgets/music_pulse_ring.dart';
+import 'package:agysha/widgets/online_dot.dart';
+import 'package:agysha/widgets/press_scale.dart';
 
 /// Регрессы второго круга полировки:
 ///  * кружок онлайна в шапке крупнее и стоит справа от буквы;
@@ -30,7 +30,7 @@ void main() {
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 11));
     SharedPreferences.setMockInitialValues({});
     await initPrefs();
-    tmpDir = await Directory.systemTemp.createTemp('keramika_polish2');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_polish2');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -63,9 +63,9 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
 
-    // Настройки требуют KeramikaApp в предках (KeramikaApp.of) — поднимаем
+    // Настройки требуют AgyshaApp в предках (AgyshaApp.of) — поднимаем
     // настоящее приложение и открываем экран настроек через навигатор.
-    await tester.pumpWidget(const KeramikaApp(initialLanguageCode: 'ru'));
+    await tester.pumpWidget(const AgyshaApp(initialLanguageCode: 'ru'));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 600));
     navigatorKey.currentState!.push(
@@ -214,7 +214,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 900));
     final dot = tester.getCenter(find.byType(OnlineDot));
-    final title = tester.getRect(find.text('Keramika'));
+    final title = tester.getRect(find.text('Agysha'));
     expect(
       dot.dx,
       greaterThan(title.right),

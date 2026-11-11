@@ -23,20 +23,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/models/alarm.dart';
-import 'package:keramika/models/habit.dart';
-import 'package:keramika/models/task.dart';
-import 'package:keramika/models/wake_task.dart';
-import 'package:keramika/screens/home_screen.dart';
-import 'package:keramika/screens/stats_screen.dart';
-import 'package:keramika/services/alarm_service.dart';
-import 'package:keramika/services/completion_log_service.dart';
-import 'package:keramika/services/habit_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/task_service.dart';
-import 'package:keramika/theme/app_theme.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/models/alarm.dart';
+import 'package:agysha/models/habit.dart';
+import 'package:agysha/models/task.dart';
+import 'package:agysha/models/wake_task.dart';
+import 'package:agysha/screens/home_screen.dart';
+import 'package:agysha/screens/stats_screen.dart';
+import 'package:agysha/services/alarm_service.dart';
+import 'package:agysha/services/completion_log_service.dart';
+import 'package:agysha/services/habit_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/task_service.dart';
+import 'package:agysha/theme/app_theme.dart';
 
 /// Демо-набор: осмысленные русские данные, без личных записей.
 Future<void> _seed() async {
@@ -176,7 +176,7 @@ void main() {
       'last_home_tab': 0,
     });
     await initPrefs();
-    tmpDir = await Directory.systemTemp.createTemp('keramika_shots');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_shots');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -220,7 +220,7 @@ void main() {
       outlineVariant: Color(0xFFCAC4D0),
       surfaceContainerHighest: Color(0xFFE7E0EC),
     );
-    final theme = buildKeramikaTheme(
+    final theme = buildAgyshaTheme(
       scheme,
       isDark: false,
       isGrokStyle: false,

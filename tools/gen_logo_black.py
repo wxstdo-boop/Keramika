@@ -6,7 +6,7 @@
 и растягивается LANCZOS'ом — вместо 16M пикселей в чистых циклах.
 
 Записывает:
-  assets/keramika.png (1024)                          — сплэш + ава у «Выйти»
+  assets/agysha.png (1024)                          — сплэш + ава у «Выйти»
   drawable/ic_launcher_foreground.png (432)           — полноцветная иконка
   drawable/ic_launcher_monochrome.png (432)           — белый силуэт (монохром)
   drawable-nodpi/ic_notification_large.png (216)      — иконка уведомлений
@@ -16,7 +16,7 @@ import math
 import os
 from PIL import Image, ImageDraw
 
-BASE = r'C:\Wettixal\keramika-current'
+BASE = r'C:\Wettixal\agysha-current'
 BIG = 2048  # рабочее разрешение: SS=2 для 1024px
 BLACK_A = (18, 18, 20)
 BLACK_B = (0, 0, 0)
@@ -109,7 +109,7 @@ def main():
     # Сплэш / ава у «Выйти» — скруглённая плитка.
     tile = _emblem(full_bleed=False)
     tile.resize((1024, 1024), Image.LANCZOS).save(
-        os.path.join(BASE, 'assets', 'keramika.png'))
+        os.path.join(BASE, 'assets', 'agysha.png'))
     tile.resize((216, 216), Image.LANCZOS).save(
         os.path.join(res, 'drawable-nodpi', 'ic_notification_large.png'))
     # Лончер — full-bleed (маска сама обрежет углы).

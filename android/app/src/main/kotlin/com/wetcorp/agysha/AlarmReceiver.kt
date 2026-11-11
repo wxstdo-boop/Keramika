@@ -24,7 +24,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "keramika:alarm")
+        val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "agysha:alarm")
         wakeLock.acquire(300_000)  // 5 минут — хватает для разблокировки и решения задачи
 
         try {
@@ -346,7 +346,7 @@ class AlarmReceiver : BroadcastReceiver() {
         // Каналы РАЗДЕЛЬНЫЕ и навсегда.
         //
         // Раньше и будильники, и проверки реальности писали в один
-        // `keramika_alarm_v2`. Звук канала в Android нельзя изменить после
+        // `agysha_alarm_v2`. Звук канала в Android нельзя изменить после
         // создания: кто создал канал первым, тот и задал звук навсегда.
         // Проверка реальности создавала его с системным звуком уведомлений —
         // отсюда «будильник звенит каким-то другим звуком».
@@ -459,9 +459,9 @@ class AlarmReceiver : BroadcastReceiver() {
         // уходят в новый канал при следующем срабатывании.
         if (!channelsCleanedUp) {
             channelsCleanedUp = true
-            // keramika_alarm_ring НЕ трогаем — это канал самого сервиса
+            // agysha_alarm_ring НЕ трогаем — это канал самого сервиса
             // звонка, удалить его значит снять foreground-уведомление.
-            for (stale in listOf("keramika_alarm_v2", "keramika_alarm_v1")) {
+            for (stale in listOf("agysha_alarm_v2", "agysha_alarm_v1")) {
                 try {
                     if (nm.getNotificationChannel(stale) != null) nm.deleteNotificationChannel(stale)
                 } catch (_: Exception) {}
@@ -552,7 +552,7 @@ class AlarmReceiver : BroadcastReceiver() {
         } else {
             soundName
         }
-        return "keramika_alarm_fb_$key"
+        return "agysha_alarm_fb_$key"
     }
 
     /**
@@ -676,9 +676,9 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val TAG = "AlarmReceiver"
 
         /** Канал будильников (тихий — звучит сервис). */
-        const val ALARM_CHANNEL = "keramika_alarm_v3"
+        const val ALARM_CHANNEL = "agysha_alarm_v3"
         /** Канал проверок реальности (системный звук уведомлений). */
-        const val RC_CHANNEL = "keramika_rc_v1"
+        const val RC_CHANNEL = "agysha_rc_v1"
 
         /** Одноразовая уборка каналов прошлых версий (в рамках процесса). */
         private var channelsCleanedUp = false

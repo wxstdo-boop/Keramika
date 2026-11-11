@@ -6,13 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/l10n/translations.dart';
-import 'package:keramika/screens/forge_screen.dart';
-import 'package:keramika/services/forge_agent.dart';
-import 'package:keramika/services/forge_chat_store.dart';
-import 'package:keramika/services/forge_service.dart';
-import 'package:keramika/services/json_file.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/l10n/translations.dart';
+import 'package:agysha/screens/forge_screen.dart';
+import 'package:agysha/services/forge_agent.dart';
+import 'package:agysha/services/forge_chat_store.dart';
+import 'package:agysha/services/forge_service.dart';
+import 'package:agysha/services/json_file.dart';
 
 /// Жалоба: «вставленный токен не сохраняется». Проверяем именно это —
 /// токен, положенный в хранилище, при новом открытии экрана подставляется
@@ -203,7 +203,7 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_forge_chat');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_forge_chat');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

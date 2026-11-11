@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/widgets/rolling_counter.dart';
+import 'package:agysha/widgets/rolling_counter.dart';
 
 void main() {
   const style = TextStyle(fontSize: 12);

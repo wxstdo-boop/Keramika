@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/models/habit.dart';
-import 'package:keramika/services/habit_service.dart';
-import 'package:keramika/services/json_file.dart';
+import 'package:agysha/models/habit.dart';
+import 'package:agysha/services/habit_service.dart';
+import 'package:agysha/services/json_file.dart';
 
 Future<void> _deleteTempDirectory(Directory directory) async {
   for (var attempt = 0; attempt < 10; attempt++) {
@@ -23,7 +23,7 @@ void main() {
   late Directory tmpDir;
 
   setUpAll(() async {
-    tmpDir = await Directory.systemTemp.createTemp('keramika_first_streak');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_first_streak');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

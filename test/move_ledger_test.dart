@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/widgets/move_ledger.dart';
+import 'package:agysha/widgets/move_ledger.dart';
 
 /// Проверка «ведомости переезда»: список со стабильными ключами
 /// (ReorderableListView) переставляет элементы мгновенно, и [MoveLedger]

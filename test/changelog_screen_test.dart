@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/changelog_screen.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/changelog_screen.dart';
 
 void main() {
   // В flutter_test сетевые запросы по умолчанию отдают 400, поэтому

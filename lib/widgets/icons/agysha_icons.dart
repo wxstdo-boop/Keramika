@@ -2,24 +2,24 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Единая толщина обводки всех иконок Keramika.
-const double kKkStroke = 2.0;
+/// Единая толщина обводки всех иконок Agysha.
+const double kAgStroke = 2.0;
 
 /// Базовый размер иконки (viewBox 24×24).
-const double kKkIconSize = 24.0;
+const double kAgIconSize = 24.0;
 
 /// Общий виджет иконки с thin stroke.
-class KkIcon extends StatelessWidget {
+class AgIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
   final void Function(Canvas canvas, Size size, Color color, double strokeWidth) paint;
 
-  const KkIcon({
+  const AgIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
     required this.paint,
   });
 
@@ -31,7 +31,7 @@ class KkIcon extends StatelessWidget {
       height: size,
       child: CustomPaint(
         size: Size(size, size),
-        painter: _KkPainter(
+        painter: _AgPainter(
           color: c,
           strokeWidth: strokeWidth,
           paintFn: paint,
@@ -41,12 +41,12 @@ class KkIcon extends StatelessWidget {
   }
 }
 
-class _KkPainter extends CustomPainter {
+class _AgPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
   final void Function(Canvas canvas, Size size, Color color, double strokeWidth) paintFn;
 
-  const _KkPainter({
+  const _AgPainter({
     required this.color,
     required this.strokeWidth,
     required this.paintFn,
@@ -62,7 +62,7 @@ class _KkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_KkPainter old) =>
+  bool shouldRepaint(_AgPainter old) =>
       old.color != color ||
       old.strokeWidth != strokeWidth;
 }
@@ -91,21 +91,21 @@ Paint _p(Color c, double sw) => Paint()
 // ────────────────────────────────────────────────────────────
 
 /// Будильник: циферблат, два колокольчика, молоточек.
-class KkAlarmIcon extends StatelessWidget {
+class AgAlarmIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkAlarmIcon({
+  const AgAlarmIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -135,21 +135,21 @@ class KkAlarmIcon extends StatelessWidget {
 }
 
 /// Привычки: три растущих дуги + капли.
-class KkHabitsIcon extends StatelessWidget {
+class AgHabitsIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkHabitsIcon({
+  const AgHabitsIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -173,21 +173,21 @@ class KkHabitsIcon extends StatelessWidget {
 }
 
 /// Задачи: три строки с галочками.
-class KkTasksIcon extends StatelessWidget {
+class AgTasksIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkTasksIcon({
+  const AgTasksIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -217,21 +217,21 @@ class KkTasksIcon extends StatelessWidget {
 }
 
 /// Проверка реальности: глаз со зрачком.
-class KkRealityCheckIcon extends StatelessWidget {
+class AgRealityCheckIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkRealityCheckIcon({
+  const AgRealityCheckIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -257,21 +257,21 @@ class KkRealityCheckIcon extends StatelessWidget {
 // Общие действия
 // ────────────────────────────────────────────────────────────
 
-class KkAddIcon extends StatelessWidget {
+class AgAddIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkAddIcon({
+  const AgAddIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -284,21 +284,21 @@ class KkAddIcon extends StatelessWidget {
   }
 }
 
-class KkCheckIcon extends StatelessWidget {
+class AgCheckIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkCheckIcon({
+  const AgCheckIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -311,21 +311,21 @@ class KkCheckIcon extends StatelessWidget {
   }
 }
 
-class KkDeleteIcon extends StatelessWidget {
+class AgDeleteIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkDeleteIcon({
+  const AgDeleteIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -346,21 +346,21 @@ class KkDeleteIcon extends StatelessWidget {
   }
 }
 
-class KkEditIcon extends StatelessWidget {
+class AgEditIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkEditIcon({
+  const AgEditIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -378,21 +378,21 @@ class KkEditIcon extends StatelessWidget {
   }
 }
 
-class KkSettingsIcon extends StatelessWidget {
+class AgSettingsIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkSettingsIcon({
+  const AgSettingsIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -414,21 +414,21 @@ class KkSettingsIcon extends StatelessWidget {
   }
 }
 
-class KkBellIcon extends StatelessWidget {
+class AgBellIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkBellIcon({
+  const AgBellIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -448,21 +448,21 @@ class KkBellIcon extends StatelessWidget {
   }
 }
 
-class KkClockIcon extends StatelessWidget {
+class AgClockIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkClockIcon({
+  const AgClockIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -476,21 +476,21 @@ class KkClockIcon extends StatelessWidget {
   }
 }
 
-class KkStarIcon extends StatelessWidget {
+class AgStarIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkStarIcon({
+  const AgStarIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -511,21 +511,21 @@ class KkStarIcon extends StatelessWidget {
   }
 }
 
-class KkHeartIcon extends StatelessWidget {
+class AgHeartIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkHeartIcon({
+  const AgHeartIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -543,21 +543,21 @@ class KkHeartIcon extends StatelessWidget {
   }
 }
 
-class KkMoonIcon extends StatelessWidget {
+class AgMoonIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkMoonIcon({
+  const AgMoonIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -570,21 +570,21 @@ class KkMoonIcon extends StatelessWidget {
   }
 }
 
-class KkSunIcon extends StatelessWidget {
+class AgSunIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkSunIcon({
+  const AgSunIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -610,21 +610,21 @@ class KkSunIcon extends StatelessWidget {
   }
 }
 
-class KkArrowRightIcon extends StatelessWidget {
+class AgArrowRightIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkArrowRightIcon({
+  const AgArrowRightIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -638,21 +638,21 @@ class KkArrowRightIcon extends StatelessWidget {
   }
 }
 
-class KkArrowLeftIcon extends StatelessWidget {
+class AgArrowLeftIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkArrowLeftIcon({
+  const AgArrowLeftIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -666,21 +666,21 @@ class KkArrowLeftIcon extends StatelessWidget {
   }
 }
 
-class KkMenuIcon extends StatelessWidget {
+class AgMenuIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkMenuIcon({
+  const AgMenuIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -694,21 +694,21 @@ class KkMenuIcon extends StatelessWidget {
   }
 }
 
-class KkCloseIcon extends StatelessWidget {
+class AgCloseIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkCloseIcon({
+  const AgCloseIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -721,21 +721,21 @@ class KkCloseIcon extends StatelessWidget {
   }
 }
 
-class KkSearchIcon extends StatelessWidget {
+class AgSearchIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkSearchIcon({
+  const AgSearchIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -748,21 +748,21 @@ class KkSearchIcon extends StatelessWidget {
   }
 }
 
-class KkFilterIcon extends StatelessWidget {
+class AgFilterIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkFilterIcon({
+  const AgFilterIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -777,21 +777,21 @@ class KkFilterIcon extends StatelessWidget {
   }
 }
 
-class KkShareIcon extends StatelessWidget {
+class AgShareIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkShareIcon({
+  const AgShareIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -807,21 +807,21 @@ class KkShareIcon extends StatelessWidget {
   }
 }
 
-class KkDownloadIcon extends StatelessWidget {
+class AgDownloadIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkDownloadIcon({
+  const AgDownloadIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -836,21 +836,21 @@ class KkDownloadIcon extends StatelessWidget {
   }
 }
 
-class KkUploadIcon extends StatelessWidget {
+class AgUploadIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkUploadIcon({
+  const AgUploadIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -865,21 +865,21 @@ class KkUploadIcon extends StatelessWidget {
   }
 }
 
-class KkLockIcon extends StatelessWidget {
+class AgLockIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkLockIcon({
+  const AgLockIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,
@@ -901,21 +901,21 @@ class KkLockIcon extends StatelessWidget {
   }
 }
 
-class KkUnlockIcon extends StatelessWidget {
+class AgUnlockIcon extends StatelessWidget {
   final double size;
   final Color? color;
   final double strokeWidth;
 
-  const KkUnlockIcon({
+  const AgUnlockIcon({
     super.key,
-    this.size = kKkIconSize,
+    this.size = kAgIconSize,
     this.color,
-    this.strokeWidth = kKkStroke,
+    this.strokeWidth = kAgStroke,
   });
 
   @override
   Widget build(BuildContext context) {
-    return KkIcon(
+    return AgIcon(
       size: size,
       color: color,
       strokeWidth: strokeWidth,

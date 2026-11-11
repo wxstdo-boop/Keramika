@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Project = 'C:\Games\keramika'
+$Project = 'C:\Games\agysha'
 $ApkOutput = Join-Path $Project 'build\app\outputs\flutter-apk\app-release.apk'
 
 function Write-Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }

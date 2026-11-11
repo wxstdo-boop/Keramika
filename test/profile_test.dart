@@ -5,21 +5,21 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/models/habit.dart';
-import 'package:keramika/models/task.dart';
-import 'package:keramika/screens/profile_screen.dart';
-import 'package:keramika/services/habit_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/profile_service.dart';
-import 'package:keramika/services/task_service.dart';
-import 'package:keramika/widgets/animated_blur_title.dart';
-import 'package:keramika/widgets/online_dot.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
-import 'package:keramika/widgets/smooth_typing.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/models/habit.dart';
+import 'package:agysha/models/task.dart';
+import 'package:agysha/screens/profile_screen.dart';
+import 'package:agysha/services/habit_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/profile_service.dart';
+import 'package:agysha/services/task_service.dart';
+import 'package:agysha/widgets/animated_blur_title.dart';
+import 'package:agysha/widgets/online_dot.dart';
+import 'package:agysha/widgets/profile_avatar.dart';
+import 'package:agysha/widgets/smooth_typing.dart';
 
-/// Профиль «керамика-юзера»: имя, аватарка, онлайн-статус, рейтинг, музыка
+/// Профиль «Agysha-юзера»: имя, аватарка, онлайн-статус, рейтинг, музыка
 /// и события. Данные — локальные, поэтому тесты работают с реальным
 /// хранилищем во временной папке, без моков сервиса.
 void main() {
@@ -31,7 +31,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 7));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_profile');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_profile');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -61,7 +61,7 @@ void main() {
   test('имя, аватарка и друзья переживают перезагрузку профиля', () async {
     final svc = ProfileService();
     await svc.load();
-    await svc.setName('Керамик');
+    await svc.setName('Агыша');
     await svc.setAvatarIndex(5);
     await svc.addFriend(name: 'Гончар', colorIndex: 2, score: 42);
 
@@ -70,7 +70,7 @@ void main() {
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 7));
     await svc.load();
 
-    expect(svc.name, 'Керамик');
+    expect(svc.name, 'Агыша');
     expect(svc.avatarIndex, 5);
     expect(svc.friends.length, 1);
     expect(svc.friends.first.name, 'Гончар');
@@ -148,7 +148,7 @@ void main() {
     // Кружок — справа от заголовка и ВЫШЕ его середины: он «растёт» от
     // последней буквы, но поднят над строкой, чтобы не налезать на букву.
     final dotCenter = tester.getCenter(find.byType(OnlineDot));
-    final titleCenter = tester.getCenter(find.text('Keramika'));
+    final titleCenter = tester.getCenter(find.text('Agysha'));
     expect(
       (dotCenter.dy - titleCenter.dy).abs(),
       lessThan(8),
@@ -176,7 +176,7 @@ void main() {
       await ProfileService().setName('');
     });
 
-    testWidgets('в шапке вместо «Keramika» показывается имя юзера', (
+    testWidgets('в шапке вместо «Agysha» показывается имя юзера', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -189,7 +189,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Гончар'), findsOneWidget);
-      expect(find.text('Keramika'), findsNothing);
+      expect(find.text('Agysha'), findsNothing);
       // Кружок онлайна остаётся — он висит над последней буквой имени.
       expect(find.byType(OnlineDot), findsOneWidget);
     });
@@ -249,8 +249,8 @@ void main() {
   });
 
   test('имя можно сохранить и оно появляется в шапке профиля', () async {
-    await ProfileService().setName('Керамик');
-    expect(ProfileService().displayName, 'Керамик');
+    await ProfileService().setName('Агыша');
+    expect(ProfileService().displayName, 'Агыша');
   });
 
   testWidgets('без имени в шапке профиля показан «Аноним», а кружок — слева', (

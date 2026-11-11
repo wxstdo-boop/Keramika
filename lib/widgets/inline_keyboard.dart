@@ -201,7 +201,7 @@ class _KeyState extends State<_Key> {
   Widget build(BuildContext context) {
     final theme = widget.theme;
     final cs = theme.colorScheme;
-    // Полупрозрачные КРАСНЫЕ клавиши: тон primary (у Keramika он алый),
+    // Полупрозрачные КРАСНЫЕ клавиши: тон primary (у Agysha он алый),
     // сильно разбавленный, — кнопки читаются «стеклянно-красными» на любом
     // фоне. Отдача и повтор — в [PressScale]/InkWell ниже.
     final keyColor = Color.alphaBlend(

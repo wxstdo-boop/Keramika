@@ -1,14 +1,15 @@
 Build recipe: run
-`Remove-Item Env:KERAMIKA_NO_R8 -ErrorAction SilentlyContinue; & 'C:\Users\Larafut\dev\flutter\bin\flutter.bat' build apk --release --split-per-abi --target-platform android-arm64`
+`Remove-Item Env:AGYSHA_NO_R8 -ErrorAction SilentlyContinue; & 'C:\Users\Larafut\dev\flutter\bin\flutter.bat' build apk --release --split-per-abi --target-platform android-arm64`
 then install over the existing Android device (keep user data):
 `& "$env:USERPROFILE\dev\android-sdk\platform-tools\adb.exe" install -r "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"`.
 flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\dev\flutter\bin\flutter.bat`, adb at `C:\Users\Larafut\dev\android-sdk\platform-tools\adb.exe` (see `android/local.properties`).
 
 ## Идентификаторы проекта (переименование 2026-11)
 
-Android-пакет `com.wetcorp.agysha` (был `com.wetidom.keramika`), репозиторий
-`wxstdo-boop/Agysha` (GitHub капитализирует первую букву; был `Keramika`,
-старые ссылки редиректят). При переименовании менять СИНХРОННО:
+Приложение называется **Agysha** (прежнее имя — Keramika). Android-пакет
+`com.wetcorp.agysha` (был `com.wetidom.keramika`), репозиторий
+`wxstdo-boop/Agysha` (GitHub капитализирует первую букву; старые ссылки
+редиректят). При переименовании менять СИНХРОННО:
 
 - `android/app/build.gradle.kts` — `namespace` и `applicationId`;
 - каталог `android/app/src/main/kotlin/com/wetcorp/agysha/` + `package`-строки
@@ -21,8 +22,13 @@ Android-пакет `com.wetcorp.agysha` (был `com.wetidom.keramika`), реп�
 - рецепт F-Droid `fdroid/metadata/com.wetcorp.agysha.yml` (имя файла = package id);
 - forge-тесты держат `owner`/`repo` в моках — при смене имени падают.
 
-Имя бренда в UI («Keramika»), имена APK-ассетов (`Keramika-<ver>-<abi>.apk`) и
-keystore (`keramika-release.jks`, alias `keramika`) переименование НЕ трогает.
+Бренд-токены по всему дереву: `Agysha`/`agysha`/`AGYSHA_` в текстах, путях
+(`assets/agysha.png`, `lib/widgets/icons/agysha_icons.dart`, префикс иконок
+`Ag`/`kAg`), идентификаторах хранилища (`agysha-json-v1`,
+`agysha_database_key_v1`, `agysha_recovery_*`), именах каналов уведомлений
+(`agysha_alarm`, `agysha_rc`, `agysha_main`), именах APK-ассетов
+(`Agysha-<ver>-<abi>.apk`), keystore (`agysha-release.jks`, alias `agysha`,
+`CN=Agysha`) и боте релиза (`agysha-ship`).
 
 ## Linux dev sandbox (agent environment)
 
@@ -103,14 +109,14 @@ from `test/section_pill_transition_test.dart`.
 `curl -s .../repos/wxstdo-boop/agysha/releases/latest` (пустой тег-лист =
 релизов нет).
 
-Keystore проекта: `keramika-release.jks`, alias `keramika`, сертификат
-`CN=Keramika` (PKCS12, несмотря на расширение `.jks`). В рабочем дереве его
+Keystore проекта: `agysha-release.jks`, alias `agysha`, сертификат
+`CN=Agysha` (PKCS12, несмотря на расширение `.jks`). В рабочем дереве его
 нет — он в `.gitignore` и должен лежать только локально у владельца и в
 секретах репозитория.
 
 Отпечаток для сверки подписи (должен совпасть у собранного APK):
 `4B:48:38:78:6F:5D:00:29:75:F4:51:B2:C9:6B:62:91:5D:74:1D:49:0D:24:F3:D6:9F:3A:0A:F0:45:4E:12:1D`
-(CN=Keramika, действует до 2053-12-13).
+(CN=Agysha, действует до 2053-12-13).
 
 ### Релизная цепочка: кто кого страхует
 
@@ -189,7 +195,7 @@ openssl pkcs12 -in /tmp/ks.jks -passin "pass:$STORE_PASSWORD" -nokeys -legacy
 ### Секреты подписи в истории
 
 **История переписана 2026-10-27.** `android/key.properties` и
-`android/app/keramika-release.jks` вычищены из всех коммитов, ветвей и тегов
+`android/app/agysha-release.jks` вычищены из всех коммитов, ветвей и тегов
 (`git-filter-repo --invert-paths`, 16 ветвей + 18 тегов force-push). Проверка
 после переписи: `git log --all -- <пути>` пуст, `git rev-list --all --objects`
 не содержит этих путей, старые SHA (`8925a78` и соседние) с GitHub больше не
@@ -330,7 +336,7 @@ keystore), это `STATUS_FAILURE_INCOMPATIBLE` и он честно показ�
   рабочей сборки нельзя без потери функций (оверлей Ады, чтение экрана), но
   F-Droid-рецепт вырезает `REQUEST_INSTALL_PACKAGES` (и
   `ENFORCE_UPDATE_OWNERSHIP`) из манифеста, а самообновление там выключено
-  `KERAMIKA_NO_SELF_UPDATE`.
+  `AGYSHA_NO_SELF_UPDATE`.
 - **Репутация источника.** Приложения из Google Play, F-Droid и других
   каталогов Play Protect по умолчанию считает доверенными; APK «из
   интернета» — нет. Значит честное лечение не в коде приложения, а в
@@ -361,9 +367,9 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
 
 ## Автоэкспорт бэкапа
 
-Раз в час приложение пишет зашифрованный бэкап в `Download/Keramika` (Android,
+Раз в час приложение пишет зашифрованный бэкап в `Download/Agysha` (Android,
 через нативный MediaStore-канал `saveToDownloads` на канале `alarm_payload`),
-либо в `Downloads/Keramika`/документы на десктопе. Файл — фиксированного имени,
+либо в `Downloads/Agysha`/документы на десктопе. Файл — фиксированного имени,
 каждый экспорт перезаписывает предыдущий; время последнего лежит в
 `last_auto_export_at`, чтобы «догонять» пропущенный час после возврата из фона
 (`maybeCatchUpAutoExport`).
@@ -431,7 +437,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   `LateInitializationError`, и тап по уведомлению в ЖИВОМ приложении
   (`onNewIntent` → `onNewAlarmPayload`) не открывал экран задачи. Каналы
   создаются сразу константами, а `_listenForAlarmPayloads()` зовётся при
-  монтировании `KeramikaAppState`. `MethodChannel` на web безвреден — не
+  монтировании `AgyshaAppState`. `MethodChannel` на web безвреден — не
   трогает платформу до первого `invoke`.
 - **Остановка звонка — адресная.** Удаление/выключение звенящего будильника
   не гасило звук: отмена `AlarmManager` и уведомления не трогают
@@ -674,7 +680,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   `setMockMessageHandler(SystemChannels.platform.name, …)` с
   `platformChannel.codec.decodeMethodCall(...)` (см. `preferences_test.dart`).
 
-## Профиль «керамика-юзера»
+## Профиль «Agysha-юзера»
 
 - Экран — `lib/screens/profile_screen.dart`, состояние — `lib/services/profile_service.dart`
   (синглтон-`ChangeNotifier`), аватарки — `lib/widgets/profile_avatar.dart`
@@ -698,7 +704,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   только внутри своих границ, поэтому рамка заголовка раздута на недостающие
   поля по всем четырём сторонам (`padTop`/`padBottom`/`padRight`), а текст
   сдвинут на ту же величину. Новогодняя шапка убрана. Если в профиле сохранено
-  короткое имя, вместо «Keramika» показывается оно — плавным `AnimatedSwitcher`
+  короткое имя, вместо «Agysha» показывается оно — плавным `AnimatedSwitcher`
   (520 мс, `AnimatedBlurTitle` слушает `ProfileService`).
 - Смена статуса кружка (красный ↔ пустой) идёт ПЛАВНО и МЕДЛЕННО (640 мс,
   `AnimatedContainer` + `AnimatedScale`), «пустой» — прозрачная середина с
@@ -792,7 +798,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   **openjdk-21**. AGP 9 требует Java 17+ → `sudo` с установкой JDK в рецепте НЕ
   нужен (в отличие от старых рецептов с `apt-get install openjdk-21`).
 - **Самообновление выключено в F-Droid-сборке** через
-  `--dart-define=KERAMIKA_NO_SELF_UPDATE=true` → `kSelfUpdateEnabled = false`.
+  `--dart-define=AGYSHA_NO_SELF_UPDATE=true` → `kSelfUpdateEnabled = false`.
   Флаг обязан гасить ОБА места: таблетку обновления в Настройках И тихую
   ежедневную проверку `UpdateService.instance.silentDailyCheck()` в `main.dart`.
   Забыть второе легко — тогда F-Droid-сборка молча ходит в GitHub API.
@@ -808,7 +814,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   changelogs/`<versionCode>`. Их читают и F-Droid, и IzzyOnDroid. Лимиты:
   `short_description` ≤ 80 символов и БЕЗ точки в конце, changelog ≤ 500.
 - **Порядок подачи.** Рецепт обязан указывать `commit:` на коммит, где уже есть
-  и `fastlane/`, и флаг `KERAMIKA_NO_SELF_UPDATE` в `update_service.dart` —
+  и `fastlane/`, и флаг `AGYSHA_NO_SELF_UPDATE` в `update_service.dart` —
   иначе сборка выйдет со старым кодом. Такой коммит — обычный пуш в `main`:
   он же триггерит `ship.yml`, который бампает версию и выпускает релиз. Поэтому
   порядок такой: (1) коммит с `fastlane/` + флагом уходит в `main`; (2) рецепт

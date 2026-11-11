@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/stats_screen.dart';
-import 'package:keramika/widgets/inline_keyboard.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/stats_screen.dart';
+import 'package:agysha/widgets/inline_keyboard.dart';
+import 'package:agysha/widgets/profile_avatar.dart';
 
 /// Регрессы полировки восьмого круга:
 ///  * шапка графика в статистике не переполняется даже на узком экране —
@@ -18,7 +18,7 @@ void main() {
   late File imgFile;
 
   setUp(() async {
-    tmpDir = await Directory.systemTemp.createTemp('keramika_round_eight');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_round_eight');
     imgFile = File('${tmpDir.path}/ava.png');
     await imgFile.writeAsBytes(const <int>[
       0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,

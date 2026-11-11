@@ -398,7 +398,7 @@ class ForgeService {
     'Accept': 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     // GitHub отвечает 403 без User-Agent.
-    'User-Agent': 'Keramika-Forge',
+    'User-Agent': 'Agysha-Forge',
     if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
   };
 

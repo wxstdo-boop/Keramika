@@ -1,12 +1,12 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-    Перепись истории Keramika: вычистить android/key.properties и keystore
+    Перепись истории Agysha: вычистить android/key.properties и keystore
     из всех коммитов и (по флагу) силой обновить GitHub.
 
 .DESCRIPTION
     В истории публичного репозитория лежат android/key.properties (пароли
-    подписи) и android/app/keramika-release.jks (сам ключ). Они удалены из
+    подписи) и android/app/agysha-release.jks (сам ключ). Они удалены из
     трекинга, но читаются через `git show`. Пока ключ не заменён, любой клон
     может выпустить «обновление», которое телефон примет как настоящее.
 
@@ -46,10 +46,10 @@
 [CmdletBinding()]
 param(
     [string]$Repo = 'wxstdo-boop/agysha',
-    [string]$WorkDir = (Join-Path $env:TEMP 'keramika-rewrite'),
+    [string]$WorkDir = (Join-Path $env:TEMP 'agysha-rewrite'),
     [string[]]$SecretPaths = @(
         'android/key.properties',
-        'android/app/keramika-release.jks',
+        'android/app/agysha-release.jks',
         'android/app/keystore.jks'
     ),
     [string]$Token = '',
@@ -102,7 +102,7 @@ function Invoke-GitWithAuth {
     }
 }
 
-Write-Host '=== Перепись истории Keramika ===' -ForegroundColor Cyan
+Write-Host '=== Перепись истории Agysha ===' -ForegroundColor Cyan
 Write-Host "repo    : $RemoteUrl"
 Write-Host "workdir : $WorkDir"
 Write-Host "вычищаем: $($SecretPaths -join ', ')"

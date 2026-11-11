@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/l10n/translations.dart';
-import 'package:keramika/widgets/update_pill.dart';
+import 'package:agysha/l10n/translations.dart';
+import 'package:agysha/widgets/update_pill.dart';
 
 /// Регрессы четвёртого круга полировки:
 ///  * «мотивация дня» — полный набор из 90 цитат в каждой локали, все

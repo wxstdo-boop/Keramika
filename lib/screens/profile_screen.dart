@@ -26,10 +26,10 @@ import '../widgets/smooth_tooltip.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/volumetric_switch.dart';
 
-/// Официальный сайт Keramika. Здесь — события проекта; список кэшируется
+/// Официальный сайт Agysha. Здесь — события проекта; список кэшируется
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
 /// сюда достаточно подставить сетевую загрузку — форма карточки не изменится.
-const String kKeramikaSiteUrl = 'https://keramika.ru';
+const String kAgyshaSiteUrl = 'https://agysha.ru';
 
 /// Плавная шторка листов профиля: кубическая кривая вместо пружины по
 /// умолчанию. Пружина на слабых телефонах проседает по кадрам и читается
@@ -87,10 +87,10 @@ InputDecoration _fieldDecoration(
   ),
 );
 
-/// Экран профиля «керамика-юзера».
+/// Экран профиля «Agysha-юзера».
 ///
 /// Здесь: короткое имя, цветная аватарка, онлайн-статус (тот самый красный
-/// кружок в шапке), рейтинг друзей, своя музыка профиля и события Keramika.
+/// кружок в шапке), рейтинг друзей, своя музыка профиля и события Agysha.
 /// Всё хранится локально ([ProfileService]); сеть нужна только для открытия
 /// событий в браузере.
 class ProfileScreen extends StatefulWidget {
@@ -142,21 +142,21 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  /// События Keramika: заголовок + ссылка. Пока список локальный — он не
+  /// События Agysha: заголовок + ссылка. Пока список локальный — он не
   /// зависит от доступности сайта и открывается мгновенно.
   ///
   /// Новогодний ивент — ОДНИМ пунктом списка: тап по нему открывает то самое
   /// окно со шапками ([NewYearEventBanner]), а не сайт. Раньше ивент жил
   /// отдельной шапкой Деда Мороза в заголовке — теперь он здесь.
-  List<_KeramikaEvent> get _events => [
-    _KeramikaEvent(
+  List<_AgyshaEvent> get _events => [
+    _AgyshaEvent(
       title: Translations.t('eventNewYear', context, 'Новогодний ивент'),
       subtitle: Translations.t(
         'eventNewYearDesc',
         context,
         'Каждый день — новая шапка до 1 января',
       ),
-      url: kKeramikaSiteUrl,
+      url: kAgyshaSiteUrl,
       banner: true,
     ),
   ];
@@ -1155,7 +1155,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 }
 
 /// Пункт списка событий.
-class _KeramikaEvent {
+class _AgyshaEvent {
   final String title;
   final String subtitle;
   final String url;
@@ -1163,7 +1163,7 @@ class _KeramikaEvent {
   /// true — пункт открывает окно новогоднего ивента, а не сайт.
   final bool banner;
 
-  const _KeramikaEvent({
+  const _AgyshaEvent({
     required this.title,
     required this.subtitle,
     required this.url,

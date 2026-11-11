@@ -500,7 +500,7 @@ class ForgeAgent {
           '---\n'
           'Задача: $task\n\n'
           'Изменённые файлы: ${files.join(', ')}\n\n'
-          '_Изменения внесены ИИ-агентом «Кузница» из приложения Keramika._',
+          '_Изменения внесены ИИ-агентом «Кузница» из приложения Agysha._',
       head: branch,
       base: base,
     );
@@ -584,7 +584,7 @@ class ForgeAgent {
   }
 
   String _systemPrompt(String languageCode) =>
-      'Ты — «Кузница», ИИ-агент-программист внутри приложения Keramika '
+      'Ты — «Кузница», ИИ-агент-программист внутри приложения Agysha '
       '(Flutter/Dart, репозиторий $owner/$repo). Ты ведёшь ЖИВОЙ ДИАЛОГ с '
       'разработчиком и по его просьбе правишь код настоящими коммитами в '
       'отдельной ветке, затем открываешь pull request.\n'
@@ -714,13 +714,13 @@ class FreePoolForgeChat implements ForgeChat {
       label: 'Kilo',
       url: _kiloUrl,
       model: 'openrouter/free',
-      userAgent: 'KeramikaApp/1.6.0',
+      userAgent: 'AgyshaApp/1.6.0',
     ),
     const _FreeProvider(
       label: 'Kilo',
       url: _kiloUrl,
       model: 'kilo-auto/free',
-      userAgent: 'KeramikaApp/1.6.0',
+      userAgent: 'AgyshaApp/1.6.0',
     ),
     const _FreeProvider(
       label: 'Murakumo',
@@ -731,7 +731,7 @@ class FreePoolForgeChat implements ForgeChat {
       label: 'OVHcloud',
       url: _ovhUrl,
       model: 'Mistral-Nemo-Instruct-2407',
-      userAgent: 'KeramikaApp/1.6.0',
+      userAgent: 'AgyshaApp/1.6.0',
     ),
   ];
 

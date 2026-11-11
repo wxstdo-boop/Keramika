@@ -1,4 +1,4 @@
-Keramika is a free and open-source alarm clock that will not let you go back to sleep. It bundles alarms, tasks, habits, nutrition tracking and a built-in AI assistant in one Material You app.
+Agysha is a free and open-source alarm clock that will not let you go back to sleep. It bundles alarms, tasks, habits, nutrition tracking and a built-in AI assistant in one Material You app.
 
 ALARMS THAT ACTUALLY WORK
 - Exact alarms via SCHEDULE_EXACT_ALARM and a foreground service that keeps the process alive
@@ -33,6 +33,6 @@ SYSTEM
 - Material You dynamic colours plus a dark theme
 - Localisation: English, Russian, French
 
-Keramika is MIT-licensed. It contains no ads, no trackers and no Google Play Services.
+Agysha is MIT-licensed. It contains no ads, no trackers and no Google Play Services.
 
 Requires Android 8.0 (API 26) or newer.

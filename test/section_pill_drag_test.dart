@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/widgets/section_pill.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/widgets/section_pill.dart';
 
 /// Таблетку разделов можно не только тапнуть, но и «протянуть» пальцем —
 /// как выбор приоритета.

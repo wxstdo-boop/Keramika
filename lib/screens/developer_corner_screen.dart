@@ -894,7 +894,7 @@ class _DeveloperPromptEditorState extends State<DeveloperPromptEditor> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          // Полированный объём керамики: светлый блик сверху,
+                          // Полированный объём agysha: светлый блик сверху,
                           // насыщенное ядро, глубокая кромка снизу.
                           Color.lerp(accent, Colors.white, 0.42)!,
                           accent,

@@ -10,10 +10,10 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/models/alarm.dart';
-import 'package:keramika/models/wake_task.dart';
-import 'package:keramika/services/notification_service.dart';
-import 'package:keramika/services/prefs.dart';
+import 'package:agysha/models/alarm.dart';
+import 'package:agysha/models/wake_task.dart';
+import 'package:agysha/services/notification_service.dart';
+import 'package:agysha/services/prefs.dart';
 
 /// Тесты NotificationService — слоя, который будит пользователя.
 ///

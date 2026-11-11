@@ -1,4 +1,4 @@
-Keramika est un réveil libre et open source qui ne vous laisse pas vous rendormir. Alarmes, tâches, habitudes, suivi nutritionnel et assistant IA intégré réunis dans une seule application Material You.
+Agysha est un réveil libre et open source qui ne vous laisse pas vous rendormir. Alarmes, tâches, habitudes, suivi nutritionnel et assistant IA intégré réunis dans une seule application Material You.
 
 DES ALARMES QUI FONCTIONNENT VRAIMENT
 - Alarmes exactes via SCHEDULE_EXACT_ALARM et un service de premier plan qui maintient le processus en vie
@@ -33,6 +33,6 @@ SYSTÈME
 - Couleurs dynamiques Material You et thème sombre
 - Localisation : anglais, russe, français
 
-Keramika est sous licence MIT. Aucune publicité, aucun traqueur, aucun Google Play Services.
+Agysha est sous licence MIT. Aucune publicité, aucun traqueur, aucun Google Play Services.
 
 Nécessite Android 8.0 (API 26) ou version ultérieure.

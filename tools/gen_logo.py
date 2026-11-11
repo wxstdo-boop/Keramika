@@ -1,4 +1,4 @@
-"""Generate the Keramika / Ада brand logo.
+"""Generate the Agysha / Ада brand logo.
 Design: rich rose-to-peach rounded squircle with a crisp glossy-white "K"
 monogram and an AI sparkle accent. Produces all launcher / splash sizes.
 """
@@ -208,7 +208,7 @@ def build_legacy(size):
 
 
 def main():
-    build_logo(1024).save("assets/keramika.png")
+    build_logo(1024).save("assets/agysha.png")
     build_foreground(432).save("android/app/src/main/res/drawable/ic_launcher_foreground.png")
     build_monochrome(432).save("android/app/src/main/res/drawable/ic_launcher_monochrome.png")
     build_logo(216).save("android/app/src/main/res/drawable-nodpi/ic_notification_large.png")

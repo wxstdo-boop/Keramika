@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/utils/wide_dash_controller.dart';
+import 'package:agysha/utils/wide_dash_controller.dart';
 
 /// Тире должно быть ШИРОКИМ, а не просто «подменённым».
 ///

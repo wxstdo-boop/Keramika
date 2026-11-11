@@ -3,8 +3,8 @@ chcp 65001 >nul
 REM Soft clean only — do NOT delete build/, .dart_tool, or pub cache.
 REM Full rebuild caches are required for fast APK builds on 8GB RAM.
 
-set "PROJECT=C:\Games\keramika"
-echo Keramika soft clean (caches KEPT)...
+set "PROJECT=C:\Games\agysha"
+echo Agysha soft clean (caches KEPT)...
 
 if exist "%PROJECT%\*.log" del /q /f "%PROJECT%\*.log" 2>nul
 if exist "%PROJECT%\*.hprof" del /q /f "%PROJECT%\*.hprof" 2>nul

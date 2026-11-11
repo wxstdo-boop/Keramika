@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/widgets/due_date_picker.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/widgets/due_date_picker.dart';
 
 /// Диалог выбора даты не должен менять высоту при смене месяца: раньше
 /// число недель менялось (5↔6) и диалог «скукоживался»/раздувался скачком —

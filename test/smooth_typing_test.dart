@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/widgets/smooth_typing.dart';
+import 'package:agysha/widgets/smooth_typing.dart';
 
 /// Суммарная «чернота» картинки. Буква появляется из полной прозрачности —
 /// значит на старте анимации чернил почти нет, к концу их максимум.

@@ -7,7 +7,7 @@ import '../l10n/translations.dart';
 import '../services/haptics.dart';
 import '../services/reality_check_service.dart';
 import '../widgets/animated_fab_row.dart' show sectionPillVisible;
-import '../widgets/icons/keramika_icons.dart';
+import '../widgets/icons/agysha_icons.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart';
 
@@ -82,25 +82,25 @@ final ValueNotifier<double?> sectionDragPage = ValueNotifier<double?>(null);
 /// Значки разделов: у каждого своя геометрическая фигура.
 final List<Widget Function(BuildContext context, {double size, Color? color, double? strokeWidth})>
 sectionIconBuilders = [
-  (context, {size = 17, color, strokeWidth}) => KkAlarmIcon(
+  (context, {size = 17, color, strokeWidth}) => AgAlarmIcon(
     size: size,
     color: color,
-    strokeWidth: strokeWidth ?? kKkStroke,
+    strokeWidth: strokeWidth ?? kAgStroke,
   ),
-  (context, {size = 17, color, strokeWidth}) => KkHabitsIcon(
+  (context, {size = 17, color, strokeWidth}) => AgHabitsIcon(
     size: size,
     color: color,
-    strokeWidth: strokeWidth ?? kKkStroke,
+    strokeWidth: strokeWidth ?? kAgStroke,
   ),
-  (context, {size = 17, color, strokeWidth}) => KkTasksIcon(
+  (context, {size = 17, color, strokeWidth}) => AgTasksIcon(
     size: size,
     color: color,
-    strokeWidth: strokeWidth ?? kKkStroke,
+    strokeWidth: strokeWidth ?? kAgStroke,
   ),
-  (context, {size = 17, color, strokeWidth}) => KkRealityCheckIcon(
+  (context, {size = 17, color, strokeWidth}) => AgRealityCheckIcon(
     size: size,
     color: color,
-    strokeWidth: strokeWidth ?? kKkStroke,
+    strokeWidth: strokeWidth ?? kAgStroke,
   ),
 ];
 

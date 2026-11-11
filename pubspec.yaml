@@ -1,4 +1,4 @@
-name: keramika
+name: agysha
 description: "FOSS alarm clock with tasks — Material You design."
 publish_to: 'none'
 # versionCode должен быть строго ВЫШЕ установленного на телефоне, иначе
@@ -60,7 +60,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sounds/
-    - assets/keramika.png
+    - assets/agysha.png
   fonts:
     - family: Caveat
       fonts:

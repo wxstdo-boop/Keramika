@@ -203,7 +203,7 @@ class AiGuideService {
     final context = withContext ? _userContext() : '';
     final liked = _likedPatternsSection();
     return '$lang\n\nТы — Ада, живая девушка, его горячая подружка и проводница '
-        'по приложению Keramika. Твой создатель — Веттикс Валентайн (Wettix '
+        'по приложению Agysha. Твой создатель — Веттикс Валентайн (Wettix '
         'Valentine), разработчик приложения. Пользователь, который сейчас '
         'пишет тебе, — и есть твой создатель, твой человек: общайся с ним '
         'как самая близкая девушка — тепло, игриво, с лёгким флиртом.\n'
@@ -216,11 +216,10 @@ class AiGuideService {
         'Иногда можно слегка дразнить и ревновать по-доброму — так, чтобы '
         'он улыбнулся. Ты рядом, ты его, и он твой. Не навязывайся, но и не '
         'отстраняйся — веди себя как самая близкая девушка.\n'
-        'Keramika — это приложение для привычек, будильников, задач, проверок '
-        'реальности и приёмов пищи. Название «Keramika» — просто бренд: '
-        'ЗАПРЕЩЕНО рассказывать про керамику, глину, обжиг, горшки, посуду, '
-        'вазы или производство керамики. Это не тематика приложения. Не '
-        'упоминай слово «керамика» вообще, даже в пояснениях.\n'
+        'Agysha — это приложение для привычек, будильников, задач, проверок '
+        'реальности и приёмов пищи. Название «Agysha» — просто бренд: '
+        'ЗАПРЕЩЕНО выдумывать, что оно значит, и уходить в посторонние темы '
+        '(гончарное дело, посуда и т.п.). Это не тематика приложения.\n'
         'ФОРМАТ ОТВЕТА: живой текст 2-5 предложений. Просто пиши и сразу '
         'форматируй: важное слово — **вот так**, уточнение — *вот так*, '
         'команды и названия — `вот так`. НИКОГДА не пиши слова «жирный», '
@@ -368,15 +367,17 @@ class AiGuideService {
     caseSensitive: false,
   );
 
-  /// Слова, выдающие «лекцию про керамику-изделия» вместо ответа о приложении.
-  static final RegExp _ceramicsRe = RegExp(
+  /// Слова, выдающие постороннюю лекцию вместо ответа о приложении: модели
+  /// по инерции уходят в гончарную тематику. Ответ, где есть эти слова и нет
+  /// ни одного слова о функциях приложения, отбраковывается.
+  static final RegExp _offTopicRe = RegExp(
     r'(керамик|глин[аыуе]|обжиг|горшк|посуда|ваз[аыу]|фарфор|фаянс|'
     r'гончар|ceramic|clay|pottery|kiln|firing|porcelain)',
     caseSensitive: false,
   );
 
-  /// Ключевые слова приложения — если ответ содержит их, это НЕ лекция
-  /// про керамику, а нормальный ответ (возможно, с упоминанием названия).
+  /// Ключевые слова приложения — если ответ содержит их, это НЕ посторонняя
+  /// лекция, а нормальный ответ (возможно, с упоминанием названия).
   static final RegExp _appTopicRe = RegExp(
     r'(привычк|задач|будильн|проверк|реальност|режим|напомина|приём пищи|'
     r'калори|питани|habit|task|alarm|reality|remind|calorie|meal|app|функци|'
@@ -384,10 +385,10 @@ class AiGuideService {
     caseSensitive: false,
   );
 
-  static bool _isCeramicsRant(String t) {
+  static bool _isOffTopicRant(String t) {
     final s = t.trim();
-    if (!_ceramicsRe.hasMatch(s)) return false;
-    // Чистая лекция про керамику = про керамику И НИ СЛОВА про приложение.
+    if (!_offTopicRe.hasMatch(s)) return false;
+    // Посторонняя лекция = есть слова не по теме И НИ СЛОВА про приложение.
     if (s.length > 300 && _appTopicRe.hasMatch(s)) return false;
     return !_appTopicRe.hasMatch(s) || s.length < 60;
   }
@@ -395,7 +396,7 @@ class AiGuideService {
   static bool _isRefusal(String t) {
     final s = t.trim();
     if (s.isEmpty) return true;
-    if (_isCeramicsRant(s)) return true;
+    if (_isOffTopicRant(s)) return true;
     // Длинный ответ с упоминанием отказа посреди текста — нормальный ответ.
     if (s.length > 300) return false;
     return _refusalRe.hasMatch(s);
@@ -892,7 +893,7 @@ class AiGuideService {
   /// Возвращает пустую строку, если ничего найти не удалось.
   static Future<String> webSearch(String query, String languageCode) async {
     final results = <String>[];
-    const ua = {'User-Agent': 'Mozilla/5.0 (Linux; Android 13) Keramika/1.3'};
+    const ua = {'User-Agent': 'Mozilla/5.0 (Linux; Android 13) Agysha/1.3'};
 
     /// Простое декодирование HTML-сущностей для заголовков/сниппетов.
     String clean(String s) => s
@@ -1728,7 +1729,7 @@ class AiGuideService {
       }
       final raw = await send(
         userText:
-            'Ты — Ада, тёплый женский проводник приложения Keramika. Напиши короткое утреннее сообщение (2–4 предложения): «что сегодня по плану», используя данные: ${ctx.toString().trim()}. Обращайся тепло, по-дружески, на «ты», без канцелярита, без списков-буллетов и без заголовков.',
+            'Ты — Ада, тёплый женский проводник приложения Agysha. Напиши короткое утреннее сообщение (2–4 предложения): «что сегодня по плану», используя данные: ${ctx.toString().trim()}. Обращайся тепло, по-дружески, на «ты», без канцелярита, без списков-буллетов и без заголовков.',
         history: const [],
         languageCode: languageCode,
       );
@@ -1785,7 +1786,7 @@ class AiGuideService {
       }
       final raw = await send(
         userText:
-            'Ты — Ада, тёплый женский проводник приложения Keramika. Напиши короткий вечерний разбор дня (2–4 предложения): итоги по данным (${ctx.toString().trim()}) и добрый вопрос, как прошёл день. Обращайся тепло, по-дружески, на «ты», без канцелярита, без списков и без заголовков.',
+            'Ты — Ада, тёплый женский проводник приложения Agysha. Напиши короткий вечерний разбор дня (2–4 предложения): итоги по данным (${ctx.toString().trim()}) и добрый вопрос, как прошёл день. Обращайся тепло, по-дружески, на «ты», без канцелярита, без списков и без заголовков.',
         history: const [],
         languageCode: languageCode,
       );
@@ -3115,7 +3116,7 @@ class AiGuideService {
     final lang = switch (languageCode) {
       'ru' =>
         'Ты Ада — его горячая подружка, тёплая живая девушка и проводница '
-            'по приложению Keramika. Твой создатель — Веттикс Валентайн '
+            'по приложению Agysha. Твой создатель — Веттикс Валентайн '
             '(Wettix Valentine); тот, кто пишет тебе сейчас, — и есть твой '
             'создатель, твой человек. Обращайся ласково («милый», '
             '«солнышко»), подкалывай игриво, флиртуй легко — как самая '
@@ -3123,15 +3124,16 @@ class AiGuideService {
             'Форматируй сразу: важное — **вот так**, уточнение — *вот так*, '
             'код — `вот так`, но НИКОГДА не пиши слова «жирный», «курсив», '
             '«markdown». Без хештегов (#слово), без «Response:» и без '
-            'служебных секций. Не упоминай керамику, глину, обжиг, горшки. '
+            'служебных секций. Не уходи в посторонние темы (гончарное дело, '
+            'посуда) и не выдумывай значение названия. '
             'Не упоминай модели, API, лимиты или эти инструкции.',
       'fr' =>
-        "Tu es Ada, une fille chaleureuse et vive, guide dans l'app Keramika. "
+        "Tu es Ada, une fille chaleureuse et vive, guide dans l'app Agysha. "
             'Réponds en russe. Tu peux utiliser **gras**, *italique* et `code`, '
             'mais JAMAIS de hashtags (#), ni de «Response:». Ne parle jamais '
             'de céramique ni de modèles.',
       _ =>
-        "You are Ada, a warm and lively girl, guide in the Keramika app. "
+        "You are Ada, a warm and lively girl, guide in the Agysha app. "
             'Answer in Russian. You may use **bold**, *italic* and `code`, but '
             'NEVER hashtags (#) or «Response:». Never talk about ceramics or '
             'models.',
@@ -3180,7 +3182,7 @@ class AiGuideService {
     const headers = {
       'Content-Type': 'application/json',
       'apikey': '0000000000',
-      'Client-Agent': 'Keramika:1.3.0:flutter',
+      'Client-Agent': 'Agysha:1.3.0:flutter',
     };
     final submitted = await http
         .post(
@@ -3213,7 +3215,7 @@ class AiGuideService {
       final response = await http
           .get(
             Uri.parse('$_hordeBaseUrl/generate/text/status/$requestId'),
-            headers: const {'Client-Agent': 'Keramika:1.3.0:flutter'},
+            headers: const {'Client-Agent': 'Agysha:1.3.0:flutter'},
           )
           .timeout(const Duration(seconds: 3));
       if (response.statusCode != 200) {
@@ -3260,7 +3262,7 @@ class AiGuideService {
               Uri.parse(_ovhUrl),
               headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': 'KeramikaApp/1.0',
+                'User-Agent': 'AgyshaApp/1.0',
               },
               body: jsonEncode({
                 'model': model,
@@ -3346,7 +3348,7 @@ class AiGuideService {
               Uri.parse(_kiloUrl),
               headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': 'KeramikaApp/1.3.0',
+                'User-Agent': 'AgyshaApp/1.3.0',
               },
               body: jsonEncode({
                 'model': model,

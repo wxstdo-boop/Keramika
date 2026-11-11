@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/l10n/translations.dart';
+import 'package:agysha/l10n/translations.dart';
 
 /// Регресс-тест на целостность словарей переводов.
 ///

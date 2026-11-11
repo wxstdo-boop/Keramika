@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/services/app_version.dart';
+import 'package:agysha/services/app_version.dart';
 
 /// Регресс-тест: версия в приложении и версия в `pubspec.yaml` не должны
 /// расходиться.

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:keramika/utils/page_transitions.dart';
+import 'package:agysha/utils/page_transitions.dart';
 
 /// Блокировка и разблокировка обязаны выглядеть ОДНИМ движением.
 ///

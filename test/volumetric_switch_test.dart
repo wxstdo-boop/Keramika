@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:keramika/widgets/volumetric_switch.dart';
+import 'package:agysha/widgets/volumetric_switch.dart';
 
 void main() {
   testWidgets('VolumetricSwitch renders without StackParentData error', (

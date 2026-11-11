@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/l10n/locale_provider.dart';
-import 'package:keramika/screens/add_task_screen.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/task_service.dart';
+import 'package:agysha/l10n/locale_provider.dart';
+import 'package:agysha/screens/add_task_screen.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/task_service.dart';
 
 /// «+ Новая категория» стоит в ОДНОМ ряду с категориями и выровнена по их
 /// центру: раньше кнопка не центрировалась и прилипала к верху строки —
@@ -23,7 +23,7 @@ void main() {
     await initPrefs();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 3));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_cat_row');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_cat_row');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

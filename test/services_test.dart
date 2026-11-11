@@ -5,21 +5,21 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/main.dart' show buildBackupPayload;
-import 'package:keramika/models/habit.dart';
-import 'package:keramika/models/task.dart';
-import 'package:keramika/services/ai_guide_service.dart';
-import 'package:keramika/services/alarm_service.dart';
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/habit_service.dart';
-import 'package:keramika/services/nutrition_service.dart';
-import 'package:keramika/services/new_year_event_service.dart';
-import 'package:keramika/services/reality_check_service.dart';
-import 'package:keramika/services/prefs.dart';
-import 'package:keramika/services/pin_service.dart';
-import 'package:keramika/services/settings_service.dart';
-import 'package:keramika/services/task_service.dart';
-import 'package:keramika/services/update_service.dart';
+import 'package:agysha/main.dart' show buildBackupPayload;
+import 'package:agysha/models/habit.dart';
+import 'package:agysha/models/task.dart';
+import 'package:agysha/services/ai_guide_service.dart';
+import 'package:agysha/services/alarm_service.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/habit_service.dart';
+import 'package:agysha/services/nutrition_service.dart';
+import 'package:agysha/services/new_year_event_service.dart';
+import 'package:agysha/services/reality_check_service.dart';
+import 'package:agysha/services/prefs.dart';
+import 'package:agysha/services/pin_service.dart';
+import 'package:agysha/services/settings_service.dart';
+import 'package:agysha/services/task_service.dart';
+import 'package:agysha/services/update_service.dart';
 
 /// Песочница для сервисов: реальный File IO во временную папку +
 /// мокнутый SharedPreferences. Каждый тест начинает с пустого хранилища.
@@ -33,7 +33,7 @@ void main() {
     PinService.resetCacheForTesting();
     JsonFile.resetForTesting();
     JsonFile.useEncryptionKeyForTesting(List<int>.filled(32, 1));
-    tmpDir = await Directory.systemTemp.createTemp('keramika_test');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

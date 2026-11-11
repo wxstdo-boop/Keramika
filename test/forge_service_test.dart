@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:keramika/services/forge_agent.dart';
-import 'package:keramika/services/forge_service.dart';
+import 'package:agysha/services/forge_agent.dart';
+import 'package:agysha/services/forge_service.dart';
 
 /// Фейковый GitHub поверх реального http-клиента: проверяем настоящий
 /// разбор ответов и настоящие HTTP-вызовы, а не заглушки сервиса.
@@ -413,7 +413,7 @@ void main() {
         _call('read_file', {'path': 'lib/main.dart'}),
         _call('write_file', {
           'path': 'lib/main.dart',
-          'content': 'void main() => runApp(KeramikaApp());',
+          'content': 'void main() => runApp(AgyshaApp());',
           'message': 'Кузница: точка входа',
         }),
         _call('finish', {'summary': 'Поправил точку входа'}),
@@ -438,7 +438,7 @@ void main() {
       expect(steps.map((s) => s.tool), ['read_file', 'write_file']);
       expect(
         fake.branchFiles.values.any(
-          (f) => (f['lib/main.dart'] ?? '').contains('KeramikaApp'),
+          (f) => (f['lib/main.dart'] ?? '').contains('AgyshaApp'),
         ),
         isTrue,
       );

@@ -5,9 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/services/json_file.dart';
-import 'package:keramika/services/migration.dart';
-import 'package:keramika/services/prefs.dart';
+import 'package:agysha/services/json_file.dart';
+import 'package:agysha/services/migration.dart';
+import 'package:agysha/services/prefs.dart';
 
 /// Тесты миграции данных со старого хранилища (SharedPreferences) на
 /// JSON-файлы.
@@ -28,7 +28,7 @@ void main() {
 
   setUp(() async {
     JsonFile.resetForTesting();
-    directory = await Directory.systemTemp.createTemp('keramika_migration_test');
+    directory = await Directory.systemTemp.createTemp('agysha_migration_test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),

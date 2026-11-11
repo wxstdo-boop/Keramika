@@ -4,13 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:keramika/main.dart' show saveBackupBytes;
-import 'package:keramika/services/prefs.dart';
+import 'package:agysha/main.dart' show saveBackupBytes;
+import 'package:agysha/services/prefs.dart';
 
 /// Регресс-тест на запись файла автоэкспорта.
 ///
 /// Жалоба «автоэкспорт ни пизды не работает» чаще всего = файл не появляется.
-/// На Android основной путь пишет в Download/Keramika через нативный
+/// На Android основной путь пишет в Download/Agysha через нативный
 /// MediaStore-канал; когда он недоступен (или платформа не Android), остаётся
 /// фолбэк через path_provider. Тест фиксирует, что фолбэк РЕАЛЬНО пишет файл,
 /// а не молча теряет данные: раньше ошибки записи тонули, и пользователь не
@@ -22,7 +22,7 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await initPrefs();
-    tmpDir = await Directory.systemTemp.createTemp('keramika_auto_export');
+    tmpDir = await Directory.systemTemp.createTemp('agysha_auto_export');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -49,16 +49,16 @@ void main() {
   test('файл бэкапа действительно записывается и перезаписывается', () async {
     final bytes = <int>[123, 34, 97, 34, 58, 49, 125]; // {"a":1}
 
-    final path = await saveBackupBytes(bytes, 'keramika-auto-backup.json');
+    final path = await saveBackupBytes(bytes, 'agysha-auto-backup.json');
 
     final file = File(path);
     expect(await file.exists(), isTrue, reason: 'файл бэкапа не создан');
     expect(await file.readAsBytes(), bytes);
-    expect(path, endsWith('keramika-auto-backup.json'));
+    expect(path, endsWith('agysha-auto-backup.json'));
 
     // Повторный экспорт перезаписывает тот же файл (фиксированное имя),
     // а не плодит копии и не падает на уже существующем.
-    final again = await saveBackupBytes(<int>[49], 'keramika-auto-backup.json');
+    final again = await saveBackupBytes(<int>[49], 'agysha-auto-backup.json');
     expect(again, path);
     expect(await File(path).readAsBytes(), <int>[49]);
   });
