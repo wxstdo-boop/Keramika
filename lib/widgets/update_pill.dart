@@ -271,12 +271,18 @@ class _UpdatePillState extends State<UpdatePill>
                     height: 15,
                     child: AnimatedBuilder(
                       animation: _spin,
-                      builder: (context, _) => CustomPaint(
-                        painter: _UpdateGlyphPainter(
-                          progress: _busy ? _spin.value : 0,
-                          color: cs.onPrimaryContainer,
-                          hole: cs.primaryContainer,
-                          running: _busy,
+                      builder: (context, _) => RepaintBoundary(
+                        // Свой слой: прыжок перерисовывает только зайчика, а не
+                        // всю строку таблетки — движение остаётся ровным.
+                        child: CustomPaint(
+                          painter: _UpdateGlyphPainter(
+                            progress: _busy ? _spin.value : 0,
+                            color: cs.onPrimaryContainer,
+                            hole: cs.primaryContainer,
+                            running: _busy,
+                            devicePixelRatio:
+                                MediaQuery.devicePixelRatioOf(context),
+                          ),
                         ),
                       ),
                     ),
@@ -321,10 +327,15 @@ class _UpdateGlyphPainter extends CustomPainter {
     required this.color,
     required this.hole,
     required this.running,
+    required this.devicePixelRatio,
   });
 
   final double progress;
   final Color color;
+
+  /// Плотность экрана: нужна, чтобы округлять вертикальный сдвиг глифа до
+  /// целого ФИЗИЧЕСКОГО пикселя (иначе значок «мылится» и мерцает).
+  final double devicePixelRatio;
 
   /// Цвет «окна» — фон таблетки. Оставлен для совместимости: у зайчика
   /// сквозных деталей нет, глиф залит целиком.
@@ -384,7 +395,12 @@ class _UpdateGlyphPainter extends CustomPainter {
 
     final tp = _glyph(color, size.shortestSide * 0.84);
     canvas.save();
-    canvas.translate(size.width / 2, size.height / 2 - lift);
+    // Сдвиг округляем до ФИЗИЧЕСКОГО пикселя: при дробном смещении глиф
+    // попадает на полпикселя и при каждом кадре «мылится»/мерцает — на
+    // маленьком значке это читалось как дёрганье. Целый пиксель — ровно.
+    final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
+    final snapped = (lift * dpr).roundToDouble() / dpr;
+    canvas.translate(size.width / 2, size.height / 2 - snapped);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
   }
@@ -394,7 +410,8 @@ class _UpdateGlyphPainter extends CustomPainter {
       oldDelegate.progress != progress ||
       oldDelegate.color != color ||
       oldDelegate.hole != hole ||
-      oldDelegate.running != running;
+      oldDelegate.running != running ||
+      oldDelegate.devicePixelRatio != devicePixelRatio;
 }
 
 /// Окно подтверждения обновления.
