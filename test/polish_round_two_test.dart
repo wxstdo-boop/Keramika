@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:keramika/l10n/locale_provider.dart';
 import 'package:keramika/screens/profile_screen.dart';
-import 'package:keramika/widgets/profile_avatar.dart';
 import 'package:keramika/screens/settings_screen.dart';
 import 'package:keramika/services/json_file.dart';
 import 'package:keramika/main.dart';
