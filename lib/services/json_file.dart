@@ -119,15 +119,49 @@ class JsonFile {
     final documents = await getApplicationDocumentsDirectory();
     // `v1` is the store used by earlier recovery builds.
     final generation = globalPrefs.getString(_recoveryGenerationKey) ?? 'v1';
-    _recoverySecureStorage = _recoveryStorageFor(generation);
-    _dir = Directory('${documents.path}/agysha_recovery_$generation');
+    final location = recoveryLocation(
+      documents.path,
+      generation,
+      currentExists: await Directory(
+        '${documents.path}/agysha_recovery_$generation',
+      ).exists(),
+      legacyExists: await Directory(
+        '${documents.path}/keramika_recovery_$generation',
+      ).exists(),
+    );
+    _recoverySecureStorage = _recoveryStorageFor(generation, location.namespace);
+    _dir = Directory(location.path);
     _activeSecureStorage = _recoverySecureStorage;
   }
 
-  static FlutterSecureStorage _recoveryStorageFor(String generation) =>
+  /// Выбирает каталог и namespace восстановленного хранилища.
+  ///
+  /// У тех, кто уже восстановился из бэкапа до ребрендинга, данные лежат в
+  /// каталоге прежнего бренда (`keramika_recovery_*`). Если новый каталог ещё
+  /// не создан, а старый есть — остаёмся в нём, иначе восстановленные данные
+  /// «исчезли» бы из приложения после обновления.
+  @visibleForTesting
+  static ({String path, String namespace}) recoveryLocation(
+    String documentsPath,
+    String generation, {
+    required bool currentExists,
+    required bool legacyExists,
+  }) {
+    final useLegacy = !currentExists && legacyExists;
+    return (
+      path: '$documentsPath/${useLegacy ? 'keramika' : 'agysha'}_recovery_'
+          '$generation',
+      namespace: useLegacy ? 'keramika' : 'agysha',
+    );
+  }
+
+  static FlutterSecureStorage _recoveryStorageFor(
+    String generation, [
+    String namespace = 'agysha',
+  ]) =>
       FlutterSecureStorage(
         aOptions: AndroidOptions(
-          storageNamespace: 'agysha_recovery_$generation',
+          storageNamespace: '${namespace}_recovery_$generation',
           resetOnError: false,
           migrateOnAlgorithmChange: true,
           migrateWithBackup: true,
