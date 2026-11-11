@@ -4,6 +4,26 @@ then install over the existing Android device (keep user data):
 `& "$env:USERPROFILE\dev\android-sdk\platform-tools\adb.exe" install -r "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"`.
 flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\dev\flutter\bin\flutter.bat`, adb at `C:\Users\Larafut\dev\android-sdk\platform-tools\adb.exe` (see `android/local.properties`).
 
+## Идентификаторы проекта (переименование 2026-11)
+
+Android-пакет `com.wetcorp.agysha` (был `com.wetidom.keramika`), репозиторий
+`wxstdo-boop/Agysha` (GitHub капитализирует первую букву; был `Keramika`,
+старые ссылки редиректят). При переименовании менять СИНХРОННО:
+
+- `android/app/build.gradle.kts` — `namespace` и `applicationId`;
+- каталог `android/app/src/main/kotlin/com/wetcorp/agysha/` + `package`-строки
+  во всех `.kt`, строки `MethodChannel`/action'ов и `-keep` в `proguard-rules.pro`;
+- в Dart все `MethodChannel('com.wetcorp.agysha/...')` (main, alarm_scheduler,
+  notification_service, haptics, installer, screen_reader_service,
+  android_settings) — рассинхрон канала даёт молчаливо нерабочие будильники;
+- `kUpdateRepoOwner`/`kUpdateRepoName` в `lib/services/update_service.dart` —
+  от них зависит автообновление; ссылка в Настройках (`settings_screen.dart`);
+- рецепт F-Droid `fdroid/metadata/com.wetcorp.agysha.yml` (имя файла = package id);
+- forge-тесты держат `owner`/`repo` в моках — при смене имени падают.
+
+Имя бренда в UI («Keramika»), имена APK-ассетов (`Keramika-<ver>-<abi>.apk`) и
+keystore (`keramika-release.jks`, alias `keramika`) переименование НЕ трогает.
+
 ## Linux dev sandbox (agent environment)
 
 No Flutter and no Android SDK are preinstalled, and the sandbox can be wiped
