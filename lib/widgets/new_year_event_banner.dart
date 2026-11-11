@@ -1064,7 +1064,7 @@ class _HatProgress extends StatelessWidget {
           child: LinearProgressIndicator(
             value: total == 0 ? 0 : (shown / total).clamp(0.0, 1.0),
             minHeight: 7,
-            backgroundColor: cs.outlineVariant.withValues(alpha: 0.4),
+            backgroundColor: cs.outlineVariant.withValues(alpha: 0.26),
             color: accent,
             borderRadius: BorderRadius.circular(6),
           ),

@@ -53,7 +53,7 @@ class InlineKeyboard extends StatelessWidget {
         color: cs.surfaceContainer,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(Radii.xl)),
         border: Border(
-          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
         ),
       ),
       child: Column(

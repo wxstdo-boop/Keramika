@@ -115,7 +115,7 @@ class _UpdatePillState extends State<UpdatePill>
           final dim = (theme.brightness == Brightness.dark
                   ? Colors.black
                   : theme.colorScheme.surface)
-              .withValues(alpha: 0.46 * curved.value);
+              .withValues(alpha: 0.30 * curved.value);
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -382,13 +382,17 @@ class _UpdateGlyphPainter extends CustomPainter {
     // Деформация мягкая и симметричная: в полёте зайчик чуть вытягивается
     // вверх, у «земли» — чуть приседает. Прежнее сплющивание ниже единицы
     // выглядело как «зайчика прищемило»; теперь форма возвращается к кругу.
-    final scaleY = 1 + hop * 0.06;
-    final scaleX = 1 - hop * 0.04;
+    final scaleY = 1 + hop * 0.05;
+    final scaleX = 1 - hop * 0.03;
     // Прыжок ниже: высокий подскок в маленькой таблетке читался как рывок.
     final lift = hop * size.height * 0.12;
 
     final tp = _glyph(color, size.shortestSide * 0.84);
     canvas.save();
+    // Подъём и приземление — по ОДНОЙ плавной кривой `hop` (уже easeInOutSine),
+    // без отдельной «отбивки» у земли: вторая кривая давала рывок в нижней
+    // точке. `translate` идёт по непрерывному hop, поэтому касание земли
+    // такое же мягкое, как и отрыв.
     canvas.translate(size.width / 2, size.height / 2 - lift);
     canvas.scale(scaleX, scaleY);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
@@ -457,15 +461,13 @@ class _UpdateConfirmDialog extends StatelessWidget {
               // Полупрозрачная подложка БЕЗ `BackdropFilter`: под анимацией
               // появления/ухода размытие пересобиралось каждый кадр и окно
               // «мигало» (та же грабля, что у снекбара). Прозрачность даёт
-              // «стекло», а плавность — чистая отрисовка кадра. Альфа — как у
-              // снекбара (0.72/0.78): сквозь окно видно приложение, но текст
-              // остаётся читаемым.
+              // стеклянный тон.
               decoration: BoxDecoration(
-                // Тот же «стеклянный» тон, что у снекбара (primaryContainer
-                // 0.72/0.78): окно и плашка обновления выглядят как одна
-                // семья, и сквозь фон видно приложение.
+                // «Стекло» той же семьи, что у снекбара, но чуть прозрачнее:
+                // сквозь окно должно быть видно приложение, иначе полупрозрачный
+                // фон читается как непрозрачный.
                 color: cs.primaryContainer.withValues(
-                  alpha: cs.brightness == Brightness.dark ? 0.72 : 0.78,
+                  alpha: cs.brightness == Brightness.dark ? 0.58 : 0.64,
                 ),
                 borderRadius: BorderRadius.circular(Radii.xl - 1),
               ),

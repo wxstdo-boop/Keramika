@@ -1599,7 +1599,7 @@ class _CheckButtonState extends State<_CheckButton> {
                 border: Border.all(
                   color: on
                       ? Colors.white.withValues(alpha: 0.42)
-                      : cs.outlineVariant.withValues(alpha: 0.5),
+                      : cs.outlineVariant.withValues(alpha: 0.3),
                   width: 1,
                 ),
                 boxShadow: [

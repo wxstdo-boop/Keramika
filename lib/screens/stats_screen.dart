@@ -39,6 +39,14 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
   @override
   void initState() {
     super.initState();
+    // Перерисовываем экран, когда данные догрузились: без этого график и
+    // карточки могли показаться «пустыми» и «прогружались» только при
+    // следующем действии — на медленном старте это читалось как «график не
+    // сразу появился».
+    _rcSvc.addListener(_onData);
+    _habitSvc.addListener(_onData);
+    _taskSvc.addListener(_onData);
+    _logSvc.addListener(_onData);
     _rcSvc.load();
     _habitSvc.load();
     _taskSvc.load();
@@ -51,8 +59,16 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     );
   }
 
+  void _onData() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _rcSvc.removeListener(_onData);
+    _habitSvc.removeListener(_onData);
+    _taskSvc.removeListener(_onData);
+    _logSvc.removeListener(_onData);
     _glitchCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -432,7 +448,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
 /// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
 /// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
 /// Все прочие карточки — волосяные ([_hairline]).
-const double _hairline = 0.32;
+const double _hairline = 0.16;
 
 Widget _ringedCard({
   required ThemeData theme,
@@ -441,20 +457,23 @@ Widget _ringedCard({
   double radius = 20,
   bool thick = false,
 }) {
-  final thickness = thick ? 1.6 : _hairline;
+  // Кант — совсем тонкий. У «главной» плашки он лишь чуть плотнее волосяного:
+  // заметно толстая рамка читалась как «коробка», пользователь просил тоньше
+  // и у неё тоже.
+  final thickness = thick ? 0.8 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
   // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
   final aTop = thick
-      ? (dark ? 0.75 : 0.60)
-      : (dark ? 0.34 : 0.22);
+      ? (dark ? 0.60 : 0.46)
+      : (dark ? 0.26 : 0.16);
   final aMid = thick
-      ? (dark ? 0.30 : 0.22)
-      : (dark ? 0.07 : 0.05);
+      ? (dark ? 0.22 : 0.16)
+      : (dark ? 0.05 : 0.04);
   final aEnd = thick
-      ? (dark ? 0.55 : 0.42)
-      : (dark ? 0.24 : 0.14);
+      ? (dark ? 0.44 : 0.32)
+      : (dark ? 0.18 : 0.10);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius + thickness),
@@ -969,9 +988,9 @@ class _DaysBarPainter extends CustomPainter {
         rect,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.5
+          ..strokeWidth = 0.4
           ..isAntiAlias = true
-          ..color = todayColor.withValues(alpha: 0.14),
+          ..color = todayColor.withValues(alpha: 0.10),
       );
 
       // «Сегодня» — последний столбик: подписываем дату акцентом.

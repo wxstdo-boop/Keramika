@@ -114,9 +114,9 @@ ThemeData buildKeramikaTheme(
         ),
         side: BorderSide(
           color: scheme.outlineVariant.withValues(
-            alpha: isDark ? 0.42 : 0.55,
+            alpha: isDark ? 0.26 : 0.34,
           ),
-          width: 0.8,
+          width: 0.5,
         ),
       ),
     ),

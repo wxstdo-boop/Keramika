@@ -94,7 +94,7 @@ class _DueDatePickerDialogState extends State<_DueDatePickerDialog> {
         decoration: BoxDecoration(
           color: cs.surfaceContainerLow,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.22),

@@ -1593,7 +1593,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 0.6,
           ),
         ),
         elevation: 0,
@@ -1734,25 +1735,58 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                           ),
                         ),
+                        // Бейдж «Recommended» — в том же виде, что таблетка
+                        // обновления рядом: тонкое градиентное кольцо и
+                        // полупрозрачная подложка. Плоская кайма «разливалась»
+                        // и выбивалась из ряда.
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
+                          padding: const EdgeInsets.all(1),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.28,
-                              ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                theme.colorScheme.primary.withValues(
+                                  alpha: theme.brightness == Brightness.dark
+                                      ? 0.60
+                                      : 0.45,
+                                ),
+                                theme.colorScheme.primary.withValues(
+                                  alpha: theme.brightness == Brightness.dark
+                                      ? 0.12
+                                      : 0.10,
+                                ),
+                                theme.colorScheme.tertiary.withValues(
+                                  alpha: theme.brightness == Brightness.dark
+                                      ? 0.48
+                                      : 0.30,
+                                ),
+                              ],
+                              stops: const [0, 0.55, 1],
                             ),
                           ),
-                          child: Text(
-                            'Recommended',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.w800,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primaryContainer
+                                  .withValues(
+                                    alpha:
+                                        theme.brightness == Brightness.dark
+                                        ? 0.72
+                                        : 0.78,
+                                  ),
+                              borderRadius: BorderRadius.circular(998),
+                            ),
+                            child: Text(
+                              'Recommended',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
@@ -1805,8 +1839,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            width: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 0.6,
           ),
         ),
         elevation: 0,
@@ -1870,8 +1904,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            width: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 0.6,
           ),
         ),
         elevation: 0,

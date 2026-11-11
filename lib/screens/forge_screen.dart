@@ -669,7 +669,7 @@ class _ForgeScreenState extends State<ForgeScreen> {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -712,7 +712,7 @@ class _ForgeScreenState extends State<ForgeScreen> {
           border: Border.all(
             color: isUser
                 ? accent.withValues(alpha: 0.35)
-                : cs.outlineVariant.withValues(alpha: 0.5),
+                : cs.outlineVariant.withValues(alpha: 0.3),
           ),
         ),
         child: Column(
@@ -867,7 +867,7 @@ class _ForgeScreenState extends State<ForgeScreen> {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
         ),
       ),
       child: Center(

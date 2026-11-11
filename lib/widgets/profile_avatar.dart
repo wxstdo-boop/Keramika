@@ -179,52 +179,82 @@ class ProfileAvatar extends StatelessWidget {
   /// обводкой — она появляется вместе с картинкой (кросс-фейд) и мягко
   /// уходит, когда возвращаешься на стандартную аватарку.
   ///
-  /// Размытие — на САМОЙ картинке внутри круга (`ImageFiltered`), поэтому
-  /// при уходе под верхнюю полку фотография расплывается плавно, но её край
-  /// остаётся ровным кругом: прежние «разрезы» были от размытия без клипа.
+  /// Размытие при скролле — на ВСЁМ круге (`ImageFiltered` вокруг клипа), а
+  /// не внутри него: так расфокус выходит чуть ЗА пределы аватарки мягким
+  /// ореолом и не оставляет видимой «грани» там, где обрезался клип. Кольцо
+  /// при этом рисуется ПОВЕРХ и остаётся чётким.
   Widget _imageAvatar() {
     final file = File(imagePath!);
     // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
     // круга не оголяются.
     final over = size * 0.30;
     final dy = parallax.clamp(-over / 2, over / 2);
-    Widget image = SizedBox(
-      width: size,
-      height: size,
-      child: Transform.translate(
-        offset: Offset(0, dy),
-        child: Image.file(
-          file,
-          width: size,
-          height: size + over,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, _, _) => _generatedAvatar(null),
+    final clipped = ClipOval(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Transform.translate(
+          offset: Offset(0, dy),
+          child: Image.file(
+            file,
+            width: size,
+            height: size + over,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (_, _, _) => _generatedAvatar(null),
+            // Файл декодируется асинхронно: пока кадр не готов, показываем
+            // сгенерированную аватарку — иначе на входе в профиль на месте
+            // своей авы был «пустой» круг и картинка «появлялась не сразу».
+            frameBuilder: (context, child, frame, wasSyncLoaded) {
+              if (wasSyncLoaded || frame != null) return child;
+              return _generatedAvatar(null);
+            },
+          ),
         ),
       ),
     );
-    if (blur > 0.2 && !MotionPrefs.shouldReduceMotion) {
-      image = ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(
-          sigmaX: blur,
-          sigmaY: blur,
-          tileMode: TileMode.decal,
-        ),
-        child: image,
-      );
-    }
-    return DecoratedBox(
+    // Кольцо — заметно толще волосяного и чуть плотнее: своя аватарка
+    // читается как «вставленная», а не сливается с фоном.
+    final ring = DecoratedBox(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // Тонкое полупрозрачное кольцо: акцентная обводка чуть светится, но
-        // не «жирнит» круг.
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.62),
-          width: 1.4,
+          color: Colors.white.withValues(alpha: 0.78),
+          width: 2.4,
         ),
       ),
-      child: ClipOval(child: image),
+      child: clipped,
+    );
+    if (blur <= 0.2 || MotionPrefs.shouldReduceMotion) return ring;
+    // Размываем клип и кладём поверх чёткое кольцо: расфокус «заходит» за
+    // аву ореолом (Clip.none), а кант остаётся резким.
+    return Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(
+            sigmaX: blur,
+            sigmaY: blur,
+            tileMode: TileMode.decal,
+          ),
+          child: clipped,
+        ),
+        SizedBox(
+          width: size,
+          height: size,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.78),
+                width: 2.4,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

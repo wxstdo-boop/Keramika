@@ -502,7 +502,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                     size: 96,
                     imagePath: _service.avatarImagePath,
                     parallax: k * 10,
-                    blur: k * 7,
+                    // Размытие чуть больше круга: ореол мягко «заходит» за
+                    // аву, и границы расфокуса не видно.
+                    blur: k * 9,
                   );
                 },
               ),
@@ -719,26 +721,14 @@ class _ProfileScreenState extends State<ProfileScreen>
     return _Card(
       title: Translations.t('profileMusic', context, 'Твоя музыка'),
       icon: Icons.music_note_outlined,
-      // Удаление — в углу карточки, а не в строке: кнопка проигрывания
-      // остаётся РОВНО по центру, её ничто не сдвигает вбок.
-      trailing: hasMusic
-          ? PressScale(
-              pressedScale: 0.86,
-              child: IconButton(
-                onPressed: _removeMusic,
-                tooltip: Translations.t('delete', context, 'Удалить'),
-                icon: const Icon(Icons.delete_outline),
-              ),
-            )
-          : null,
       child: AnimatedSize(
         duration: MotionPrefs.shouldReduceMotion
             ? Duration.zero
             : Motion.slow,
         curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
+        alignment: Alignment.topLeft,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AnimatedSwitcher(
               duration: MotionPrefs.shouldReduceMotion
@@ -755,91 +745,71 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
               ),
               child: hasMusic
-                  ? Column(
+                  ? ListTile(
                       key: const ValueKey('music_row'),
-                      children: [
-                        // Плей — ПО ЦЕНТРУ карточки. Кнопка прозрачная (без
-                        // тональной заливки — прежний «квадрат» фона убран),
-                        // вокруг — тонкое пульсирующее кольцо.
-                        Center(
-                          child: PressScale(
-                            pressedScale: 0.88,
-                            child: MusicPulseRing(
-                              active: playing,
-                              baseWidth: 0.7,
-                              pulseWidth: 0.25,
-                              child: IconButton(
-                                onPressed: _toggleMusicPlayback,
-                                style: IconButton.styleFrom(
-                                  shape: const CircleBorder(),
-                                  backgroundColor: Colors.transparent,
-                                  foregroundColor: theme.colorScheme.primary,
-                                  highlightColor: Colors.transparent,
+                      contentPadding: EdgeInsets.zero,
+                      // Слева — кнопка проигрывания с тонким пульсирующим
+                      // кольцом, в заголовке — состояние трека, справа —
+                      // корзина: привычный порядок строки.
+                      leading: PressScale(
+                        pressedScale: 0.88,
+                        child: MusicPulseRing(
+                          active: playing,
+                          child: IconButton(
+                            onPressed: _toggleMusicPlayback,
+                            // Прозрачный фон + круг: под пальцем виден только
+                            // круглый отклик, а не квадратная заливка.
+                            style: IconButton.styleFrom(
+                              shape: const CircleBorder(),
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: theme.colorScheme.primary,
+                              highlightColor: theme.colorScheme.primary
+                                  .withValues(alpha: 0.12),
+                            ),
+                            icon: AnimatedSwitcher(
+                              // Значок плей/пауза сменяется медленно и мягко,
+                              // а не подменой кадром.
+                              duration: MotionPrefs.shouldReduceMotion
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 380),
+                              transitionBuilder: (child, anim) => FadeTransition(
+                                opacity: anim,
+                                child: ScaleTransition(
+                                  scale: Tween<double>(
+                                    begin: 0.8,
+                                    end: 1,
+                                  ).animate(anim),
+                                  child: child,
                                 ),
-                                icon: AnimatedSwitcher(
-                                  // Значок плей/пауза сменяется медленно и
-                                  // мягко, а не подменой кадром.
-                                  duration: MotionPrefs.shouldReduceMotion
-                                      ? Duration.zero
-                                      : const Duration(milliseconds: 380),
-                                  transitionBuilder: (child, anim) =>
-                                      FadeTransition(
-                                        opacity: anim,
-                                        child: ScaleTransition(
-                                          scale: Tween<double>(
-                                            begin: 0.8,
-                                            end: 1,
-                                          ).animate(anim),
-                                          child: child,
-                                        ),
-                                      ),
-                                  child: Transform.translate(
-                                    // Треугольник «play» оптически «весит»
-                                    // влево — сдвигаем на пиксель, чтобы он
-                                    // читался ровно по центру круга.
-                                    offset: Offset(playing ? 0 : 1.5, 0),
-                                    child: Icon(
-                                      playing
-                                          ? Icons.pause
-                                          : Icons.play_arrow_rounded,
-                                      key: ValueKey(playing),
-                                    ),
-                                  ),
-                                ),
+                              ),
+                              child: Icon(
+                                playing
+                                    ? Icons.pause
+                                    : Icons.play_arrow_rounded,
+                                key: ValueKey(playing),
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        // Состояние трека — «Играет…» / «Пауза», по центру.
-                        AnimatedSwitcher(
-                          duration: MotionPrefs.shouldReduceMotion
-                              ? Duration.zero
-                              : Motion.normal,
-                          transitionBuilder: (child, anim) =>
-                              FadeTransition(opacity: anim, child: child),
-                          child: Text(
-                            playing
-                                ? Translations.t(
-                                    'profileMusicPlaying',
-                                    context,
-                                    'Играет…',
-                                  )
-                                : Translations.t(
-                                    'profileMusicPaused',
-                                    context,
-                                    'Пауза',
-                                  ),
-                            key: ValueKey('music_state_$playing'),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
+                      ),
+                      // Подпись строки — «Играет бодрый звук», как было:
+                      // отдельного слова «Пауза» больше нет.
+                      title: Text(
+                        Translations.t(
+                          'profileMusicPlaying',
+                          context,
+                          'Играет бодрый звук',
                         ),
-                      ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: PressScale(
+                        pressedScale: 0.86,
+                        child: IconButton(
+                          onPressed: _removeMusic,
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ),
                     )
                   : Padding(
                       key: const ValueKey('music_empty'),
@@ -856,27 +826,45 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                     ),
             ),
-            const SizedBox(height: Spacing.xs),
             Align(
               alignment: Alignment.centerLeft,
               child: PressScale(
                 pressedScale: 0.94,
-                child: FilledButton.tonalIcon(
-                  onPressed: _pickMusic,
-                  style: _roundButtonStyle(),
-                  icon: const Icon(Icons.library_music_outlined),
-                  label: Text(
-                    hasMusic
-                        ? Translations.t(
-                            'profileMusicChange',
-                            context,
-                            'Заменить',
-                          )
-                        : Translations.t(
-                            'profileMusicAdd',
-                            context,
-                            'Выбрать файл',
-                          ),
+                // Подпись кнопки («Выбрать файл» ↔ «Заменить») меняется
+                // ПЛАВНО: AnimatedSize тянет ширину, AnimatedSwitcher — текст.
+                child: AnimatedSize(
+                  duration: MotionPrefs.shouldReduceMotion
+                      ? Duration.zero
+                      : Motion.normal,
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _pickMusic,
+                    style: _roundButtonStyle(),
+                    icon: const Icon(Icons.library_music_outlined),
+                    label: AnimatedSwitcher(
+                      duration: MotionPrefs.shouldReduceMotion
+                          ? Duration.zero
+                          : Motion.normal,
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: child,
+                      ),
+                      child: Text(
+                        hasMusic
+                            ? Translations.t(
+                                'profileMusicChange',
+                                context,
+                                'Заменить',
+                              )
+                            : Translations.t(
+                                'profileMusicAdd',
+                                context,
+                                'Выбрать файл',
+                              ),
+                        key: ValueKey('music_btn_$hasMusic'),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1107,7 +1095,8 @@ class _Card extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(Radii.xl),
           border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.28),
+            width: 0.5,
           ),
         ),
         padding: const EdgeInsets.all(Spacing.md),
