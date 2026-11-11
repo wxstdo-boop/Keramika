@@ -68,7 +68,7 @@ class _StartupDiagnosticAppState extends State<StartupDiagnosticApp> {
   }
 
   Future<void> _copyReport() async {
-    final report = 'Keramika startup diagnostic\n'
+    final report = 'Agysha startup diagnostic\n'
         'Error: ${widget.error}\n'
         'Stack:\n${widget.stack}';
     try {
@@ -92,7 +92,7 @@ class _StartupDiagnosticAppState extends State<StartupDiagnosticApp> {
       final dir = await getApplicationDocumentsDirectory();
       final stamp = DateTime.now().toUtc().toIso8601String();
       final file = File('${dir.path}/keramika_startup_error_$stamp.log');
-      final report = 'Keramika startup diagnostic\n'
+      final report = 'Agysha startup diagnostic\n'
           'Saved: $stamp\n'
           'Error: ${widget.error}\n'
           'Stack:\n${widget.stack}\n';
@@ -120,7 +120,7 @@ class _StartupDiagnosticAppState extends State<StartupDiagnosticApp> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return MaterialApp(
-      title: 'Keramika diagnostic',
+      title: 'Agysha diagnostic',
       debugShowCheckedModeBanner: false,
       locale: widget.locale,
       supportedLocales: const [Locale('en'), Locale('ru'), Locale('fr')],
@@ -160,7 +160,7 @@ class _StartupDiagnosticAppState extends State<StartupDiagnosticApp> {
                             Translations.t(
                               'startupDiagTitle',
                               context,
-                              'Keramika stopped safely',
+                              'Agysha stopped safely',
                             ),
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineSmall,
@@ -170,7 +170,7 @@ class _StartupDiagnosticAppState extends State<StartupDiagnosticApp> {
                             Translations.t(
                               'startupDiagBody',
                               context,
-                              'Keramika could not finish starting and stopped '
+                              'Agysha could not finish starting and stopped '
                               'before it drew the first screen. Nothing was '
                               'changed on disk. You can retry, or copy/save '
                               'the details below to report the problem.',

@@ -543,7 +543,7 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
 }
 
 /// Writes [bytes] to a user-visible location.
-/// Android → Download/Keramika via MediaStore; desktop → Downloads/Keramika;
+/// Android → Download/Agysha via MediaStore; desktop → Downloads/Agysha;
 /// final fallback → app documents.
 Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
   if (kIsWeb) {
@@ -557,7 +557,7 @@ Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
           .invokeMethod<String>('saveToDownloads', {
             'fileName': fileName,
             'bytes': Uint8List.fromList(bytes),
-            'subDir': 'Keramika',
+            'subDir': 'Agysha',
           });
       debugPrint('[auto-export] saveToDownloads native -> $path');
       if (path != null && path.isNotEmpty) return path;
@@ -570,7 +570,7 @@ Future<String> saveBackupBytes(List<int> bytes, String fileName) async {
   try {
     final downloads = await getDownloadsDirectory();
     if (downloads != null) {
-      dir = Directory('${downloads.path}${Platform.pathSeparator}Keramika');
+      dir = Directory('${downloads.path}${Platform.pathSeparator}Agysha');
     }
   } catch (_) {}
 
@@ -598,8 +598,8 @@ Future<String> _performAutoExport({bool showSnack = false}) async {
   final out = await buildBackupPayload();
   final bytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(out));
   // Fixed name so each hourly export overwrites the previous one —
-  // easy to find in Download/Keramika/.
-  const fileName = 'keramika-auto-backup.json';
+  // easy to find in Download/Agysha/.
+  const fileName = 'agysha-auto-backup.json';
   // БЫЛ БАГ: saveBackupBytes возвращает Future, но он не awaited — ошибки
   // записи терялись (не попадали в try/catch), а снекбар показывал
   // строковое представление Future вместо пути. Теперь ждём результат.
@@ -611,7 +611,7 @@ Future<String> _performAutoExport({bool showSnack = false}) async {
       final label = Translations.t(
         'autoExportDone',
         ctx,
-        'Backup saved to Download/Keramika',
+        'Backup saved to Download/Agysha',
       );
       showBeautifulSnackBar(
         ctx,
@@ -2113,7 +2113,7 @@ class KeramikaAppState extends State<KeramikaApp>
 
         return MaterialApp(
           key: _appKey,
-          title: 'Keramika',
+          title: 'Agysha',
           debugShowCheckedModeBanner: false,
           navigatorKey: navigatorKey,
           navigatorObservers: [_jankObserver],

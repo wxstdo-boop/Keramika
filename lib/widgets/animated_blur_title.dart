@@ -6,7 +6,7 @@ import '../services/prefs.dart';
 import '../services/profile_service.dart';
 import 'online_dot.dart';
 
-/// Заголовок шапки главного экрана: «Keramika» или короткое имя юзера.
+/// Заголовок шапки главного экрана: «Agysha» или короткое имя юзера.
 ///
 /// Кружок онлайна «растёт» из нижнего правого угла последней буквы заголовка,
 /// от буквы к нему идёт тонкий хвостик (см. [_TitleWithDot]) — по кружку
@@ -80,10 +80,10 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
             // заголовок сам меняется на него — без пересборки всего Home.
             animation: ProfileService(),
             builder: (context, _) {
-              // Своё имя вместо «Keramika»: пустое поле оставляем брендом,
+              // Своё имя вместо «Agysha»: пустое поле оставляем брендом,
               // чтобы шапка не оставалась пустой у нового пользователя.
               final name = ProfileService().displayName;
-              final title = name.isNotEmpty ? name : 'Keramika';
+              final title = name.isNotEmpty ? name : 'Agysha';
               // Смена имени — плавная: кросс-фейд со лёгким «проявлением»,
               // а не мгновенная подмена текста. Заметно медленнее обычного —
               // читается как мягкое перетекание.

@@ -1613,7 +1613,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 12),
-              // «Keramika FOSS» — приписку FOSS выделяем розовым,
+              // «Agysha FOSS» — приписку FOSS выделяем розовым,
               // как она была на сплэше.
               Text.rich(
                 TextSpan(
@@ -1622,7 +1622,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     letterSpacing: 0.2,
                   ),
                   children: [
-                    const TextSpan(text: 'Keramika '),
+                    const TextSpan(text: 'Agysha '),
                     const TextSpan(
                       text: 'FOSS',
                       style: TextStyle(
@@ -3060,7 +3060,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
-                    'Keramika',
+                    'Agysha',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant.withValues(
                         alpha: 0.5,
@@ -3729,7 +3729,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     showConfettiBurst(context);
     showBeautifulSnackBar(
       context,
-      message: 'Ты нашёл пасхалку. Keramika — свободное приложение.',
+      message: 'Ты нашёл пасхалку. Agysha — свободное приложение.',
       icon: Icons.celebration_outlined,
       duration: const Duration(milliseconds: 2600),
     );

@@ -214,7 +214,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 900));
     final dot = tester.getCenter(find.byType(OnlineDot));
-    final title = tester.getRect(find.text('Keramika'));
+    final title = tester.getRect(find.text('Agysha'));
     expect(
       dot.dx,
       greaterThan(title.right),

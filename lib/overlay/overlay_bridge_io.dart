@@ -89,7 +89,7 @@ Future<bool> showAdaOverlay({
       // двойное перемещение и рывки.
       enableDrag: false,
       positionGravity: PositionGravity.none,
-      overlayTitle: 'Keramika — Ада',
+      overlayTitle: 'Agysha — Ада',
       overlayContent: 'Мини-чат Ады',
     );
     // Окно уже 64×64 — overlay сам resize при тапе.

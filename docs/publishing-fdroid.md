@@ -1,4 +1,4 @@
-# Публикация Keramika в каталогах приложений
+# Публикация Agysha в каталогах приложений
 
 Документ описывает, что уже готово в репозитории, куда подавать приложение и в
 каком порядке. Цель — попасть в F-Droid (и через него в Neo Store и другие
@@ -16,7 +16,7 @@
 ## Почему самообновление нужно выключать в F-Droid-сборке
 
 F-Droid и IzzyOnDroid запрещают приложения, которые скачивают и устанавливают
-исполняемые файлы без явного согласия пользователя. У Keramika есть встроенное
+исполняемые файлы без явного согласия пользователя. У Agysha есть встроенное
 обновление с GitHub Releases. Поэтому рецепт собирает APK с
 `--dart-define=KERAMIKA_NO_SELF_UPDATE=true`: в этой сборке `kSelfUpdateEnabled`
 равен `false`, поэтому не показывается таблетка обновления в Настройках и не
@@ -45,7 +45,7 @@ Neo Store, Droid-ify и других клиентах F-Droid.
    ```
    pip install fdroidserver
    git clone https://gitlab.com/<ваш-логин>/fdroiddata && cd fdroiddata
-   cp /path/to/Keramika/fdroid/metadata/com.wetidom.keramika.yml metadata/
+   cp /path/to/Agysha/fdroid/metadata/com.wetidom.keramika.yml metadata/
    fdroid readmeta
    fdroid checkupdates com.wetidom.keramika
    fdroid build -v -l com.wetidom.keramika
@@ -89,7 +89,7 @@ IzzyOnDroid раздаёт бинарники разработчика (соби
 говорит: «Apps acting as front-end for LLMs… or integrate with such services,
 will be rejected» и «Vibe-coded apps will be rejected». Формулировка жёсткая и
 без исключений для необязательных функций — решение принимает человек, но по
-букве политики Keramika с Адой под неё попадает. Отсюда практический вывод:
+букве политики Agysha с Адой под неё попадает. Отсюда практический вывод:
 подача туда **сейчас бессмысленна** и может лишь создать отказ, который потом
 будет сложнее переиграть.
 
@@ -133,7 +133,7 @@ Codeberg) со ссылкой на APK-релиз. Лимит на APK — 30 М
 
 Этот список (≈1.2k звёзд) принимает любые FOSS-приложения без порога по
 звёздам, а в его категории Productivity уже стоят Loop Habit Tracker и
-Tasks.org — Keramika там на месте. Редактируется ровно один файл `apps.json`,
+Tasks.org — Agysha там на месте. Редактируется ровно один файл `apps.json`,
 записи в категории идут по алфавиту.
 
 Готовая запись для категории `productivity` (вставить по алфавиту, между
@@ -142,10 +142,10 @@ Tasks.org — Keramika там на месте. Редактируется ров
 ```json
 {
     "host": "GitHub",
-    "name": "Keramika",
+    "name": "Agysha",
     "description": "An offline alarm clock that will not let you fall back asleep, plus habit tracking, tasks and focus sessions in one app. Includes an optional AI assistant, disabled by default. No account, no ads, no trackers; everything works offline.",
-    "stars_link": "https://img.shields.io/github/stars/wxstdo-boop/Keramika.svg?label=★&style=flat",
-    "source": "https://github.com/wxstdo-boop/Keramika",
+    "stars_link": "https://img.shields.io/github/stars/wxstdo-boop/Agysha.svg?label=★&style=flat",
+    "source": "https://github.com/wxstdo-boop/Agysha",
     "fdroid": "https://f-droid.org/packages/com.wetidom.keramika"
 }
 ```
@@ -153,8 +153,8 @@ Tasks.org — Keramika там на месте. Редактируется ров
 Поля `playstore`/`website` удалены (их нет). Поле `fdroid` станет рабочим
 после приёма в F-Droid; если подаёте в `foss-apps` раньше — удалите и его.
 
-Шаги: форк `https://github.com/albertomosconi/foss-apps`, ветка `Keramika`,
-правка `apps/productivity.json`, коммит `app: add Keramika in Productivity`,
+Шаги: форк `https://github.com/albertomosconi/foss-apps`, ветка `Agysha`,
+правка `apps/productivity.json`, коммит `app: add Agysha in Productivity`,
 PR в `main` по их шаблону.
 
 > Почему не `awesome-flutter`: их правила требуют минимум 35 звёзд у проекта.
@@ -210,19 +210,19 @@ PR в `main` по их шаблону.
 ### Вариант A (рекомендуется для первого раза) — RFP-issue
 
 Открыть новое issue (заголовок уже подставлен, надо только войти и вставить
-описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Keramika%20(com.wetidom.keramika)
+описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Agysha%20(com.wetidom.keramika)
 
 Без подстановки: https://gitlab.com/fdroid/rfp/-/issues/new
 
-**Title:** `Keramika (com.wetidom.keramika)`
+**Title:** `Agysha (com.wetidom.keramika)`
 
 **Description:**
 
 ```markdown
 ### App information
-- Name: Keramika
+- Name: Agysha
 - Package ID: com.wetidom.keramika
-- Source: https://github.com/wxstdo-boop/Keramika
+- Source: https://github.com/wxstdo-boop/Agysha
 - License: MIT
 - Categories: Alarm Clock, Habit Tracker, Task
 
@@ -234,7 +234,7 @@ anti-feature). Everything else works fully offline.
 
 ### Build
 A ready metadata file is provided at
-https://github.com/wxstdo-boop/Keramika/blob/main/fdroid/metadata/com.wetidom.keramika.yml
+https://github.com/wxstdo-boop/Agysha/blob/main/fdroid/metadata/com.wetidom.keramika.yml
 It is validated against fdroiddata CI: `fdroid lint` clean,
 `fdroid rewritemeta` canonical, `fdroid checkupdates --auto` resolves the
 latest release with no diff.

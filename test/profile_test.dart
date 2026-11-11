@@ -148,7 +148,7 @@ void main() {
     // Кружок — справа от заголовка и ВЫШЕ его середины: он «растёт» от
     // последней буквы, но поднят над строкой, чтобы не налезать на букву.
     final dotCenter = tester.getCenter(find.byType(OnlineDot));
-    final titleCenter = tester.getCenter(find.text('Keramika'));
+    final titleCenter = tester.getCenter(find.text('Agysha'));
     expect(
       (dotCenter.dy - titleCenter.dy).abs(),
       lessThan(8),
@@ -176,7 +176,7 @@ void main() {
       await ProfileService().setName('');
     });
 
-    testWidgets('в шапке вместо «Keramika» показывается имя юзера', (
+    testWidgets('в шапке вместо «Agysha» показывается имя юзера', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -189,7 +189,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Гончар'), findsOneWidget);
-      expect(find.text('Keramika'), findsNothing);
+      expect(find.text('Agysha'), findsNothing);
       // Кружок онлайна остаётся — он висит над последней буквой имени.
       expect(find.byType(OnlineDot), findsOneWidget);
     });

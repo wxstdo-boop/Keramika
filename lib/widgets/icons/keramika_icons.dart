@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Единая толщина обводки всех иконок Keramika.
+/// Единая толщина обводки всех иконок Agysha.
 const double kKkStroke = 2.0;
 
 /// Базовый размер иконки (viewBox 24×24).

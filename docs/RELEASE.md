@@ -93,7 +93,7 @@ lockfile и после тех же проверок, что и CI. Раньше 
 4. достаёт keystore из секретов и пишет `android/key.properties`;
 5. поднимает память Gradle до 4 ГБ (только в CI);
 6. собирает `flutter build apk --release --split-per-abi`;
-7. переименовывает ассеты в `Keramika-<версия>-<abi>.apk`;
+7. переименовывает ассеты в `Agysha-<версия>-<abi>.apk`;
 8. считает SHA-256 каждого ассета и кладёт таблицу в тело релиза;
 9. публикует GitHub Release.
 

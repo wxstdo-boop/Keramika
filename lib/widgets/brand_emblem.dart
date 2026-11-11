@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Векторная эмблема Keramika — колба-ваза.
+/// Векторная эмблема Agysha — колба-ваза.
 ///
 /// Рисуется CustomPaint'ом, а не берётся из `assets/keramika.png`: растровый
 /// логотип на 20–26 px — это размытое пятно (PNG тянется вниз с потерей

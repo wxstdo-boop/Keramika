@@ -11,7 +11,7 @@
     <a href="https://github.com/wxstdo-boop/Keramika/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wxstdo-boop/Keramika?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=%23c2185b" /></a>
     <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2ea44f" /></a>
     <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.47.5-02569a?logo=flutter&logoColor=white" />
-    <img alt="Dart" src="https://img.shields.io/badge/Dart-3.12-0175C2?logo=dart&logoColor=white" />
+    <img alt="Dart" src="https://img.shields.io/badge/Dart-3.13-0175C2?logo=dart&logoColor=white" />
     <img alt="Android" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" />
   </p>
 </div>
@@ -175,12 +175,12 @@ lib/
 ├── main.dart          Точка входа, навигация, startup, автосохранение
 ├── l10n/              Переводы (ru/en/fr) и провайдер локали
 ├── models/            Alarm, Habit, Task, RealityCheck, AppTimer, WakeTask
-├── screens/           24 экрана: разделы и их компоненты
-├── services/          29 сервисов: данные, уведомления, ИИ, обновления
+├── screens/           25 экрана: разделы и их компоненты
+├── services/          32 сервиса: данные, уведомления, ИИ, обновления
 ├── overlay/           Оверлей Ады + мост (io / web)
 ├── theme/             Единый построитель темы (app_theme.dart)
 ├── utils/             Иконки, анимации, токены дизайна, «убрать анимации»
-└── widgets/           56 UI-компонентов
+└── widgets/           60 UI-компонентов
 
 android/app/src/main/kotlin/com/wetidom/keramika/
 ├── MainActivity.kt             Точка входа Android, каналы плагинов
@@ -230,11 +230,11 @@ fsync-ом каждые 10 секунд. На web `dart:io` недоступен
 flutter test --concurrency=1
 ```
 
-42 тестовых файла, 245 тестов: стрики привычек, анимации чипов и тултипов,
+57 тестовых файлов, 315 тестов: стрики привычек, анимации чипов и тултипов,
 счётчик, слайдер-пикер, логика ворк-леда, локализация диалогов, смоук-тест.
 
-> По состоянию на 2026-11-08 в CI (Flutter 3.47.5, как в `.github/workflows/ci.yml`)
-> `flutter analyze` чистый, `flutter test` — 245 тестов, 3 пропущено (ручные,
+> По состоянию на 2026-11-11 в CI (Flutter 3.47.5, как в `.github/workflows/ci.yml`)
+> `flutter analyze` чистый, `flutter test` — 315 тестов, 3 пропущено (ручные,
 > требуют сети), падений нет. Подробности — в разделе
 > [Состояние тестов](docs/TESTS.md).
 

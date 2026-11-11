@@ -186,7 +186,7 @@ class Translations {
       'daySat': 'Sat',
       'daySun': 'Sun',
       'alarmNoExact':
-          'Exact alarm permission not granted. Go to Settings → Apps → Keramika → Battery → No restrictions',
+          'Exact alarm permission not granted. Go to Settings → Apps → Agysha → Battery → No restrictions',
       'pinLock': 'PIN lock',
       'pinDescription': 'Set a PIN to lock the app',
       'setPin': 'Set PIN',
@@ -408,7 +408,7 @@ class Translations {
       'dontShowAgain': 'Don’t show again',
       'settingsCantOpen':
           'Cannot open settings. Open the app settings → Notifications / Battery manually.',
-      'welcomeTitle': 'Welcome to Keramika!',
+      'welcomeTitle': 'Welcome to Agysha!',
       'welcomeBody':
           'Important: allow notifications and unrestricted background activity so alarms can ring on time. You can adjust these permissions now or later in Settings.',
       'welcomeGo': 'Go to settings',
@@ -475,7 +475,7 @@ class Translations {
       'aiSystemWindowHint':
           'Ada is now a mini window above other apps — close it there',
       'aiOverlayPermissionHint':
-          'Allow Keramika to draw over other apps to enable the mini window',
+          'Allow Agysha to draw over other apps to enable the mini window',
       'aiOverlayEmpty': 'Chat with Ada',
       'aiInputHint': 'Message…',
       'pinLimit': 'You can pin up to 10 messages',
@@ -639,8 +639,8 @@ class Translations {
       'autoSave': 'Auto-save',
       'autoSaveDesc': 'Save data every second',
       'autoExport': 'Auto-export',
-      'autoExportHourly': 'Save backup to Download/Keramika every hour',
-      'autoExportDone': 'Backup saved to Download/Keramika',
+      'autoExportHourly': 'Save backup to Download/Agysha every hour',
+      'autoExportDone': 'Backup saved to Download/Agysha',
       'autoExportFailed': 'Could not save the backup',
       'clearCache': 'Clear cache',
       'clearCacheDesc': 'Free up storage used by temporary files',
@@ -672,9 +672,9 @@ class Translations {
       'forgeSubtitle': 'Chat with the agent: ask about the code or ask it to change it.',
       'forgeTokenSection': 'GITHUB ACCESS',
       'forgeTokenHint': 'Fine-grained: Contents, Pull requests — read and write.',
-      'startupDiagTitle': 'Keramika stopped safely',
+      'startupDiagTitle': 'Agysha stopped safely',
       'startupDiagBody':
-          'Keramika could not finish starting and stopped before it drew the '
+          'Agysha could not finish starting and stopped before it drew the '
           'first screen. Nothing was changed on disk. You can retry, or '
           'copy/save the details below to report the problem.',
       'startupDiagDetailsTitle': 'Technical details',
@@ -782,7 +782,7 @@ class Translations {
       'aboutAuthorBody': 'Other apps by the same developer:',
       'supportAuthorTitle': 'Support the author',
       'supportAuthorBody':
-          'Keramika is a solo project — no ads, no subscriptions. If it makes your days easier, treat the author to a coffee: the best thank-you there is.',
+          'Agysha is a solo project — no ads, no subscriptions. If it makes your days easier, treat the author to a coffee: the best thank-you there is.',
       'supportAuthorHint': 'Opens the thank-you page in your browser',
       'supportSoonToast': 'Ozon support is on its way — coming very soon!',
       'supportOzonSubtitle': 'Soon — support with a purchase',
@@ -1143,7 +1143,7 @@ class Translations {
       'daySat': 'Сб',
       'daySun': 'Вс',
       'alarmNoExact':
-          'Точные будильники не разрешены. Перейди в Настройки → Приложения → Keramika → Батарея → Без ограничений',
+          'Точные будильники не разрешены. Перейди в Настройки → Приложения → Agysha → Батарея → Без ограничений',
       'pinLock': 'PIN-код',
       'pinDescription': 'Поставьте PIN, чтобы заблокировать приложение',
       'setPin': 'Поставить PIN',
@@ -1367,7 +1367,7 @@ class Translations {
       'dontShowAgain': 'Не показывать снова',
       'settingsCantOpen':
           'Не удалось открыть настройки. Откройте настройки приложения → Уведомления / Батарея вручную.',
-      'welcomeTitle': 'Добро пожаловать в Keramika!',
+      'welcomeTitle': 'Добро пожаловать в Agysha!',
       'welcomeBody':
           'Важно для точной работы будильников: разрешите уведомления и работу приложения в фоне без ограничений. Настройки можно открыть сейчас или позже.',
       'welcomeGo': 'К настройкам',
@@ -1434,7 +1434,7 @@ class Translations {
       'aiSystemWindowHint':
           'Ада теперь в мини-окошке поверх других приложений — закрой его там',
       'aiOverlayPermissionHint':
-          'Разреши Keramika показывать поверх других приложений, чтобы включить мини-окошко',
+          'Разреши Agysha показывать поверх других приложений, чтобы включить мини-окошко',
       'aiOverlayEmpty': 'Поболтай с Адой',
       'aiInputHint': 'Сообщение…',
       'pinLimit': 'Можно закрепить до 10 сообщений',
@@ -1599,8 +1599,8 @@ class Translations {
       'autoSave': 'Автосохранение',
       'autoSaveDesc': 'Сохранять данные каждую секунду',
       'autoExport': 'Автоэкспорт',
-      'autoExportHourly': 'Сохранять бэкап в Загрузки/Keramika каждый час',
-      'autoExportDone': 'Бэкап сохранён в Загрузки/Keramika',
+      'autoExportHourly': 'Сохранять бэкап в Загрузки/Agysha каждый час',
+      'autoExportDone': 'Бэкап сохранён в Загрузки/Agysha',
       'autoExportFailed': 'Не удалось сохранить бэкап',
       'clearCache': 'Очистить кэш',
       'clearCacheDesc': 'Освободить место, занятое временными файлами',
@@ -1632,9 +1632,9 @@ class Translations {
       'forgeTokenSection': 'ДОСТУП К GITHUB',
       'forgeTokenHint':
           'Fine-grained, Contents и Pull requests: read and write.',
-      'startupDiagTitle': 'Keramika остановилась безопасно',
+      'startupDiagTitle': 'Agysha остановилась безопасно',
       'startupDiagBody':
-          'Keramika не смогла завершить запуск и остановилась до отрисовки '
+          'Agysha не смогла завершить запуск и остановилась до отрисовки '
           'первого экрана. На диске ничего не изменилось. Можно повторить '
           'попытку или скопировать/сохранить подробности ниже.',
       'startupDiagDetailsTitle': 'Технические подробности',
@@ -1741,7 +1741,7 @@ class Translations {
       'aboutAuthorBody': 'Другие приложения того же разработчика:',
       'supportAuthorTitle': 'Поддержать автора',
       'supportAuthorBody':
-          'Keramika — самостоятельный проект: без рекламы и подписок. Если приложение тебе по душе, угости автора кофе — это лучшее «спасибо».',
+          'Agysha — самостоятельный проект: без рекламы и подписок. Если приложение тебе по душе, угости автора кофе — это лучшее «спасибо».',
       'supportAuthorHint': 'Откроет страницу благодарности в браузере',
       'supportSoonToast': 'Оплата через Ozon уже на подходе — совсем скоро!',
       'supportOzonSubtitle': 'Скоро — поддержка покупкой',
@@ -2106,7 +2106,7 @@ class Translations {
       'daySat': 'Sam',
       'daySun': 'Dim',
       'alarmNoExact':
-          'Autorisation d’alarme exacte refusée. Allez dans Paramètres → Applications → Keramika → Batterie → Aucune restriction',
+          'Autorisation d’alarme exacte refusée. Allez dans Paramètres → Applications → Agysha → Batterie → Aucune restriction',
       'pinLock': 'Code PIN',
       'pinDescription': 'Définir un PIN pour verrouiller l’application',
       'setPin': 'Définir le PIN',
@@ -2328,7 +2328,7 @@ class Translations {
       'dontShowAgain': 'Ne plus afficher',
       'settingsCantOpen':
           'Impossible d’ouvrir les paramètres. Ouvrez-les manuellement → Notifications / Batterie.',
-      'welcomeTitle': 'Bienvenue dans Keramika !',
+      'welcomeTitle': 'Bienvenue dans Agysha !',
       'welcomeBody':
           'Important pour la ponctualité des alarmes : autorisez les notifications et l’activité en arrière-plan sans restriction. Vous pourrez régler ces autorisations maintenant ou plus tard.',
       'welcomeGo': 'Aller aux paramètres',
@@ -2395,7 +2395,7 @@ class Translations {
       'aiSystemWindowHint':
           'Ada est maintenant en mini-fenêtre au-dessus des autres apps — fermez-la là-bas',
       'aiOverlayPermissionHint':
-          'Autorisez Keramika à s’afficher par-dessus les autres apps pour activer la mini-fenêtre',
+          'Autorisez Agysha à s’afficher par-dessus les autres apps pour activer la mini-fenêtre',
       'aiOverlayEmpty': 'Discute avec Ada',
       'aiInputHint': 'Message…',
       'pinLimit': 'Vous pouvez épingler jusqu’à 10 messages',
@@ -2563,8 +2563,8 @@ class Translations {
       'autoSaveDesc': 'Enregistrer les données chaque seconde',
       'autoExport': 'Export auto',
       'autoExportHourly':
-          'Enregistrer une sauvegarde dans Téléchargements/Keramika chaque heure',
-      'autoExportDone': 'Sauvegarde enregistrée dans Téléchargements/Keramika',
+          'Enregistrer une sauvegarde dans Téléchargements/Agysha chaque heure',
+      'autoExportDone': 'Sauvegarde enregistrée dans Téléchargements/Agysha',
       'autoExportFailed': 'Échec de l\'enregistrement de la sauvegarde',
       'clearCache': 'Vider le cache',
       'clearCacheDesc': 'Libérer l’espace des fichiers temporaires',
@@ -2597,9 +2597,9 @@ class Translations {
       'forgeSubtitle': 'Discussion avec l’agent : pose une question ou demande une modification.',
       'forgeTokenSection': 'ACCÈS GITHUB',
       'forgeTokenHint': 'Fine-grained : Contents, Pull requests — read and write.',
-      'startupDiagTitle': 'Keramika s’est arrêtée en sécurité',
+      'startupDiagTitle': 'Agysha s’est arrêtée en sécurité',
       'startupDiagBody':
-          'Keramika n’a pas pu terminer son démarrage et s’est arrêtée avant '
+          'Agysha n’a pas pu terminer son démarrage et s’est arrêtée avant '
           'le premier écran. Rien n’a changé sur le disque. Tu peux réessayer '
           'ou copier/enregistrer les détails ci-dessous.',
       'startupDiagDetailsTitle': 'Détails techniques',
@@ -2711,7 +2711,7 @@ class Translations {
       'aboutAuthorBody': 'Autres applications du même développeur :',
       'supportAuthorTitle': 'Soutenir l’auteur',
       'supportAuthorBody':
-          'Keramika est un projet indépendant — sans publicité ni abonnement. Si l’application vous est utile, offrez un café à l’auteur : la plus belle façon de dire merci.',
+          'Agysha est un projet indépendant — sans publicité ni abonnement. Si l’application vous est utile, offrez un café à l’auteur : la plus belle façon de dire merci.',
       'supportAuthorHint': 'Ouvre la page de remerciement dans le navigateur',
       'supportSoonToast':
           'Le paiement via Ozon arrive très bientôt — restez à l’affût !',

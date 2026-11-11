@@ -140,6 +140,17 @@ List<Color> themeAdaColors(BuildContext context) {
   ];
 }
 
+/// Монохромная (бело-чёрная/серотональная) гамма аватарки Ады — для кнопки.
+/// Серые тона текущей темы, без цветовых оттенков primary/tertiary.
+List<Color> _monochromeAdaColors(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  return <Color>[
+    cs.onSurface.withValues(alpha: 0.9),
+    cs.onSurface.withValues(alpha: 0.6),
+    cs.onSurface.withValues(alpha: 0.35),
+  ];
+}
+
 /// Сохранённый индекс варианта (переживает перезапуск; общий для движков).
 int savedAdaAvatarIndex() => (globalPrefs.getInt('ada_avatar_variant') ?? 0)
     .clamp(0, adaVariants.length - 1);
@@ -199,7 +210,10 @@ Future<Map<String, dynamic>> readAdaSyncState() async {
 class AdaAvatar extends StatelessWidget {
   final double size;
   final int variantIndex;
-  const AdaAvatar({super.key, this.size = 34, this.variantIndex = -1});
+  /// Монохромная (бело-чёрная/серотональная) аватарка без цветовых оттенков —
+  /// для кнопки Ады, где нужна сдержанная нецветная иконка.
+  final bool monochrome;
+  const AdaAvatar({super.key, this.size = 34, this.variantIndex = -1, this.monochrome = false});
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +256,7 @@ class AdaAvatar extends StatelessWidget {
     // Монохромная тональная гамма из ТЕКУЩЕЙ темы: аватарка автоматически
     // подстраивается под смену темы (primary → secondary → tertiary),
     // а не остаётся ярким цветным кружком в любой теме.
-    final ramp = themeAdaColors(context);
+    final ramp = monochrome ? _monochromeAdaColors(context) : themeAdaColors(context);
     return Container(
       width: size,
       height: size,
