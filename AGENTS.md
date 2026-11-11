@@ -30,6 +30,15 @@ flutter/adb are not on PATH on this machine: flutter lives at `C:\Users\Larafut\
 (`Agysha-<ver>-<abi>.apk`), keystore (`agysha-release.jks`, alias `agysha`,
 `CN=Agysha`) и боте релиза (`agysha-ship`).
 
+Исключение — обратная совместимость хранилища в `lib/services/json_file.dart`:
+константы `_legacyFormat`/`_legacyKeyName` (`keramika-json-v1`,
+`keramika_database_key_v1`) намеренно оставлены и должны читаться. У тех, кто
+обновился с Keramika, файлы и ключ шифрования записаны под старыми именами;
+без чтения legacy-значений приложение сочло бы хранилище пустым, сгенерировало
+новый ключ и потеряло привычки, задачи и будильники. Не «вычищай» их при
+ребрендинге — это регресс-тест `reads envelopes written under the legacy
+Keramika format` в `test/json_file_test.dart`.
+
 ## Linux dev sandbox (agent environment)
 
 No Flutter and no Android SDK are preinstalled, and the sandbox can be wiped
