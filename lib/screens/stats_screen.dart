@@ -448,7 +448,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
 /// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
 /// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
 /// Все прочие карточки — волосяные ([_hairline]).
-const double _hairline = 0.16;
+const double _hairline = 0.13;
 
 Widget _ringedCard({
   required ThemeData theme,
@@ -460,20 +460,20 @@ Widget _ringedCard({
   // Кант — совсем тонкий. У «главной» плашки он лишь чуть плотнее волосяного:
   // заметно толстая рамка читалась как «коробка», пользователь просил тоньше
   // и у неё тоже.
-  final thickness = thick ? 0.8 : _hairline;
+  final thickness = thick ? 0.5 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
   // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
   final aTop = thick
-      ? (dark ? 0.60 : 0.46)
-      : (dark ? 0.26 : 0.16);
+      ? (dark ? 0.46 : 0.34)
+      : (dark ? 0.18 : 0.11);
   final aMid = thick
-      ? (dark ? 0.22 : 0.16)
-      : (dark ? 0.05 : 0.04);
+      ? (dark ? 0.16 : 0.11)
+      : (dark ? 0.03 : 0.02);
   final aEnd = thick
-      ? (dark ? 0.44 : 0.32)
-      : (dark ? 0.18 : 0.10);
+      ? (dark ? 0.34 : 0.24)
+      : (dark ? 0.12 : 0.07);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius + thickness),
@@ -554,43 +554,70 @@ class _GlitchShadowPainter extends CustomPainter {
     required this.textDirection,
   }) : super(repaint: ctrl);
 
+  /// Кэш разложенных «двойников». `TextPainter.layout()` — это шейпинг
+  /// шрифта, и повторять его каждый кадр (60–120 Гц) для КАЖДОГО числа
+  /// статистики означало постоянные просадки: экран лагал на скролле и
+  /// растяжении. Ключ — текст+стиль+направление, в кэше держим несколько
+  /// записей: на экране сразу несколько «глитч»-чисел, и одиночный слот
+  /// затирался бы каждым из них по кругу.
+  static final Map<String, TextPainter> _cache = <String, TextPainter>{};
+
+  static TextPainter _shadow(String text, TextStyle style, TextDirection dir) {
+    final key = '${identityHashCode(style)}|${dir.index}|$text';
+    final cached = _cache[key];
+    if (cached != null) return cached;
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: style.copyWith(
+          color: Colors.transparent,
+          shadows: const [
+            // Два «двойника» (тёплый/холодный) в ОДНОЙ раскладке: раньше на
+            // каждый рисовался свой TextPainter с layout — двойная работа.
+            // Альфа здесь МАКСИМАЛЬНАЯ: пульсация делается прозрачностью слоя,
+            // чтобы не пересобирать раскладку каждый кадр.
+            Shadow(
+              color: Color(0x38FF3B5C),
+              blurRadius: 1.5,
+              offset: Offset(1.1, 0),
+            ),
+            Shadow(
+              color: Color(0x3033D1FF),
+              blurRadius: 1.5,
+              offset: Offset(-1.1, 0),
+            ),
+          ],
+        ),
+      ),
+      textDirection: dir,
+      maxLines: 1,
+    )..layout();
+    if (_cache.length > 24) _cache.clear();
+    _cache[key] = tp;
+    return tp;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final t = ctrl.value;
     // Плавная волна «глитча»: лёгкая пульсация цветовых каналов.
     final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
     // Текст стоит на месте (никакого сдвига/размытия), «глитч» — только
-    // расщепление цветных теней, пульсирующее по амплитуде. Холодный/тёплый
-    // — как RGB-расщепление.
-    _drawShadowCopy(
-      canvas,
-      size,
-      const Color(0xFFFF3B5C).withValues(alpha: 0.08 + wave * 0.14),
-      const Offset(1.1, 0),
+    // расщепление цветных теней, пульсирующее по амплитуде. Амплитуду даём
+    // прозрачностью СЛОЯ: раскладка берётся из кэша и не пересобирается.
+    final tp = _shadow(text, style, textDirection);
+    final bounds = Rect.fromLTWH(
+      -4,
+      -4,
+      tp.width + 8,
+      tp.height + 8,
     );
-    _drawShadowCopy(
-      canvas,
-      size,
-      const Color(0xFF33D1FF).withValues(alpha: 0.07 + wave * 0.12),
-      const Offset(-1.1, 0),
+    canvas.saveLayer(
+      bounds,
+      Paint()..color = Colors.white.withValues(alpha: 0.35 + wave * 0.65),
     );
-  }
-
-  /// Рисует одну цветную тень: прозрачный текст с цветной размытой тенью —
-  /// ровно то, что давало прежнее `shadows` у [Text], но без пересборки.
-  void _drawShadowCopy(Canvas canvas, Size size, Color color, Offset offset) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: style.copyWith(
-          color: Colors.transparent,
-          shadows: [Shadow(color: color, blurRadius: 1.5, offset: offset)],
-        ),
-      ),
-      textDirection: textDirection,
-      maxLines: 1,
-    )..layout(maxWidth: size.width);
     tp.paint(canvas, Offset.zero);
+    canvas.restore();
   }
 
   @override

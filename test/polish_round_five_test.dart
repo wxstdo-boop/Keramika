@@ -3,14 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:keramika/widgets/music_pulse_ring.dart';
 import 'package:keramika/widgets/profile_avatar.dart';
 
-/// Регрессы пятого круга полировки:
+/// Регрессы полировки:
 ///  * своя аватарка при размытии (скролл) рисуется через [ImageFiltered] —
 ///    расфокус «заходит» за круг, а не обрезается клипом (не было видно
 ///    граней);
-///  * аватарка не «пропадает» на входе: пока файл декодируется, показывается
-///    сгенерированный вариант (frameBuilder);
+///  * кольцо своей аватарки рисуется ПОВЕРХ картинки и видно СРАЗУ, а не
+///    только вместе с размытием;
+///  * кольцо музыки — тонкая обводка (`stroke`), а не залитый круг;
 ///  * подпись музыки — статичный текст «Играет бодрый звук» без мигания
 ///    «Пауза/Играет».
 void main() {
@@ -74,5 +76,49 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(ImageFiltered), findsNothing);
+  });
+
+  testWidgets('кольцо авы рисуется поверх и БЕЗ размытия', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: ProfileAvatar(index: 0, size: 96, imagePath: imgFile.path),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Кольцо должно быть на месте с самого начала: раньше оно было фоном
+    // клипа и появлялось только вместе с размытием.
+    expect(find.byKey(const ValueKey('avatar_ring')), findsOneWidget);
+  });
+
+  testWidgets('кольцо музыки — тонкая обводка, а не залитый круг', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: MusicPulseRing(
+              active: true,
+              child: Icon(Icons.play_arrow_rounded, size: 24),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Обводка рисуется CustomPaint'ом со `stroke`; залитого круга-«бублика»
+    // под кнопкой (Container с SweepGradient) больше нет.
+    final paint = find.descendant(
+      of: find.byType(MusicPulseRing),
+      matching: find.byType(CustomPaint),
+    );
+    expect(paint, findsWidgets);
+    expect(find.byType(Container), findsNothing);
   });
 }

@@ -214,46 +214,42 @@ class ProfileAvatar extends StatelessWidget {
         ),
       ),
     );
-    // Кольцо — заметно толще волосяного и чуть плотнее: своя аватарка
-    // читается как «вставленная», а не сливается с фоном.
-    final ring = DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.78),
-          width: 2.4,
+    // Кольцо рисуется ПОВЕРХ картинки ВСЕГДА. Раньше оно было фоном
+    // `DecoratedBox` и оказывалось ЗА клипом — то есть появлялось только
+    // вместе с размытием, когда рисовалось отдельным верхним слоем.
+    final ring = SizedBox(
+      key: const ValueKey('avatar_ring'),
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.82),
+            width: (size * 0.031).clamp(1.6, 3.0),
+          ),
         ),
       ),
-      child: clipped,
     );
-    if (blur <= 0.2 || MotionPrefs.shouldReduceMotion) return ring;
-    // Размываем клип и кладём поверх чёткое кольцо: расфокус «заходит» за
-    // аву ореолом (Clip.none), а кант остаётся резким.
+    // Размываем клип (при скролле) и кладём поверх чёткое кольцо: расфокус
+    // «заходит» за аву мягким ореолом (`Clip.none`), а кант остаётся резким.
+    final blurred = blur > 0.2 && !MotionPrefs.shouldReduceMotion;
     return Stack(
       alignment: Alignment.center,
       clipBehavior: Clip.none,
       children: [
-        ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(
-            sigmaX: blur,
-            sigmaY: blur,
-            tileMode: TileMode.decal,
-          ),
-          child: clipped,
-        ),
-        SizedBox(
-          width: size,
-          height: size,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.78),
-                width: 2.4,
-              ),
+        if (blurred)
+          ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: blur,
+              sigmaY: blur,
+              tileMode: TileMode.decal,
             ),
-          ),
-        ),
+            child: clipped,
+          )
+        else
+          clipped,
+        ring,
       ],
     );
   }

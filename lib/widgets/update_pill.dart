@@ -372,29 +372,19 @@ class _UpdateGlyphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = running ? progress : 0.0;
-    // Профиль прыжка: половина синуса — мягкий подъём и такое же мягкое
-    // приземление (скорость нулевая на обоих концах). Сверху — `easeInOutSine`
-    // (самая мягкая из easeInOut-кривых), поэтому разгон плавный, без
-    // «ступеньки» в начале и рывка в конце.
+    // Прыжок целиком по ОДНОЙ функции `hop`: 0 → 1 → 0. Скорость в нижних
+    // точках равна нулю (потолок в `cos(π·hp)` и множителе `hp·(1-hp)`), а
+    // скорость в верхней точке — нулю по построению. Значит отрыв и касание
+    // земли мягкие, без «отскока» внизу, который читался как дёрганье.
     final hp = (p / _hopSpan).clamp(0.0, 1.0);
-    final u = Curves.easeInOutSine.transform(hp);
-    final hop = running ? math.sin(math.pi * u) : 0.0;
-    // Деформация мягкая и симметричная: в полёте зайчик чуть вытягивается
-    // вверх, у «земли» — чуть приседает. Прежнее сплющивание ниже единицы
-    // выглядело как «зайчика прищемило»; теперь форма возвращается к кругу.
-    final scaleY = 1 + hop * 0.05;
-    final scaleX = 1 - hop * 0.03;
-    // Прыжок ниже: высокий подскок в маленькой таблетке читался как рывок.
-    final lift = hop * size.height * 0.12;
+    final hop = running ? hp * (1 - hp) * 4 * math.sin(math.pi * hp) : 0.0;
+    // Никакой деформации: любое масштабирование глифа в таблетке высотой
+    // ~15 px смазывало пиксели и «лагало». Двигаем только вверх-вниз.
+    final lift = hop * size.height * 0.14;
 
     final tp = _glyph(color, size.shortestSide * 0.84);
     canvas.save();
-    // Подъём и приземление — по ОДНОЙ плавной кривой `hop` (уже easeInOutSine),
-    // без отдельной «отбивки» у земли: вторая кривая давала рывок в нижней
-    // точке. `translate` идёт по непрерывному hop, поэтому касание земли
-    // такое же мягкое, как и отрыв.
     canvas.translate(size.width / 2, size.height / 2 - lift);
-    canvas.scale(scaleX, scaleY);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
   }
@@ -458,17 +448,12 @@ class _UpdateConfirmDialog extends StatelessWidget {
               ],
             ),
             child: Container(
-              // Полупрозрачная подложка БЕЗ `BackdropFilter`: под анимацией
-              // появления/ухода размытие пересобиралось каждый кадр и окно
-              // «мигало» (та же грабля, что у снекбара). Прозрачность даёт
-              // стеклянный тон.
+              // Обычная подложка диалога: нейтральный тон поверхности, чуть
+              // полупрозрачный. Прежний «стеклянный» primaryContainer давал
+              // цветной отблеск на тёмной теме — окно должно читаться как
+              // обычное, без переливов.
               decoration: BoxDecoration(
-                // «Стекло» той же семьи, что у снекбара, но чуть прозрачнее:
-                // сквозь окно должно быть видно приложение, иначе полупрозрачный
-                // фон читается как непрозрачный.
-                color: cs.primaryContainer.withValues(
-                  alpha: cs.brightness == Brightness.dark ? 0.58 : 0.64,
-                ),
+                color: cs.surfaceContainerHigh.withValues(alpha: 0.94),
                 borderRadius: BorderRadius.circular(Radii.xl - 1),
               ),
               child: Container(
@@ -506,7 +491,6 @@ class _UpdateConfirmDialog extends StatelessWidget {
                             ),
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: Weights.bold,
-                              color: cs.onPrimaryContainer,
                             ),
                           ),
                         ),
@@ -520,7 +504,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                         'Установить v{v}?',
                       ).replaceAll('{v}', version),
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.onPrimaryContainer.withValues(alpha: 0.84),
+                        color: cs.onSurfaceVariant,
                         fontStyle: FontStyle.italic,
                         height: 1.35,
                       ),
