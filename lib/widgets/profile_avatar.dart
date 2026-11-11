@@ -119,6 +119,10 @@ IconData profileAvatarIcon(int index) {
 /// аватарки): при уходе под верхнюю полку своя фотография расплывается
 /// плавно, оставаясь ровным кругом — без «разрезов» по краю.
 class ProfileAvatar extends StatelessWidget {
+  /// Максимальная сигма расфокуса (полный уход авы под полку). Кросс-фейд
+  /// считает долю именно от неё, поэтому значение одно на всех.
+  static const double _maxBlurSigma = 10;
+
   final int index;
   final double size;
   final bool showIcon;
@@ -170,7 +174,7 @@ class ProfileAvatar extends StatelessWidget {
   double get _sigma {
     if (motion != null && motionOf != null) {
       final t = Curves.easeInOut.transform(motionOf!().clamp(0.0, 1.0));
-      return t * 9;
+      return t * _maxBlurSigma;
     }
     return blur;
   }
@@ -180,24 +184,20 @@ class ProfileAvatar extends StatelessWidget {
     final reduce = MotionPrefs.shouldReduceMotion;
     final hasImage = imagePath != null && imagePath!.isNotEmpty;
     return AnimatedSwitcher(
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 340),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeInOut,
+      switchOutCurve: Curves.easeInOut,
       layoutBuilder: (current, previous) => Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [...previous, ?current],
       ),
-      // Мягкая проявка с лёгким масштабом — смена читается плавно и цельно.
+      // Смена авы — ЧИСТЫЙ кросс-фейд, без масштаба: `ScaleTransition`
+      // заставлял круг «надуваться» на каждом выборе и читался как рывок.
       // Кольцо своей аватарки едет ВНУТРИ этого перехода: появляется и
       // убирается вместе с картинкой, а не «щёлкает» отдельно.
-      transitionBuilder: (child, anim) => FadeTransition(
-        opacity: anim,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.94, end: 1).animate(anim),
-          child: child,
-        ),
-      ),
+      transitionBuilder: (child, anim) =>
+          FadeTransition(opacity: anim, child: child),
       child: _inner(context, hasImage),
     );
   }
@@ -232,10 +232,6 @@ class ProfileAvatar extends StatelessWidget {
   ///
   /// Сигма размытия КВАНТУЕТСЯ: непрерывное значение пересобирало фильтр
   /// каждый кадр прокрутки, и размытие «лагало». На ступенях пересборки нет.
-  /// Максимальная сигма расфокуса. Кросс-фейд считает долю от неё, поэтому
-  /// значение должно совпадать с верхом [_sigma] в режиме [motion].
-  static const double _maxBlurSigma = 9;
-
   /// Слой картинки с расфокусом.
   ///
   /// Анимированное размытие — КРОСС-ФЕЙД двух готовых слоёв: резкого и
@@ -340,8 +336,43 @@ class ProfileAvatar extends StatelessWidget {
     );
   }
 
-  Widget _generatedAvatar(BuildContext? context) {
+  /// Кэш «шара» по (индекс, размер, тема). Основа шара — `RadialGradient`,
+  /// а `createShader` для него пересобирается на КАЖДОЙ сборке `BoxDecoration`.
+  /// При прокрутке `_inner` перестраивает слой каждый кадр, то есть без кэша
+  /// шейдер собирался бы 60 раз в секунду — это и «тормозило» экран профиля.
+  /// Геометрия и цвета от кадра не зависят, поэтому держим готовую декорацию.
+  static final Map<String, BoxDecoration> _ballCache = <String, BoxDecoration>{};
+
+  static BoxDecoration _ballDecoration(int index, double size, bool dark) {
+    final key = '$index|$size|${dark ? 1 : 0}';
+    final cached = _ballCache[key];
+    if (cached != null) return cached;
     final color = profileAvatarColors(index).first;
+    final deco = BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: RadialGradient(
+        center: const Alignment(-0.4, -0.5),
+        radius: 1.1,
+        colors: [
+          Color.lerp(color, Colors.white, 0.55)!.withValues(alpha: 0.72),
+          color.withValues(alpha: 0.34),
+          color.withValues(alpha: 0.20),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ),
+      border: Border.all(
+        // На тёмной теме обводка шара тоже мягче — плотный кант светился
+        // вокруг круга.
+        color: color.withValues(alpha: dark ? 0.46 : 0.70),
+        width: 2,
+      ),
+    );
+    if (_ballCache.length > 240) _ballCache.clear();
+    _ballCache[key] = deco;
+    return deco;
+  }
+
+  Widget _generatedAvatar(BuildContext? context) {
     final dark = context == null
         ? false
         : Theme.of(context).brightness == Brightness.dark;
@@ -355,59 +386,56 @@ class ProfileAvatar extends StatelessWidget {
         // к плотному красному внизу. Ровная обводка как у кружков привычек.
         Positioned.fill(
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                center: const Alignment(-0.4, -0.5),
-                radius: 1.1,
-                colors: [
-                  Color.lerp(
-                    color,
-                    Colors.white,
-                    0.55,
-                  )!.withValues(alpha: 0.72),
-                  color.withValues(alpha: 0.34),
-                  color.withValues(alpha: 0.20),
-                ],
-                stops: const [0.0, 0.5, 1.0],
-              ),
-              border: Border.all(
-                // На тёмной теме обводка шара тоже мягче — плотный кант
-                // светился вокруг круга.
-                color: color.withValues(alpha: dark ? 0.46 : 0.70),
-                width: 2,
-              ),
-            ),
+            decoration: _ballDecoration(index, size, dark),
           ),
         ),
         Positioned.fill(
           child: Transform.translate(
             key: const ValueKey('avatar_motion'),
             offset: Offset(0, dy),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                if (showIcon)
-                  Center(
-                    child: Icon(
-                      profileAvatarIcon(index),
-                      size: size * 0.44,
-                      color: Colors.white.withValues(alpha: 0.92),
+            // Расфокус содержимого шара — ТЕМ ЖЕ конвейером, что у своей
+            // фотографии. Раньше у сгенерированной авы (а это у большинства
+            // пользователей) размытие не применялось вовсе: `blur`/`motion`
+            // учитывались только в ветке с картинкой, поэтому при прокрутке
+            // шар лишь чуть сдвигался, а расфокуса не было — «размытие
+            // незаметное». Значок и блики при этом остаются в кэшированном
+            // слое: смена — это `Opacity` поверх готового растра.
+            child: RepaintBoundary(
+              child: _blurLayer(
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (showIcon)
+                      Center(
+                        child: Icon(
+                          profileAvatarIcon(index),
+                          size: size * 0.44,
+                          color: Colors.white.withValues(alpha: 0.92),
+                        ),
+                      ),
+                    // Блестящие пятна: яркий «зайчик» и вторичный, слабее —
+                    // аватарка читается как объёмный стеклянный шарик.
+                    Positioned(
+                      left: size * 0.22,
+                      top: size * 0.18,
+                      child: _gloss(size * 0.20, 0.60),
                     ),
-                  ),
-                // Блестящие пятна: яркий «зайчик» и вторичный, слабее —
-                // аватарка читается как объёмный стеклянный шарик.
-                Positioned(
-                  left: size * 0.22,
-                  top: size * 0.18,
-                  child: _gloss(size * 0.20, 0.60),
+                    Positioned(
+                      left: size * 0.42,
+                      top: size * 0.33,
+                      child: _gloss(size * 0.09, 0.40),
+                    ),
+                  ],
                 ),
-                Positioned(
-                  left: size * 0.42,
-                  top: size * 0.33,
-                  child: _gloss(size * 0.09, 0.40),
-                ),
-              ],
+                // Размываем шар ТОЛЬКО когда он и есть аватарка. Внутри
+                // ветки своей картинки `_generatedAvatar` играет роль
+                // заглушки на время декода кадра — там расфокус не нужен
+                // (и добавил бы второй `ImageFiltered` поверх настоящего).
+                imagePath == null && _sigma > 0.2
+                    ? _sigma.roundToDouble()
+                    : 0.0,
+                animated: motion != null,
+              ),
             ),
           ),
         ),

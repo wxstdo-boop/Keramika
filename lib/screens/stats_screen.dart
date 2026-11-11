@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,18 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
   /// Постоянная «живая» анимация чисел: лёгкий глитч/размытие.
   late final AnimationController _glitchCtrl;
 
+  /// КВАНТОВАННАЯ фаза глитча. Контроллер тикает 60 раз в секунду, но числа
+  /// статистики меняют оттенок теней лишь на нескольких ступенях за цикл
+  /// (см. `_GlitchShadowPainter._steps`). Раньше painter слушал контроллер
+  /// НАПРЯМУЮ и перерисовывался каждый кадр — десяток «двойников» текста
+  /// заново растеризовался 60 раз в секунду, и экран статистики «дико
+  /// лагал». Теперь слушаем только смену ступени: видимая картинка та же,
+  /// а перерисовок в разы меньше.
+  final ValueNotifier<double> _glitchPhase = ValueNotifier<double>(0);
+
+  /// Ступеней квантования фазы за цикл.
+  static const int _glitchSteps = 24;
+
   /// Скролл статистики: деформация растяжения читает его позицию каждый кадр
   /// (см. [_StretchScroll]) — так возврат в покой не зависит от того, какие
   /// уведомления успела прислать физика.
@@ -55,8 +68,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
       AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 2600),
-      ),
+      )..addListener(_syncGlitchPhase),
     );
+  }
+
+  void _syncGlitchPhase() {
+    final q = (_glitchCtrl.value * _glitchSteps).roundToDouble() / _glitchSteps;
+    if (_glitchPhase.value != q) _glitchPhase.value = q;
   }
 
   void _onData() {
@@ -70,6 +88,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     _taskSvc.removeListener(_onData);
     _logSvc.removeListener(_onData);
     _glitchCtrl.dispose();
+    _glitchPhase.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -133,7 +152,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
       header: _buildOverallSummary(context, theme, overallPct),
       child: Column(
         children: [
-          _MonthChart(days: monthDays, glitch: _glitchCtrl, theme: theme),
+          _MonthChart(days: monthDays, glitch: _glitchPhase, theme: theme),
           const SizedBox(height: 16),
           // Daily Motivation Card — верхняя панель и сама цитата сидят на
           // своих плашках «округлённый квадрат» (мягкий радиус 12, тонкая
@@ -230,7 +249,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
               rcToday,
               rcTotal,
               accent: theme.colorScheme.tertiary,
-              glitch: _glitchCtrl,
+              glitch: _glitchPhase,
             ),
             const SizedBox(height: 16),
           ],
@@ -242,7 +261,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
             habitsDone,
             habitsTotal,
             accent: theme.colorScheme.primary,
-            glitch: _glitchCtrl,
+            glitch: _glitchPhase,
           ),
           const SizedBox(height: 16),
           _buildStatCard(
@@ -253,7 +272,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
             tasksDone,
             tasksTotal,
             accent: theme.colorScheme.secondary,
-            glitch: _glitchCtrl,
+            glitch: _glitchPhase,
           ),
         ],
       ),
@@ -322,7 +341,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
                 child: _GlitchText(
                   '${(pct * 100).toInt()}%',
                   key: ValueKey('overall_${(pct * 100).toInt()}'),
-                  ctrl: _glitchCtrl,
+                  ctrl: _glitchPhase,
                   style: theme.textTheme.headlineLarge?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.bold,
@@ -347,7 +366,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     int done,
     int total, {
     required Color accent,
-    required Animation<double> glitch,
+    required ValueListenable<double> glitch,
   }) {
     final pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 0.0;
     return PressScale(
@@ -511,7 +530,7 @@ Widget _ringedCard({
 class _GlitchText extends StatelessWidget {
   final String text;
   final TextStyle? style;
-  final Animation<double> ctrl;
+  final ValueListenable<double> ctrl;
 
   const _GlitchText(this.text, {super.key, required this.ctrl, this.style});
 
@@ -545,7 +564,7 @@ class _GlitchText extends StatelessWidget {
 class _GlitchShadowPainter extends CustomPainter {
   final String text;
   final TextStyle style;
-  final Animation<double> ctrl;
+  final ValueListenable<double> ctrl;
   final TextDirection textDirection;
 
   _GlitchShadowPainter({
@@ -637,7 +656,7 @@ class _GlitchShadowPainter extends CustomPainter {
 /// Плавный рост при входе, подписи дней недели и «лучший день».
 class _MonthChart extends StatelessWidget {
   final List<DayCompletion> days;
-  final Animation<double> glitch;
+  final ValueListenable<double> glitch;
   final ThemeData theme;
 
   const _MonthChart({

@@ -31,7 +31,7 @@ class InlineKeyboard extends StatelessWidget {
     required this.onChar,
     required this.onBackspace,
     required this.onSpace,
-    this.keyHeight = 40,
+    this.keyHeight = 44,
   });
 
   static const List<String> _digits = [
@@ -54,25 +54,30 @@ class InlineKeyboard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
       decoration: BoxDecoration(
-        // Полупрозрачная панель: сквозь клавиатуру просвечивает лист, и она
-        // читается «подложкой», а не глухой плитой.
-        color: cs.surfaceContainer.withValues(alpha: 0.82),
+        // Полупрозрачная панель с КРАСНЫМ отливом темы: сквозь клавиатуру
+        // просвечивает лист, а тёплый алый тон привязывает её к остальным
+        // «стеклянным» плашкам. Раньше здесь был нейтральный surfaceContainer
+        // — панель читалась чужеродной серой плитой.
+        color: Color.alphaBlend(
+          cs.primary.withValues(alpha: 0.12),
+          cs.surfaceContainer.withValues(alpha: 0.78),
+        ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(Radii.xl)),
         border: Border(
-          top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          top: BorderSide(color: cs.primary.withValues(alpha: 0.30)),
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _row(theme, _digits, keyHeight),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           _row(theme, _row1, keyHeight),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           _row(theme, _row2, keyHeight),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           _row(theme, _row3, keyHeight, trailingBackspace: true),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
@@ -200,11 +205,11 @@ class _KeyState extends State<_Key> {
     // сильно разбавленный, — кнопки читаются «стеклянно-красными» на любом
     // фоне. Отдача и повтор — в [PressScale]/InkWell ниже.
     final keyColor = Color.alphaBlend(
-      cs.primary.withValues(alpha: 0.16),
-      cs.surfaceContainerHighest.withValues(alpha: 0.55),
+      cs.primary.withValues(alpha: 0.20),
+      cs.surfaceContainerHighest.withValues(alpha: 0.72),
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 3),
       child: PressScale(
         pressedScale: 0.9,
         duration: const Duration(milliseconds: 90),
@@ -224,7 +229,10 @@ class _KeyState extends State<_Key> {
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: keyColor,
-              borderRadius: BorderRadius.circular(Radii.sm),
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(
+                color: cs.primary.withValues(alpha: 0.22),
+              ),
             ),
             child: Container(
               height: widget.height,
@@ -232,13 +240,13 @@ class _KeyState extends State<_Key> {
               child: widget.icon != null
                   ? Icon(
                       widget.icon,
-                      size: 18,
-                      color: cs.primary.withValues(alpha: 0.85),
+                      size: 20,
+                      color: cs.primary,
                     )
                   : Text(
                       widget.label!,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: Weights.medium,
+                        fontWeight: Weights.semibold,
                         color: cs.onSurface,
                       ),
                     ),

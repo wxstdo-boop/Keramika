@@ -291,12 +291,18 @@ class _UpdatePillState extends State<UpdatePill>
                     // (не busy) слоя вообще не трогаем.
                     child: AnimatedBuilder(
                       animation: _spin,
+                      // Округляем смещение до целых пикселей: дробный сдвиг
+                      // заставляет растеризатор пересэмплировать кэшированный
+                      // слой каждый кадр — именно это и «мылило» и дёргало
+                      // мелкий глиф. Целый пиксель — чистый перенос.
                       builder: (context, child) => Transform.translate(
-                        offset: Offset(0, -_hopLift(_spin.value)),
+                        offset: Offset(0, -_hopLift(_spin.value).roundToDouble()),
                         child: child,
                       ),
                       child: RepaintBoundary(
                         child: CustomPaint(
+                          isComplex: true,
+                          willChange: false,
                           painter: _RabbitGlyphPainter(
                             color: cs.onPrimaryContainer,
                           ),
@@ -338,10 +344,13 @@ class _UpdatePillState extends State<UpdatePill>
 /// короткая пауза отделяет прыжки, чтобы движение читалось как прыжок, а не
 /// как «молотьба».
 double _hopLift(double t) {
-  const hopSpan = 0.58;
-  const amplitude = 3.2;
+  const hopSpan = 0.5;
+  const amplitude = 4.0;
+  // Чистая полуволна синуса: ровно 0 → 1 → 0 с нулевой скоростью на обоих
+  // концах. Прежняя формула перемножала `h·(1-h)` и `sin(π·h)` — двойной
+  // «горб» давал неровный разгон и читался дёрганым.
   final h = (t / hopSpan).clamp(0.0, 1.0);
-  return h * (1 - h) * 4 * math.sin(math.pi * h) * amplitude;
+  return math.sin(math.pi * h) * amplitude;
 }
 
 /// Значок таблетки: ЗАЙЧИК. В покое сидит, при обновлении — подпрыгивает и
@@ -459,16 +468,19 @@ class _UpdateConfirmDialog extends StatelessWidget {
               // было залито плотным surfaceContainerHigh (0.94) — читалось
               // непрозрачной плашкой, фон под ним не угадывался.
               child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                // Мягкое размытие без «молочной» заливки: стекло должно
+                // читаться прозрачным, а не как матовая плита.
+                filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
                   decoration: BoxDecoration(
-                    // Заметно полупрозрачно: сквозь окно виден размытый фон,
-                    // а не глухая заливка. Нейтральный тон поверхности, без
-                    // цветных отблесков primaryContainer.
-                    color: cs.surfaceContainerHigh.withValues(alpha: 0.72),
+                    // ПОЧТИ ПРОЗРАЧНО: сквозь окно явно виден фон, а не
+                    // глухая заливка — прежние 0.72 читались непрозрачной
+                    // плашкой. Тон поверхности лишь слегка подмешивается,
+                    // чтобы текст оставался читаемым.
+                    color: cs.surfaceContainerHigh.withValues(alpha: 0.30),
                     borderRadius: BorderRadius.circular(Radii.xl - 1),
                     border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.35),
+                      color: cs.onSurface.withValues(alpha: 0.14),
                     ),
                   ),
                   padding: const EdgeInsets.fromLTRB(

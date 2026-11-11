@@ -17,6 +17,12 @@ Widget animatedDeleteBackground(
   double opacity = 1.0,
 }) {
   final a = opacity.clamp(0.0, 1.0);
+  // Полупрозрачно-красный: сквозь плашку просвечивает карточка, и удаление
+  // читается «стеклом», а не глухой заливкой. Альфа базовая (0.58) — это
+  // и есть «полупрозрачно», а `a` (прогресс свайпа) домножается сверху,
+  // поэтому проявление по жесту остаётся.
+  const baseAlpha = 0.58;
+  final tint = (a * baseAlpha).clamp(0.0, 1.0);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -24,8 +30,8 @@ Widget animatedDeleteBackground(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
         colors: [
-          const Color(0xFFFF5252).withValues(alpha: a),
-          const Color(0xFFFF1744).withValues(alpha: a),
+          const Color(0xFFFF5252).withValues(alpha: tint),
+          const Color(0xFFFF1744).withValues(alpha: tint),
         ],
       ),
     ),

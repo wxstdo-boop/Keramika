@@ -36,13 +36,14 @@ const String kKeramikaSiteUrl = 'https://keramika.ru';
 /// дёрганой; кубика дешёвая и мягкая, а вход чуть длиннее — лист «выезжает»,
 /// а не выскакивает.
 AnimationStyle _sheetStyle() => AnimationStyle(
-  // Мягкое всплытие с долгим «торможением»: лист рейтинга поднимается
-  // ровно и без рывка в конце. Выход чуть короче входа — уход собранный,
-  // но не резкий (прежний easeInCubic «щёлкал» в самом конце).
-  curve: Curves.easeOutQuart,
-  duration: const Duration(milliseconds: 420),
-  reverseCurve: Curves.easeInOutCubic,
-  reverseDuration: const Duration(milliseconds: 300),
+  // Быстрое всплытие с мягким торможением. Прежние 420 мс с easeOutQuart
+  // тянулись заметно дольше, чем лист проходит путь, и читались
+  // «подторможенным» появлением; 300 мс с easeOutCubic успевает и плавно,
+  // и собранно. Выход ещё короче — уход не должен «висеть».
+  curve: Curves.easeOutCubic,
+  duration: const Duration(milliseconds: 300),
+  reverseCurve: Curves.easeInCubic,
+  reverseDuration: const Duration(milliseconds: 240),
 );
 
 /// Округлая (капсульная) форма кнопок профиля — та же «отдача фоном», что у
@@ -348,9 +349,13 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _removeMusic() async {
-    // Полная остановка перед удалением: файла скоро не станет, играть нечего.
-    await _music.stop();
+    // Состояние меняем СРАЗУ, а затухание плеера уходит в фон: раньше карточка
+    // ждала окончания фейда (до 420 мс) и схлопывалась с запозданием —
+    // читалось как «дёрнуло». Теперь плашка уезжает плавно и сразу, а звук
+    // стихает параллельно.
+    final stopping = _music.stop();
     await _service.setMusic();
+    await stopping;
   }
 
   /// Открыть окно новогоднего ивента (пункт «Новогодний ивент» в событиях).
@@ -738,30 +743,29 @@ class _ProfileScreenState extends State<ProfileScreen>
     // Плашка меняется ПЛАВНО: между «пусто», строкой трека и подписью
     // кнопки играет AnimatedSize + AnimatedSwitcher — добавление, замена и
     // удаление музыки не «щёлкают» раскладкой.
+    final crossDur = MotionPrefs.shouldReduceMotion
+        ? Duration.zero
+        : Motion.slow;
     return _Card(
       title: Translations.t('profileMusic', context, 'Твоя музыка'),
       icon: Icons.music_note_outlined,
-      child: AnimatedSize(
-        duration: MotionPrefs.shouldReduceMotion
-            ? Duration.zero
-            : Motion.slow,
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topLeft,
-        child: Column(
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AnimatedSwitcher(
-              duration: MotionPrefs.shouldReduceMotion
-                  ? Duration.zero
-                  : Motion.normal,
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              // Только проявка: высоту тянет внешний `AnimatedSize`, и
-              // второй `SizeTransition` внутри спорил с ним — карточка
-              // дёргала текст при добавлении/удалении трека.
-              transitionBuilder: (child, anim) =>
-                  FadeTransition(opacity: anim, child: child),
-              child: hasMusic
+            // Смена «пусто ↔ трек» — ОДНИМ механизмом: `AnimatedCrossFade`
+            // сам и проявляет, и тянет высоту ОДНОЙ кривой. Раньше проявку
+            // делал `AnimatedSwitcher`, а высоту — внешний `AnimatedSize`, и
+            // они спорили: карточка дёргала текст и «скукоживалась» рывком
+            // при удалении трека.
+            AnimatedCrossFade(
+              duration: crossDur,
+              sizeCurve: Curves.easeOutCubic,
+              firstCurve: Curves.easeOut,
+              secondCurve: Curves.easeIn,
+              crossFadeState: hasMusic
+                  ? CrossFadeState.showFirst
+                  : CrossFadeState.showSecond,
+              firstChild: hasMusic
                   // Гасим чернильные всплески ListTile: без этого при тапе по
                   // строке под пальцем вспыхивал прямоугольник на всю ширину
                   // карточки («квадрат»). Кнопки внутри сохраняют свой отклик.
@@ -858,20 +862,20 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                       ),
                     )
-                  : Padding(
-                      key: const ValueKey('music_empty'),
-                      padding: const EdgeInsets.only(bottom: Spacing.xs),
-                      child: Text(
-                        Translations.t(
-                          'profileMusicEmpty',
-                          context,
-                          'Добавьте свой трек — он будет играть в профиле',
-                        ),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+                  : const SizedBox.shrink(),
+              secondChild: Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.xs),
+                child: Text(
+                  Translations.t(
+                    'profileMusicEmpty',
+                    context,
+                    'Добавьте свой трек — он будет играть в профиле',
+                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             ),
             Align(
               alignment: Alignment.centerLeft,
@@ -927,7 +931,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ],
         ),
-      ),
     );
   }
 
