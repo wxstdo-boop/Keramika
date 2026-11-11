@@ -45,7 +45,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Repo = 'wxstdo-boop/Keramika',
+    [string]$Repo = 'wxstdo-boop/agysha',
     [string]$WorkDir = (Join-Path $env:TEMP 'keramika-rewrite'),
     [string[]]$SecretPaths = @(
         'android/key.properties',

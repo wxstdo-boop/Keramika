@@ -23,7 +23,7 @@ import 'package:keramika/services/prefs.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const payloadChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
+  const payloadChannel = MethodChannel('com.wetcorp.agysha/alarm_payload');
 
   setUp(() async {
     JsonFile.resetForTesting();
@@ -41,7 +41,7 @@ void main() {
     // Нативный планировщик отвечает «ок».
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('com.wetidom.keramika/alarm_scheduler'),
+          const MethodChannel('com.wetcorp.agysha/alarm_scheduler'),
           (call) async => true,
         );
     await AlarmService().load();
@@ -60,7 +60,7 @@ void main() {
         );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('com.wetidom.keramika/alarm_scheduler'),
+          const MethodChannel('com.wetcorp.agysha/alarm_scheduler'),
           null,
         );
   });
@@ -89,7 +89,7 @@ void main() {
     await tester.runAsync(() async {
       await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .handlePlatformMessage(
-            'com.wetidom.keramika/alarm_payload',
+            'com.wetcorp.agysha/alarm_payload',
             const StandardMethodCodec().encodeMethodCall(
               const MethodCall('onNewAlarmPayload', 'alarm:$alarmId'),
             ),
@@ -117,7 +117,7 @@ void main() {
     await tester.runAsync(() async {
       await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .handlePlatformMessage(
-            'com.wetidom.keramika/alarm_payload',
+            'com.wetcorp.agysha/alarm_payload',
             const StandardMethodCodec().encodeMethodCall(
               const MethodCall('onNewAlarmPayload', 'alarm:no-such-alarm'),
             ),

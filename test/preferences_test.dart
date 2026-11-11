@@ -62,7 +62,7 @@ void main() {
     hapticCalls = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('com.wetidom.keramika/haptics'),
+          const MethodChannel('com.wetcorp.agysha/haptics'),
           (call) async {
             hapticCalls.add(call.method);
             return null;
@@ -91,7 +91,7 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('com.wetidom.keramika/haptics'),
+          const MethodChannel('com.wetcorp.agysha/haptics'),
           null,
         );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

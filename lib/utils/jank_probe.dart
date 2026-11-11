@@ -20,7 +20,7 @@ import 'package:path_provider/path_provider.dart';
 /// Кадр дольше 16.6мс не успевает в 60 Гц — такие и пишутся.
 ///
 /// Файл падает в подкаталог `perf/`, читается без root:
-/// `adb shell cat /sdcard/Android/data/com.wetidom.keramika/files/perf/keramika_jank.txt`
+/// `adb shell cat /sdcard/Android/data/com.wetcorp.agysha/files/perf/keramika_jank.txt`
 class JankProbe {
   JankProbe._();
 

@@ -17,7 +17,7 @@
 
 # Keep Flutter engine embedding classes — без них приложение падает на старте.
 -keep class io.flutter.** { *; }
--keep class com.wetidom.keramika.** { *; }
+-keep class com.wetcorp.agysha.** { *; }
 
 # ── jnigen JNI (shared_preferences_android 2.x, path_provider_android 2.x) ──
 # Диагноз (apkanalyzer dex): класс и метод getAll В DEX ЕСТЬ, но R8 переименовал

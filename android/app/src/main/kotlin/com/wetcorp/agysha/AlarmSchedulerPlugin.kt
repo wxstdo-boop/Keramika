@@ -1,4 +1,4 @@
-package com.wetidom.keramika
+package com.wetcorp.agysha
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -17,7 +17,7 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
     MethodChannel.MethodCallHandler {
 
     companion object {
-        private const val CHANNEL = "com.wetidom.keramika/alarm_scheduler"
+        private const val CHANNEL = "com.wetcorp.agysha/alarm_scheduler"
         private const val TAG = "AlarmScheduler"
         // Манифест запланированных будильников в SharedPreferences.
         // BootReceiver читает его ПОСЛЕ перезагрузки телефона (система

@@ -7,8 +7,8 @@
   Задачи, привычки, питание и ИИ-ассистент Ада — в одном приложении.</p>
 
   <p>
-    <a href="https://github.com/wxstdo-boop/Keramika/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/wxstdo-boop/Keramika/ci.yml?label=CI&color=%232ea44f" /></a>
-    <a href="https://github.com/wxstdo-boop/Keramika/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wxstdo-boop/Keramika?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=%23c2185b" /></a>
+    <a href="https://github.com/wxstdo-boop/agysha/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/wxstdo-boop/agysha/ci.yml?label=CI&color=%232ea44f" /></a>
+    <a href="https://github.com/wxstdo-boop/agysha/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wxstdo-boop/agysha?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=%23c2185b" /></a>
     <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2ea44f" /></a>
     <img alt="Flutter" src="https://img.shields.io/badge/Flutter-3.47.5-02569a?logo=flutter&logoColor=white" />
     <img alt="Dart" src="https://img.shields.io/badge/Dart-3.12-0175C2?logo=dart&logoColor=white" />
@@ -113,7 +113,7 @@
 ## 🚀 Установка
 
 ### Готовый APK
-1. Открой [Releases](https://github.com/wxstdo-boop/Keramika/releases/latest)
+1. Открой [Releases](https://github.com/wxstdo-boop/agysha/releases/latest)
 2. Скачай `Keramika-<версия>-<abi>.apk` под свой процессор
    (`arm64-v8a` — почти все современные телефоны, `armeabi-v7a` — старые,
    `x86_64` — эмуляторы)
@@ -136,7 +136,7 @@
 сам предлагает обновления, сверяя APK по SHA-256. Добавь в приложении ссылку:
 
 ```
-https://github.com/wxstdo-boop/Keramika
+https://github.com/wxstdo-boop/agysha
 ```
 
 Obtainium подхватит нужный ABI и будет ставить новые версии поверх — данные
@@ -155,7 +155,7 @@ F-Droid собирается из исходников без встроенно
 ### Из исходников
 
 ```bash
-git clone https://github.com/wxstdo-boop/Keramika.git
+git clone https://github.com/wxstdo-boop/agysha.git
 cd Keramika
 flutter pub get
 flutter run
@@ -182,7 +182,7 @@ lib/
 ├── utils/             Иконки, анимации, токены дизайна, «убрать анимации»
 └── widgets/           56 UI-компонентов
 
-android/app/src/main/kotlin/com/wetidom/keramika/
+android/app/src/main/kotlin/com/wetcorp/agysha/
 ├── MainActivity.kt             Точка входа Android, каналы плагинов
 ├── AlarmSchedulerPlugin.kt     Планирование setAlarmClock, догон, манифест
 ├── AlarmReceiver.kt            Приём срабатывания будильника

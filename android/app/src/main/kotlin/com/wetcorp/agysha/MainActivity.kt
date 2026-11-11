@@ -1,4 +1,4 @@
-package com.wetidom.keramika
+package com.wetcorp.agysha
 
 import android.app.NotificationManager
 import android.content.ComponentName
@@ -29,8 +29,8 @@ import java.io.File
 import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.wetidom.keramika/alarm_payload"
-    private val HAPTICS_CHANNEL = "com.wetidom.keramika/haptics"
+    private val CHANNEL = "com.wetcorp.agysha/alarm_payload"
+    private val HAPTICS_CHANNEL = "com.wetcorp.agysha/haptics"
     private var methodChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,7 +63,7 @@ class MainActivity : FlutterActivity() {
      */
     private fun handleCancelAlarm() {
         val intent = intent ?: return
-        if (intent.action != "com.wetidom.keramika.CANCEL_ALARM") return
+        if (intent.action != "com.wetcorp.agysha.CANCEL_ALARM") return
         val aid = intent.getIntExtra("alarm_id", 0)
         Log.i("MainActivity", "CANCEL_ALARM id=$aid — stop ring + clear wake flags")
         AlarmForegroundService.stop(applicationContext)
@@ -228,7 +228,7 @@ class MainActivity : FlutterActivity() {
         // переключателя — только когда разрешения реально нет.
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.wetidom.keramika/fullscreen",
+            "com.wetcorp.agysha/fullscreen",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "canUseFullScreenIntent" -> result.success(canUseFullScreenIntent())
@@ -251,7 +251,7 @@ class MainActivity : FlutterActivity() {
         // отвечает на вопросы «есть разрешение?» и «дай свежий снимок».
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.wetidom.keramika/screen_reader",
+            "com.wetcorp.agysha/screen_reader",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasPermission" -> result.success(isScreenReaderEnabled())
@@ -481,7 +481,7 @@ class MainActivity : FlutterActivity() {
      * обычным runtime-разрешением: это app-op `USE_FULL_SCREEN_INTENT`,
      * который по умолчанию стоит в `ignore` у всех, кроме звонилок и
      * будильников-приложений. Замер на телефоне автора (Android 15/HyperOS,
-     * `cmd appops get com.wetidom.keramika`) показал ровно это:
+     * `cmd appops get com.wetcorp.agysha`) показал ровно это:
      * `USE_FULL_SCREEN_INTENT: ignore`, а `rejectTime` совпал с моментом
      * срабатывания будильника — система отказывала ровно тогда, когда
      * AlarmReceiver вызывал setFullScreenIntent. Поэтому будильник
@@ -757,7 +757,7 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Канал автообновления `com.wetidom.keramika/updater`.
+     * Канал автообновления `com.wetcorp.agysha/updater`.
      *
      * Отдаёт версию установленного APK и ABI, разрешает ли установку из этого
      * источника, открывает системные настройки и ЗАПУСКАЕТ установку
@@ -767,7 +767,7 @@ class MainActivity : FlutterActivity() {
     private fun registerUpdaterChannel(flutterEngine: FlutterEngine) {
         val channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.wetidom.keramika/updater",
+            "com.wetcorp.agysha/updater",
         )
         channel.setMethodCallHandler { call, result ->
             when (call.method) {

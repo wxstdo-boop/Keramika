@@ -20,9 +20,9 @@ import 'package:keramika/services/alarm_scheduler.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('com.wetidom.keramika/alarm_scheduler');
+  const channel = MethodChannel('com.wetcorp.agysha/alarm_scheduler');
   const fullscreenChannel = MethodChannel(
-    'com.wetidom.keramika/fullscreen',
+    'com.wetcorp.agysha/fullscreen',
   );
 
   final calls = <MethodCall>[];
@@ -213,7 +213,7 @@ void main() {
   group('остановка звонка удалённого будильника', () {
     // Канал alarm_payload (MainActivity): stopAlarmSoundFor глушит
     // AlarmForegroundService, если звонит именно этот будильник.
-    const payloadChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
+    const payloadChannel = MethodChannel('com.wetcorp.agysha/alarm_payload');
     final payloadCalls = <MethodCall>[];
 
     setUp(() {

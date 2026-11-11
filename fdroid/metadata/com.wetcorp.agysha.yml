@@ -9,14 +9,14 @@ Categories:
   - Task
 License: MIT
 AuthorName: Wetidom
-SourceCode: https://github.com/wxstdo-boop/Keramika
-IssueTracker: https://github.com/wxstdo-boop/Keramika/issues
-Changelog: https://github.com/wxstdo-boop/Keramika/releases
+SourceCode: https://github.com/wxstdo-boop/agysha
+IssueTracker: https://github.com/wxstdo-boop/agysha/issues
+Changelog: https://github.com/wxstdo-boop/agysha/releases
 
 AutoName: Keramika
 
 RepoType: git
-Repo: https://github.com/wxstdo-boop/Keramika.git
+Repo: https://github.com/wxstdo-boop/agysha.git
 
 Builds:
   - versionName: 1.6.132

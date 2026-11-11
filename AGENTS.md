@@ -80,7 +80,7 @@ from `test/section_pill_transition_test.dart`.
 Секреты не заданы — сборка не подпишется, релиз не выйдет, автообновление в
 приложении (`lib/services/update_service.dart` читает `releases/latest`) не
 сработает. Проверить, что релиз реально есть:
-`curl -s .../repos/wxstdo-boop/Keramika/releases/latest` (пустой тег-лист =
+`curl -s .../repos/wxstdo-boop/agysha/releases/latest` (пустой тег-лист =
 релизов нет).
 
 Keystore проекта: `keramika-release.jks`, alias `keramika`, сертификат
@@ -727,7 +727,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
 Полная инструкция — `docs/publishing-fdroid.md`. Ключевое, чтобы не наступать
 на грабли повторно:
 
-- **Рецепт сборки** лежит в `fdroid/metadata/com.wetidom.keramika.yml`. Это
+- **Рецепт сборки** лежит в `fdroid/metadata/com.wetcorp.agysha.yml`. Это
   копия того, что уходит в MR в `fdroid/fdroiddata`; структуру проверить можно
   `python3 -c "from fdroidserver import metadata; ..."` или `fdroid lint` внутри
   клона fdroiddata (в пустом каталоге lint ругается на категории — конфиг пуст).
@@ -810,7 +810,7 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   `AuthorName`, `SourceCode`, `IssueTracker`, `Changelog`), `UpdateCheckMode`
   без кавычек, длинные строки автопереносятся с отступом. Проверить локально:
   `python3 -c "from fdroidserver import metadata,rewritemeta as rw;
-  print(rw.proper_format(metadata.parse_metadata('metadata/com.wetidom.keramika.yml')))"`
+  print(rw.proper_format(metadata.parse_metadata('metadata/com.wetcorp.agysha.yml')))"`
   — должно быть `True`.
 - **`fdroid checkupdates --auto` тоже гейт.** Job прогоняет автообновление и
   падает, если появился diff. Значит `UpdateCheckData` и `AutoUpdateMode:

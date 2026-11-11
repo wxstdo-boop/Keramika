@@ -9,7 +9,7 @@ import 'package:keramika/services/installer.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('com.wetidom.keramika/updater');
+  const channel = MethodChannel('com.wetcorp.agysha/updater');
 
   setUp(() {
     Installer.resetForTesting();

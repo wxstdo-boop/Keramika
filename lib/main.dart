@@ -133,7 +133,7 @@ Future<String?> _readAlarmBootPayload() async {
   if (kIsWeb) return null;
   try {
     final p = await const MethodChannel(
-      'com.wetidom.keramika/alarm_payload',
+      'com.wetcorp.agysha/alarm_payload',
     ).invokeMethod<String>('getAlarmPayload');
     if (p != null && p.startsWith('alarm:')) return p;
   } catch (_) {
@@ -298,11 +298,11 @@ const _lastAutoExportKey = 'last_auto_export_at';
 // `MethodChannel` создаётся дёшево и не трогает платформу до первого invoke,
 // поэтому создание на web безопасно.
 final MethodChannel _backupChannel = const MethodChannel(
-  'com.wetidom.keramika/alarm_payload',
+  'com.wetcorp.agysha/alarm_payload',
 );
 // Канал сигналов жизненного цикла Activity → Dart (onNewIntent и т.п.).
 final MethodChannel _lifecycleChannel = const MethodChannel(
-  'com.wetidom.keramika/lifecycle',
+  'com.wetcorp.agysha/lifecycle',
 );
 
 /// Включает автоэкспорт: разовый прогон (если нужно) + почасовой таймер.
@@ -630,7 +630,7 @@ String? _pendingAlarmPayload;
 // Создаётся СРАЗУ (см. комментарий у [_backupChannel]) — иначе первый invoke
 // падал с LateInitializationError и обработчик onNewAlarmPayload не вставал.
 final MethodChannel _alarmPayloadChannel = const MethodChannel(
-  'com.wetidom.keramika/alarm_payload',
+  'com.wetcorp.agysha/alarm_payload',
 );
 
 Future<void> _handleNotificationTap(String? payload) async {
@@ -2330,7 +2330,7 @@ class _AlarmBootHostState extends State<_AlarmBootHost> {
     // кнопкой «Назад», сервис иначе гудел бы до своего таймаута.
     try {
       const MethodChannel(
-        'com.wetidom.keramika/alarm_payload',
+        'com.wetcorp.agysha/alarm_payload',
       ).invokeMethod('stopAlarmSound');
     } catch (_) {}
     if (!mounted) return;

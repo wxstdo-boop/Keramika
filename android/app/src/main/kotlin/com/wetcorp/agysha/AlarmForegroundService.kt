@@ -1,4 +1,4 @@
-package com.wetidom.keramika
+package com.wetcorp.agysha
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -405,7 +405,7 @@ class AlarmForegroundService : Service() {
         private const val RING_RETRY_MS = 1_500L
         private const val VIBRATE_CYCLE_MS = 3_500L
 
-        const val ACTION_STOP = "com.wetidom.keramika.action.STOP_RING"
+        const val ACTION_STOP = "com.wetcorp.agysha.action.STOP_RING"
 
         /**
          * Запустить звонок. Вызывается из [AlarmReceiver] (broadcast по

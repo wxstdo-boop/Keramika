@@ -8,7 +8,7 @@
 
 | Артефакт | Зачем |
 |---|---|
-| `fdroid/metadata/com.wetidom.keramika.yml` | Готовый рецепт сборки для fdroiddata — копируется в MR как есть |
+| `fdroid/metadata/com.wetcorp.agysha.yml` | Готовый рецепт сборки для fdroiddata — копируется в MR как есть |
 | `fastlane/metadata/android/{en-US,ru,fr}/` | Иконка, скриншоты, короткое и полное описание, changelog — в формате, который читает и F-Droid, и IzzyOnDroid |
 | `docs/screenshots/` + `tool/screenshots/render_screenshots.dart` | Скриншоты рисуются из кода без устройства |
 | `lib/services/update_service.dart` | Флаг `KERAMIKA_NO_SELF_UPDATE` выключает самообновление в сборке для F-Droid (см. ниже) |
@@ -45,15 +45,15 @@ Neo Store, Droid-ify и других клиентах F-Droid.
    ```
    pip install fdroidserver
    git clone https://gitlab.com/<ваш-логин>/fdroiddata && cd fdroiddata
-   cp /path/to/Keramika/fdroid/metadata/com.wetidom.keramika.yml metadata/
+   cp /path/to/Keramika/fdroid/metadata/com.wetcorp.agysha.yml metadata/
    fdroid readmeta
-   fdroid checkupdates com.wetidom.keramika
-   fdroid build -v -l com.wetidom.keramika
+   fdroid checkupdates com.wetcorp.agysha
+   fdroid build -v -l com.wetcorp.agysha
    ```
    `fdroid build` требует Android SDK и NDK 28.2.13676358 (см. поле `ndk` в
    рецепте) и около 30-60 минут на первый прогон.
 3. Закоммитить и открыть MR прямо из веб-интерфейса GitLab (после push появится
-   ссылка «Create merge request»). Заголовок: `New app: com.wetidom.keramika`.
+   ссылка «Create merge request»). Заголовок: `New app: com.wetcorp.agysha`.
 4. Отвечать на замечания ревьюеров — обычно просят уточнить, где хранятся
    ключи подписи и почему в рецепте такие `rm`/`prebuild`.
 
@@ -144,9 +144,9 @@ Tasks.org — Keramika там на месте. Редактируется ров
     "host": "GitHub",
     "name": "Keramika",
     "description": "An offline alarm clock that will not let you fall back asleep, plus habit tracking, tasks and focus sessions in one app. Includes an optional AI assistant, disabled by default. No account, no ads, no trackers; everything works offline.",
-    "stars_link": "https://img.shields.io/github/stars/wxstdo-boop/Keramika.svg?label=★&style=flat",
-    "source": "https://github.com/wxstdo-boop/Keramika",
-    "fdroid": "https://f-droid.org/packages/com.wetidom.keramika"
+    "stars_link": "https://img.shields.io/github/stars/wxstdo-boop/agysha.svg?label=★&style=flat",
+    "source": "https://github.com/wxstdo-boop/agysha",
+    "fdroid": "https://f-droid.org/packages/com.wetcorp.agysha"
 }
 ```
 
@@ -210,19 +210,19 @@ PR в `main` по их шаблону.
 ### Вариант A (рекомендуется для первого раза) — RFP-issue
 
 Открыть новое issue (заголовок уже подставлен, надо только войти и вставить
-описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Keramika%20(com.wetidom.keramika)
+описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Keramika%20(com.wetcorp.agysha)
 
 Без подстановки: https://gitlab.com/fdroid/rfp/-/issues/new
 
-**Title:** `Keramika (com.wetidom.keramika)`
+**Title:** `Keramika (com.wetcorp.agysha)`
 
 **Description:**
 
 ```markdown
 ### App information
 - Name: Keramika
-- Package ID: com.wetidom.keramika
-- Source: https://github.com/wxstdo-boop/Keramika
+- Package ID: com.wetcorp.agysha
+- Source: https://github.com/wxstdo-boop/agysha
 - License: MIT
 - Categories: Alarm Clock, Habit Tracker, Task
 
@@ -234,7 +234,7 @@ anti-feature). Everything else works fully offline.
 
 ### Build
 A ready metadata file is provided at
-https://github.com/wxstdo-boop/Keramika/blob/main/fdroid/metadata/com.wetidom.keramika.yml
+https://github.com/wxstdo-boop/agysha/blob/main/fdroid/metadata/com.wetcorp.agysha.yml
 It is validated against fdroiddata CI: `fdroid lint` clean,
 `fdroid rewritemeta` canonical, `fdroid checkupdates --auto` resolves the
 latest release with no diff.
@@ -252,11 +252,11 @@ Build notes:
 
 ### Вариант B — сразу merge request
 
-Форк https://gitlab.com/fdroid/fdroiddata, ветка `com.wetidom.keramika`,
-скопировать рецепт в `metadata/com.wetidom.keramika.yml`, закоммитить и открыть
+Форк https://gitlab.com/fdroid/fdroiddata, ветка `com.wetcorp.agysha`,
+скопировать рецепт в `metadata/com.wetcorp.agysha.yml`, закоммитить и открыть
 MR по шаблону (шаблон обязателен — ревьюеры просят его заполнять).
 
-**Title:** `New app: com.wetidom.keramika`
+**Title:** `New app: com.wetcorp.agysha`
 
 **MR description:** тот же текст, что в варианте A.
 
@@ -287,7 +287,7 @@ MR по шаблону (шаблон обязателен — ревьюеры �
 ## Следующие шаги (кратко)
 
 1. Убедиться, что на `main` версия и метаданные синхронны с релизом.
-2. Скопировать `fdroid/metadata/com.wetidom.keramika.yml` в форк `fdroiddata`.
+2. Скопировать `fdroid/metadata/com.wetcorp.agysha.yml` в форк `fdroiddata`.
 3. Прогнать `fdroid build` локально, исправить ошибки.
 4. Открыть MR в `fdroiddata`.
 5. После приёма — добавить бейдж F-Droid в README и анонсировать.

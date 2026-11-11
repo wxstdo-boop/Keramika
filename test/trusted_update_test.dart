@@ -57,7 +57,7 @@ void main() {
 
   test('установку ставит обычный системный установщик, а не сессия', () {
     final file = File(
-      'android/app/src/main/kotlin/com/wetidom/keramika/MainActivity.kt',
+      'android/app/src/main/kotlin/com/wetcorp/agysha/MainActivity.kt',
     );
     expect(
       file.existsSync(),
@@ -105,7 +105,7 @@ void main() {
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
     final mainActivity = File(
-      'android/app/src/main/kotlin/com/wetidom/keramika/MainActivity.kt',
+      'android/app/src/main/kotlin/com/wetcorp/agysha/MainActivity.kt',
     ).readAsStringSync();
 
     expect(
@@ -117,7 +117,7 @@ void main() {
     );
     expect(
       File(
-        'android/app/src/main/kotlin/com/wetidom/keramika/'
+        'android/app/src/main/kotlin/com/wetcorp/agysha/'
         'InstallResultReceiver.kt',
       ).existsSync(),
       isFalse,
@@ -127,7 +127,7 @@ void main() {
     );
     expect(
       File(
-        'android/app/src/main/kotlin/com/wetidom/keramika/UpdaterBridge.kt',
+        'android/app/src/main/kotlin/com/wetcorp/agysha/UpdaterBridge.kt',
       ).existsSync(),
       isFalse,
       reason:

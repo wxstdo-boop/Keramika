@@ -40,7 +40,7 @@ class InstallOutcome {
   bool get isFailure => !isSuccess && !isAborted;
 }
 
-/// Тонкая обёртка над нативным каналом `com.wetidom.keramika/updater`.
+/// Тонкая обёртка над нативным каналом `com.wetcorp.agysha/updater`.
 ///
 /// Канал умеет ровно то, что нельзя сделать в Dart без лишних зависимостей:
 ///  * отдать versionCode/versionName установленного APK;
@@ -55,7 +55,7 @@ class Installer {
   Installer._();
 
   static const MethodChannel _channel = MethodChannel(
-    'com.wetidom.keramika/updater',
+    'com.wetcorp.agysha/updater',
   );
 
   static bool get _supported =>

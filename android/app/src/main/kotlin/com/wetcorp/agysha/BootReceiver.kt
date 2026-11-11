@@ -1,4 +1,4 @@
-package com.wetidom.keramika
+package com.wetcorp.agysha
 
 import android.app.AlarmManager
 import android.app.PendingIntent

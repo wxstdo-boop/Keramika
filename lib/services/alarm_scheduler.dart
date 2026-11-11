@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 
 class AlarmScheduler {
-  static const _channel = MethodChannel('com.wetidom.keramika/alarm_scheduler');
+  static const _channel = MethodChannel('com.wetcorp.agysha/alarm_scheduler');
 
   // defaultTargetPlatform безопасен на web (не бросает, как dart:io Platform).
   static bool get _isAndroid =>
@@ -71,7 +71,7 @@ class AlarmScheduler {
     if (!_isAndroid) return;
     try {
       await const MethodChannel(
-        'com.wetidom.keramika/alarm_payload',
+        'com.wetcorp.agysha/alarm_payload',
       ).invokeMethod('stopAlarmSoundFor', {'id': code});
     } catch (_) {}
   }
@@ -138,7 +138,7 @@ class AlarmScheduler {
     if (!_isAndroid) return true;
     try {
       final result = await MethodChannel(
-        'com.wetidom.keramika/fullscreen',
+        'com.wetcorp.agysha/fullscreen',
       ).invokeMethod<bool>('requestUseFullScreenIntent');
       return result ?? true;
     } catch (_) {

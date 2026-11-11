@@ -27,9 +27,9 @@ import 'package:keramika/services/prefs.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const schedulerChannel = MethodChannel('com.wetidom.keramika/alarm_scheduler');
+  const schedulerChannel = MethodChannel('com.wetcorp.agysha/alarm_scheduler');
   const fullscreenChannel = MethodChannel(
-    'com.wetidom.keramika/fullscreen',
+    'com.wetcorp.agysha/fullscreen',
   );
   // Канал самого плагина уведомлений. В юнит-тестах плагин не
   // регистрируется (нет настоящего Android), а его платформа объявлена
@@ -42,7 +42,7 @@ void main() {
   );
   // Канал будильника (MainActivity): stopAlarmSoundFor глушит звонок
   // удалённого/выключенного будильника.
-  const payloadChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
+  const payloadChannel = MethodChannel('com.wetcorp.agysha/alarm_payload');
 
   final nativeCalls = <MethodCall>[];
   final pluginCalls = <MethodCall>[];

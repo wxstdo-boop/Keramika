@@ -137,7 +137,7 @@ class NotificationService extends ChangeNotifier {
 
   // Используем существующий метод-канал из MainActivity.kt,
   // где зарегистрирован обработчик getTimeZone.
-  static const _tzChannel = MethodChannel('com.wetidom.keramika/alarm_payload');
+  static const _tzChannel = MethodChannel('com.wetcorp.agysha/alarm_payload');
 
   Future<void> init() async {
     if (_initialized) return;

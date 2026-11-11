@@ -43,7 +43,7 @@ class _FakeGitHub {
     if (path == '/user') {
       return _json({'login': 'wxstdo-boop'});
     }
-    if (path == '/repos/wxstdo-boop/Keramika' && request.method == 'GET') {
+    if (path == '/repos/wxstdo-boop/agysha' && request.method == 'GET') {
       return _json({
         'default_branch': 'main',
         'permissions': {'push': push},
@@ -55,15 +55,15 @@ class _FakeGitHub {
       });
     }
     // Создание рабочей ветки: она получает копию файлов базы.
-    if (path == '/repos/wxstdo-boop/Keramika/git/refs' &&
+    if (path == '/repos/wxstdo-boop/agysha/git/refs' &&
         request.method == 'POST') {
       final payload = jsonDecode(request.body) as Map<String, dynamic>;
       final ref = (payload['ref'] as String).replaceFirst('refs/heads/', '');
       files(ref);
       return _json({'ref': payload['ref']}, 201);
     }
-    if (path.startsWith('/repos/wxstdo-boop/Keramika/contents/')) {
-      final file = path.replaceFirst('/repos/wxstdo-boop/Keramika/contents/', '');
+    if (path.startsWith('/repos/wxstdo-boop/agysha/contents/')) {
+      final file = path.replaceFirst('/repos/wxstdo-boop/agysha/contents/', '');
       final branch = request.url.queryParameters['ref'] ?? 'main';
       if (request.method == 'GET') {
         final content = files(branch)[file];
@@ -103,12 +103,12 @@ class _FakeGitHub {
         ],
       });
     }
-    if (path == '/repos/wxstdo-boop/Keramika/pulls' &&
+    if (path == '/repos/wxstdo-boop/agysha/pulls' &&
         request.method == 'POST') {
       final payload = jsonDecode(request.body) as Map<String, dynamic>;
       return _json({
         'html_url':
-            'https://github.com/wxstdo-boop/Keramika/pull/1?head=${payload['head']}',
+            'https://github.com/wxstdo-boop/agysha/pull/1?head=${payload['head']}',
       }, 201);
     }
     return _json({'message': 'Unhandled $path'}, 404);
@@ -202,11 +202,11 @@ void main() {
 
     test('canPush отражает право записи репозитория', () async {
       final writable = ForgeService(client: _FakeGitHub().client);
-      expect(await writable.canPush('wxstdo-boop', 'Keramika', token: 'ghp_valid'), isTrue);
+      expect(await writable.canPush('wxstdo-boop', 'agysha', token: 'ghp_valid'), isTrue);
 
       final readOnly = ForgeService(client: _FakeGitHub(push: false).client);
       expect(
-        await readOnly.canPush('wxstdo-boop', 'Keramika', token: 'ghp_valid'),
+        await readOnly.canPush('wxstdo-boop', 'agysha', token: 'ghp_valid'),
         isFalse,
       );
     });
@@ -216,7 +216,7 @@ void main() {
       final service = ForgeService(client: fake.client);
       final file = await service.readFile(
         'wxstdo-boop',
-        'Keramika',
+        'agysha',
         'lib/main.dart',
         token: 'ghp_valid',
       );
@@ -229,7 +229,7 @@ void main() {
       final service = ForgeService(client: _FakeGitHub().client);
       final file = await service.readFile(
         'wxstdo-boop',
-        'Keramika',
+        'agysha',
         'lib/nope.dart',
         token: 'ghp_valid',
       );
@@ -241,7 +241,7 @@ void main() {
       final service = ForgeService(client: fake.client);
       await service.writeFile(
         'wxstdo-boop',
-        'Keramika',
+        'agysha',
         'lib/main.dart',
         content: 'void main() => runApp();',
         message: 'Кузница: правка',
@@ -268,7 +268,7 @@ void main() {
       final service = ForgeService(client: fake.client);
       final branch = await service.createBranch(
         'wxstdo-boop',
-        'Keramika',
+        'agysha',
         name: 'forge/test',
         from: 'main',
         token: 'ghp_valid',
@@ -282,7 +282,7 @@ void main() {
       final service = ForgeService(client: fake.client);
       await service.deleteFile(
         'wxstdo-boop',
-        'Keramika',
+        'agysha',
         'lib/main.dart',
         message: 'Кузница: удаление',
         branch: 'forge/test',
@@ -303,7 +303,7 @@ void main() {
       await expectLater(
         service.deleteFile(
           'wxstdo-boop',
-          'Keramika',
+          'agysha',
           'lib/nope.dart',
           message: 'Кузница: удаление',
           branch: 'main',
@@ -319,14 +319,14 @@ void main() {
       final service = ForgeService(client: fake.client);
       final hits = await service.searchCode(
         'wxstdo-boop',
-        'Keramika',
+        'agysha',
         'main',
         token: 'ghp_valid',
       );
       expect(hits, ['lib/main.dart']);
       final req = fake.requests.last;
       // Поиск ограничен репозиторием — иначе GitHub ищет по всему аккаунту.
-      expect(req.url.queryParameters['q'], 'main repo:wxstdo-boop/Keramika');
+      expect(req.url.queryParameters['q'], 'main repo:wxstdo-boop/agysha');
     });
   });
 
@@ -423,7 +423,7 @@ void main() {
         service: await _serviceWithToken(fake.client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
 
       final result = await agent.run(
@@ -466,7 +466,7 @@ void main() {
         service: await _serviceWithToken(fake.client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
 
       await agent.run(task: 'поправь точку входа', baseBranch: 'main');
@@ -502,7 +502,7 @@ void main() {
         service: await _serviceWithToken(fake.client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
 
       await expectLater(
@@ -537,7 +537,7 @@ void main() {
         service: await _serviceWithToken(fake.client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       await expectLater(
         agent.run(task: 'выйди наружу', baseBranch: 'main'),
@@ -554,7 +554,7 @@ void main() {
         service: await _serviceWithToken(fake.client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       final turn = await agent.respond(
         history: const [],
@@ -582,7 +582,7 @@ void main() {
         service: await _serviceWithToken(_FakeGitHub().client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       await agent.respond(
         history: const [
@@ -613,7 +613,7 @@ void main() {
           _call('finish', {'summary': 'Готово'}),
         ]),
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       await agent.respond(
         history: const [],
@@ -641,7 +641,7 @@ void main() {
           _call('finish', {'summary': 'нашёл'}),
         ]),
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       final turn = await agent.respond(
         history: const [],
@@ -661,7 +661,7 @@ void main() {
           _call('finish', {'summary': 'удалил'}),
         ]),
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       final turn = await agent.respond(
         history: const [],
@@ -681,7 +681,7 @@ void main() {
         service: await _serviceWithToken(_FakeGitHub().client),
         chat: chat,
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       await expectLater(
         agent.run(task: 'ничего не делай', baseBranch: 'main'),
@@ -702,7 +702,7 @@ void main() {
         service: await _serviceWithToken(_FakeGitHub().client),
         chat: _ScriptedChat(replies),
         owner: 'wxstdo-boop',
-        repo: 'Keramika',
+        repo: 'agysha',
       );
       await expectLater(
         agent.run(task: 'перепиши всё', baseBranch: 'main'),

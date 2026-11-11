@@ -1,4 +1,4 @@
-package com.wetidom.keramika
+package com.wetcorp.agysha
 
 import android.app.ActivityOptions
 import android.app.AlarmManager
@@ -43,7 +43,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
             Log.d(TAG, "Alarm id=$id sound=$soundName vibrate=$vibrate")
             // Постоянный лог срабатываний (внешний файл — читается через adb
-            // без root: /sdcard/Android/data/com.wetidom.keramika/files/).
+            // без root: /sdcard/Android/data/com.wetcorp.agysha/files/).
             // Нужен, чтобы понять, почему будильник «не сработал» — реально
             // ли приёмник не запустился или уведомление не показалось.
             // «missed» = догон пропущенного срабатывания после перезагрузки
@@ -377,7 +377,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         // Intent для удаления уведомления — предотвращает случайное свайп-закрытие
         val cancelIntent = Intent(ctx, MainActivity::class.java).apply {
-            action = "com.wetidom.keramika.CANCEL_ALARM"
+            action = "com.wetcorp.agysha.CANCEL_ALARM"
             putExtra("alarm_id", id)
         }
         val cancelFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
@@ -688,6 +688,6 @@ class AlarmReceiver : BroadcastReceiver() {
          * PendingIntent вместо обычного, поэтому [android.app.PendingIntent]
          * считает его отдельным будильником и он не затирает основной.
          */
-        const val ACTION_MISSED = "com.wetidom.keramika.action.ALARM_MISSED"
+        const val ACTION_MISSED = "com.wetcorp.agysha.action.ALARM_MISSED"
     }
 }

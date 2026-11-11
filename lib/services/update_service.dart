@@ -12,7 +12,7 @@ import '../models/changelog_entry.dart';
 
 /// Репозиторий, из релизов которого приложение берёт обновления.
 const String kUpdateRepoOwner = 'wxstdo-boop';
-const String kUpdateRepoName = 'Keramika';
+const String kUpdateRepoName = 'agysha';
 
 /// Включено ли самообновление. F-Droid/IzzyOnDroid переподписывают APK своим
 /// ключом, поэтому GitHub-APK поверх такой сборки не встанет — в этих сборках

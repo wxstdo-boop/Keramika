@@ -6,13 +6,13 @@ Keramika — приложение с открытым исходным кодо�
 ## Поддерживаемые версии
 
 Поддерживается только последний стабильный релиз в
-[Releases](https://github.com/wxstdo-boop/Keramika/releases). Старые версии не
+[Releases](https://github.com/wxstdo-boop/agysha/releases). Старые версии не
 получают патчей безопасности — обновитесь через автообновление в приложении.
 
 ## Сообщение об уязвимости
 
 Если вы нашли уязвимость, пожалуйста, не публикуйте её открыто. Напишите
-maintainer'у напрямую через [GitHub Issues](https://github.com/wxstdo-boop/Keramika/issues/new)
+maintainer'у напрямую через [GitHub Issues](https://github.com/wxstdo-boop/agysha/issues/new)
 с пометкой «Security» или на электронную почту, указанную в профиле репозитория.
 
 Включите:

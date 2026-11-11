@@ -802,7 +802,7 @@ void main() {
     // подменяем его и включаем Android-ветку, чтобы проверить сам разбор
     // списка прозвеневших.
     const schedulerChannel = MethodChannel(
-      'com.wetidom.keramika/alarm_scheduler',
+      'com.wetcorp.agysha/alarm_scheduler',
     );
 
     tearDown(() {

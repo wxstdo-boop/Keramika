@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 /// Dart-половинка «чёрного ящика» будильников: тот же файл, что пишет
 /// нативный `AlarmLog` — `/sdcard/Android/data/<pkg>/files/alarm_fire_log.txt`,
 /// читается без root:
-/// `adb exec-out "cat '/sdcard/Android/data/com.wetidom.keramika/files/alarm_fire_log.txt'"`
+/// `adb exec-out "cat '/sdcard/Android/data/com.wetcorp.agysha/files/alarm_fire_log.txt'"`
 ///
 /// Зачем: нативная часть честно пишет «ALARM FIRED», когда приёмник запустился.
 /// Но «будильник не сработал» — это чаще всего отсутствие строки, а отсутствие

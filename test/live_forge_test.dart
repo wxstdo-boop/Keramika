@@ -7,7 +7,7 @@
 // подменена ТОЛЬКО модель — ключа ИИ в этом окружении нет, а цикл агента и
 // вся работа с GitHub-API проверяются целиком.
 //
-// ВНИМАНИЕ: создаёт временную ветку и черновик PR в wxstdo-boop/Keramika.
+// ВНИМАНИЕ: создаёт временную ветку и черновик PR в wxstdo-boop/agysha.
 // Запускать вручную: flutter test test/live_forge_test.dart
 import 'dart:convert';
 import 'dart:io';
@@ -40,7 +40,7 @@ void main() {
     final token = Platform.environment['GITHUB_TOKEN'];
     expect(token, isNotNull, reason: 'нужен GITHUB_TOKEN');
     const owner = 'wxstdo-boop';
-    const repo = 'Keramika';
+    const repo = 'agysha';
 
     final service = ForgeService(store: InMemoryForgeTokenStore());
     await service.saveToken(token!);
@@ -90,7 +90,7 @@ void main() {
     final token = Platform.environment['GITHUB_TOKEN'];
     expect(token, isNotNull, reason: 'нужен GITHUB_TOKEN');
     const owner = 'wxstdo-boop';
-    const repo = 'Keramika';
+    const repo = 'agysha';
 
     final service = ForgeService(store: InMemoryForgeTokenStore());
     await service.saveToken(token!);
@@ -163,7 +163,7 @@ void main() {
     final token = Platform.environment['GITHUB_TOKEN'];
     expect(token, isNotNull, reason: 'нужен GITHUB_TOKEN');
     const owner = 'wxstdo-boop';
-    const repo = 'Keramika';
+    const repo = 'agysha';
 
     final service = ForgeService(store: InMemoryForgeTokenStore());
     await service.saveToken(token!);

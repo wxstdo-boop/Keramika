@@ -5,10 +5,10 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 import '../services/prefs.dart';
 
-const _package = 'com.wetidom.keramika';
+const _package = 'com.wetcorp.agysha';
 
 // Канал проверки полноэкранных уведомлений (поверх блокировки).
-const _fullscreenChannel = MethodChannel('com.wetidom.keramika/fullscreen');
+const _fullscreenChannel = MethodChannel('com.wetcorp.agysha/fullscreen');
 
 /// Проверяет, выдано ли уже разрешение полноэкранных уведомлений
 /// (full-screen notifications / поверх блокировки).
@@ -260,7 +260,7 @@ Future<bool> openOverlaySettings() async {
 ///
 /// Цепочка fallback (по приоритету):
 ///   1. android.settings.REQUEST_SCHEDULE_EXACT_ALARM (API 31+) с
-///      data: 'package:com.wetidom.keramika' — системный экран
+///      data: 'package:com.wetcorp.agysha' — системный экран
 ///      «Будильники и напоминания» именно для нашего приложения.
 ///      Если пользователь уже отказал и permission denied — система
 ///      молча не откроет диалог; в этом случае идём дальше.
@@ -270,7 +270,7 @@ Future<bool> openOverlaySettings() async {
 ///      подраздел «Будильники и напоминания»). Открывается НА Android
 ///      8+ надёжно, даже если первый шаг провалился.
 ///   3. android.settings.APPLICATION_DETAILS_SETTINGS с
-///      data: 'package:com.wetidom.keramika' — ГАРАНТИРОВАННЫЙ финальный
+///      data: 'package:com.wetcorp.agysha' — ГАРАНТИРОВАННЫЙ финальный
 ///      fallback: открывает детали именно нашего приложения, не общий
 ///      список. Если ни один из верхних шагов не сработал — пользователь
 ///      хотя бы увидит карточку приложения в системных настройках.

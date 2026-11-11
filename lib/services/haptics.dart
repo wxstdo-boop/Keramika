@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 
 /// Надёжная тактильная отдача по всему приложению.
 ///
-/// На Android используем нативный канал `com.wetidom.keramika/haptics`,
+/// На Android используем нативный канал `com.wetcorp.agysha/haptics`,
 /// который бьёт напрямую через системный Vibrator (VibrationEffect) — он
 /// работает даже там, где системный `HapticFeedback` подавлен настройками
 /// MIUI («обратная связь при касании»). На остальных платформах — фолбэк
@@ -15,7 +15,7 @@ class Haptics {
   Haptics._();
 
   static const MethodChannel _channel = MethodChannel(
-    'com.wetidom.keramika/haptics',
+    'com.wetcorp.agysha/haptics',
   );
 
   /// Включена ли вибрация. Выключатель в настройках гасит ВСЕ отклики —

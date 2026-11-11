@@ -1,4 +1,4 @@
-package com.wetidom.keramika
+package com.wetcorp.agysha
 
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent

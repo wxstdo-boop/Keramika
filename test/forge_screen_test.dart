@@ -26,7 +26,7 @@ MockClient _okClient() => MockClient((request) async {
       headers: {'content-type': 'application/json'},
     );
   }
-  if (path == '/repos/wxstdo-boop/Keramika') {
+  if (path == '/repos/wxstdo-boop/agysha') {
     return http.Response(
       jsonEncode({
         'default_branch': 'main',
@@ -46,14 +46,14 @@ MockClient _okClient() => MockClient((request) async {
       headers: {'content-type': 'application/json'},
     );
   }
-  if (path == '/repos/wxstdo-boop/Keramika/git/refs') {
+  if (path == '/repos/wxstdo-boop/agysha/git/refs') {
     return http.Response(
       jsonEncode({'ref': 'refs/heads/forge/x'}),
       201,
       headers: {'content-type': 'application/json'},
     );
   }
-  if (path.startsWith('/repos/wxstdo-boop/Keramika/contents/')) {
+  if (path.startsWith('/repos/wxstdo-boop/agysha/contents/')) {
     if (request.method == 'PUT') {
       return http.Response(
         jsonEncode({
@@ -67,10 +67,10 @@ MockClient _okClient() => MockClient((request) async {
       'content-type': 'application/json',
     });
   }
-  if (path == '/repos/wxstdo-boop/Keramika/pulls') {
+  if (path == '/repos/wxstdo-boop/agysha/pulls') {
     return http.Response(
       jsonEncode({
-        'html_url': 'https://github.com/wxstdo-boop/Keramika/pull/1',
+        'html_url': 'https://github.com/wxstdo-boop/agysha/pull/1',
       }),
       201,
       headers: {'content-type': 'application/json'},
@@ -245,7 +245,7 @@ void main() {
       _wrap(
         ForgeScreen(
           owner: 'wxstdo-boop',
-          repo: 'Keramika',
+          repo: 'agysha',
           service: service,
           chatFactory: (apiKey) => _ScriptedChat([_write('a.txt'), _finish]),
         ),
@@ -275,7 +275,7 @@ void main() {
       _wrap(
         ForgeScreen(
           owner: 'wxstdo-boop',
-          repo: 'Keramika',
+          repo: 'agysha',
           service: service,
           chatFactory: (apiKey) => _ScriptedChat([
             const ForgeChatReply(text: 'Точка входа в lib/main.dart.'),
@@ -311,7 +311,7 @@ void main() {
     await tester.runAsync(() async {
       await tester.pumpWidget(
         _wrap(
-          ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+          ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
         ),
       );
       await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -331,7 +331,7 @@ void main() {
 
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -349,7 +349,7 @@ void main() {
 
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -370,7 +370,7 @@ void main() {
     );
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -399,7 +399,7 @@ void main() {
     );
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -427,7 +427,7 @@ void main() {
     final service = ForgeService(client: _okClient(), store: store);
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -460,7 +460,7 @@ void main() {
     );
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -494,7 +494,7 @@ void main() {
     );
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -526,7 +526,7 @@ void main() {
     );
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();
@@ -542,7 +542,7 @@ void main() {
 
     await tester.pumpWidget(
       _wrap(
-        ForgeScreen(owner: 'wxstdo-boop', repo: 'Keramika', service: service),
+        ForgeScreen(owner: 'wxstdo-boop', repo: 'agysha', service: service),
       ),
     );
     await tester.pumpAndSettle();

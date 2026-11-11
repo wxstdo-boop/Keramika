@@ -11,7 +11,7 @@ import 'prefs.dart';
 /// само по себе — текст уходит только в промпт при отправке сообщения.
 abstract final class ScreenReaderService {
   static const MethodChannel _ch = MethodChannel(
-    'com.wetidom.keramika/screen_reader',
+    'com.wetcorp.agysha/screen_reader',
   );
 
   /// Выключатель в настройках. Сохраняется отдельно от системного

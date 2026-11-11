@@ -152,7 +152,7 @@ PIN там хранится только как PBKDF2-HMAC-SHA-256 verifier с 
   пропал, новый не создаётся поверх уже зашифрованных данных. Ошибки записи
   основного автосохранения и истории Ады показываются пользователю.
 
-## Нативный слой — `android/app/src/main/kotlin/com/wetidom/keramika/`
+## Нативный слой — `android/app/src/main/kotlin/com/wetcorp/agysha/`
 
 | Файл | Роль |
 |---|---|

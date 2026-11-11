@@ -213,7 +213,7 @@ class _WakeTaskScreenState extends State<WakeTaskScreen>
     // Останавливаем нативный звук будильника (MediaPlayer/Ringtone).
     try {
       const MethodChannel(
-        'com.wetidom.keramika/alarm_payload',
+        'com.wetcorp.agysha/alarm_payload',
       ).invokeMethod('stopAlarmSound');
     } catch (_) {}
     if (!mounted) return;

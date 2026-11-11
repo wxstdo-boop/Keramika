@@ -5,7 +5,7 @@
 
 ## С чего начать
 
-1. Открой [Issues](https://github.com/wxstdo-boop/Keramika/issues) — возможно,
+1. Открой [Issues](https://github.com/wxstdo-boop/agysha/issues) — возможно,
    баг уже описан или обсуждается.
 2. Посмотри [доки по архитектуре](docs/ARCHITECTURE.md), чтобы понять, где
    что лежит.

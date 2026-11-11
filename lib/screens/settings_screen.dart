@@ -3743,7 +3743,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _openGitHub() async {
-    await _openLink('https://github.com/wxstdo-boop/Keramika');
+    await _openLink('https://github.com/wxstdo-boop/agysha');
   }
 
   Future<void> _clearCache() async {
