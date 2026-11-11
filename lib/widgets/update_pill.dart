@@ -261,11 +261,17 @@ class _UpdatePillState extends State<UpdatePill>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                // Полупрозрачный фон, как у снекбара: сквозь таблетку виден
-                // фон строки настроек, плашка «сидит» на нём, а не накрывает
-                // его плотным прямоугольником.
-                color: cs.primaryContainer.withValues(
-                  alpha: dark ? 0.72 : 0.78,
+                // Плашка ПОЛУПРОЗРАЧНАЯ, как у снекбара: сквозь неё виден
+                // фон строки настроек, и таблетка «сидит» на нём, а не
+                // накрывает его плотным прямоугольником. Плотный
+                // primaryContainer (0.72/0.78) на светлой теме читался
+                // «непрозрачной заливкой» — снизили альфу и добавили
+                // лёгкий поверхностный тон, чтобы текст остался контрастным.
+                color: Color.alphaBlend(
+                  cs.surface.withValues(alpha: dark ? 0.34 : 0.42),
+                  cs.primaryContainer.withValues(
+                    alpha: dark ? 0.52 : 0.50,
+                  ),
                 ),
                 borderRadius: BorderRadius.circular(998),
               ),
@@ -288,8 +294,6 @@ class _UpdatePillState extends State<UpdatePill>
                           color: cs.onPrimaryContainer,
                           hole: cs.primaryContainer,
                           running: _busy,
-                          devicePixelRatio:
-                              MediaQuery.devicePixelRatioOf(context),
                         ),
                       ),
                     ),
@@ -320,31 +324,26 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
-/// Значок таблетки: ЗАЙЧИК. В покое сидит, при обновлении — прыгает:
-/// мягко поднимается и «садится» с приседанием (squash & stretch), поэтому
-/// движение читается как прыжок, а не как вращение или полёт ракеты.
+/// Значок таблетки: ЗАЙЧИК. В покое сидит, при обновлении — подпрыгивает и
+/// мягко садится обратно (скорость в обеих крайних точках равна нулю, поэтому
+/// нет ни отскока, ни рывка на стыке цикла).
 ///
 /// Глиф рисуется векторным шрифтом иконок ([Icons.cruelty_free]) — он чёткий
 /// на любом размере (никакого «мыла» растрового холста), а прыжок — чистая
-/// трансформация вокруг центра. Цикл замкнут (sin(π·p): 0→1→0), поэтому на
-/// стыке 1→0 нет рывка.
+/// трансляция вокруг центра: без масштабирования, от которого пиксели
+/// маленького значка смазывались и движение «тормозило».
 class _UpdateGlyphPainter extends CustomPainter {
   _UpdateGlyphPainter({
     required this.progress,
     required this.color,
     required this.hole,
     required this.running,
-    required this.devicePixelRatio,
   }) : super(repaint: progress);
 
   /// Драйвер прыжка. Painter слушает его НАПРЯМУЮ (`super(repaint:)`): прыжок
   /// перерисовывает только глиф, без перестройки дерева виджетов на каждый кадр.
   final Animation<double> progress;
   final Color color;
-
-  /// Плотность экрана: нужна, чтобы округлять вертикальный сдвиг глифа до
-  /// целого ФИЗИЧЕСКОГО пикселя (иначе значок «мылится» и мерцает).
-  final double devicePixelRatio;
 
   /// Цвет «окна» — фон таблетки. Оставлен для совместимости: у зайчика
   /// сквозных деталей нет, глиф залит целиком.
@@ -400,19 +399,17 @@ class _UpdateGlyphPainter extends CustomPainter {
     final hop = running ? hp * (1 - hp) * 4 * math.sin(math.pi * hp) : 0.0;
     // Никакой деформации: любое масштабирование глифа в таблетке высотой
     // ~15 px смазывало пиксели и «лагало». Двигаем только вверх-вниз.
-    final lift = hop * size.height * 0.14;
+    final lift = hop * size.height * 0.16;
 
     final tp = _glyph(color, size.shortestSide * 0.84);
     canvas.save();
-    // Сдвиг округляем до ФИЗИЧЕСКОГО пикселя: при дробном смещении глиф
-    // попадает на полпикселя и при каждом кадре «мылится»/мерцает — на
-    // маленьком значке это читалось как дёрганье. Целый пиксель — ровно.
-    final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
-    final snapped = (lift * dpr).roundToDouble() / dpr;
-    // Округляем и ГОРИЗОНТАЛЬНЫЙ центр: при нечётной ширине окна половина
-    // попадала на полпиксель, и глиф «дрожал» по X между кадрами.
-    final cx = ((size.width / 2) * dpr).roundToDouble() / dpr;
-    canvas.translate(cx, size.height / 2 - snapped);
+    // Смещение НЕ округляем до целого физического пикселя: амплитуда прыжка
+    // — около двух пикселей, и привязка к сетке превращала движение в
+    // «ступеньки» из 5–6 позиций, что и читалось как «зайчик тормозит».
+    // Дробный сдвиг Skia растеризует с антиалиасингом — движение остаётся
+    // плавным, а глиф чётким. Горизонтальный центр тоже дробный, иначе
+    // глиф дрожал бы по X между кадрами при нечётной ширине окна.
+    canvas.translate(size.width / 2, size.height / 2 - lift);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
   }
@@ -421,8 +418,7 @@ class _UpdateGlyphPainter extends CustomPainter {
   bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.hole != hole ||
-      oldDelegate.running != running ||
-      oldDelegate.devicePixelRatio != devicePixelRatio;
+      oldDelegate.running != running;
 }
 
 /// Окно подтверждения обновления.

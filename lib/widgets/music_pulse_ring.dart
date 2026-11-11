@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../utils/motion_prefs.dart';
 
-/// Тонкая «хамелеон»-обводка вокруг кнопки проигрывания: цвета медленно
-/// перетекают в тон темы (primary ↔ tertiary ↔ secondary), а толщина и свечение
-/// пульсируют в такт музыке.
+/// Тонкая «кровавая» обводка вокруг кнопки проигрывания: цвета медленно
+/// перетекают между алым, тёмно-красным и розовым (плюс чуть темы), толщина и
+/// свечение пульсируют в такт музыке, а по периметру бегут мягкие пятна
+/// сияния.
 ///
 /// Кольцо — именно ОБВОДКА ([PaintingStyle.stroke]), а не залитый круг:
 /// прежний вариант рисовал залитый градиентный контейнер ПОД кнопкой, и
@@ -71,11 +72,12 @@ class _MusicPulseRingState extends State<MusicPulseRing>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final reduce = MotionPrefs.shouldReduceMotion;
-    // Три тона темы по кругу: перелив идёт заметнее, чем между двумя, и
-    // «хамелеон» читается — кольцо меняет цвет, а не только яркость.
-    final a = cs.primary;
-    final b = cs.tertiary;
-    final c = cs.secondary;
+    // Кровавая гамма: алый → тёмно-красный → розово-красный. Тон темы лишь
+    // подмешивается к первому цвету, чтобы кольцо оставалось «в характере»
+    // светлой/тёмной темы, но читалось именно красным, а не как угодно.
+    final a = Color.lerp(const Color(0xFFE0192F), cs.primary, 0.22)!;
+    final b = const Color(0xFF7A0B16);
+    final c = Color.lerp(const Color(0xFFFF5A6E), cs.tertiary, 0.18)!;
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -110,6 +112,10 @@ class _MusicPulseRingState extends State<MusicPulseRing>
                       // свечение, и пульс почти не читался.
                       stroke: widget.baseWidth + widget.pulseWidth * pulse,
                       glow: 0.10 + 0.30 * pulse,
+                      // Фаза «бегущих» пятен сияния: их угловое положение
+                      // привязано к тому же контроллеру, поэтому кольцо живёт
+                      // одним ритмом, а не двумя несогласованными.
+                      phase: t,
                     ),
                   );
                 },
@@ -141,13 +147,20 @@ class _RingPainter extends CustomPainter {
   final double stroke;
   final double glow;
 
+  /// Фаза 0…1 для «бегущих» пятен сияния по периметру.
+  final double phase;
+
   const _RingPainter({
     required this.lead,
     required this.tail,
     required this.turn,
     required this.stroke,
     required this.glow,
+    required this.phase,
   });
+
+  /// Сколько пятен сияния бежит по кругу.
+  static const int _spotCount = 3;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -186,6 +199,26 @@ class _RingPainter extends CustomPainter {
         ..strokeWidth = stroke
         ..shader = sweep(0.9),
     );
+    // «Пятна сияния»: несколько мягких размытых огоньков бегут по периметру.
+    // Они дают кольцу объём и жизнь, оставаясь за пределами залитой
+    // обводки — центр кнопки по-прежнему пустой.
+    final spotR = math.max(2.0, stroke * 2.6);
+    for (var i = 0; i < _spotCount; i++) {
+      final ang = (phase + i / _spotCount) * 2 * math.pi;
+      final c = Offset(
+        rect.center.dx + math.cos(ang) * r,
+        rect.center.dy + math.sin(ang) * r,
+      );
+      canvas.drawCircle(
+        c,
+        spotR,
+        Paint()
+          ..color = i.isEven
+              ? lead.withValues(alpha: 0.30 * (0.6 + 0.4 * glow / 0.40))
+              : tail.withValues(alpha: 0.26 * (0.6 + 0.4 * glow / 0.40))
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, spotR),
+      );
+    }
   }
 
   @override
@@ -194,5 +227,6 @@ class _RingPainter extends CustomPainter {
       old.tail != tail ||
       old.turn != turn ||
       old.stroke != stroke ||
-      old.glow != glow;
+      old.glow != glow ||
+      old.phase != phase;
 }

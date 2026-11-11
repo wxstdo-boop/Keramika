@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../services/haptics.dart';
 import '../utils/design_tokens.dart';
+import 'press_scale.dart';
 
 /// Встроенная клавиатура «под тему приложения».
 ///
@@ -71,8 +75,8 @@ class InlineKeyboard extends StatelessWidget {
             children: [
               Expanded(
                 flex: 5,
-                child: _key(
-                  theme,
+                child: _Key(
+                  theme: theme,
                   label: 'пробел',
                   height: keyHeight,
                   onTap: onSpace,
@@ -81,10 +85,13 @@ class InlineKeyboard extends StatelessWidget {
               const SizedBox(width: 4),
               Expanded(
                 flex: 2,
-                child: _key(
-                  theme,
+                child: _Key(
+                  theme: theme,
                   icon: Icons.backspace_outlined,
                   height: keyHeight,
+                  // Возврат повторяется при удержании — как у системной
+                  // клавиатуры: стереть длинное имя одним тапом было нельзя.
+                  repeat: true,
                   onTap: onBackspace,
                 ),
               ),
@@ -105,8 +112,8 @@ class InlineKeyboard extends StatelessWidget {
       children: [
         for (final c in chars)
           Expanded(
-            child: _key(
-              theme,
+            child: _Key(
+              theme: theme,
               label: c,
               height: height,
               onTap: () => onChar(c),
@@ -114,10 +121,11 @@ class InlineKeyboard extends StatelessWidget {
           ),
         if (trailingBackspace)
           Expanded(
-            child: _key(
-              theme,
+            child: _Key(
+              theme: theme,
               icon: Icons.backspace_outlined,
               height: height,
+              repeat: true,
               onTap: onBackspace,
             ),
           ),
@@ -125,34 +133,98 @@ class InlineKeyboard extends StatelessWidget {
     );
   }
 
-  Widget _key(
-    ThemeData theme, {
-    String? label,
-    IconData? icon,
-    required double height,
-    required VoidCallback onTap,
-  }) {
+}
+
+/// Одна клавиша: «вдавливание» под пальцем, тактильный отклик и (для возврата)
+/// авто-повтор при удержании.
+class _Key extends StatefulWidget {
+  final ThemeData theme;
+  final String? label;
+  final IconData? icon;
+  final double height;
+  final VoidCallback onTap;
+
+  /// Повторять действие, пока палец держится (для «стереть»).
+  final bool repeat;
+
+  const _Key({
+    required this.theme,
+    required this.height,
+    required this.onTap,
+    this.label,
+    this.icon,
+    this.repeat = false,
+  });
+
+  @override
+  State<_Key> createState() => _KeyState();
+}
+
+class _KeyState extends State<_Key> {
+  Timer? _hold;
+
+  /// Задержка до первого повтора и шаг между повторами: сначала пауза, чтобы
+  /// одиночный тап не «строчил», потом — ровное частое стирание.
+  static const Duration _delay = Duration(milliseconds: 380);
+  static const Duration _tick = Duration(milliseconds: 70);
+
+  @override
+  void dispose() {
+    _hold?.cancel();
+    super.dispose();
+  }
+
+  void _startHold() {
+    if (!widget.repeat) return;
+    _hold?.cancel();
+    _hold = Timer(_delay, () {
+      _hold = Timer.periodic(_tick, (_) {
+        Haptics.select();
+        widget.onTap();
+      });
+    });
+  }
+
+  void _stopHold() {
+    _hold?.cancel();
+    _hold = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
     final cs = theme.colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Material(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(Radii.sm),
-        child: InkWell(
+      child: PressScale(
+        pressedScale: 0.9,
+        duration: const Duration(milliseconds: 90),
+        releaseDuration: const Duration(milliseconds: 180),
+        child: Material(
+          color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(Radii.sm),
-          onTap: onTap,
-          child: Container(
-            height: height,
-            alignment: Alignment.center,
-            child: icon != null
-                ? Icon(icon, size: 18, color: cs.onSurfaceVariant)
-                : Text(
-                    label!,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: Weights.medium,
-                      color: cs.onSurface,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(Radii.sm),
+            onTap: () {
+              Haptics.select();
+              widget.onTap();
+            },
+            onTapDown: (_) => _startHold(),
+            onTapUp: (_) => _stopHold(),
+            onTapCancel: _stopHold,
+            child: Container(
+              height: widget.height,
+              alignment: Alignment.center,
+              child: widget.icon != null
+                  ? Icon(widget.icon, size: 18, color: cs.onSurfaceVariant)
+                  : Text(
+                      widget.label!,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: Weights.medium,
+                        color: cs.onSurface,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),

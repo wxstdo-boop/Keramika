@@ -133,6 +133,17 @@ class ProfileAvatar extends StatelessWidget {
   /// Радиус расфокуса содержимого, px. 0 — чётко.
   final double blur;
 
+  /// Живой источник прокрутки: если задан, аватарка сама слушает его и
+  /// перестраивает ТОЛЬКО свой слой (сдвиг + расфокус), а не пересобирается
+  /// родителем на каждом кадре прокрутки. Раньше `AnimatedBuilder` стоял ВНЕ
+  /// виджета, и каждый кадр пересобирал всю аватарку целиком — на слабом
+  /// телефоне прокрутка профиля «лагала».
+  final Listenable? motion;
+
+  /// Прогресс 0…1 для [motion] (например, `offset / 140`). Вызывается на
+  /// каждом кадре только внутри слоя аватарки.
+  final double Function()? motionOf;
+
   const ProfileAvatar({
     super.key,
     required this.index,
@@ -141,7 +152,28 @@ class ProfileAvatar extends StatelessWidget {
     this.imagePath,
     this.parallax = 0,
     this.blur = 0,
+    this.motion,
+    this.motionOf,
   });
+
+  /// Итоговый сдвиг содержимого: либо из [motion] (сглаженная кривая), либо
+  /// статический [parallax].
+  double get _dy {
+    if (motion != null && motionOf != null) {
+      final t = Curves.easeInOut.transform(motionOf!().clamp(0.0, 1.0));
+      return t * 10;
+    }
+    return parallax;
+  }
+
+  /// Итоговый радиус расфокуса — по тому же источнику, что и [_dy].
+  double get _sigma {
+    if (motion != null && motionOf != null) {
+      final t = Curves.easeInOut.transform(motionOf!().clamp(0.0, 1.0));
+      return t * 9;
+    }
+    return blur;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -166,12 +198,24 @@ class ProfileAvatar extends StatelessWidget {
           child: child,
         ),
       ),
-      child: SizedBox(
-        key: ValueKey(hasImage ? 'img:$imagePath' : 'v:$index'),
-        width: size,
-        height: size,
-        child: hasImage ? _imageAvatar() : _generatedAvatar(context),
-      ),
+      child: _inner(context, hasImage),
+    );
+  }
+
+  /// Содержимое круга. В режиме [motion] обёрнуто в [AnimatedBuilder], который
+  /// перестраивает только слой аватарки: остальное дерево (карточка, имя)
+  /// прокруткой не трогается.
+  Widget _inner(BuildContext context, bool hasImage) {
+    Widget sized() => SizedBox(
+      key: ValueKey(hasImage ? 'img:$imagePath' : 'v:$index'),
+      width: size,
+      height: size,
+      child: hasImage ? _imageAvatar(context) : _generatedAvatar(context),
+    );
+    if (motion == null) return sized();
+    return AnimatedBuilder(
+      animation: motion!,
+      builder: (context, _) => sized(),
     );
   }
 
@@ -188,13 +232,13 @@ class ProfileAvatar extends StatelessWidget {
   ///
   /// Сигма размытия КВАНТУЕТСЯ: непрерывное значение пересобирало фильтр
   /// каждый кадр прокрутки, и размытие «лагало». На ступенях пересборки нет.
-  Widget _imageAvatar() {
+  Widget _imageAvatar(BuildContext context) {
     final file = File(imagePath!);
     // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
     // круга не оголяются.
     final over = size * 0.30;
-    final dy = parallax.clamp(-over / 2, over / 2);
-    final sigma = blur <= 0.2 ? 0.0 : blur.roundToDouble();
+    final dy = _dy.clamp(-over / 2, over / 2);
+    final sigma = _sigma <= 0.2 ? 0.0 : _sigma.roundToDouble();
     final image = Image.file(
       file,
       width: size,
@@ -216,6 +260,7 @@ class ProfileAvatar extends StatelessWidget {
         width: size,
         height: size,
         child: Transform.translate(
+          key: const ValueKey('avatar_motion'),
           offset: Offset(0, dy),
           // Размытие — вокруг САМОЙ картинки, под клипом: слой кэшируется
           // (`RepaintBoundary`), а сдвиг параллакса лишь переносит готовый
@@ -237,6 +282,10 @@ class ProfileAvatar extends StatelessWidget {
     // Кольцо рисуется ПОВЕРХ картинки ВСЕГДА. Раньше оно было фоном
     // `DecoratedBox` и оказывалось ЗА клипом — то есть появлялось только
     // вместе с размытием, когда рисовалось отдельным верхним слоем.
+    //
+    // На тёмной теме белое кольцо 0.82 бьёт по глазам: приглушаем до 0.38 и
+    // уводим к тону поверхности — край остаётся виден, но больше не слепит.
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final ring = SizedBox(
       key: const ValueKey('avatar_ring'),
       width: size,
@@ -245,7 +294,7 @@ class ProfileAvatar extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.82),
+            color: Colors.white.withValues(alpha: dark ? 0.38 : 0.82),
             width: (size * 0.031).clamp(1.6, 3.0),
           ),
         ),
@@ -260,9 +309,12 @@ class ProfileAvatar extends StatelessWidget {
 
   Widget _generatedAvatar(BuildContext? context) {
     final color = profileAvatarColors(index).first;
+    final dark = context == null
+        ? false
+        : Theme.of(context).brightness == Brightness.dark;
     // Значок и блики уезжают вместе с содержимым, но слабее: шар остаётся
     // узнаваемым, а движение читается как «плавание».
-    final dy = (parallax * 0.55).clamp(-size * 0.14, size * 0.14);
+    final dy = (_dy * 0.55).clamp(-size * 0.14, size * 0.14);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -287,7 +339,9 @@ class ProfileAvatar extends StatelessWidget {
                 stops: const [0.0, 0.5, 1.0],
               ),
               border: Border.all(
-                color: color.withValues(alpha: 0.70),
+                // На тёмной теме обводка шара тоже мягче — плотный кант
+                // светился вокруг круга.
+                color: color.withValues(alpha: dark ? 0.46 : 0.70),
                 width: 2,
               ),
             ),
@@ -295,6 +349,7 @@ class ProfileAvatar extends StatelessWidget {
         ),
         Positioned.fill(
           child: Transform.translate(
+            key: const ValueKey('avatar_motion'),
             offset: Offset(0, dy),
             child: Stack(
               clipBehavior: Clip.none,

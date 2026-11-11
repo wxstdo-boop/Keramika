@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +30,17 @@ import '../widgets/volumetric_switch.dart';
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
 /// сюда достаточно подставить сетевую загрузку — форма карточки не изменится.
 const String kKeramikaSiteUrl = 'https://keramika.ru';
+
+/// Плавная шторка листов профиля: кубическая кривая вместо пружины по
+/// умолчанию. Пружина на слабых телефонах проседает по кадрам и читается
+/// дёрганой; кубика дешёвая и мягкая, а вход чуть длиннее — лист «выезжает»,
+/// а не выскакивает.
+AnimationStyle _sheetStyle() => AnimationStyle(
+  curve: Curves.easeOutCubic,
+  duration: const Duration(milliseconds: 340),
+  reverseCurve: Curves.easeInCubic,
+  reverseDuration: const Duration(milliseconds: 260),
+);
 
 /// Округлая (капсульная) форма кнопок профиля — та же «отдача фоном», что у
 /// кнопок настроек: полное скругление и мягкое вдавливание под пальцем.
@@ -212,6 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      sheetAnimationStyle: _sheetStyle(),
       builder: (ctx) => _AvatarPickerSheet(
         selected: _service.avatarIndex,
         imagePath: _service.avatarImagePath,
@@ -386,6 +400,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      sheetAnimationStyle: _sheetStyle(),
       builder: (ctx) => const _AddFriendSheet(),
     );
     // Лист «Добавить друга» несёт собственную клавиатуру; после его закрытия
@@ -404,6 +419,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
+      sheetAnimationStyle: _sheetStyle(),
       builder: (ctx) => _FriendActionsSheet(friend: friend),
     );
     _dropFocus();
@@ -416,6 +432,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         context: context,
         backgroundColor: Colors.transparent,
         isScrollControlled: true,
+        sheetAnimationStyle: _sheetStyle(),
         builder: (ctx) => _FriendScoreSheet(friend: friend),
       );
       _dropFocus();
@@ -488,25 +505,19 @@ class _ProfileScreenState extends State<ProfileScreen>
               // содержимое внутри круга «расплывается» (blur нарастает) и
               // чуть сдвигается — обводка-круг стоит на месте, поэтому нет
               // ни «разрезов», ни дрожания формы. Обратно так же плавно.
-              child: AnimatedBuilder(
-                animation: _scrollCtrl,
-                builder: (context, _) {
-                  final t = _scrollCtrl.hasClients
-                      ? (_scrollCtrl.offset / 140).clamp(0.0, 1.0)
-                      : 0.0;
-                  // Сглаженная кривая: размытие «включается» не с первого
-                  // пикселя, а мягко разгоняется.
-                  final k = Curves.easeInOut.transform(t);
-                  return ProfileAvatar(
-                    index: _service.avatarIndex,
-                    size: 96,
-                    imagePath: _service.avatarImagePath,
-                    parallax: k * 10,
-                    // Размытие чуть больше круга: ореол мягко «заходит» за
-                    // аву, и границы расфокуса не видно.
-                    blur: k * 9,
-                  );
-                },
+              //
+              // Источник прокрутки отдан САМОЙ аватарке ([ProfileAvatar.motion]):
+              // она перестраивает только свой слой. Раньше `AnimatedBuilder`
+              // стоял здесь и каждый кадр прокрутки пересобирал аватарку
+              // целиком (со всей шапкой) — на слабом телефоне это лагало.
+              child: ProfileAvatar(
+                index: _service.avatarIndex,
+                size: 96,
+                imagePath: _service.avatarImagePath,
+                motion: _scrollCtrl,
+                motionOf: () => _scrollCtrl.hasClients
+                    ? (_scrollCtrl.offset / 140)
+                    : 0.0,
               ),
             ),
           ),
@@ -779,18 +790,40 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 // а не подменой кадром.
                                 duration: MotionPrefs.shouldReduceMotion
                                     ? Duration.zero
-                                    : const Duration(milliseconds: 380),
-                                transitionBuilder: (child, anim) =>
-                                    FadeTransition(
-                                      opacity: anim,
-                                      child: ScaleTransition(
-                                        scale: Tween<double>(
-                                          begin: 0.8,
-                                          end: 1,
-                                        ).animate(anim),
+                                    : const Duration(milliseconds: 460),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                // Оба значка в одной ячейке, выровнены по
+                                // центру: иначе «пауза» и «плей» разной ширины
+                                // дёргали бы кнопку вбок при смене.
+                                layoutBuilder: (current, previous) => Stack(
+                                  alignment: Alignment.center,
+                                  children: [...previous, ?current],
+                                ),
+                                // Уходящий значок гаснет и «проворачивается»
+                                // назад, входящий — проявляется, вырастает и
+                                // доворачивается. Смена читается как один
+                                // поворот, а не как подмена картинки: резкого
+                                // «щелчка» между плей и паузой нет.
+                                transitionBuilder: (child, anim) {
+                                  final isIncoming =
+                                      child.key == ValueKey(playing);
+                                  final curved = isIncoming
+                                      ? Curves.easeOutBack.transform(anim.value)
+                                      : Curves.easeInCubic.transform(anim.value);
+                                  final a = isIncoming ? curved : 1 - curved;
+                                  return Opacity(
+                                    opacity: a.clamp(0.0, 1.0),
+                                    child: Transform.rotate(
+                                      angle: (isIncoming ? 1 - curved : curved) *
+                                          -0.6,
+                                      child: Transform.scale(
+                                        scale: 0.62 + 0.38 * curved,
                                         child: child,
                                       ),
                                     ),
+                                  );
+                                },
                                 child: Icon(
                                   playing
                                       ? Icons.pause
@@ -846,10 +879,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                 pressedScale: 0.94,
                 // Подпись кнопки («Выбрать файл» ↔ «Заменить») меняется
                 // ПЛАВНО: AnimatedSize тянет ширину, AnimatedSwitcher — текст.
+                // Длительность — та же, что у самой карточки: добавление и
+                // удаление трека идут ОДНОЙ анимацией, а не двумя
+                // рассинхронизированными (кнопка «доъезжала» после плашки).
                 child: AnimatedSize(
                   duration: MotionPrefs.shouldReduceMotion
                       ? Duration.zero
-                      : Motion.normal,
+                      : Motion.slow,
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.centerLeft,
                   child: FilledButton.tonalIcon(
@@ -1300,6 +1336,21 @@ const int _kFriendNameMax = 30;
 /// Максимальное число знаков в очках рейтинга.
 const int _kFriendScoreMax = 7;
 
+/// Случайные «весёлые» очки 40…990.
+///
+/// Раньше число выводилось детерминированно из имени (хэш строки), и кнопка
+/// «кубик» выдавала ОДНО И ТО ЖЕ значение при каждом нажатии — «случайные
+/// очки» не рандомили вовсе. Теперь источник — настоящий ГПСЧ, а имя лишь
+/// сдвигает диапазон, чтобы число не выглядело совсем произвольным.
+String _funScore(String seed) {
+  var h = 7;
+  for (final c in seed.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  final r = math.Random().nextInt(951);
+  return '${40 + ((r + h) % 951)}';
+}
+
 /// Добавление друга: имя, аватарка, стартовые очки.
 class _AddFriendSheet extends StatefulWidget {
   const _AddFriendSheet();
@@ -1334,17 +1385,6 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
     } else if (_scoreFocus.hasFocus) {
       setState(() => _target = _FriendField.score);
     }
-  }
-
-  /// «Весёлые» очки: стабильный, но живой разброс от 40 до 990 — счёт не
-  /// выглядит пустым нулём, а рейтинг сразу оживает.
-  String _funScore(String seed) {
-    var h = 7;
-    for (final c in seed.codeUnits) {
-      h = (h * 31 + c) & 0x7fffffff;
-    }
-    final v = 40 + (h % 951);
-    return '$v';
   }
 
   @override
@@ -1430,6 +1470,11 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                         child: SmoothTyping(
                           controller: _ctrl,
                           style: theme.textTheme.bodyLarge,
+                          // Без «призраков»: удержание «стереть» на имени
+                          // рисовало десяток гаснущих копий и читалось как
+                          // заедание. Появление букв остаётся плавным, а
+                          // удаление — мгновенным и ровным.
+                          ghosts: false,
                           builder: (style) => TextField(
                             controller: _ctrl,
                             style: style,
@@ -1656,16 +1701,6 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
   late final TextEditingController _ctrl = TextEditingController(
     text: '${widget.friend.score}',
   );
-
-  /// «Весёлые» очки — тот же расчёт, что в листе добавления: счёт не
-  /// выглядит сухим, а кнопка-кубик даёт живой разброс.
-  String _funScore(String seed) {
-    var h = 7;
-    for (final c in seed.codeUnits) {
-      h = (h * 31 + c) & 0x7fffffff;
-    }
-    return '${40 + (h % 951)}';
-  }
 
   @override
   void dispose() {

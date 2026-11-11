@@ -448,7 +448,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
 /// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
 /// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
 /// Все прочие карточки — волосяные ([_hairline]).
-const double _hairline = 0.13;
+const double _hairline = 0.09;
 
 Widget _ringedCard({
   required ThemeData theme,
@@ -459,21 +459,22 @@ Widget _ringedCard({
 }) {
   // Кант — совсем тонкий. У «главной» плашки он лишь чуть плотнее волосяного:
   // заметно толстая рамка читалась как «коробка», пользователь просил тоньше
-  // и у неё тоже.
-  final thickness = thick ? 0.3 : _hairline;
+  // и у неё тоже. 0.3 px на плотности 3.0 — это почти целый физический
+  // пиксель, и при растяжении контента линия «толстела» ещё заметнее.
+  final thickness = thick ? 0.2 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
   // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
   final aTop = thick
-      ? (dark ? 0.34 : 0.24)
-      : (dark ? 0.18 : 0.11);
+      ? (dark ? 0.28 : 0.20)
+      : (dark ? 0.16 : 0.10);
   final aMid = thick
-      ? (dark ? 0.10 : 0.07)
+      ? (dark ? 0.08 : 0.06)
       : (dark ? 0.03 : 0.02);
   final aEnd = thick
-      ? (dark ? 0.24 : 0.16)
-      : (dark ? 0.12 : 0.07);
+      ? (dark ? 0.20 : 0.13)
+      : (dark ? 0.10 : 0.06);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius + thickness),
@@ -557,17 +558,21 @@ class _GlitchShadowPainter extends CustomPainter {
   /// Кэш разложенных «двойников». `TextPainter.layout()` — это шейпинг
   /// шрифта, и повторять его каждый кадр (60–120 Гц) для КАЖДОГО числа
   /// статистики означало постоянные просадки: экран лагал на скролле и
-  /// растяжении. Ключ — текст+стиль+направление+ступень прозрачности.
+  /// растяжении.
   ///
-  /// Прозрачность идёт СТУПЕНЯМИ, а не непрерывно: раньше амплитуда пульса
-  /// делалась `canvas.saveLayer` на каждый кадр — а это offscreen-буфер на
-  /// КАЖДОЕ число, каждый кадр. Именно он ронял кадры при скролле. Теперь
-  /// ступени запекаются в цвета теней заранее (несколько раскладок на число,
-  /// один раз), а рисование — обычный `paint` без слоёв.
+  /// Ключ — ЗНАЧЕНИЯ стиля, а не `identityHashCode`: стиль приходит из
+  /// `textTheme.copyWith(...)` и создаётся заново на каждой перестройке
+  /// дерева, поэтому хеш идентичности менялся каждый кадр и кэш не работал
+  /// вовсе — раскладка шла заново всё время. По значениям же запись
+  /// переиспользуется между кадрами и перестройками.
   static final Map<String, TextPainter> _cache = <String, TextPainter>{};
 
   /// Число ступеней прозрачности пульса.
   static const int _steps = 6;
+
+  static String _styleKey(TextStyle s, TextDirection dir) =>
+      '${s.fontSize}|${s.fontWeight}|${s.fontFamily}|${s.letterSpacing}|'
+      '${s.height}|${s.fontStyle}|${s.color?.toARGB32()}|${dir.index}';
 
   static TextPainter _shadow(
     String text,
@@ -575,7 +580,7 @@ class _GlitchShadowPainter extends CustomPainter {
     TextDirection dir,
     int step,
   ) {
-    final key = '${identityHashCode(style)}|${dir.index}|$step|$text';
+    final key = '${_styleKey(style, dir)}|$step|$text';
     final cached = _cache[key];
     if (cached != null) return cached;
     // Амплитуда пульса: от 0.35 до 1.0 от базовой альфы теней.
@@ -588,14 +593,15 @@ class _GlitchShadowPainter extends CustomPainter {
           shadows: [
             // Два «двойника» (тёплый/холодный) в ОДНОЙ раскладке: раньше на
             // каждый рисовался свой TextPainter с layout — двойная работа.
+            // Без `blurRadius`: размытие теней — это `MaskFilter` на каждый
+            // кадр на каждое число, самая дорогая часть. Смещённые плотные
+            // тени читаются тем же «глитчем», но рисуются в разы дешевле.
             Shadow(
               color: const Color(0xFFFF3B5C).withValues(alpha: 0.22 * amp),
-              blurRadius: 1.5,
               offset: const Offset(1.1, 0),
             ),
             Shadow(
               color: const Color(0xFF33D1FF).withValues(alpha: 0.19 * amp),
-              blurRadius: 1.5,
               offset: const Offset(-1.1, 0),
             ),
           ],
@@ -690,17 +696,26 @@ class _MonthChart extends StatelessWidget {
                     color: theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    Translations.t('monthChartTitle', context),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  // Заголовок ужимается многоточием, а сумма справа — своей
+                  // шириной: раньше заголовок был жёстким (274 px при 288
+                  // доступных), строка переполнялась на 19 px, и последняя
+                  // цифра суммы вылезала за карточку — читалась «иероглифом».
+                  Expanded(
+                    child: Text(
+                      Translations.t('monthChartTitle', context),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  // Суммарные значения месяца — живые числа. Flexible +
+                  const SizedBox(width: 8),
+                  // Суммарные значения месяца — живые числа. Потолок ширины +
                   // FittedBox: даже при больших суммах число не упирается
                   // в правую грань карточки и не обрезается.
-                  Flexible(
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 132),
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerRight,
@@ -741,24 +756,32 @@ class _MonthChart extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            // Легенда и счётчик делят строку: легенды ужимаются многоточием,
+            // счётчик — своей шириной (и мелким кеглем внутри FittedBox).
+            // Раньше обе легенды были жёсткими, и строка переполнялась на
+            // узком экране: «дней выполнено» вылезало за карточку.
             Row(
               children: [
-                _legend(
-                  context,
-                  habitColor,
-                  Icons.check_circle_outline,
-                  Translations.t('monthChartHabits', context),
-                ),
-                const SizedBox(width: 12),
-                _legend(
-                  context,
-                  taskColor,
-                  Icons.checklist_outlined,
-                  Translations.t('monthChartTasks', context),
-                ),
-                const Spacer(),
-                // Число дней тоже под защитой от правой грани.
                 Flexible(
+                  child: _legend(
+                    context,
+                    habitColor,
+                    Icons.check_circle_outline,
+                    Translations.t('monthChartHabits', context),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: _legend(
+                    context,
+                    taskColor,
+                    Icons.checklist_outlined,
+                    Translations.t('monthChartTasks', context),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 104),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerRight,
@@ -819,10 +842,16 @@ class _MonthChart extends StatelessWidget {
       children: [
         Icon(icon, size: 11, color: color),
         const SizedBox(width: 4),
-        Text(
-          text,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        // Подпись ужимается: две легенды и счётчик в одной строке не влезали
+        // на узком экране.
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
@@ -1062,16 +1091,29 @@ class _DaysBarPainter extends CustomPainter {
   void _label(Canvas canvas, Size size, String date, double y, TextAlign align) {
     // date приходит в формате 'yyyy-MM-dd' — берём день месяца.
     final day = date.length >= 10 ? date.substring(8, 10) : date;
-    final tp = TextPainter(
-      text: TextSpan(
-        text: day.replaceFirst(RegExp(r'^0'), ''),
-        style: TextStyle(color: labelColor, fontSize: 10, fontWeight: FontWeight.w600),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    // Кэш раскладок: `TextPainter.layout()` — шейпинг шрифта, а painter
+    // перерисовывается каждый кадр роста столбиков и на каждом кадре
+    // растяжения (слой внутри `Transform` перерисовывается). Две подписи на
+    // кадр — уже заметная работа на слабом GPU.
+    final tp = _labelCache.putIfAbsent(
+      '${day.replaceFirst(RegExp(r'^0'), '')}|${labelColor.toARGB32()}',
+      () => TextPainter(
+        text: TextSpan(
+          text: day.replaceFirst(RegExp(r'^0'), ''),
+          style: TextStyle(
+            color: labelColor,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(),
+    );
     final x = align == TextAlign.left ? 0.0 : size.width - tp.width;
     tp.paint(canvas, Offset(x, y - tp.height));
   }
+
+  static final Map<String, TextPainter> _labelCache = <String, TextPainter>{};
 
   void _drawStar(Canvas canvas, Offset c, double r, Color color) {
     final path = Path();
@@ -1243,15 +1285,18 @@ class _StretchScrollState extends State<_StretchScroll>
                 // убирать/вставлять его на ходу, дерево под пальцем меняется,
                 // и жест обрывается. Поэтому «покой» — это масштаб 1, а не
                 // отсутствие виджета.
+                //
+                // Растягиваем ЧУТЬ-ЧУТЬ (≈0.6%/1.2% на полной протяжке):
+                // крупный масштаб на весь экран «раздувал» канты карточек —
+                // волосяная линия на 1.011 превращалась в заметно толстую, а
+                // тень — в серую кайму. На таком масштабе кольцо читается как
+                // упругий отклик, но остаётся линией.
                 return Transform.scale(
                   // Ключ — точка опоры для тестов растяжения: по нему находят
                   // именно эту деформацию, не путая с прочими Transform.
                   key: const ValueKey('stats_stretch'),
-                  // Растяжка вдоль оси протяжки + лёгкое сжатие поперёк —
-                  // «резина», а не просто сдвиг. Амплитуда умеренная: крупный
-                  // масштаб на весь экран выглядел «резиновым» и дёрганым.
-                  scaleX: 1 - 0.014 * p,
-                  scaleY: 1 + 0.026 * p,
+                  scaleX: 1 - 0.006 * p,
+                  scaleY: 1 + 0.012 * p,
                   alignment: _atTop
                       ? Alignment.topCenter
                       : Alignment.bottomCenter,

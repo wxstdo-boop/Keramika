@@ -161,11 +161,17 @@ void main() {
     // из профиля убрали — она читалась как лишнее стекло над контентом.
     expect(find.byType(BackdropFilter), findsNothing);
 
-    double parallax() => tester
-        .widget<ProfileAvatar>(find.byType(ProfileAvatar).first)
-        .parallax;
+    // Смещение содержимого читаем с самого слоя аватарки: сдвиг уехал внутрь
+    // виджета (он сам слушает прокрутку), поэтому наружу отдаётся не
+    // значением поля, а Transform-ом с ключом 'avatar_motion'.
+    double motionDy() {
+      final t = tester.widget<Transform>(
+        find.byKey(const ValueKey('avatar_motion')).first,
+      );
+      return t.transform.storage[13];
+    }
 
-    expect(parallax(), 0.0, reason: 'в покое аватарка не смещена');
+    expect(motionDy(), 0.0, reason: 'в покое аватарка не смещена');
 
     // Сдвигаем умеренно (шапка ещё видна): у большого сдвига заголовочная
     // карточка уходит из окна, и ListView её размонтирует.
@@ -178,7 +184,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     // С прокруткой содержимое аватарки «плывёт» внутри круга.
     expect(
-      parallax(),
+      motionDy(),
       isNot(0.0),
       reason: 'при прокрутке аватарка должна плыть (параллакс)',
     );
