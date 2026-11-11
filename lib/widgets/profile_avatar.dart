@@ -121,7 +121,7 @@ IconData profileAvatarIcon(int index) {
 class ProfileAvatar extends StatelessWidget {
   /// Максимальная сигма расфокуса (полный уход авы под полку). Кросс-фейд
   /// считает долю именно от неё, поэтому значение одно на всех.
-  static const double _maxBlurSigma = 10;
+  static const double _maxBlurSigma = 12;
 
   final int index;
   final double size;
@@ -160,17 +160,8 @@ class ProfileAvatar extends StatelessWidget {
     this.motionOf,
   });
 
-  /// Итоговый сдвиг содержимого: либо из [motion] (сглаженная кривая), либо
-  /// статический [parallax].
-  double get _dy {
-    if (motion != null && motionOf != null) {
-      final t = Curves.easeInOut.transform(motionOf!().clamp(0.0, 1.0));
-      return t * 10;
-    }
-    return parallax;
-  }
-
-  /// Итоговый радиус расфокуса — по тому же источнику, что и [_dy].
+  /// Итоговый радиус расфокуса. Источник — [motionOf] (сглаженная кривая
+  /// прокрутки) либо статический [blur].
   double get _sigma {
     if (motion != null && motionOf != null) {
       final t = Curves.easeInOut.transform(motionOf!().clamp(0.0, 1.0));
@@ -184,7 +175,7 @@ class ProfileAvatar extends StatelessWidget {
     final reduce = MotionPrefs.shouldReduceMotion;
     final hasImage = imagePath != null && imagePath!.isNotEmpty;
     return AnimatedSwitcher(
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 260),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 340),
       switchInCurve: Curves.easeInOut,
       switchOutCurve: Curves.easeInOut,
       layoutBuilder: (current, previous) => Stack(
@@ -192,12 +183,19 @@ class ProfileAvatar extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [...previous, ?current],
       ),
-      // Смена авы — ЧИСТЫЙ кросс-фейд, без масштаба: `ScaleTransition`
-      // заставлял круг «надуваться» на каждом выборе и читался как рывок.
-      // Кольцо своей аватарки едет ВНУТРИ этого перехода: появляется и
-      // убирается вместе с картинкой, а не «щёлкает» отдельно.
-      transitionBuilder: (child, anim) =>
-          FadeTransition(opacity: anim, child: child),
+      // Смена авы — мягкая проявка с лёгким «дыханием» масштаба: круг
+      // появляется плавно, а не щёлкает. Кольцо своей аватарки едет ВНУТРИ
+      // этого перехода — появляется и убирается вместе с картинкой.
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+        child: ScaleTransition(
+          scale: Tween<double>(
+            begin: 0.92,
+            end: 1,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ),
       child: _inner(context, hasImage),
     );
   }
@@ -206,16 +204,32 @@ class ProfileAvatar extends StatelessWidget {
   /// перестраивает только слой аватарки: остальное дерево (карточка, имя)
   /// прокруткой не трогается.
   Widget _inner(BuildContext context, bool hasImage) {
-    Widget sized() => SizedBox(
-      key: ValueKey(hasImage ? 'img:$imagePath' : 'v:$index'),
-      width: size,
-      height: size,
-      child: hasImage ? _imageAvatar(context) : _generatedAvatar(context),
-    );
-    if (motion == null) return sized();
+    final key = ValueKey(hasImage ? 'img:$imagePath' : 'v:$index');
+    if (motion == null) {
+      return KeyedSubtree(
+        key: key,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: hasImage ? _imageAvatar(context) : _generatedAvatar(context),
+        ),
+      );
+    }
+    // Ключ — на ПРЯМОМ ребёнке `AnimatedSwitcher`: раньше он лежал на
+    // `SizedBox` ВНУТРИ `AnimatedBuilder`, а сам `AnimatedBuilder` ключа не
+    // имел. Переключатель видел «тот же виджет» и просто обновлял его —
+    // смена аватарки происходила МГНОВЕННО, без анимации. Содержимое при
+    // этом строится ВНУТРИ билдера: иначе `sigma` (растущий от прокрутки)
+    // замерзал на значении последней пересборки родителя и расфокуса при
+    // прокрутке не было вовсе.
     return AnimatedBuilder(
+      key: key,
       animation: motion!,
-      builder: (context, _) => sized(),
+      builder: (context, _) => SizedBox(
+        width: size,
+        height: size,
+        child: hasImage ? _imageAvatar(context) : _generatedAvatar(context),
+      ),
     );
   }
 
@@ -241,20 +255,31 @@ class ProfileAvatar extends StatelessWidget {
   /// кэширован), а каждый кадр меняется только `Opacity` — дешёвая операция
   /// поверх готового растра. Статический [blur] (без прокрутки) рисуется
   /// напрямую: там сигма постоянна и пересборки нет.
-  Widget _blurLayer(Widget image, double sigma, {required bool animated}) {
-    if (sigma <= 0.2 || MotionPrefs.shouldReduceMotion) return image;
+  Widget _blurLayer(Widget content, double sigma, {required bool animated}) {
+    if (sigma <= 0.2 || MotionPrefs.shouldReduceMotion) return content;
     if (!animated) {
       return ImageFiltered(
         imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: image,
+        child: content,
       );
     }
+    // НАСТОЯЩИЙ кросс-фейд: резкий слой ГАСНЕТ, размытый ПРОЯВЛЯЕТСЯ. Раньше
+    // размытая копия просто ложилась ПОВЕРХ резкой — резкая картинка никуда
+    // не девалась и «съедала» расфокус, поэтому размытие читалось слабым,
+    // будто его почти нет.
+    // Оба слоя — под `RepaintBoundary`: сигма размытия ПОСТОЯННА, поэтому
+    // при прокрутке перерисовывается только прозрачность, а растры слоёв
+    // берутся из кэша. Без этого размытый слой растеризовался каждый кадр,
+    // и профиль «подлагивал».
     final amount = (sigma / _maxBlurSigma).clamp(0.0, 1.0);
     return Stack(
       alignment: Alignment.center,
       clipBehavior: Clip.none,
       children: [
-        image,
+        Opacity(
+          opacity: 1 - amount,
+          child: RepaintBoundary(child: content),
+        ),
         Opacity(
           opacity: amount,
           child: RepaintBoundary(
@@ -263,7 +288,7 @@ class ProfileAvatar extends StatelessWidget {
                 sigmaX: _maxBlurSigma,
                 sigmaY: _maxBlurSigma,
               ),
-              child: image,
+              child: content,
             ),
           ),
         ),
@@ -273,15 +298,11 @@ class ProfileAvatar extends StatelessWidget {
 
   Widget _imageAvatar(BuildContext context) {
     final file = File(imagePath!);
-    // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
-    // круга не оголяются.
-    final over = size * 0.30;
-    final dy = _dy.clamp(-over / 2, over / 2);
-    final sigma = _sigma <= 0.2 ? 0.0 : _sigma.roundToDouble();
+    final sigma = _sigma <= 0.2 ? 0.0 : _sigma;
     final image = Image.file(
       file,
       width: size,
-      height: size + over,
+      height: size,
       fit: BoxFit.cover,
       gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
@@ -294,18 +315,15 @@ class ProfileAvatar extends StatelessWidget {
         return _generatedAvatar(null);
       },
     );
+    // Раньше содержимое круга ещё и СДВИГАЛОСЬ по вертикали при прокрутке
+    // (параллакс). Сдвиг уводил картинку за край окна и сверху открывалась
+    // пустая полоса — «залысина». Параллакс убран: при прокрутке аватарка
+    // стоит на месте и только плавно расплывается.
     final clipped = ClipOval(
       child: SizedBox(
         width: size,
         height: size,
-        child: Transform.translate(
-          // Ключ оставлен для тестов/отладки: наружу видно именно смещение.
-          key: const ValueKey('avatar_motion'),
-          offset: Offset(0, dy),
-          // Размытие — вокруг САМОЙ картинки, под клипом. Сдвиг параллакса —
-          // чистый перенос готового слоя, фильтр не пересобирается.
-          child: _blurLayer(image, sigma, animated: motion != null),
-        ),
+        child: _blurLayer(image, sigma, animated: motion != null),
       ),
     );
     // Кольцо рисуется ПОВЕРХ картинки ВСЕГДА. Раньше оно было фоном
@@ -341,7 +359,8 @@ class ProfileAvatar extends StatelessWidget {
   /// При прокрутке `_inner` перестраивает слой каждый кадр, то есть без кэша
   /// шейдер собирался бы 60 раз в секунду — это и «тормозило» экран профиля.
   /// Геометрия и цвета от кадра не зависят, поэтому держим готовую декорацию.
-  static final Map<String, BoxDecoration> _ballCache = <String, BoxDecoration>{};
+  static final Map<String, BoxDecoration> _ballCache =
+      <String, BoxDecoration>{};
 
   static BoxDecoration _ballDecoration(int index, double size, bool dark) {
     final key = '$index|$size|${dark ? 1 : 0}';
@@ -376,66 +395,54 @@ class ProfileAvatar extends StatelessWidget {
     final dark = context == null
         ? false
         : Theme.of(context).brightness == Brightness.dark;
-    // Значок и блики уезжают вместе с содержимым, но слабее: шар остаётся
-    // узнаваемым, а движение читается как «плавание».
-    final dy = (_dy * 0.55).clamp(-size * 0.14, size * 0.14);
     return Stack(
       clipBehavior: Clip.none,
       children: [
         // Основа: мягкий градиент — светлое «стеклянное» пятно сверху-слева,
         // к плотному красному внизу. Ровная обводка как у кружков привычек.
         Positioned.fill(
-          child: DecoratedBox(
-            decoration: _ballDecoration(index, size, dark),
-          ),
+          child: DecoratedBox(decoration: _ballDecoration(index, size, dark)),
         ),
         Positioned.fill(
-          child: Transform.translate(
-            key: const ValueKey('avatar_motion'),
-            offset: Offset(0, dy),
-            // Расфокус содержимого шара — ТЕМ ЖЕ конвейером, что у своей
-            // фотографии. Раньше у сгенерированной авы (а это у большинства
-            // пользователей) размытие не применялось вовсе: `blur`/`motion`
-            // учитывались только в ветке с картинкой, поэтому при прокрутке
-            // шар лишь чуть сдвигался, а расфокуса не было — «размытие
-            // незаметное». Значок и блики при этом остаются в кэшированном
-            // слое: смена — это `Opacity` поверх готового растра.
-            child: RepaintBoundary(
-              child: _blurLayer(
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    if (showIcon)
-                      Center(
-                        child: Icon(
-                          profileAvatarIcon(index),
-                          size: size * 0.44,
-                          color: Colors.white.withValues(alpha: 0.92),
-                        ),
+          // Расфокус содержимого шара — ТЕМ ЖЕ конвейером, что у своей
+          // фотографии. Раньше у сгенерированной авы (а это у большинства
+          // пользователей) размытие не применялось вовсе: `blur`/`motion`
+          // учитывались только в ветке с картинкой, поэтому при прокрутке
+          // шар лишь чуть сдвигался, а расфокуса не было — «размытие
+          // незаметное».
+          child: RepaintBoundary(
+            child: _blurLayer(
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (showIcon)
+                    Center(
+                      child: Icon(
+                        profileAvatarIcon(index),
+                        size: size * 0.44,
+                        color: Colors.white.withValues(alpha: 0.92),
                       ),
-                    // Блестящие пятна: яркий «зайчик» и вторичный, слабее —
-                    // аватарка читается как объёмный стеклянный шарик.
-                    Positioned(
-                      left: size * 0.22,
-                      top: size * 0.18,
-                      child: _gloss(size * 0.20, 0.60),
                     ),
-                    Positioned(
-                      left: size * 0.42,
-                      top: size * 0.33,
-                      child: _gloss(size * 0.09, 0.40),
-                    ),
-                  ],
-                ),
-                // Размываем шар ТОЛЬКО когда он и есть аватарка. Внутри
-                // ветки своей картинки `_generatedAvatar` играет роль
-                // заглушки на время декода кадра — там расфокус не нужен
-                // (и добавил бы второй `ImageFiltered` поверх настоящего).
-                imagePath == null && _sigma > 0.2
-                    ? _sigma.roundToDouble()
-                    : 0.0,
-                animated: motion != null,
+                  // Блестящие пятна: яркий «зайчик» и вторичный, слабее —
+                  // аватарка читается как объёмный стеклянный шарик.
+                  Positioned(
+                    left: size * 0.22,
+                    top: size * 0.18,
+                    child: _gloss(size * 0.20, 0.60),
+                  ),
+                  Positioned(
+                    left: size * 0.42,
+                    top: size * 0.33,
+                    child: _gloss(size * 0.09, 0.40),
+                  ),
+                ],
               ),
+              // Размываем шар ТОЛЬКО когда он и есть аватарка. Внутри
+              // ветки своей картинки `_generatedAvatar` играет роль
+              // заглушки на время декода кадра — там расфокус не нужен
+              // (и добавил бы второй `ImageFiltered` поверх настоящего).
+              imagePath == null && _sigma > 0.2 ? _sigma.roundToDouble() : 0.0,
+              animated: motion != null,
             ),
           ),
         ),

@@ -137,7 +137,7 @@ void main() {
     );
   });
 
-  testWidgets('профиль: аватарка плывёт при прокрутке (параллакс, без размытия)', (
+  testWidgets('профиль: при прокрутке аватарка расплывается, а не сдвигается', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(411, 891) * 3;
@@ -160,17 +160,19 @@ void main() {
     // из профиля убрали — она читалась как лишнее стекло над контентом.
     expect(find.byType(BackdropFilter), findsNothing);
 
-    // Смещение содержимого читаем с самого слоя аватарки: сдвиг уехал внутрь
-    // виджета (он сам слушает прокрутку), поэтому наружу отдаётся не
-    // значением поля, а Transform-ом с ключом 'avatar_motion'.
-    double motionDy() {
-      final t = tester.widget<Transform>(
-        find.byKey(const ValueKey('avatar_motion')).first,
-      );
-      return t.transform.storage[13];
-    }
-
-    expect(motionDy(), 0.0, reason: 'в покое аватарка не смещена');
+    // Содержимое аватарки больше НЕ сдвигается: параллакс убран, потому что
+    // сдвиг открывал сверху пустую полосу («залысину»). При прокрутке
+    // аватарка расплывается — и только.
+    expect(
+      find.byKey(const ValueKey('avatar_motion')),
+      findsNothing,
+      reason: 'параллакс убран: аватарка не должна уезжать вверх',
+    );
+    expect(
+      find.byType(ImageFiltered),
+      findsNothing,
+      reason: 'в покое размытия нет',
+    );
 
     // Сдвигаем умеренно (шапка ещё видна): у большого сдвига заголовочная
     // карточка уходит из окна, и ListView её размонтирует.
@@ -181,11 +183,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     await tester.pump(const Duration(milliseconds: 100));
-    // С прокруткой содержимое аватарки «плывёт» внутри круга.
+    // С прокруткой появляется слой расфокуса — аватарка «уходит под стекло».
     expect(
-      motionDy(),
-      isNot(0.0),
-      reason: 'при прокрутке аватарка должна плыть (параллакс)',
+      find.byType(ImageFiltered),
+      findsWidgets,
+      reason: 'при прокрутке аватарка должна расплываться',
     );
     expect(find.byType(BackdropFilter), findsNothing);
 

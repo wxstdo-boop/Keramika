@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -262,14 +261,12 @@ class _UpdatePillState extends State<UpdatePill>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                // Плашка ПОЛУПРОЗРАЧНАЯ, как у снекбара: сквозь неё виден
-                // фон строки настроек, и таблетка «сидит» на нём, а не
-                // накрывает его плотным прямоугольником. Плотный
-                // primaryContainer (0.72/0.78) на светлой теме читался
-                // «непрозрачной заливкой» — снизили альфу и добавили
-                // лёгкий поверхностный тон, чтобы текст остался контрастным.
+                // Ровно тот же вид, что у бейджа «Recommended» в Настройках:
+                // одна альфа на два бейджа. Пользователь просил привести
+                // таблетку обновления к этому виду — раньше она была заметно
+                // прозрачнее и читалась «другой» плашкой.
                 color: cs.primaryContainer.withValues(
-                  alpha: dark ? 0.34 : 0.38,
+                  alpha: dark ? 0.72 : 0.78,
                 ),
                 borderRadius: BorderRadius.circular(998),
               ),
@@ -463,21 +460,16 @@ class _UpdateConfirmDialog extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(Radii.xl - 1),
-              // Настоящее «стекло»: под окном размывается то, что за ним, и
-              // только потом ложится полупрозрачная подложка. Раньше окно
-              // было залито плотным surfaceContainerHigh (0.94) — читалось
-              // непрозрачной плашкой, фон под ним не угадывался.
-              child: BackdropFilter(
-                // Мягкое размытие без «молочной» заливки: стекло должно
-                // читаться прозрачным, а не как матовая плита.
-                filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
+              // БЕЗ `BackdropFilter`: под анимацией появления/ухода размытие
+              // пересобирается каждый кадр, и окно заметно МЕРЦАЕТ — ровно
+              // та жалоба, что пришла на прошлый круг. Стекло делаем
+              // полупрозрачной подложкой: тот же вид, но без пересборки
+              // фильтра, поэтому всплытие идёт ровно.
+              child: Container(
                   decoration: BoxDecoration(
-                    // ПОЧТИ ПРОЗРАЧНО: сквозь окно явно виден фон, а не
-                    // глухая заливка — прежние 0.72 читались непрозрачной
-                    // плашкой. Тон поверхности лишь слегка подмешивается,
-                    // чтобы текст оставался читаемым.
-                    color: cs.surfaceContainerHigh.withValues(alpha: 0.30),
+                    // Полупрозрачно: сквозь окно виден фон, но текст остаётся
+                    // читаемым — стекло без мерцания.
+                    color: cs.surfaceContainerHigh.withValues(alpha: 0.86),
                     borderRadius: BorderRadius.circular(Radii.xl - 1),
                     border: Border.all(
                       color: cs.onSurface.withValues(alpha: 0.14),
@@ -586,7 +578,6 @@ class _UpdateConfirmDialog extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
             ),
           ),
         ),

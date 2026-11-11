@@ -22,27 +22,18 @@ class RealityCheckStatsScreen extends StatefulWidget {
       _RealityCheckStatsScreenState();
 }
 
-class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
-    with SingleTickerProviderStateMixin, MotionAwareRepeat {
+class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
   final _rcSvc = RealityCheckService();
   final _habitSvc = HabitService();
   final _taskSvc = TaskService();
   final _logSvc = CompletionLogService();
 
-  /// Постоянная «живая» анимация чисел: лёгкий глитч/размытие.
-  late final AnimationController _glitchCtrl;
-
-  /// КВАНТОВАННАЯ фаза глитча. Контроллер тикает 60 раз в секунду, но числа
-  /// статистики меняют оттенок теней лишь на нескольких ступенях за цикл
-  /// (см. `_GlitchShadowPainter._steps`). Раньше painter слушал контроллер
-  /// НАПРЯМУЮ и перерисовывался каждый кадр — десяток «двойников» текста
-  /// заново растеризовался 60 раз в секунду, и экран статистики «дико
-  /// лагал». Теперь слушаем только смену ступени: видимая картинка та же,
-  /// а перерисовок в разы меньше.
+  /// Фаза «глитча» чисел. Держим её НЕПОДВИЖНОЙ: прежняя вечная анимация
+  /// перерисовывала десяток теней-«двойников» каждый кадр и была главным
+  /// источником лага экрана статистики (плюс сами цифры читались
+  /// «иероглифом» от бегущих цветных двойников). Свечение осталось —
+  /// оно статично и стоит ровно одну отрисовку.
   final ValueNotifier<double> _glitchPhase = ValueNotifier<double>(0);
-
-  /// Ступеней квантования фазы за цикл.
-  static const int _glitchSteps = 24;
 
   /// Скролл статистики: деформация растяжения читает его позицию каждый кадр
   /// (см. [_StretchScroll]) — так возврат в покой не зависит от того, какие
@@ -64,17 +55,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     _habitSvc.load();
     _taskSvc.load();
     _logSvc.load().then((_) => _logSvc.recordToday());
-    _glitchCtrl = ambientRepeat(
-      AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 2600),
-      )..addListener(_syncGlitchPhase),
-    );
-  }
-
-  void _syncGlitchPhase() {
-    final q = (_glitchCtrl.value * _glitchSteps).roundToDouble() / _glitchSteps;
-    if (_glitchPhase.value != q) _glitchPhase.value = q;
   }
 
   void _onData() {
@@ -87,7 +67,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
     _habitSvc.removeListener(_onData);
     _taskSvc.removeListener(_onData);
     _logSvc.removeListener(_onData);
-    _glitchCtrl.dispose();
     _glitchPhase.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -180,9 +159,9 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
                       ),
                       border: Border.all(
                         color: theme.colorScheme.secondary.withValues(
-                          alpha: 0.38,
+                          alpha: 0.30,
                         ),
-                        width: 1.1,
+                        width: 0.8,
                       ),
                     ),
                     child: Row(
@@ -216,9 +195,9 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
                       color: theme.colorScheme.surface.withValues(alpha: 0.42),
                       border: Border.all(
                         color: theme.colorScheme.secondary.withValues(
-                          alpha: 0.24,
+                          alpha: 0.18,
                         ),
-                        width: 1,
+                        width: 0.6,
                       ),
                     ),
                     child: Text(
@@ -314,6 +293,9 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
       // цифра экрана, её рамка читается акцентом, остальные — волосяные.
       thick: true,
       child: Card(
+        // elevation 0: кольцо-кант даёт `_ringedCard`, а штатная тень
+        // `Card` добавляла ВТОРОЙ край — обводка читалась жирной.
+        elevation: 0,
         color: theme.colorScheme.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
@@ -377,6 +359,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
       theme: theme,
       accent: accent,
       child: Card(
+      elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.7)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -480,7 +463,7 @@ Widget _ringedCard({
   // заметно толстая рамка читалась как «коробка», пользователь просил тоньше
   // и у неё тоже. 0.3 px на плотности 3.0 — это почти целый физический
   // пиксель, и при растяжении контента линия «толстела» ещё заметнее.
-  final thickness = thick ? 0.2 : _hairline;
+  final thickness = thick ? 0.14 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
@@ -524,9 +507,11 @@ Widget _ringedCard({
   );
 }
 
-/// Число с постоянной «живой» анимацией: мягкий глитч (лёгкий сдвиг по X,
-/// размытие и перелив тени) — читается, но выглядит живым, как неоновые
-/// цифры. Скорость — от [ctrl] (общий контроллер, повторяется).
+/// Число статистики. Раньше это был «глитч»: под текстом бежали два цветных
+/// двойника-тени, и мелкое число на светлом фоне читалось мутным пятном
+/// («иероглиф»), а вечная перерисовка тормозила экран. Теперь — чистый текст
+/// с одной очень мягкой тенью: читается резко и не стоит ни одного лишнего
+/// кадра.
 class _GlitchText extends StatelessWidget {
   final String text;
   final TextStyle? style;
@@ -536,118 +521,22 @@ class _GlitchText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Глитч — ЧИСТАЯ ПЕРЕРИСОВКА: видимый текст рисует статичный [Text], а
-    // цветные «двойники»-тени — painter, слушающий [ctrl] через `repaint`.
-    // Дерево при этом НЕ перестраивается каждый кадр. Это не только про
-    // 60 fps: перестройка анимированного абзаца помечает слой скролла
-    // «грязным» на каждом кадре, и вертикальный драг перестаёт двигать
-    // список — статистика «не листалась» (проверено регрессом
-    // stats_stretch_test).
     final base = style ?? const TextStyle();
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: _GlitchShadowPainter(
-          text: text,
-          style: base,
-          ctrl: ctrl,
-          textDirection: Directionality.of(context),
-        ),
-        child: Text(text, style: base),
+    return Text(
+      text,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.visible,
+      style: base.copyWith(
+        shadows: [
+          Shadow(
+            color: base.color?.withValues(alpha: 0.22) ?? Colors.transparent,
+            blurRadius: 6,
+          ),
+        ],
       ),
     );
   }
-}
-
-/// Тени-«глитч» под текстом: два полупрозрачных цветных двойника, амплитуда
-/// которых пульсирует волной от [ctrl]. Рисуются ПОД текстом (background
-/// painter), поэтому сам текст остаётся чётким.
-class _GlitchShadowPainter extends CustomPainter {
-  final String text;
-  final TextStyle style;
-  final ValueListenable<double> ctrl;
-  final TextDirection textDirection;
-
-  _GlitchShadowPainter({
-    required this.text,
-    required this.style,
-    required this.ctrl,
-    required this.textDirection,
-  }) : super(repaint: ctrl);
-
-  /// Кэш разложенных «двойников». `TextPainter.layout()` — это шейпинг
-  /// шрифта, и повторять его каждый кадр (60–120 Гц) для КАЖДОГО числа
-  /// статистики означало постоянные просадки: экран лагал на скролле и
-  /// растяжении.
-  ///
-  /// Ключ — ЗНАЧЕНИЯ стиля, а не `identityHashCode`: стиль приходит из
-  /// `textTheme.copyWith(...)` и создаётся заново на каждой перестройке
-  /// дерева, поэтому хеш идентичности менялся каждый кадр и кэш не работал
-  /// вовсе — раскладка шла заново всё время. По значениям же запись
-  /// переиспользуется между кадрами и перестройками.
-  static final Map<String, TextPainter> _cache = <String, TextPainter>{};
-
-  /// Число ступеней прозрачности пульса.
-  static const int _steps = 6;
-
-  static String _styleKey(TextStyle s, TextDirection dir) =>
-      '${s.fontSize}|${s.fontWeight}|${s.fontFamily}|${s.letterSpacing}|'
-      '${s.height}|${s.fontStyle}|${s.color?.toARGB32()}|${dir.index}';
-
-  static TextPainter _shadow(
-    String text,
-    TextStyle style,
-    TextDirection dir,
-    int step,
-  ) {
-    final key = '${_styleKey(style, dir)}|$step|$text';
-    final cached = _cache[key];
-    if (cached != null) return cached;
-    // Амплитуда пульса: от 0.35 до 1.0 от базовой альфы теней.
-    final amp = 0.35 + 0.65 * (step / (_steps - 1));
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: style.copyWith(
-          color: Colors.transparent,
-          shadows: [
-            // Два «двойника» (тёплый/холодный) в ОДНОЙ раскладке: раньше на
-            // каждый рисовался свой TextPainter с layout — двойная работа.
-            // Без `blurRadius`: размытие теней — это `MaskFilter` на каждый
-            // кадр на каждое число, самая дорогая часть. Смещённые плотные
-            // тени читаются тем же «глитчем», но рисуются в разы дешевле.
-            Shadow(
-              color: const Color(0xFFFF3B5C).withValues(alpha: 0.22 * amp),
-              offset: const Offset(1.1, 0),
-            ),
-            Shadow(
-              color: const Color(0xFF33D1FF).withValues(alpha: 0.19 * amp),
-              offset: const Offset(-1.1, 0),
-            ),
-          ],
-        ),
-      ),
-      textDirection: dir,
-      maxLines: 1,
-    )..layout();
-    if (_cache.length > 96) _cache.clear();
-    _cache[key] = tp;
-    return tp;
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final t = ctrl.value;
-    // Плавная волна «глитча»: лёгкая пульсация цветовых каналов. Берём
-    // ближайшую ЗАПЕЧЁННУЮ ступень — рисование остаётся одним `paint`, без
-    // offscreen-слоя на каждый кадр.
-    final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
-    final step = (wave * (_steps - 1)).round().clamp(0, _steps - 1);
-    _shadow(text, style, textDirection, step).paint(canvas, Offset.zero);
-  }
-
-  @override
-  bool shouldRepaint(covariant _GlitchShadowPainter old) =>
-      old.text != text || old.style != style || old.textDirection != textDirection;
 }
 
 /// График «последние 30 дней»: объёмные 3D-столбики. Каждый день — один
@@ -699,6 +588,7 @@ class _MonthChart extends StatelessWidget {
       theme: theme,
       accent: theme.colorScheme.primary,
       child: Card(
+      elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.7)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
