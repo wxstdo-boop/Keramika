@@ -776,11 +776,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                 // Гасим чернильные всплески ListTile: без этого при тапе по
                 // строке под пальцем вспыхивал прямоугольник на всю ширину
                 // карточки («квадрат»). Кнопки внутри сохраняют свой отклик.
-                ? Theme(
+                ?                 Theme(
                     data: theme.copyWith(
                       splashColor: Colors.transparent,
                       highlightColor: Colors.transparent,
                       hoverColor: Colors.transparent,
+                      focusColor: Colors.transparent,
                     ),
                     child: ListTile(
                       key: const ValueKey('music_row'),

@@ -508,7 +508,7 @@ class _GlitchText extends StatelessWidget {
       text,
       maxLines: 1,
       softWrap: false,
-      overflow: TextOverflow.visible,
+      overflow: TextOverflow.clip,
       style: base.copyWith(
         shadows: [
           Shadow(
