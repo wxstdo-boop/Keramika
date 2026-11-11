@@ -1,0 +1,2 @@
+- Rebrand Keramika → Agysha across UI, assets, metadata and releases
+- docs(AGENTS): зафиксирован новый пакет com.wetcorp.agysha и репозиторий Agysha
