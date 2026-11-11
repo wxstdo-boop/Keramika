@@ -1,0 +1,1 @@
+- Переименование: пакет com.wetcorp.agysha и репозиторий wxstdo-boop/agysha
