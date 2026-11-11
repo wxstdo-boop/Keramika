@@ -1000,7 +1000,7 @@ class _DeadlineChipState extends State<_DeadlineChip> {
               border: Border.all(
                 color: selected
                     ? cs.primary
-                    : cs.outlineVariant.withValues(alpha: 0.6),
+                    : cs.outlineVariant.withValues(alpha: 0.72),
                 width: 1.2,
               ),
             ),

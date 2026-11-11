@@ -630,7 +630,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                     color: selected
                                         ? theme.colorScheme.primary
                                         : theme.colorScheme.outlineVariant
-                                              .withValues(alpha: 0.35),
+                                              .withValues(alpha: 0.5),
                                     width: selected ? 1.5 : 1,
                                   ),
                                 ),
@@ -1139,7 +1139,7 @@ class _SoundActionChipState extends State<_SoundActionChip> {
         color: (glowing
                 ? const Color(0xFFFF5A62)
                 : (dark ? const Color(0xFFFFA2A8) : const Color(0xFFE0525C)))
-            .withValues(alpha: glowing ? 0.55 : (dark ? 0.16 : 0.30)),
+            .withValues(alpha: glowing ? 0.6 : (dark ? 0.30 : 0.45)),
         width: 1.0,
       ),
       // При воспроизведении — кровавый ореол вокруг кнопки.

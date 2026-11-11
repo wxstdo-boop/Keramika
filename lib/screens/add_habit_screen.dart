@@ -1000,7 +1000,7 @@ class _TypeCapsule extends StatelessWidget {
             border: Border.all(
               color: selected
                   ? color.withValues(alpha: 0.6)
-                  : cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.45),
+                  : cs.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.62),
               width: selected ? 1.4 : 1,
             ),
             boxShadow: selected

@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../utils/motion_prefs.dart';
 
 /// Тонкая «хамелеон»-обводка вокруг кнопки проигрывания: цвета медленно
-/// перетекают в тон темы (primary ↔ tertiary), а яркость пульсирует в такт
-/// музыке.
+/// перетекают в тон темы (primary ↔ tertiary ↔ secondary), а толщина и свечение
+/// пульсируют в такт музыке.
 ///
 /// Кольцо — именно ОБВОДКА ([PaintingStyle.stroke]), а не залитый круг:
 /// прежний вариант рисовал залитый градиентный контейнер ПОД кнопкой, и
@@ -19,8 +19,8 @@ class MusicPulseRing extends StatefulWidget {
   final bool active;
   final Widget child;
 
-  /// Толщина кольца в покое и на пике пульса, px. Тонкое кольцо — акцент, а
-  /// не «бублик» вокруг кнопки.
+  /// Толщина кольца в покое и прибавка на пике пульса, px. Тонкое кольцо —
+  /// акцент, а не «бублик» вокруг кнопки.
   final double baseWidth;
   final double pulseWidth;
 
@@ -28,8 +28,8 @@ class MusicPulseRing extends StatefulWidget {
     super.key,
     required this.active,
     required this.child,
-    this.baseWidth = 1.2,
-    this.pulseWidth = 0.5,
+    this.baseWidth = 1.1,
+    this.pulseWidth = 1.3,
   });
 
   @override
@@ -40,7 +40,9 @@ class _MusicPulseRingState extends State<MusicPulseRing>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2600),
+    // Чуть быстрее прежнего: пульс должен читаться как «дыхание в такт», а не
+    // как едва заметное мерцание.
+    duration: const Duration(milliseconds: 1800),
   );
 
   @override
@@ -69,9 +71,11 @@ class _MusicPulseRingState extends State<MusicPulseRing>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final reduce = MotionPrefs.shouldReduceMotion;
-    // Цвета — в тон темы, а не радуга: акцент primary → tertiary.
+    // Три тона темы по кругу: перелив идёт заметнее, чем между двумя, и
+    // «хамелеон» читается — кольцо меняет цвет, а не только яркость.
     final a = cs.primary;
     final b = cs.tertiary;
+    final c = cs.secondary;
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -92,16 +96,20 @@ class _MusicPulseRingState extends State<MusicPulseRing>
                   final pulse = reduce
                       ? 0.0
                       : (0.5 + 0.5 * math.sin(t * math.pi * 2));
+                  // Медленный поворот градиента: цвет «перетекает» по кругу.
                   final turn = t * 2 * math.pi;
-                  final lead = Color.lerp(a, b, 0.5 + 0.5 * math.sin(turn))!;
-                  final tail = Color.lerp(b, a, 0.5 + 0.5 * math.cos(turn))!;
+                  final lead = _wheel(a, b, c, math.sin(turn));
+                  final tail = _wheel(b, c, a, math.cos(turn));
                   return CustomPaint(
                     painter: _RingPainter(
                       lead: lead,
                       tail: tail,
                       turn: turn,
+                      // Пульс — ТОЛЩИНОЙ: от волосяной линии до заметного, но
+                      // всё ещё тонкого кольца. Раньше менялось только
+                      // свечение, и пульс почти не читался.
                       stroke: widget.baseWidth + widget.pulseWidth * pulse,
-                      glow: 0.06 + 0.10 * pulse,
+                      glow: 0.10 + 0.30 * pulse,
                     ),
                   );
                 },
@@ -112,6 +120,14 @@ class _MusicPulseRingState extends State<MusicPulseRing>
         widget.child,
       ],
     );
+  }
+
+  /// Тон темы по «фазе» −1…1: плавно ходит между тремя цветами палитры.
+  static Color _wheel(Color a, Color b, Color c, double phase) {
+    final v = (phase + 1) / 2; // 0…1
+    return v < 0.5
+        ? Color.lerp(a, b, v * 2)!
+        : Color.lerp(b, c, (v - 0.5) * 2)!;
   }
 }
 

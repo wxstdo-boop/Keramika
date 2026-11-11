@@ -179,37 +179,57 @@ class ProfileAvatar extends StatelessWidget {
   /// обводкой — она появляется вместе с картинкой (кросс-фейд) и мягко
   /// уходит, когда возвращаешься на стандартную аватарку.
   ///
-  /// Размытие при скролле — на ВСЁМ круге (`ImageFiltered` вокруг клипа), а
-  /// не внутри него: так расфокус выходит чуть ЗА пределы аватарки мягким
-  /// ореолом и не оставляет видимой «грани» там, где обрезался клип. Кольцо
-  /// при этом рисуется ПОВЕРХ и остаётся чётким.
+  /// Размытие — ВНУТРИ клипа, вокруг самой картинки: расфокус не выходит за
+  /// круг, поэтому его край остаётся ровным по всему периметру (раньше фильтр
+  /// стоял СНАРУЖИ клипа и размывал сам овал — сверху, где клип совпадал с
+  /// тенью карточки, кант «плыл» и читался неровным). Слои упорядочены от
+  /// дешёвого к дорогому: слой размытия кэшируется, а параллакс — только
+  /// сдвиг готового слоя.
+  ///
+  /// Сигма размытия КВАНТУЕТСЯ: непрерывное значение пересобирало фильтр
+  /// каждый кадр прокрутки, и размытие «лагало». На ступенях пересборки нет.
   Widget _imageAvatar() {
     final file = File(imagePath!);
     // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
     // круга не оголяются.
     final over = size * 0.30;
     final dy = parallax.clamp(-over / 2, over / 2);
+    final sigma = blur <= 0.2 ? 0.0 : blur.roundToDouble();
+    final image = Image.file(
+      file,
+      width: size,
+      height: size + over,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, _, _) => _generatedAvatar(null),
+      // Файл декодируется асинхронно: пока кадр не готов, показываем
+      // сгенерированную аватарку — иначе на входе в профиль на месте
+      // своей авы был «пустой» круг и картинка «появлялась не сразу».
+      frameBuilder: (context, child, frame, wasSyncLoaded) {
+        if (wasSyncLoaded || frame != null) return child;
+        return _generatedAvatar(null);
+      },
+    );
     final clipped = ClipOval(
       child: SizedBox(
         width: size,
         height: size,
         child: Transform.translate(
           offset: Offset(0, dy),
-          child: Image.file(
-            file,
-            width: size,
-            height: size + over,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            filterQuality: FilterQuality.medium,
-            errorBuilder: (_, _, _) => _generatedAvatar(null),
-            // Файл декодируется асинхронно: пока кадр не готов, показываем
-            // сгенерированную аватарку — иначе на входе в профиль на месте
-            // своей авы был «пустой» круг и картинка «появлялась не сразу».
-            frameBuilder: (context, child, frame, wasSyncLoaded) {
-              if (wasSyncLoaded || frame != null) return child;
-              return _generatedAvatar(null);
-            },
+          // Размытие — вокруг САМОЙ картинки, под клипом: слой кэшируется
+          // (`RepaintBoundary`), а сдвиг параллакса лишь переносит готовый
+          // размытый слой, не пересобирая фильтр.
+          child: RepaintBoundary(
+            child: sigma > 0 && !MotionPrefs.shouldReduceMotion
+                ? ImageFiltered(
+                    imageFilter: ui.ImageFilter.blur(
+                      sigmaX: sigma,
+                      sigmaY: sigma,
+                    ),
+                    child: image,
+                  )
+                : image,
           ),
         ),
       ),
@@ -231,26 +251,10 @@ class ProfileAvatar extends StatelessWidget {
         ),
       ),
     );
-    // Размываем клип (при скролле) и кладём поверх чёткое кольцо: расфокус
-    // «заходит» за аву мягким ореолом (`Clip.none`), а кант остаётся резким.
-    final blurred = blur > 0.2 && !MotionPrefs.shouldReduceMotion;
     return Stack(
       alignment: Alignment.center,
       clipBehavior: Clip.none,
-      children: [
-        if (blurred)
-          ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(
-              sigmaX: blur,
-              sigmaY: blur,
-              tileMode: TileMode.decal,
-            ),
-            child: clipped,
-          )
-        else
-          clipped,
-        ring,
-      ],
+      children: [clipped, ring],
     );
   }
 

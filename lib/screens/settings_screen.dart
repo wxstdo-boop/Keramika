@@ -1593,8 +1593,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: 0.6,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 1,
           ),
         ),
         elevation: 0,
@@ -1839,8 +1839,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: 0.6,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 1,
           ),
         ),
         elevation: 0,
@@ -1904,8 +1904,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: 0.6,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: 1,
           ),
         ),
         elevation: 0,

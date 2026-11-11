@@ -38,12 +38,18 @@ class _NutritionScreenState extends State<NutritionScreen>
   final Map<String, DateTime> _addedAt = {};
   bool _loaded = false; // Первая загрузка завершена — кнопка не «мигает»
 
-  /// Приёмы пищи, чьё удаление подтверждено и уже «отыгрывается» locally:
-  /// строка внутри себя растворяется (240 мс) и схлопывается по высоте
-  /// (340 мс), и только после этого confirmDismiss возвращает true, и
-  /// модель теряет запись. Соседи подаются вверх непрерывно — собственных
-  /// прыжков ни у кого нет.
+  /// Приёмы пищи, чьё удаление подтверждено и уже «отыгрывается» локально:
+  /// строка растворяется и схлопывается по высоте ([_mealCollapse]), и только
+  /// после этого `confirmDismiss` возвращает true, а модель теряет запись.
+  /// Соседи подаются вверх непрерывно — собственных прыжков ни у кого нет.
   final Set<String> _removingMealIds = <String>{};
+
+  /// Схлопывание строки при удалении и «догонялка» [AnimatedSize] над блоком
+  /// истории идут РОВНО этой длительностью и кривой. Разные значения означали
+  /// две анимации высоты, тянущие один слот вразнобой — на стыке строка
+  /// коротко вспыхивала («мигает при удалении»).
+  static const Duration _mealCollapse = Duration(milliseconds: 240);
+  static const Curve _mealCollapseCurve = Curves.easeOutCubic;
 
   /// Поле, открытое под встроенной клавиатурой, и сама открыта ли панель.
   /// `_pad` переживает закрытие: за 260 мс сложения панели её содержимое
@@ -355,12 +361,11 @@ class _NutritionScreenState extends State<NutritionScreen>
             _reveal(
               7,
               AnimatedSize(
-                // Догонялка со скромным окном (240 мс): высоту блока ведут
-                // сами строки — вросло из нуля у нового приёма,
-                // схлопывание слота при удалении. AnimatedSize лишь
-                // подхватывает финальный ход, а не тянет высоту сам.
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeOutCubic,
+                // Та же длительность и кривая, что у схлопывания строки
+                // ([_mealCollapse]): AnimatedSize подхватывает ровно тот ход,
+                // который отыгрывает строка, и не спорит с ним за высоту.
+                duration: _mealCollapse,
+                curve: _mealCollapseCurve,
                 alignment: Alignment.topCenter,
                 clipBehavior: Clip.hardEdge,
                 child: AnimatedSwitcher(
@@ -1270,9 +1275,9 @@ class _NutritionScreenState extends State<NutritionScreen>
           // Dismissible завершает жест. Пока фаза идёт, место под строкой
           // освобождается непрерывно — соседи подаются вверх плавно.
           if (mounted) setState(() => _removingMealIds.add(meal.id));
-          // 350 мс: к этому моменту схлопывание (340 мс) дошло до нуля,
-          // и слот уже пуст — красная подложка не простаивает ни кадра.
-          await Future<void>.delayed(const Duration(milliseconds: 350));
+          // Ждём ровно схлопывание: к этому моменту слот пуст, и красная
+          // подложка не простаивает ни кадра.
+          await Future<void>.delayed(_mealCollapse);
           // НЕЧАЯННОЕ «ЗАЕДАНИЕ» В КОНЦЕ УБРАНО: раньше здесь снимали id из
           // _removingMealIds перед возвратом true — end-обоих tween'ов
           // возвращался в 1.0, и на один кадр строка вспыхивала на полную
@@ -1314,24 +1319,27 @@ class _NutritionScreenState extends State<NutritionScreen>
               ),
             ),
             child: TweenAnimationBuilder<double>(
-              // Фаза удаления: строка схлопывается по высоте КАК РАЗ
-              // здесь, внутри своего слота (340 мс), и место
-              // освобождается непрерывно. Начало ровно 1 → у истории
-              // анимации нет.
+              // Фаза удаления: строка схлопывается по высоте ЗДЕСЬ, внутри
+              // своего слота, а место освобождается непрерывно.
+              //
+              // ВАЖНО: длительность и кривая РОВНО те же, что у [AnimatedSize]
+              // над блоком истории. Пока они расходились (340 мс против 240 мс
+              // и разные кривые), две анимации высоты тянули один и тот же
+              // слот вразнобой, и на стыке строка коротко вспыхивала — это и
+              // читалось как «мигает при удалении».
               tween: Tween(
                 begin: 1.0,
                 end: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
               ),
-              duration: const Duration(milliseconds: 340),
-              curve: Curves.easeInOutCubic,
+              duration: _mealCollapse,
+              curve: _mealCollapseCurve,
               builder: (context, shrink, child) => ClipRect(
                 child: Align(
                   alignment: Alignment.topCenter,
                   heightFactor: shrink.clamp(0.0, 1.0),
-                  // Нижний зазор теперь ВНУТРИ схлопывания: раньше он жил
-                  // снаружи, и после полного сжатия карточки на месте
-                  // слота оставалась 10-пиксельная красная полоса — то
-                  // самое «в конце удаления красная заедает».
+                  // Нижний зазор — ВНУТРИ схлопывания: снаружи он оставался
+                  // 10-пиксельной полосой после полного сжатия («в конце
+                  // удаления красная заедает»).
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: child,

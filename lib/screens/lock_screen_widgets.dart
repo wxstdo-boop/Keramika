@@ -324,8 +324,8 @@ class _KIDCapsuleButton extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: isDark
-                          ? cs.outlineVariant.withValues(alpha: 0.26)
-                          : cs.outlineVariant.withValues(alpha: 0.3),
+                          ? cs.outlineVariant.withValues(alpha: 0.4)
+                          : cs.outlineVariant.withValues(alpha: 0.5),
                       width: 1,
                     ),
                   ),

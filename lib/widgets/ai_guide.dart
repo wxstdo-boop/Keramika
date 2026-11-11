@@ -1753,7 +1753,7 @@ class _AiChatBodyState extends State<_AiChatBody>
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
                             color: Color.lerp(
-                              cs.outlineVariant.withValues(alpha: 0.26),
+                              cs.outlineVariant.withValues(alpha: 0.4),
                               cs.primary.withValues(alpha: 0.7),
                               t,
                             )!,

@@ -99,7 +99,9 @@ class _UpdatePillState extends State<UpdatePill>
         // Затемнение рисует сам transitionBuilder той же кривой, что и окно
         // (как в локскрине и новогоднем баннере).
         barrierColor: Colors.transparent,
-        transitionDuration: const Duration(milliseconds: 260),
+        // Чуть длиннее прежнего: появление читается как мягкое «всплытие», а
+        // не как рывок.
+        transitionDuration: const Duration(milliseconds: 300),
         pageBuilder: (ctx, _, _) => _UpdateConfirmDialog(
           version: update.versionName,
           onConfirm: () => Navigator.pop(ctx, true),
@@ -108,6 +110,9 @@ class _UpdatePillState extends State<UpdatePill>
         transitionBuilder: (ctx, anim, _, child) {
           final curved = CurvedAnimation(
             parent: anim,
+            // Мягкая остановка входа: окно «выплывает» и плавно встаёт на
+            // место, без рывка в конце. Выход — короткий easeIn: окно уходит
+            // собранно, не задерживая пользователя.
             curve: Curves.easeOutCubic,
             reverseCurve: Curves.easeInCubic,
           );
@@ -125,7 +130,10 @@ class _UpdatePillState extends State<UpdatePill>
               FadeTransition(
                 opacity: curved,
                 child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+                  // Ход масштаба меньше (0.96): крупное окно при большом
+                  // разлёте читалось «выпрыгивающим». Теперь это лёгкое
+                  // всплытие, а не скачок размера.
+                  scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
                   child: child,
                 ),
               ),
@@ -269,20 +277,19 @@ class _UpdatePillState extends State<UpdatePill>
                     // таблетки (это и читалось как рывок в верхней точке).
                     width: 15,
                     height: 15,
-                    child: AnimatedBuilder(
-                      animation: _spin,
-                      builder: (context, _) => RepaintBoundary(
-                        // Свой слой: прыжок перерисовывает только зайчика, а не
-                        // всю строку таблетки — движение остаётся ровным.
-                        child: CustomPaint(
-                          painter: _UpdateGlyphPainter(
-                            progress: _busy ? _spin.value : 0,
-                            color: cs.onPrimaryContainer,
-                            hole: cs.primaryContainer,
-                            running: _busy,
-                            devicePixelRatio:
-                                MediaQuery.devicePixelRatioOf(context),
-                          ),
+                    // Свой слой + painter, слушающий контроллер НАПРЯМУЮ: прыжок
+                    // — чистая перерисовка, дерево виджетов при этом не
+                    // перестраивается каждый кадр (раньше `AnimatedBuilder`
+                    // пересобирал таблетку на каждом кадре — это и «лагало»).
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _UpdateGlyphPainter(
+                          progress: _spin,
+                          color: cs.onPrimaryContainer,
+                          hole: cs.primaryContainer,
+                          running: _busy,
+                          devicePixelRatio:
+                              MediaQuery.devicePixelRatioOf(context),
                         ),
                       ),
                     ),
@@ -322,15 +329,17 @@ class _UpdatePillState extends State<UpdatePill>
 /// трансформация вокруг центра. Цикл замкнут (sin(π·p): 0→1→0), поэтому на
 /// стыке 1→0 нет рывка.
 class _UpdateGlyphPainter extends CustomPainter {
-  const _UpdateGlyphPainter({
+  _UpdateGlyphPainter({
     required this.progress,
     required this.color,
     required this.hole,
     required this.running,
     required this.devicePixelRatio,
-  });
+  }) : super(repaint: progress);
 
-  final double progress;
+  /// Драйвер прыжка. Painter слушает его НАПРЯМУЮ (`super(repaint:)`): прыжок
+  /// перерисовывает только глиф, без перестройки дерева виджетов на каждый кадр.
+  final Animation<double> progress;
   final Color color;
 
   /// Плотность экрана: нужна, чтобы округлять вертикальный сдвиг глифа до
@@ -382,7 +391,7 @@ class _UpdateGlyphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = running ? progress : 0.0;
+    final p = running ? progress.value : 0.0;
     // Прыжок целиком по ОДНОЙ функции `hop`: 0 → 1 → 0. Скорость в нижних
     // точках равна нулю (потолок в `cos(π·hp)` и множителе `hp·(1-hp)`), а
     // скорость в верхней точке — нулю по построению. Значит отрыв и касание
@@ -400,14 +409,16 @@ class _UpdateGlyphPainter extends CustomPainter {
     // маленьком значке это читалось как дёрганье. Целый пиксель — ровно.
     final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
     final snapped = (lift * dpr).roundToDouble() / dpr;
-    canvas.translate(size.width / 2, size.height / 2 - snapped);
+    // Округляем и ГОРИЗОНТАЛЬНЫЙ центр: при нечётной ширине окна половина
+    // попадала на полпиксель, и глиф «дрожал» по X между кадрами.
+    final cx = ((size.width / 2) * dpr).roundToDouble() / dpr;
+    canvas.translate(cx, size.height / 2 - snapped);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
       oldDelegate.color != color ||
       oldDelegate.hole != hole ||
       oldDelegate.running != running ||

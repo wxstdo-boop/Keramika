@@ -460,19 +460,19 @@ Widget _ringedCard({
   // Кант — совсем тонкий. У «главной» плашки он лишь чуть плотнее волосяного:
   // заметно толстая рамка читалась как «коробка», пользователь просил тоньше
   // и у неё тоже.
-  final thickness = thick ? 0.5 : _hairline;
+  final thickness = thick ? 0.3 : _hairline;
   final cs = theme.colorScheme;
   final dark = theme.brightness == Brightness.dark;
   // Альфа кольца идёт следом за толщиной: у волосяного канта она ниже, у
   // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
   final aTop = thick
-      ? (dark ? 0.46 : 0.34)
+      ? (dark ? 0.34 : 0.24)
       : (dark ? 0.18 : 0.11);
   final aMid = thick
-      ? (dark ? 0.16 : 0.11)
+      ? (dark ? 0.10 : 0.07)
       : (dark ? 0.03 : 0.02);
   final aEnd = thick
-      ? (dark ? 0.34 : 0.24)
+      ? (dark ? 0.24 : 0.16)
       : (dark ? 0.12 : 0.07);
   return Container(
     decoration: BoxDecoration(
@@ -557,34 +557,46 @@ class _GlitchShadowPainter extends CustomPainter {
   /// Кэш разложенных «двойников». `TextPainter.layout()` — это шейпинг
   /// шрифта, и повторять его каждый кадр (60–120 Гц) для КАЖДОГО числа
   /// статистики означало постоянные просадки: экран лагал на скролле и
-  /// растяжении. Ключ — текст+стиль+направление, в кэше держим несколько
-  /// записей: на экране сразу несколько «глитч»-чисел, и одиночный слот
-  /// затирался бы каждым из них по кругу.
+  /// растяжении. Ключ — текст+стиль+направление+ступень прозрачности.
+  ///
+  /// Прозрачность идёт СТУПЕНЯМИ, а не непрерывно: раньше амплитуда пульса
+  /// делалась `canvas.saveLayer` на каждый кадр — а это offscreen-буфер на
+  /// КАЖДОЕ число, каждый кадр. Именно он ронял кадры при скролле. Теперь
+  /// ступени запекаются в цвета теней заранее (несколько раскладок на число,
+  /// один раз), а рисование — обычный `paint` без слоёв.
   static final Map<String, TextPainter> _cache = <String, TextPainter>{};
 
-  static TextPainter _shadow(String text, TextStyle style, TextDirection dir) {
-    final key = '${identityHashCode(style)}|${dir.index}|$text';
+  /// Число ступеней прозрачности пульса.
+  static const int _steps = 6;
+
+  static TextPainter _shadow(
+    String text,
+    TextStyle style,
+    TextDirection dir,
+    int step,
+  ) {
+    final key = '${identityHashCode(style)}|${dir.index}|$step|$text';
     final cached = _cache[key];
     if (cached != null) return cached;
+    // Амплитуда пульса: от 0.35 до 1.0 от базовой альфы теней.
+    final amp = 0.35 + 0.65 * (step / (_steps - 1));
     final tp = TextPainter(
       text: TextSpan(
         text: text,
         style: style.copyWith(
           color: Colors.transparent,
-          shadows: const [
+          shadows: [
             // Два «двойника» (тёплый/холодный) в ОДНОЙ раскладке: раньше на
             // каждый рисовался свой TextPainter с layout — двойная работа.
-            // Альфа здесь МАКСИМАЛЬНАЯ: пульсация делается прозрачностью слоя,
-            // чтобы не пересобирать раскладку каждый кадр.
             Shadow(
-              color: Color(0x38FF3B5C),
+              color: const Color(0xFFFF3B5C).withValues(alpha: 0.22 * amp),
               blurRadius: 1.5,
-              offset: Offset(1.1, 0),
+              offset: const Offset(1.1, 0),
             ),
             Shadow(
-              color: Color(0x3033D1FF),
+              color: const Color(0xFF33D1FF).withValues(alpha: 0.19 * amp),
               blurRadius: 1.5,
-              offset: Offset(-1.1, 0),
+              offset: const Offset(-1.1, 0),
             ),
           ],
         ),
@@ -592,7 +604,7 @@ class _GlitchShadowPainter extends CustomPainter {
       textDirection: dir,
       maxLines: 1,
     )..layout();
-    if (_cache.length > 24) _cache.clear();
+    if (_cache.length > 96) _cache.clear();
     _cache[key] = tp;
     return tp;
   }
@@ -600,24 +612,12 @@ class _GlitchShadowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final t = ctrl.value;
-    // Плавная волна «глитча»: лёгкая пульсация цветовых каналов.
+    // Плавная волна «глитча»: лёгкая пульсация цветовых каналов. Берём
+    // ближайшую ЗАПЕЧЁННУЮ ступень — рисование остаётся одним `paint`, без
+    // offscreen-слоя на каждый кадр.
     final wave = (math.sin(t * 2 * math.pi) + 1) / 2;
-    // Текст стоит на месте (никакого сдвига/размытия), «глитч» — только
-    // расщепление цветных теней, пульсирующее по амплитуде. Амплитуду даём
-    // прозрачностью СЛОЯ: раскладка берётся из кэша и не пересобирается.
-    final tp = _shadow(text, style, textDirection);
-    final bounds = Rect.fromLTWH(
-      -4,
-      -4,
-      tp.width + 8,
-      tp.height + 8,
-    );
-    canvas.saveLayer(
-      bounds,
-      Paint()..color = Colors.white.withValues(alpha: 0.35 + wave * 0.65),
-    );
-    tp.paint(canvas, Offset.zero);
-    canvas.restore();
+    final step = (wave * (_steps - 1)).round().clamp(0, _steps - 1);
+    _shadow(text, style, textDirection, step).paint(canvas, Offset.zero);
   }
 
   @override
