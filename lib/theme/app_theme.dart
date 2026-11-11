@@ -101,13 +101,22 @@ ThemeData buildKeramikaTheme(
       backgroundColor: Colors.transparent,
     ),
     cardTheme: CardThemeData(
-      elevation: 1,
+      // Плоские карточки с тонким кантом вместо «объёмных» с тенью: тень
+      // давала серую кайму и «грязь» на светлой теме, а кант читается чисто
+      // и одинаково на обеих темах.
+      elevation: 0,
       color: scheme.surfaceContainerLow,
-      shadowColor: scheme.shadow.withValues(alpha: isDark ? 0.30 : 0.12),
-      surfaceTintColor: scheme.primary.withValues(alpha: isDark ? 0.03 : 0.025),
+      shadowColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(
           isGrokStyle ? Radii.sm : Radii.xl,
+        ),
+        side: BorderSide(
+          color: scheme.outlineVariant.withValues(
+            alpha: isDark ? 0.42 : 0.55,
+          ),
+          width: 0.8,
         ),
       ),
     ),

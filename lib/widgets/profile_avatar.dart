@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -113,6 +114,10 @@ IconData profileAvatarIcon(int index) {
 /// «плывёт» — своя фотография панорамируется в круглом окне, а у
 /// сгенерированного шара мягко уезжают значок и блики. Обводка при этом
 /// стоит на месте, поэтому круг не «дышит» размером.
+///
+/// [blur] — мягкое расфокусирование СОДЕРЖИМОГО внутри круга (не всей
+/// аватарки): при уходе под верхнюю полку своя фотография расплывается
+/// плавно, оставаясь ровным кругом — без «разрезов» по краю.
 class ProfileAvatar extends StatelessWidget {
   final int index;
   final double size;
@@ -125,6 +130,9 @@ class ProfileAvatar extends StatelessWidget {
   /// Вертикальный сдвиг содержимого внутри круга, px (для параллакса).
   final double parallax;
 
+  /// Радиус расфокуса содержимого, px. 0 — чётко.
+  final double blur;
+
   const ProfileAvatar({
     super.key,
     required this.index,
@@ -132,6 +140,7 @@ class ProfileAvatar extends StatelessWidget {
     this.showIcon = true,
     this.imagePath,
     this.parallax = 0,
+    this.blur = 0,
   });
 
   @override
@@ -148,6 +157,8 @@ class ProfileAvatar extends StatelessWidget {
         children: [...previous, ?current],
       ),
       // Мягкая проявка с лёгким масштабом — смена читается плавно и цельно.
+      // Кольцо своей аватарки едет ВНУТРИ этого перехода: появляется и
+      // убирается вместе с картинкой, а не «щёлкает» отдельно.
       transitionBuilder: (child, anim) => FadeTransition(
         opacity: anim,
         child: ScaleTransition(
@@ -164,40 +175,56 @@ class ProfileAvatar extends StatelessWidget {
     );
   }
 
-  /// Своя картинка из галереи: круглый кроп с той же обводкой, что у
-  /// сгенерированных вариантов, — аватарка не выбивается из ряда.
+  /// Своя картинка из галереи: круглый кроп с тонкой полупрозрачной
+  /// обводкой — она появляется вместе с картинкой (кросс-фейд) и мягко
+  /// уходит, когда возвращаешься на стандартную аватарку.
+  ///
+  /// Размытие — на САМОЙ картинке внутри круга (`ImageFiltered`), поэтому
+  /// при уходе под верхнюю полку фотография расплывается плавно, но её край
+  /// остаётся ровным кругом: прежние «разрезы» были от размытия без клипа.
   Widget _imageAvatar() {
     final file = File(imagePath!);
     // Кадр выше окна на запас: при параллаксе фотография «плывёт», но края
     // круга не оголяются.
     final over = size * 0.30;
     final dy = parallax.clamp(-over / 2, over / 2);
+    Widget image = SizedBox(
+      width: size,
+      height: size,
+      child: Transform.translate(
+        offset: Offset(0, dy),
+        child: Image.file(
+          file,
+          width: size,
+          height: size + over,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, _, _) => _generatedAvatar(null),
+        ),
+      ),
+    );
+    if (blur > 0.2 && !MotionPrefs.shouldReduceMotion) {
+      image = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(
+          sigmaX: blur,
+          sigmaY: blur,
+          tileMode: TileMode.decal,
+        ),
+        child: image,
+      );
+    }
     return DecoratedBox(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        // Тонкое полупрозрачное кольцо: акцентная обводка чуть светится, но
+        // не «жирнит» круг.
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.70),
-          width: 2,
+          color: Colors.white.withValues(alpha: 0.62),
+          width: 1.4,
         ),
       ),
-      child: ClipOval(
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Transform.translate(
-            offset: Offset(0, dy),
-            child: Image.file(
-              file,
-              width: size,
-              height: size + over,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              filterQuality: FilterQuality.medium,
-              errorBuilder: (_, _, _) => _generatedAvatar(null),
-            ),
-          ),
-        ),
-      ),
+      child: ClipOval(child: image),
     );
   }
 

@@ -94,8 +94,12 @@ class _UpdatePillState extends State<UpdatePill>
         barrierLabel: MaterialLocalizations.of(
           context,
         ).modalBarrierDismissLabel,
-        barrierColor: Colors.black.withValues(alpha: 0.42),
-        transitionDuration: const Duration(milliseconds: 240),
+        // Барьер ПРОЗРАЧНЫЙ, а не чёрный: штатный барьер маршрута не участвует
+        // в анимации и вспыхивает/гаснет мгновенно — фон «мигает» чёрным.
+        // Затемнение рисует сам transitionBuilder той же кривой, что и окно
+        // (как в локскрине и новогоднем баннере).
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 260),
         pageBuilder: (ctx, _, _) => _UpdateConfirmDialog(
           version: update.versionName,
           onConfirm: () => Navigator.pop(ctx, true),
@@ -107,12 +111,25 @@ class _UpdatePillState extends State<UpdatePill>
             curve: Curves.easeOutCubic,
             reverseCurve: Curves.easeInCubic,
           );
-          return FadeTransition(
-            opacity: curved,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
-              child: child,
-            ),
+          final theme = Theme.of(ctx);
+          final dim = (theme.brightness == Brightness.dark
+                  ? Colors.black
+                  : theme.colorScheme.surface)
+              .withValues(alpha: 0.46 * curved.value);
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Затемнение едет ВМЕСТЕ с окном: проявляется и гаснет плавно,
+              // без мгновенной вспышки барьера.
+              IgnorePointer(child: ColoredBox(color: dim)),
+              FadeTransition(
+                opacity: curved,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+                  child: child,
+                ),
+              ),
+            ],
           );
         },
       );
@@ -247,8 +264,11 @@ class _UpdatePillState extends State<UpdatePill>
               child: Row(
                 children: [
                   SizedBox(
-                    width: 13,
-                    height: 13,
+                    // Окно глифа чуть больше самого глифа: в прыжке у зайчика
+                    // остаётся запас сверху, и он не «прищемляется» о край
+                    // таблетки (это и читалось как рывок в верхней точке).
+                    width: 15,
+                    height: 15,
                     child: AnimatedBuilder(
                       animation: _spin,
                       builder: (context, _) => CustomPaint(
@@ -312,36 +332,30 @@ class _UpdateGlyphPainter extends CustomPainter {
   final bool running;
 
   /// Доля цикла, которую занимает сам прыжок. Остаток зайчик стоит на земле:
-  /// без паузы он «молотит» без остановки, и движение читается как дёрганье,
-  /// а не как прыжок.
+  /// короткая пауза отделяет прыжки друг от друга, чтобы движение читалось
+  /// как прыжок, а не как непрерывная «молотьба».
   static const double _hopSpan = 0.58;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = running ? progress : 0.0;
-    // Профиль прыжка: sin(π·x) держит нулевую скорость на обоих концах, а
-    // easeInOut убирает «ступеньку» в начале разгона — зайчик поднимается и
-    // опускается мягко, без рывка.
-    final hp = (p / _hopSpan).clamp(0.0, 1.0);
-    final arc = math.sin(math.pi * Curves.easeInOut.transform(hp));
-    final hop = running ? arc : 0.0;
-    // Только вытягивание в полёте, без «приседания» ниже единицы: в таблетке
-    // высотой ~20 px сплющивание читалось как «зайчика прищемило». В прыжке
-    // силуэт чуть выше и уже, на земле — ровно исходный размер.
-    final stretch = running ? hop : 0.0;
-    final scaleY = 1 + stretch * 0.12;
-    final scaleX = 1 - stretch * 0.07;
-    // Подъём с запасом: глиф меньше окна, поэтому в верхней точке он не
-    // упирается в край таблетки (это и было «прищемление»).
-    final lift = hop * size.height * 0.16;
+  /// Кэш разложенного глифа. `TextPainter.layout()` — это шейпинг шрифта, и
+  /// делать его КАЖДЫЙ кадр анимации (60–120 Гц) — лишняя работа: на слабых
+  /// устройствах кадры проседали, и прыжок читался дёрганым. Держим последний
+  /// разложенный глиф и переиспользуем, пока не сменились цвет или размер.
+  static TextPainter? _cached;
+  static Color? _cachedColor;
+  static double _cachedSize = 0;
 
+  static TextPainter _glyph(Color color, double fontSize) {
+    final cached = _cached;
+    if (cached != null && _cachedColor == color && _cachedSize == fontSize) {
+      return cached;
+    }
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(Icons.cruelty_free.codePoint),
         style: TextStyle(
           // Глиф заметно меньше окна: при прыжке у него остаётся запас, и он
           // не упирается в границы таблетки.
-          fontSize: size.shortestSide * 0.84,
+          fontSize: fontSize,
           fontFamily: Icons.cruelty_free.fontFamily,
           package: Icons.cruelty_free.fontPackage,
           color: color,
@@ -349,7 +363,31 @@ class _UpdateGlyphPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
+    _cached = tp;
+    _cachedColor = color;
+    _cachedSize = fontSize;
+    return tp;
+  }
 
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = running ? progress : 0.0;
+    // Профиль прыжка: половина синуса — мягкий подъём и такое же мягкое
+    // приземление (скорость нулевая на обоих концах). Сверху — `easeInOutSine`
+    // (самая мягкая из easeInOut-кривых), поэтому разгон плавный, без
+    // «ступеньки» в начале и рывка в конце.
+    final hp = (p / _hopSpan).clamp(0.0, 1.0);
+    final u = Curves.easeInOutSine.transform(hp);
+    final hop = running ? math.sin(math.pi * u) : 0.0;
+    // Деформация мягкая и симметричная: в полёте зайчик чуть вытягивается
+    // вверх, у «земли» — чуть приседает. Прежнее сплющивание ниже единицы
+    // выглядело как «зайчика прищемило»; теперь форма возвращается к кругу.
+    final scaleY = 1 + hop * 0.06;
+    final scaleX = 1 - hop * 0.04;
+    // Прыжок ниже: высокий подскок в маленькой таблетке читался как рывок.
+    final lift = hop * size.height * 0.12;
+
+    final tp = _glyph(color, size.shortestSide * 0.84);
     canvas.save();
     canvas.translate(size.width / 2, size.height / 2 - lift);
     canvas.scale(scaleX, scaleY);
@@ -419,10 +457,15 @@ class _UpdateConfirmDialog extends StatelessWidget {
               // Полупрозрачная подложка БЕЗ `BackdropFilter`: под анимацией
               // появления/ухода размытие пересобиралось каждый кадр и окно
               // «мигало» (та же грабля, что у снекбара). Прозрачность даёт
-              // «стекло», а плавность — чистая отрисовка кадра.
+              // «стекло», а плавность — чистая отрисовка кадра. Альфа — как у
+              // снекбара (0.72/0.78): сквозь окно видно приложение, но текст
+              // остаётся читаемым.
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh.withValues(
-                  alpha: cs.brightness == Brightness.dark ? 0.90 : 0.94,
+                // Тот же «стеклянный» тон, что у снекбара (primaryContainer
+                // 0.72/0.78): окно и плашка обновления выглядят как одна
+                // семья, и сквозь фон видно приложение.
+                color: cs.primaryContainer.withValues(
+                  alpha: cs.brightness == Brightness.dark ? 0.72 : 0.78,
                 ),
                 borderRadius: BorderRadius.circular(Radii.xl - 1),
               ),
@@ -444,11 +487,11 @@ class _UpdateConfirmDialog extends StatelessWidget {
                           height: 40,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: cs.primaryContainer,
+                            color: cs.primary.withValues(alpha: 0.16),
                           ),
                           child: Icon(
                             Icons.system_update_alt_rounded,
-                            color: cs.onPrimaryContainer,
+                            color: cs.primary,
                           ),
                         ),
                         const SizedBox(width: Spacing.sm),
@@ -461,6 +504,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                             ),
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: Weights.bold,
+                              color: cs.onPrimaryContainer,
                             ),
                           ),
                         ),
@@ -474,7 +518,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                         'Установить v{v}?',
                       ).replaceAll('{v}', version),
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.onSurfaceVariant,
+                        color: cs.onPrimaryContainer.withValues(alpha: 0.84),
                         fontStyle: FontStyle.italic,
                         height: 1.35,
                       ),

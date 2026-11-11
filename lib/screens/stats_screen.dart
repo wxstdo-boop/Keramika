@@ -388,10 +388,10 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
               ],
             ),
             const SizedBox(height: 16),
-            // Полоса-прогресс в тон кольцу, но МОНОТОННАЯ: раньше заливка
-            // шла градиентом с тёмным краем — «глубина» читалась как грязное
-            // пятно и спорила с тонкой обводкой карточки. Теперь один
-            // спокойный тон акцента, лишь чуть светлее к правому краю.
+            // Полоса-прогресс РОВНАЯ и монотонная: один тон акцента, без
+            // градиента и световых «швов». Прежняя заливка с тёмным краем
+            // читалась как грязное пятно, а «шов» справа — как блик на
+            // пластике; плоский тон читается спокойно и чисто.
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Container(
@@ -403,18 +403,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
                 child: FractionallySizedBox(
                   widthFactor: pct.clamp(0.0, 1.0),
                   heightFactor: 1,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      // Один тон с еле заметным световым «швом» справа —
-                      // ровная заливка, без тёмных краёв и переливов.
-                      gradient: LinearGradient(
-                        colors: [
-                          accent,
-                          Color.lerp(accent, Colors.white, 0.10)!,
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: Container(color: accent),
                 ),
               ),
             ),
@@ -443,7 +432,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen>
 /// [thick] — исключение для ОДНОЙ карточки (сводка общего прогресса):
 /// её кант заметно плотнее, чтобы главная цифра читалась как акцент.
 /// Все прочие карточки — волосяные ([_hairline]).
-const double _hairline = 0.45;
+const double _hairline = 0.32;
 
 Widget _ringedCard({
   required ThemeData theme,
@@ -459,13 +448,13 @@ Widget _ringedCard({
   // «главной» плашки — плотнее. Иначе тонкая линия пропадала на светлой теме.
   final aTop = thick
       ? (dark ? 0.75 : 0.60)
-      : (dark ? 0.42 : 0.30);
+      : (dark ? 0.34 : 0.22);
   final aMid = thick
       ? (dark ? 0.30 : 0.22)
-      : (dark ? 0.10 : 0.08);
+      : (dark ? 0.07 : 0.05);
   final aEnd = thick
       ? (dark ? 0.55 : 0.42)
-      : (dark ? 0.30 : 0.18);
+      : (dark ? 0.24 : 0.14);
   return Container(
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius + thickness),
@@ -481,10 +470,13 @@ Widget _ringedCard({
       ),
       boxShadow: <BoxShadow>[
         BoxShadow(
-          color: Colors.black.withValues(alpha: dark ? 0.30 : 0.06),
-          blurRadius: 14,
-          spreadRadius: -6,
-          offset: const Offset(0, 6),
+          // Тень мягкая и почти незаметная: кант читается линией, а не
+          // «объёмом» — плотная тень давала серую кайму, спорящую с тонкой
+          // обводкой.
+          color: Colors.black.withValues(alpha: dark ? 0.20 : 0.045),
+          blurRadius: 8,
+          spreadRadius: -5,
+          offset: const Offset(0, 4),
         ),
       ],
     ),
@@ -992,7 +984,9 @@ class _DaysBarPainter extends CustomPainter {
         final st = ((grow - 0.45) / 0.55).clamp(0.0, 1.0);
         final ease = Curves.easeOutCubic.transform(st);
         final starC = Offset(cx, chartBottom - h - 8);
-        final r = 4.2 * (0.5 + 0.5 * ease);
+        // Растёт ИЗ НУЛЯ: прежний радиус стартовал с половины и читался как
+        // «звёздочка выскочила». Теперь она именно «разгорается» из точки.
+        final r = 4.2 * ease;
         canvas.drawCircle(
           starC,
           r * 2.1,
@@ -1000,7 +994,9 @@ class _DaysBarPainter extends CustomPainter {
             ..color = todayColor.withValues(alpha: 0.12 * ease)
             ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
         );
-        _drawStar(canvas, starC, r, todayColor.withValues(alpha: 0.92 * ease));
+        if (r > 0.05) {
+          _drawStar(canvas, starC, r, todayColor.withValues(alpha: 0.92 * ease));
+        }
       }
       if (isToday) {
         canvas.drawCircle(
@@ -1213,7 +1209,7 @@ class _StretchScrollState extends State<_StretchScroll>
                   alignment: _atTop
                       ? Alignment.topCenter
                       : Alignment.bottomCenter,
-                  child: child,
+                  child: RepaintBoundary(child: child),
                 );
               },
               child: widget.child,
