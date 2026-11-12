@@ -102,9 +102,15 @@ void main() {
       reason: 'блюр режется по прямоугольнику слоя — «квадратное» свечение',
     );
     expect(
-      RegExp(r'strokeWidth = stroke \* 3\.2').hasMatch(src),
+      RegExp(r'stroke \* 3\.2').hasMatch(src),
       isTrue,
       reason: 'мягкое свечение рисуется широкой полупрозрачной обводкой',
+    );
+    // Один шейдер на кадр: три `createShader` за кадр давали лаг пульса.
+    expect(
+      RegExp(r'\.createShader\(').allMatches(src).length,
+      1,
+      reason: 'градиент строится один раз за кадр',
     );
   });
 

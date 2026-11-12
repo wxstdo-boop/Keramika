@@ -282,7 +282,13 @@ void main() {
       reason: 'кружок должен быть слева от имени',
     );
     // Поле короткого имени — с плавными буквами, как остальные поля.
-    expect(find.byType(SmoothTyping), findsOneWidget);
+    // (`SmoothTyping` теперь есть и в очках рейтинга, поэтому «ровно один»
+    // больше не утверждение — важно, что поле имени им обёрнуто.)
+    final nameField = find.byType(TextField).first;
+    expect(
+      find.ancestor(of: nameField, matching: find.byType(SmoothTyping)),
+      findsOneWidget,
+    );
   });
 
   testWidgets('тап по кружку в профиле переключает онлайн-статус', (

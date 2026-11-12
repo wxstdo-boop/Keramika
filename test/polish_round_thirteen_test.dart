@@ -76,12 +76,17 @@ void main() {
     return f.readAsStringSync();
   }
 
-  test('кант окна обновления — четыре опорные точки градиента', () {
+  test('кант окна обновления — красный бренда, как у клавиатуры', () {
     final src = read('lib/widgets/update_pill.dart');
     expect(
-      RegExp(r'stops: const <double>\[0\.0, 0\.36, 0\.66, 1\.0\]').hasMatch(src),
+      RegExp(r'BrandColors\.red\.withValues').hasMatch(src),
       isTrue,
-      reason: 'на трёх стопах кромка гасла к середине и читалась неровной',
+      reason: 'кромка должна быть алым бренда, а не градиентом primary→tertiary',
+    );
+    expect(
+      src.contains('cs.tertiary.withValues(alpha: 0.55)'),
+      isFalse,
+      reason: 'сиреневый tertiary на дефолтной палитре выбивал окно из семьи',
     );
   });
 
@@ -188,15 +193,20 @@ void main() {
     );
   });
 
-  test('очки рейтинга меняются барабаном, а не мгновенно', () {
+  test('очки рейтинга меняются ПО БУКВАМ, как в поле очков', () {
     final src = read('lib/screens/profile_screen.dart');
     final row = src.indexOf('Widget _leaderRow(');
     expect(row, greaterThan(0));
     final body = src.substring(row, row + 2600);
     expect(
-      body.contains('AnimatedCounter('),
+      body.contains('SmoothDigits('),
       isTrue,
-      reason: 'число должно «докатываться», а не щёлкать',
+      reason: 'число сменяется посимвольно (SmoothTyping), а не барабаном',
+    );
+    expect(
+      body.contains('AnimatedCounter('),
+      isFalse,
+      reason: 'барабан читался грубым подменом — заменён плавной сменой цифр',
     );
     expect(body.contains("'\${f.score}'"), isFalse);
   });

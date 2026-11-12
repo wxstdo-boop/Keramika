@@ -21,7 +21,7 @@ import '../widgets/music_pulse_ring.dart';
 import '../widgets/online_dot.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/profile_avatar.dart';
-import '../widgets/rolling_counter.dart';
+import '../widgets/smooth_digits.dart';
 import '../widgets/new_year_event_banner.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/smooth_typing.dart';
@@ -1062,13 +1062,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
               ),
-              // Очки «докатываются» барабаном, а не щёлкают: своё число и
-              // число друга меняются плавно, как счётчики в остальном
-              // приложении. `sample` держит ширину, чтобы при смене
-              // разрядности («99» → «100») строка не дёргалась по горизонтали.
-              AnimatedCounter(
-                value: f.score.toDouble(),
-                duration: const Duration(milliseconds: 520),
+              // Очки меняются ПО БУКВАМ, тем же приёмом, что и поле «Очки
+              // рейтинга» ([SmoothTyping]): изменившаяся цифра проявляется из
+              // прозрачного, старая мягко гаснет. Раньше здесь «докатывался»
+              // барабан `AnimatedCounter` — при правке счёта он читался грубым
+              // подменом. `sample` держит ширину, чтобы при «99 → 100» строка
+              // не дёргалась по горизонтали.
+              SmoothDigits(
+                value: f.score,
                 sample: '0000',
                 alignment: Alignment.centerRight,
                 style: theme.textTheme.titleMedium?.copyWith(

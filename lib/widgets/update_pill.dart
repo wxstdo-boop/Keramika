@@ -9,6 +9,7 @@ import '../services/update_service.dart';
 import '../utils/design_tokens.dart';
 import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
+import 'agysha_bunny.dart';
 import 'press_scale.dart';
 
 /// Компактная таблетка «Обновления» рядом с версией в
@@ -292,13 +293,10 @@ class _UpdatePillState extends State<UpdatePill>
                         ),
                       ),
                       child: RepaintBoundary(
-                        child: CustomPaint(
-                          isComplex: true,
-                          willChange: false,
-                          painter: _UpdateGlyphPainter(
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
+                        // Значок Agysha — свой зайчик вместо системной
+                        // «стрелки обновления»: чужеродная иконка в мелком
+                        // размере сливалась в пятно.
+                        child: AgyshaBunny(size: 18, color: cs.onPrimaryContainer),
                       ),
                     ),
                   ),
@@ -339,80 +337,24 @@ double _bobLift(double t) {
   // тоже нулевая на обоих концах — стык цикла бесшовный. Знак минус — значок
   // ВСПЛЫВАЕТ в середине цикла; амплитуда в пиксель с небольшим: глиф живёт
   // внутри узкой таблетки и не должен задевать её край.
-  return -(1 - math.cos(t * 2 * math.pi)) / 2 * 1.2;
+  return -(1 - math.cos(t * 2 * math.pi)) / 2 * 1.5;
 }
 
 /// Лёгкое «дыхание» размера: тот же ход, что у подъёма, но чуть отстаёт по
 /// фазе — значок не «пружинит» одной частотой, а мягко набухает в верхней
 /// точке. Оба конца цикла замкнуты (cos), поэтому стык не щёлкает.
 double _bobScale(double t) {
-  return 1 + 0.045 * ((1 - math.cos(t * 2 * math.pi)) / 2);
-}
-
-/// Значок таблетки: «стрелка обновления в круге». Векторный шрифт иконок —
-/// чёткий на любом размере.
-///
-/// Painter НЕ анимируется: он рисует значок один раз в постоянный слой, а
-/// «дыхание» — это `Transform` над готовым слоем (см. `UpdatePill`), поэтому
-/// кадры анимации не растеризуют глиф заново.
-class _UpdateGlyphPainter extends CustomPainter {
-  _UpdateGlyphPainter({required this.color});
-
-  final Color color;
-
-  /// Кэш разложенного глифа: `TextPainter.layout()` — шейпинг шрифта, и делать
-  /// его каждый кадр незачем. Держим последний разложенный глиф и
-  /// переиспользуем, пока не сменились цвет или размер.
-  static TextPainter? _cached;
-  static Color? _cachedColor;
-  static double _cachedSize = 0;
-
-  static TextPainter _glyph(Color color, double fontSize) {
-    final cached = _cached;
-    if (cached != null && _cachedColor == color && _cachedSize == fontSize) {
-      return cached;
-    }
-    final tp = TextPainter(
-      text: TextSpan(
-        text: String.fromCharCode(Icons.system_update_rounded.codePoint),
-        style: TextStyle(
-          fontSize: fontSize,
-          fontFamily: Icons.system_update_rounded.fontFamily,
-          package: Icons.system_update_rounded.fontPackage,
-          color: color,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    _cached = tp;
-    _cachedColor = color;
-    _cachedSize = fontSize;
-    return tp;
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final tp = _glyph(color, size.shortestSide * 0.92);
-    // Глиф по центру окна: «дыхание» смещает его вверх/вниз на считанные
-    // пиксели, запас сверху и снизу одинаков.
-    canvas.save();
-    canvas.translate(size.width / 2, size.height / 2);
-    tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
-      oldDelegate.color != color;
+  return 1 + 0.055 * ((1 - math.cos(t * 2 * math.pi)) / 2);
 }
 
 /// Окно подтверждения обновления.
 ///
-/// Вместо системного [AlertDialog]: своя карточка со скруглением, мягкая
-/// полупрозрачная обводка, текст подписи курсивом, а кнопки «отдать» при
-/// нажатии ([PressScale]) и «подтвердить» — залитая акцентом с плавной
-/// отдачей. Появление — всплытие с лёгким масштабом (см. [showGeneralDialog]).
-class _UpdateConfirmDialog extends StatelessWidget {
+/// Вместо системного [AlertDialog]: своя карточка со скруглением, кант в
+/// красном бренда (полупрозрачный, как у клавиатуры), текст подписи курсивом,
+/// а кнопки «отдать» при нажатии ([PressScale]) и «подтвердить» — залитая
+/// акцентом с плавной отдачей. Значок в медальоне — свой зайчик Agysha
+/// ([AgyshaBunny]), который «дышит» вечным циклом.
+class _UpdateConfirmDialog extends StatefulWidget {
   final String version;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
@@ -424,6 +366,31 @@ class _UpdateConfirmDialog extends StatelessWidget {
   });
 
   @override
+  State<_UpdateConfirmDialog> createState() => _UpdateConfirmDialogState();
+}
+
+class _UpdateConfirmDialogState extends State<_UpdateConfirmDialog>
+    with SingleTickerProviderStateMixin {
+  /// Вечное «дыхание» зайчика в медальоне: тот же замкнутый косинус, что и у
+  /// значка таблетки, — цикл бесшовный на стыке.
+  late final AnimationController _bob = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!MotionPrefs.shouldReduceMotion) _bob.repeat();
+  }
+
+  @override
+  void dispose() {
+    _bob.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
@@ -433,22 +400,22 @@ class _UpdateConfirmDialog extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 380),
           child: Container(
-            // Кант плотнее прежнего (1.2 → 1.6) и с четырьмя опорными
-            // точками: акцент сверху-слева, тёплый tertiary снизу-справа —
-            // кромка «переливается» по периметру, а не гаснет в середине.
-            padding: const EdgeInsets.all(1.6),
+            // Кант — ПОЛУПРОЗРАЧНЫЙ КРАСНЫЙ бренда, как у клавиатуры: раньше
+            // кромка шла градиентом primary→tertiary (на дефолтной палитре
+            // сиреневым) и окно выбивалось из «кровавой» семьи. Теперь один
+            // алый тон с мягкой альфой — то же «стекло», что у панели ввода.
+            padding: const EdgeInsets.all(1.4),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(Radii.xl),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: <Color>[
-                  cs.primary.withValues(alpha: 0.85),
-                  cs.tertiary.withValues(alpha: 0.55),
-                  cs.primary.withValues(alpha: 0.28),
-                  cs.tertiary.withValues(alpha: 0.72),
+                  BrandColors.red.withValues(alpha: 0.55),
+                  BrandColors.red.withValues(alpha: 0.22),
+                  BrandColors.red.withValues(alpha: 0.46),
                 ],
-                stops: const <double>[0.0, 0.36, 0.66, 1.0],
+                stops: const <double>[0.0, 0.55, 1.0],
               ),
               boxShadow: [
                 // Близкая мягкая «опора» + дальняя рассеянная: окно читается
@@ -468,7 +435,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
             child: ClipRRect(
               // Радиус внутренней подложки на толщину канта меньше внешнего,
               // иначе кант «съедается» и кромка читается неровной.
-              borderRadius: BorderRadius.circular(Radii.xl - 1.6),
+              borderRadius: BorderRadius.circular(Radii.xl - 1.4),
               // БЕЗ `BackdropFilter`: под анимацией появления/ухода размытие
               // пересобирается каждый кадр, и окно заметно МЕРЦАЕТ — ровно
               // та жалоба, что пришла на прошлый круг. Стекло делаем
@@ -476,19 +443,17 @@ class _UpdateConfirmDialog extends StatelessWidget {
               // фильтра, поэтому всплытие идёт ровно.
               child: Container(
                 decoration: BoxDecoration(
-                  // Мягкий свет сверху: подложка не «плоская плита», а
-                  // стекло с лёгким бликом у верхней кромки.
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[
-                      cs.surfaceContainerHigh.withValues(alpha: 0.96),
-                      cs.surfaceContainerHigh.withValues(alpha: 0.90),
-                    ],
+                  // Полупрозрачная подложка с красным отливом — ровно как у
+                  // клавиатуры (`InlineKeyboard`): сквозь окно просвечивает
+                  // фон, а алый тон привязывает его к семье «стеклянных»
+                  // плашек.
+                  color: Color.alphaBlend(
+                    BrandColors.red.withValues(alpha: 0.24),
+                    cs.surfaceContainerHigh.withValues(alpha: 0.90),
                   ),
-                  borderRadius: BorderRadius.circular(Radii.xl - 1.6),
+                  borderRadius: BorderRadius.circular(Radii.xl - 1.4),
                   border: Border.all(
-                    color: cs.onSurface.withValues(alpha: 0.10),
+                    color: BrandColors.red.withValues(alpha: 0.30),
                   ),
                 ),
                 padding: const EdgeInsets.fromLTRB(
@@ -508,11 +473,22 @@ class _UpdateConfirmDialog extends StatelessWidget {
                           height: 40,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: cs.primary.withValues(alpha: 0.16),
+                            color: BrandColors.red.withValues(alpha: 0.16),
                           ),
-                          child: Icon(
-                            Icons.system_update_alt_rounded,
-                            color: cs.primary,
+                          child: Center(
+                            child: AnimatedBuilder(
+                              animation: _bob,
+                              builder: (context, child) => Transform.translate(
+                                offset: Offset(0, _bobLift(_bob.value)),
+                                child: Transform.scale(
+                                  scale: _bobScale(_bob.value),
+                                  child: child,
+                                ),
+                              ),
+                              child: RepaintBoundary(
+                                child: AgyshaBunny(size: 22, color: cs.primary),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: Spacing.sm),
@@ -536,7 +512,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                         'updateAvailableBody',
                         context,
                         'Установить v{v}?',
-                      ).replaceAll('{v}', version),
+                      ).replaceAll('{v}', widget.version),
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: cs.onSurfaceVariant,
                         fontStyle: FontStyle.italic,
@@ -550,7 +526,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                           child: PressScale(
                             pressedScale: 0.95,
                             child: TextButton(
-                              onPressed: onCancel,
+                              onPressed: widget.onCancel,
                               style: TextButton.styleFrom(
                                 minimumSize: const Size(0, 46),
                                 // Капсула: та же форма, что у кнопок профиля и
@@ -568,7 +544,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                           child: PressScale(
                             pressedScale: 0.95,
                             child: FilledButton(
-                              onPressed: onConfirm,
+                              onPressed: widget.onConfirm,
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size(0, 46),
                                 shape: const StadiumBorder(),

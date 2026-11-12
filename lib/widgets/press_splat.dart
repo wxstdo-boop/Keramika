@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../utils/design_tokens.dart';
 import 'press_scale.dart';
 
 /// Мягкое «размашистое» органическое пятно при нажатии — точно как лужа на
@@ -419,14 +420,7 @@ class _OrganicFabState extends State<OrganicFab>
               releaseDuration: const Duration(milliseconds: 360),
               child: GlassFabTile(
                 size: widget.size,
-                extraLayer: CustomPaint(
-                  painter: _PlusSpeckPainter(
-                    color: cs.primary,
-                    deep: Colors.white,
-                    v: _c.value,
-                    seed: widget.seed,
-                  ),
-                ),
+                extraLayer: BloodSpecks(v: _c.value, seed: widget.seed),
                 child: Semantics(
                   button: true,
                   child: GestureDetector(
@@ -528,8 +522,50 @@ class GlassFabTile extends StatelessWidget {
   }
 }
 
-/// Пятна на поверхности кнопки-плюса: крупные ПОЛУПРОЗРАЧНО-КРАСНЫЕ кляксы,
-/// читаются как «кровавый отпечаток пальца» — размашистые, с рваным краем.
+/// Слой кровавых пятен для фирменных FAB (плюс и Ада) — одна рецептура.
+///
+/// [v] — «нажатие» 0…1: в покое пятна едва намечены, под пальцем наливаются
+/// плотнее. Геометрия при этом СТАТИЧНА (см. [BloodSpeckPainter]).
+class BloodSpecks extends StatelessWidget {
+  const BloodSpecks({
+    super.key,
+    required this.v,
+    this.seed = 5.2,
+    this.intensity = 1.0,
+    this.color,
+    this.deep,
+  });
+
+  final double v;
+  final double seed;
+
+  /// Общая «дозировка» пятен: 1.0 — полный отпечаток (кнопка-плюс), меньше —
+  /// «чуть крови» (кнопка Ады, где аватарка не должна тонуть в кляксах).
+  final double intensity;
+
+  final Color? color;
+  final Color? deep;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return CustomPaint(
+      isComplex: true,
+      willChange: false,
+      painter: BloodSpeckPainter(
+        color: color ?? cs.primary,
+        deep: deep ?? Colors.white,
+        v: v,
+        seed: seed,
+        intensity: intensity,
+      ),
+    );
+  }
+}
+
+/// Пятна на поверхности фирменных FAB (плюс и Ада): крупные
+/// ПОЛУПРОЗРАЧНО-КРАСНЫЕ кляксы, читаются как «кровавый отпечаток пальца» —
+/// размашистые, с рваным краем.
 ///
 /// Раньше это были мелкие цветные «веснушки» (радиус 1.5–2.9 px) в тоне темы:
 /// на плите они читались случайным мусором. Теперь пятна крупные и брендово
@@ -538,21 +574,23 @@ class GlassFabTile extends StatelessWidget {
 ///
 /// ГЛАВНОЕ: геометрия СТАТИЧНА. При зажатии пятна НЕ растут и НЕ
 /// разъезжаются — нажатие лишь углубляет их цвет.
-class _PlusSpeckPainter extends CustomPainter {
-  _PlusSpeckPainter({
+class BloodSpeckPainter extends CustomPainter {
+  BloodSpeckPainter({
     required this.color,
     required this.deep,
     required this.v,
     required this.seed,
+    this.intensity = 1.0,
   });
 
   /// Брендовый алый — пятна кровавые в любой теме, а не в тоне поверхности.
-  static const Color _blood = Color(0xFFE0192F);
+  static const Color _blood = BrandColors.red;
 
   final Color color;
   final Color deep;
   final double v;
   final double seed;
+  final double intensity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -563,9 +601,10 @@ class _PlusSpeckPainter extends CustomPainter {
     // теперь 7 крупных клякс, разбросанных по всей плите.
     const count = 7;
     // Плотность растёт под пальцем: в покое пятна едва намечены, при зажатии
-    // проявляется «отпечаток».
-    final baseAlpha = 0.16 + 0.14 * v;
-    final coreAlpha = 0.10 + 0.10 * v;
+    // проявляется «отпечаток». `intensity` — общая «дозировка» (у Ады ниже:
+    // аватарка не должна тонуть в кляксах).
+    final baseAlpha = (0.16 + 0.14 * v) * intensity;
+    final coreAlpha = (0.10 + 0.10 * v) * intensity;
     for (var k = 0; k < count; k++) {
       final a = seed * 1.7 +
           k * (math.pi * 2 / count) +
@@ -606,6 +645,10 @@ class _PlusSpeckPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _PlusSpeckPainter old) =>
-      old.v != v || old.color != color || old.deep != deep || old.seed != seed;
+  bool shouldRepaint(covariant BloodSpeckPainter old) =>
+      old.v != v ||
+      old.color != color ||
+      old.deep != deep ||
+      old.seed != seed ||
+      old.intensity != intensity;
 }

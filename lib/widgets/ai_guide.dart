@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'press_scale.dart';
-import 'press_splat.dart' show GlassFabTile;
+import 'press_splat.dart' show GlassFabTile, BloodSpecks;
 import 'glass_sheen.dart';
 import 'section_pill.dart';
 import 'stagger_in.dart';
@@ -93,13 +93,42 @@ class AiGuideFloatingButton extends StatefulWidget {
   State<AiGuideFloatingButton> createState() => _AiGuideFloatingButtonState();
 }
 
-class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
+class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton>
+    with SingleTickerProviderStateMixin {
+  /// «Кровавые» пятна под пальцем: та же рецептура, что у кнопки-плюса.
+  /// Проявляются мягко (420 мс) и гаснут после отпускания с задержкой — как
+  /// отпечаток, а не вспышка.
+  late final AnimationController _specks = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
+  Timer? _specksRelease;
+
+  void _specksDown() {
+    _specksRelease?.cancel();
+    _specks.forward();
+  }
+
+  void _specksUp() {
+    _specksRelease?.cancel();
+    _specksRelease = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) _specks.reverse();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     // Подтягиваем текущее значение в notifier (на случай, если settings
     // ещё не грузились) — и виджет сам подхватит его через слушатель.
     SettingsService.loadAiGuide();
+  }
+
+  @override
+  void dispose() {
+    _specksRelease?.cancel();
+    _specks.dispose();
+    super.dispose();
   }
 
   @override
@@ -155,20 +184,34 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
       // отзываться на палец одинаково — медленно и мягко.
       duration: const Duration(milliseconds: 260),
       releaseDuration: const Duration(milliseconds: 360),
-      child: GlassFabTile(
-        size: 42,
-        child: SmoothTooltip(
-          message: Translations.t('aiGuide', context, 'AI guide'),
-          preferredAbove: true,
-          child: GestureDetector(
-            // Opaque: тапабельна вся плитка 42 px, а не только аватар 26 px.
-            // Без этого палец, попавший на стекло рядом с аватаром, не
-            // открывал чат — «кнопка не срабатывает».
-            behavior: HitTestBehavior.opaque,
-            onTap: () => showAiGuideChat(context),
-            // Монхром: значок Ады на кнопке нейтральный, как икона таблетки,
-            // а не яркий цветной кружок на плоской плите.
-            child: const Center(child: LiveAdaAvatar(size: 26, monochrome: true)),
+      child: Listener(
+        // Пятна «кровью» — та же рецептура, что у плюса: под пальцем на плите
+        // проявляется отпечаток. Listener ловит касание, не мешая тапу.
+        onPointerDown: (_) => _specksDown(),
+        onPointerUp: (_) => _specksUp(),
+        onPointerCancel: (_) => _specksUp(),
+        child: GlassFabTile(
+          size: 42,
+          extraLayer: AnimatedBuilder(
+            animation: _specks,
+            builder: (context, _) =>
+                BloodSpecks(v: _specks.value, seed: 11.4, intensity: 0.6),
+          ),
+          child: SmoothTooltip(
+            message: Translations.t('aiGuide', context, 'AI guide'),
+            preferredAbove: true,
+            child: GestureDetector(
+              // Opaque: тапабельна вся плитка 42 px, а не только аватар 26 px.
+              // Без этого палец, попавший на стекло рядом с аватаром, не
+              // открывал чат — «кнопка не срабатывает».
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showAiGuideChat(context),
+              // Монхром: значок Ады на кнопке нейтральный, как икона таблетки,
+              // а не яркий цветной кружок на плоской плите.
+              child: const Center(
+                child: LiveAdaAvatar(size: 26, monochrome: true),
+              ),
+            ),
           ),
         ),
       ),

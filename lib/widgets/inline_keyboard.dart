@@ -25,7 +25,7 @@ class InlineKeyboard extends StatelessWidget {
 
   /// Красный бренда: отлив клавиатуры не должен зависеть от роли темы
   /// (`primary` на дефолтной палитре — сиреневый, и панель серела).
-  static const Color _brandRed = Color(0xFFE0192F);
+  static const Color _brandRed = BrandColors.red;
 
   /// Высота одной клавиши.
   final double keyHeight;

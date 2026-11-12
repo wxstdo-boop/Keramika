@@ -44,6 +44,15 @@ abstract final class Radii {
   );
 }
 
+/// Брендовые цвета Agysha. Один источник правды: раньше алый был скопирован
+/// в трёх файлах (клавиатура, пятна FAB, кольцо музыки) и мог разъехаться.
+abstract final class BrandColors {
+  BrandColors._();
+
+  /// Фирменный алый: отлив клавиатуры, кровавые пятна, кант окна обновления.
+  static const Color red = Color(0xFFE0192F);
+}
+
 /// Шкала отступов, шаг 4. Держит ритм интерфейса.
 abstract final class Spacing {
   Spacing._();

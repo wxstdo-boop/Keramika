@@ -27,19 +27,24 @@ void main() {
     return f.readAsStringSync();
   }
 
-  test('значок обновления — «стрелка обновления», а не зайчик', () {
+  test('значок обновления — свой зайчик Agysha, а не чужая иконка', () {
     final src = read('lib/widgets/update_pill.dart');
     expect(
-      src.contains('Icons.system_update_rounded'),
+      src.contains('AgyshaBunny'),
       isTrue,
-      reason: 'значок таблетки — стрелка обновления',
+      reason: 'таблетка и окно несут СВОЙ значок Agysha',
     );
     expect(
       src.contains('Icons.cruelty_free'),
       isFalse,
-      reason: 'зайчик заменён',
+      reason: 'системный «зайчик» больше не используется',
     );
-    expect(src.contains('class _UpdateGlyphPainter'), isTrue);
+    expect(
+      src.contains('Icons.system_update_rounded'),
+      isFalse,
+      reason: 'системная стрелка заменена своим глифом',
+    );
+    expect(src.contains('class _UpdateGlyphPainter'), isFalse);
   });
 
   test('значок «дышит» вечным замкнутым циклом с плавными концами', () {
@@ -72,7 +77,7 @@ void main() {
   test('пятна на «+» — крупные и кровавые, а не мелкие веснушки', () {
     final src = read('lib/widgets/press_splat.dart');
     expect(
-      src.contains('0xFFE0192F'),
+      src.contains('BrandColors.red'),
       isTrue,
       reason: 'пятна берут брендовый алый, а не тон поверхности',
     );
@@ -93,6 +98,20 @@ void main() {
     );
   });
 
+  test('пятна «кровью» есть и на Аде, как на плюсе', () {
+    final src = read('lib/widgets/ai_guide.dart');
+    expect(
+      src.contains('BloodSpecks'),
+      isTrue,
+      reason: 'кнопка Ады несёт ту же рецептуру пятен, что и «+»',
+    );
+    expect(
+      src.contains('_specksDown') && src.contains('onPointerDown'),
+      isTrue,
+      reason: 'пятна проявляются под пальцем',
+    );
+  });
+
   test('у кольца музыки нет размытия — квадратной кромке взяться неоткуда', () {
     final src = read('lib/widgets/music_pulse_ring.dart');
     expect(
@@ -101,9 +120,15 @@ void main() {
       reason: 'блюр режется по прямоугольнику слоя — «квадратное» свечение',
     );
     expect(
-      RegExp(r'strokeWidth = stroke \* 3\.2').hasMatch(src),
+      RegExp(r'stroke \* 3\.2').hasMatch(src),
       isTrue,
       reason: 'мягкость даёт широкая полупрозрачная обводка, а не блюр',
+    );
+    // Один шейдер на кадр вместо трёх: иначе пульс лагает на слабом GPU.
+    expect(
+      RegExp(r'\.createShader\(').allMatches(src).length,
+      1,
+      reason: 'градиент строится один раз за кадр',
     );
   });
 
@@ -241,6 +266,62 @@ void main() {
       src.contains('_PaintSplatPainter'),
       isTrue,
       reason: 'кровавые пятна должны остаться',
+    );
+  });
+
+  test('зайчик Agysha — свой глиф, а не шрифтовая иконка', () {
+    final src = read('lib/widgets/agysha_bunny.dart');
+    expect(src.contains('class AgyshaBunny'), isTrue);
+    expect(
+      src.contains('IconData') || src.contains('fontFamily'),
+      isFalse,
+      reason: 'силуэт рисуется путями, а не чужим шрифтом иконок',
+    );
+    expect(
+      RegExp(r'quadraticBezierTo').hasMatch(src),
+      isTrue,
+      reason: 'уши — мягкие «лепестки», а не палочки',
+    );
+  });
+
+  test('значок окна обновления тоже дышит вечным циклом', () {
+    final src = read('lib/widgets/update_pill.dart');
+    final dlg = src.indexOf('class _UpdateConfirmDialogState');
+    expect(dlg, greaterThan(0));
+    final body = src.substring(dlg, dlg + 5200);
+    expect(
+      body.contains('_bob.repeat()'),
+      isTrue,
+      reason: 'значок в окне живёт, а не стоит картинкой',
+    );
+    expect(body.contains('AgyshaBunny'), isTrue);
+  });
+
+  test('кольцо музыки не «замерзает» на паузе', () {
+    final src = read('lib/widgets/music_pulse_ring.dart');
+    expect(
+      RegExp(r'_stopAfterFade = Timer\(_fade').hasMatch(src),
+      isTrue,
+      reason: 'пульс доживает фейд гаснущего кольца, а не обрывается кадром',
+    );
+    expect(
+      src.contains('Curves.easeInOut'),
+      isTrue,
+      reason: 'появление и угасание идут с нулевой скоростью на концах',
+    );
+  });
+
+  test('обводка окна обновления — полупрозрачно-красная, как у клавиатуры', () {
+    final src = read('lib/widgets/update_pill.dart');
+    expect(
+      RegExp(r'BrandColors\.red\.withValues\(alpha: 0\.24\)').hasMatch(src),
+      isTrue,
+      reason: 'подложка берёт красный отлив, как панель ввода',
+    );
+    expect(
+      RegExp(r'Color\.alphaBlend\(').hasMatch(src),
+      isTrue,
+      reason: 'сквозь окно просвечивает фон — тот же «стеклянный» приём',
     );
   });
 }
