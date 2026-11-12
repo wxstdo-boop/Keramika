@@ -315,14 +315,17 @@ class _AlarmsScreenState extends State<AlarmsScreen>
         return;
       },
       child: ListenableBuilder(
+        // Список будильников НЕ подписан на _timerSvc: таймеры тикают раз в
+        // секунду и зовут notifyListeners() каждый тик. Перестройка всего
+        // Scaffold (вместе с ReorderableListView) во время драга и читалась
+        // как «автоскролл неплавный». Секция таймеров обновляется своим
+        // ListenableBuilder ниже.
         listenable: Listenable.merge([
           _service,
-          _timerSvc,
           SettingsService.experimentalEnabled,
         ]),
         builder: (context, _) {
           final alarms = _service.alarms;
-          final timers = _timerSvc.timers;
           final hasAlarms = alarms.isNotEmpty;
           return Scaffold(
             // Без своего AppBar: белая полоса под таблеткой разделов убрана,
@@ -346,8 +349,17 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                     AnimatedSize(
                       duration: const Duration(milliseconds: 320),
                       curve: Curves.easeInOutCubic,
+                      // Тик таймера перерисовывает только эту секцию, а не весь
+                      // список будильников под ней.
                       child: SettingsService.experimentalEnabled.value
-                          ? _buildTimersSection(context, theme, timers)
+                          ? ListenableBuilder(
+                              listenable: _timerSvc,
+                              builder: (context, _) => _buildTimersSection(
+                                context,
+                                theme,
+                                _timerSvc.timers,
+                              ),
+                            )
                           : const SizedBox.shrink(),
                     ),
                     Expanded(

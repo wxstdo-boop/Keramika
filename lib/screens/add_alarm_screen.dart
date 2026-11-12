@@ -486,9 +486,16 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
           leading: const BackButtonTooltip(),
           centerTitle: true,
           actions: [
-            TextButton(
-              onPressed: _save,
-              child: Text(Translations.saveOf(context)),
+            // Верхняя кнопка «Сохранить» — та же плавная отдача-«вдавливание»,
+            // что у «Назад» и у остальных кнопок окна (PressScale).
+            PressScale(
+              pressedScale: 0.92,
+              duration: const Duration(milliseconds: 180),
+              releaseDuration: const Duration(milliseconds: 240),
+              child: TextButton(
+                onPressed: _save,
+                child: Text(Translations.saveOf(context)),
+              ),
             ),
           ],
         ),
@@ -504,35 +511,41 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: ListTile(
-                    leading: const Icon(Icons.access_time),
-                    title: ClipRect(
-                      // Выбранное время в окне правки плавно «проезжает»
-                      // при смене (как ролик в пикере), а не щёлкает.
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) =>
-                            SlideTransition(
-                              position: Tween(
-                                begin: const Offset(0, 0.4),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: FadeTransition(
-                                opacity: animation,
-                                child: child,
+                  child: PressScale(
+                    // Плитка времени — плавная отдача-«вдавливание».
+                    pressedScale: 0.98,
+                    duration: const Duration(milliseconds: 160),
+                    releaseDuration: const Duration(milliseconds: 220),
+                    child: ListTile(
+                      leading: const Icon(Icons.access_time),
+                      title: ClipRect(
+                        // Выбранное время в окне правки плавно «проезжает»
+                        // при смене (как ролик в пикере), а не щёлкает.
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) =>
+                              SlideTransition(
+                                position: Tween(
+                                  begin: const Offset(0, 0.4),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
                               ),
-                            ),
-                        child: Text(
-                          _time.format(context),
-                          key: ValueKey('alarmedit_${_time.format(context)}'),
-                          style: theme.textTheme.headlineMedium,
+                          child: Text(
+                            _time.format(context),
+                            key: ValueKey('alarmedit_${_time.format(context)}'),
+                            style: theme.textTheme.headlineMedium,
+                          ),
                         ),
                       ),
+                      subtitle: Text(Translations.tapToChangeOf(context)),
+                      onTap: _pickTime,
                     ),
-                    subtitle: Text(Translations.tapToChangeOf(context)),
-                    onTap: _pickTime,
                   ),
                 ),
               ),
@@ -610,66 +623,72 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                           }
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 4),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => setState(() => _taskType = task),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 260),
-                                curve: Curves.easeOutCubic,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  color: selected
-                                      ? theme.colorScheme.primaryContainer
-                                            .withValues(alpha: 0.45)
-                                      : Colors.transparent,
-                                  border: Border.all(
+                            child: PressScale(
+                              // Плавная отдача-«вдавливание» выбора типа задачи.
+                              pressedScale: 0.97,
+                              duration: const Duration(milliseconds: 160),
+                              releaseDuration: const Duration(milliseconds: 220),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => setState(() => _taskType = task),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 260),
+                                  curve: Curves.easeOutCubic,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
                                     color: selected
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.outlineVariant
-                                              .withValues(alpha: 0.5),
-                                    width: selected ? 1.5 : 1,
+                                        ? theme.colorScheme.primaryContainer
+                                              .withValues(alpha: 0.45)
+                                        : Colors.transparent,
+                                    border: Border.all(
+                                      color: selected
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.outlineVariant
+                                                .withValues(alpha: 0.5),
+                                      width: selected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(icon, size: 20),
+                                      const SizedBox(width: 12),
+                                      Text(Translations.t(task.key, context)),
+                                      const Spacer(),
+                                      AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 220,
+                                        ),
+                                        transitionBuilder: (child, animation) =>
+                                            ScaleTransition(
+                                              scale: animation,
+                                              child: FadeTransition(
+                                                opacity: animation,
+                                                child: child,
+                                              ),
+                                            ),
+                                        child: selected
+                                            ? Icon(
+                                                Icons.check_circle,
+                                                key: ValueKey(
+                                                  'wake_selected_${task.key}',
+                                                ),
+                                                size: 20,
+                                                color: theme.colorScheme.primary,
+                                              )
+                                            : const SizedBox(
+                                                key: ValueKey('wake_unselected'),
+                                                width: 20,
+                                              ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Icon(icon, size: 20),
-                                    const SizedBox(width: 12),
-                                    Text(Translations.t(task.key, context)),
-                                    const Spacer(),
-                                    AnimatedSwitcher(
-                                      duration: const Duration(
-                                        milliseconds: 220,
-                                      ),
-                                      transitionBuilder: (child, animation) =>
-                                          ScaleTransition(
-                                            scale: animation,
-                                            child: FadeTransition(
-                                              opacity: animation,
-                                              child: child,
-                                            ),
-                                          ),
-                                      child: selected
-                                          ? Icon(
-                                              Icons.check_circle,
-                                              key: ValueKey(
-                                                'wake_selected_${task.key}',
-                                              ),
-                                              size: 20,
-                                              color: theme.colorScheme.primary,
-                                            )
-                                          : const SizedBox(
-                                              key: ValueKey('wake_unselected'),
-                                              width: 20,
-                                            ),
-                                    ),
-                                  ],
-                                ),
                               ),
-                            ),
+                          ),
                           );
                         }),
                       ],
@@ -726,14 +745,20 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: ListTile(
-                    title: Text(Translations.vibrateOf(context)),
-                    leading: const Icon(Icons.vibration),
-                    onTap: () => setState(() => _vibrate = !_vibrate),
-                    trailing: VolumetricSwitch(
-                      value: _vibrate,
-                      onChanged: (v) => setState(() => _vibrate = v),
-                      activeColor: Theme.of(context).colorScheme.primary,
+                  child: PressScale(
+                    // Строка «Вибрация» — плавная отдача-«вдавливание».
+                    pressedScale: 0.98,
+                    duration: const Duration(milliseconds: 160),
+                    releaseDuration: const Duration(milliseconds: 220),
+                    child: ListTile(
+                      title: Text(Translations.vibrateOf(context)),
+                      leading: const Icon(Icons.vibration),
+                      onTap: () => setState(() => _vibrate = !_vibrate),
+                      trailing: VolumetricSwitch(
+                        value: _vibrate,
+                        onChanged: (v) => setState(() => _vibrate = v),
+                        activeColor: Theme.of(context).colorScheme.primary,
+                        ),
                     ),
                   ),
                 ),
@@ -798,15 +823,14 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                                   : (isCustom
                                         ? Translations.t('customSound', context)
                                         : s);
-                              // Красивая «таблетка» звука (ОРИГИНАЛЬНАЯ
-                              // цветовая схема v1.6.87): форма ПОСТОЯННА (одна
-                              // толщина обводки, один padding, одна весовка
-                              // шрифта), а выбор «проявляется» лерпом цвета
-                              // + мягким свечением. Выбранная — НАЛИВАЕТСЯ
-                              // фирменным градиентом (не Selected — спокойный).
+                              // Красивая «таблетка» звука: форма ПОСТОЯННА
+                              // (одна толщина обводки, один padding, одна
+                              // весовка шрифта), а выбор проявляется лерпом
+                              // цвета. Выбранная — плоская монотонная заливка
+                              // (без градиента и без свечения-«отсвета»).
                               final cs = theme.colorScheme;
                               final selBorder = selected
-                                  ? cs.primary.withValues(alpha: 0.9)
+                                  ? cs.primary.withValues(alpha: 0.85)
                                   : cs.outlineVariant.withValues(alpha: 0.45);
                               final selFg = selected
                                   ? cs.onPrimaryContainer
@@ -814,95 +838,79 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                               final selIcon = selected
                                   ? cs.primary
                                   : cs.onSurfaceVariant;
-                              final gradTop = selected
-                                  ? Color.lerp(Colors.white, cs.primary, 0.20)!
-                                  : Color.lerp(
-                                        Colors.white, cs.surfaceContainerHigh, 0.30,
-                                      )!;
-                              final gradBottom = selected
+                              // Заливка МОНОТОННАЯ: одна спокойная поверхность
+                              // вместо градиента и без свечения-«отсвета» за
+                              // таблеткой (жалоба «жёсткий отсвет фона»).
+                              // Выбранность читается кромкой и цветом.
+                              final fill = selected
                                   ? cs.primaryContainer
                                   : cs.surfaceContainerHigh;
-                              return GestureDetector(
-                                onTap: () => setState(() => _soundName = s),
-                                // Зажатие звука — удаление (свой файл или
-                                // встроенный).
-                                onLongPress: () => _deleteSound(s),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 240),
-                                  // Симметричная кривая: градиент выбранной
-                                  // таблетки переливается без «толчка» на
-                                  // старте и без рывка на финише.
-                                  curve: Curves.easeInOutCubic,
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 4,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    // Нейтральный градиент (surface-лестница)
-                                    // ВСЕГДА: выбранная чуть светлее, не
-                                    // Selected — спокойнее. Без primary/
-                                    // красного — «красные таблетки» ушли.
-                                    // AnimatedContainer лерпит по цветам,
-                                    // без скачков (null↔gradient не
-                                    // интерполируется).
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [gradTop, gradBottom],
+                              return PressScale(
+                                // Таблетка звука — плавная отдача-«вдавливание».
+                                pressedScale: 0.94,
+                                duration: const Duration(milliseconds: 160),
+                                releaseDuration: const Duration(
+                                  milliseconds: 220,
+                                ),
+                                child: GestureDetector(
+                                  onTap: () => setState(() => _soundName = s),
+                                  // Зажатие звука — удаление (свой файл или
+                                  // встроенный).
+                                  onLongPress: () => _deleteSound(s),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 240),
+                                    // Симметричная кривая: заливка выбранной
+                                    // таблетки перетекает без «толчка» на
+                                    // старте и без рывка на финише.
+                                    curve: Curves.easeInOutCubic,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 4,
                                     ),
-                                    border: Border.all(
-                                      color: selBorder,
-                                      width: 1.5,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
                                     ),
-                                    boxShadow: selected
-                                        ? [
-                                            BoxShadow(
-                                              color: cs.primary
-                                                  .withValues(alpha: 0.28),
-                                              blurRadius: 10,
-                                              spreadRadius: -1,
-                                              offset:
-                                                  const Offset(0, 2),
-                                            ),
-                                          ]
-                                        : const [
-                                            BoxShadow(
-                                              color: Colors.transparent,
-                                            ),
-                                          ],
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        isCustom
-                                            ? Icons.folder_open
-                                            : Icons.music_note_outlined,
-                                        size: 20,
-                                        color: selIcon,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      // Плоская монотонная заливка: без
+                                      // градиента и без свечения, никакого
+                                      // «отсвета» за таблеткой.
+                                      color: fill,
+                                      border: Border.all(
+                                        color: selBorder,
+                                        width: 1.5,
                                       ),
-                                      const SizedBox(height: 4),
-                                      // Вес ПОСТОЯННЫЙ (w600): метрики текста не
-                                      // меняются — кнопка не «дёргается» при
-                                      // выборе. Выбранность читается по
-                                      // заливке, обводке и свечению.
-                                      Text(
-                                        displayName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: selFg,
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          isCustom
+                                              ? Icons.folder_open
+                                              : Icons.music_note_outlined,
+                                          size: 20,
+                                          color: selIcon,
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 4),
+                                        // Вес ПОСТОЯННЫЙ (w600): метрики текста
+                                        // не меняются — кнопка не «дёргается»
+                                        // при выборе. Выбранность читается по
+                                        // заливке и обводке.
+                                        Text(
+                                          displayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: selFg,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );
@@ -1034,59 +1042,68 @@ class _AlarmDayChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        color: selected
-            ? cs.primary
-            : cs.surfaceContainerHigh.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: selected ? cs.primary : cs.outlineVariant,
-          width: 1.2,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
+    return PressScale(
+      // Плавная отдача-«вдавливание» у чипа дня — как у остальных кнопок окна.
+      pressedScale: 0.90,
+      duration: const Duration(milliseconds: 160),
+      releaseDuration: const Duration(milliseconds: 220),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: selected
+              ? cs.primary
+              : cs.surfaceContainerHigh.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) => ScaleTransition(
-                    scale: Tween<double>(begin: 0.6, end: 1).animate(animation),
-                    child: FadeTransition(opacity: animation, child: child),
+          border: Border.all(
+            color: selected ? cs.primary : cs.outlineVariant,
+            width: 1.2,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) => ScaleTransition(
+                      scale: Tween<double>(
+                        begin: 0.6,
+                        end: 1,
+                      ).animate(animation),
+                      child: FadeTransition(opacity: animation, child: child),
+                    ),
+                    child: selected
+                        ? Icon(
+                            Icons.check,
+                            key: ValueKey('alarm_day_on_$day'),
+                            size: 14,
+                            color: cs.onPrimary,
+                          )
+                        : const SizedBox(
+                            key: ValueKey('alarm_day_off'),
+                            width: 14,
+                          ),
                   ),
-                  child: selected
-                      ? Icon(
-                          Icons.check,
-                          key: ValueKey('alarm_day_on_$day'),
-                          size: 14,
-                          color: cs.onPrimary,
-                        )
-                      : const SizedBox(
-                          key: ValueKey('alarm_day_off'),
-                          width: 14,
-                        ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                  const SizedBox(width: 5),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1124,43 +1141,58 @@ class _SoundActionChipState extends State<_SoundActionChip> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     final glowing = widget.glowing;
-    // Кровавая круглая кнопка (меньше 36px, круглая, как «Сегодня
-    // очищено»): винный градиент + размашистые пятна под подложкой
-    // (BloodSpeck + BloodSpeckPainter — общий виджет, тот же рисунок,
-    // что и у бейджа привычки). Кнопка «кровавая», а не нейтральная.
-    // Отдача-«вдавливание» — быстрый PressScale (150 мс), а не медленный
-    // AnimatedScale (300 мс) — «при нажатии так мигает, лаж» устранён.
-    final decoration = BloodSpeck.decoration(theme, opacity: 0.55).copyWith(
-      // Круглая, а не скруглённая (жалоба «округлее»).
-      borderRadius: BorderRadius.circular(999),
-      border: Border.all(
-        color: (glowing
-                ? const Color(0xFFFF5A62)
-                : (dark ? const Color(0xFFFFA2A8) : const Color(0xFFE0525C)))
-            .withValues(alpha: glowing ? 0.6 : (dark ? 0.30 : 0.45)),
-        width: 1.0,
-      ),
-      // При воспроизведении — кровавый ореол вокруг кнопки.
-      boxShadow: glowing
-          ? [
-              BoxShadow(
-                color: const Color(0xFFFF2030).withValues(alpha: 0.30),
-                blurRadius: 10,
-                spreadRadius: -2,
-                offset: const Offset(0, 3),
-              ),
-            ]
-          : [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: dark ? 0.22 : 0.08),
-                blurRadius: 4,
-                spreadRadius: -1,
-                offset: const Offset(0, 2),
-              ),
-            ],
-    );
+    // Три кнопки звука приведены к тому же виду, что бейдж «Сегодня очищено»
+    // в привычках (см. HabitsScreen._erasedBadge): на тёмной теме — плотная
+    // капсула errorContainer с чистой error-кромкой и мягкой тенью (без
+    // «грязной» кровавой подложки), на светлой — та же винная таблетка
+    // BloodSpeck. Никакого «жёсткого отсвета»: пока звук играет, кромка и
+    // тень лишь чуть плотнее — красного ореола вокруг кнопки больше нет.
+    final BoxDecoration decoration;
+    final bool bloodFill;
+    if (dark) {
+      bloodFill = false;
+      decoration = BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: cs.errorContainer,
+        border: Border.all(
+          color: cs.error.withValues(alpha: glowing ? 0.85 : 0.55),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.error.withValues(alpha: glowing ? 0.30 : 0.22),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      );
+    } else {
+      bloodFill = true;
+      decoration = BloodSpeck.decoration(theme, opacity: 0.55).copyWith(
+        // Круглая, а не скруглённая (жалоба «округлее»).
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(
+            0xFFE0525C,
+          ).withValues(alpha: glowing ? 0.70 : 0.45),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 4,
+            spreadRadius: -1,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      );
+    }
+    final iconColor = dark
+        ? cs.onErrorContainer
+        : (glowing ? const Color(0xFFFFE1E3) : const Color(0xFFF5DBDD));
     return SmoothTooltip(
       message: widget.tooltip,
       preferredAbove: true,
@@ -1168,7 +1200,7 @@ class _SoundActionChipState extends State<_SoundActionChip> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onPressed,
         // Визуал — 30 px, но зона нажатия — 44 px: три кнопки остаются
-        // мелкими и полупрозрачными, но в них всё ещё легко попасть.
+        // мелкими, но в них всё ещё легко попасть.
         child: SizedBox(
           width: 44,
           height: 44,
@@ -1181,26 +1213,26 @@ class _SoundActionChipState extends State<_SoundActionChip> {
               child: SizedBox(
                 width: 30,
                 height: 30,
-                child: CustomPaint(
-                  // Кровавые размашистые пятна под подложкой (как у бейджа
-                  // «Сегодня очищено») — кнопка «кровавая», «округлее».
-                  painter: BloodSpeckPainter(isDark: dark, opacity: 0.65),
-                  child: DecoratedBox(
-                    decoration: decoration,
-                    child: Center(
-                      child: IconTheme(
-                        data: IconThemeData(
-                          color: glowing
-                              ? const Color(0xFFFFE1E3)
-                              : (dark
-                                    ? const Color(0xFFFFE1E3)
-                                    : const Color(0xFFF5DBDD)),
-                          size: 16,
+                child: DecoratedBox(
+                  decoration: decoration,
+                  // На светлой теме под винной таблеткой — те же размашистые
+                  // пятна, что у бейджа привычки; на тёмной подложка чистая.
+                  child: bloodFill
+                      ? CustomPaint(
+                          painter: const BloodSpeckPainter(opacity: 0.65),
+                          child: Center(
+                            child: IconTheme(
+                              data: IconThemeData(color: iconColor, size: 16),
+                              child: widget.child,
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: IconTheme(
+                            data: IconThemeData(color: iconColor, size: 16),
+                            child: widget.child,
+                          ),
                         ),
-                        child: widget.child,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),
