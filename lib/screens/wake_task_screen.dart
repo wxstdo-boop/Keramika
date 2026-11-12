@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../models/wake_task.dart';
 import '../l10n/translations.dart';
 import '../utils/context_menu.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/smooth_keyboard_body.dart';
 import '../utils/wide_dash_formatter.dart';
@@ -445,19 +446,27 @@ class _WakeTaskScreenState extends State<WakeTaskScreen>
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _finish,
-                      icon: const Icon(Icons.close, size: 18),
-                      label: Text(Translations.t('wtDismiss', context)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: theme.colorScheme.error,
-                        side: BorderSide(
-                          color: theme.colorScheme.error.withValues(alpha: 0.4),
+                    child: PressScale(
+                      // Отдача-«вдавливание», как у остальных кнопок окна.
+                      pressedScale: 0.97,
+                      duration: const Duration(milliseconds: 160),
+                      releaseDuration: const Duration(milliseconds: 220),
+                      child: OutlinedButton.icon(
+                        onPressed: _finish,
+                        icon: const Icon(Icons.close, size: 18),
+                        label: Text(Translations.t('wtDismiss', context)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.error,
+                          side: BorderSide(
+                            color: theme.colorScheme.error.withValues(
+                              alpha: 0.4,
+                            ),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                   ),
@@ -485,9 +494,14 @@ class _WakeTaskScreenState extends State<WakeTaskScreen>
         ),
         const SizedBox(height: 24),
         if (widget.isTest)
-          FilledButton(
-            onPressed: _finish,
-            child: Text(Translations.t('wtDismiss', context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 160),
+            releaseDuration: const Duration(milliseconds: 220),
+            child: FilledButton(
+              onPressed: _finish,
+              child: Text(Translations.t('wtDismiss', context)),
+            ),
           ),
       ],
     );
@@ -507,9 +521,14 @@ class _WakeTaskScreenState extends State<WakeTaskScreen>
           children: [
             Icon(Icons.alarm, size: 80, color: theme.colorScheme.primary),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _finish,
-              child: Text(Translations.t('wtDismiss', context)),
+            PressScale(
+              pressedScale: 0.96,
+              duration: const Duration(milliseconds: 160),
+              releaseDuration: const Duration(milliseconds: 220),
+              child: FilledButton(
+                onPressed: _finish,
+                child: Text(Translations.t('wtDismiss', context)),
+              ),
             ),
           ],
         );
@@ -808,50 +827,56 @@ class _PatternChallengeState extends State<_PatternChallenge> {
             itemCount: _gridSize * _gridSize,
             itemBuilder: (context, i) {
               final isHighlighted = highlightIdx.contains(i);
-              return GestureDetector(
-                onTap: () => _tap(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    // Квадраты — «камни»: объёмный градиент, светлая
-                    // верхняя кромка и глубокая тень. Подсвеченный —
-                    // горит цветом темы, введённый — мягкий след.
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: isHighlighted
-                          ? [
-                              Color.lerp(cs.primary, Colors.white, 0.18)!,
-                              Color.lerp(cs.primary, Colors.black, 0.22)!,
-                            ]
-                          : _userInput.contains(i)
-                          ? [
-                              cs.primary.withValues(alpha: 0.36),
-                              cs.primary.withValues(alpha: 0.18),
-                            ]
-                          : [
-                              cs.surfaceContainerHigh,
-                              cs.surfaceContainerHighest,
-                            ],
-                    ),
-                    border: Border.all(
-                      color: isHighlighted
-                          ? Colors.white.withValues(alpha: 0.62)
-                          : cs.outline.withValues(alpha: 0.75),
-                      width: isHighlighted ? 1.8 : 1.1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: isHighlighted
-                            ? cs.primary.withValues(alpha: 0.45)
-                            : Colors.black.withValues(alpha: 0.06),
-                        blurRadius: isHighlighted ? 12 : 5,
-                        spreadRadius: isHighlighted ? -2 : 0,
-                        offset: const Offset(0, 3),
+              return PressScale(
+                // Клетка «запоминалки» тоже отдаёт вдавливанием.
+                pressedScale: 0.92,
+                duration: const Duration(milliseconds: 140),
+                releaseDuration: const Duration(milliseconds: 200),
+                child: GestureDetector(
+                  onTap: () => _tap(i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      // Квадраты — «камни»: объёмный градиент, светлая
+                      // верхняя кромка и глубокая тень. Подсвеченный —
+                      // горит цветом темы, введённый — мягкий след.
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: isHighlighted
+                            ? [
+                                Color.lerp(cs.primary, Colors.white, 0.18)!,
+                                Color.lerp(cs.primary, Colors.black, 0.22)!,
+                              ]
+                            : _userInput.contains(i)
+                            ? [
+                                cs.primary.withValues(alpha: 0.36),
+                                cs.primary.withValues(alpha: 0.18),
+                              ]
+                            : [
+                                cs.surfaceContainerHigh,
+                                cs.surfaceContainerHighest,
+                              ],
                       ),
-                    ],
+                      border: Border.all(
+                        color: isHighlighted
+                            ? Colors.white.withValues(alpha: 0.62)
+                            : cs.outline.withValues(alpha: 0.75),
+                        width: isHighlighted ? 1.8 : 1.1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isHighlighted
+                              ? cs.primary.withValues(alpha: 0.45)
+                              : Colors.black.withValues(alpha: 0.06),
+                          blurRadius: isHighlighted ? 12 : 5,
+                          spreadRadius: isHighlighted ? -2 : 0,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
