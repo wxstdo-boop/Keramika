@@ -1728,18 +1728,33 @@ class _FriendSheetState extends State<_FriendSheet> {
     final reduce = MotionPrefs.shouldReduceMotion;
     return AnimatedSize(
       duration: reduce ? Duration.zero : Motion.slow,
-      curve: Curves.easeOutCubic,
+      curve: Motion.emphasized,
       alignment: Alignment.bottomCenter,
       child: AnimatedSwitcher(
         duration: reduce ? Duration.zero : Motion.normal,
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
+        // Кривая с НУЛЕВОЙ скоростью на обоих концах: шаг не «выстреливает»
+        // в первый кадр и не щёлкает в последнем — переход читается мягким.
+        switchInCurve: Motion.emphasized,
+        switchOutCurve: Motion.emphasized,
         // Кросс-фейд шагов выравниваем ПО ВЕРХУ: у шага очков высота больше
         // (внизу клавиатура), и при центрировании короткий список действий
         // «прыгал» бы вверх. Ширину/высоту тянет `AnimatedSize` выше.
         layoutBuilder: (current, previous) => Stack(
           alignment: Alignment.topCenter,
           children: [...previous, ?current],
+        ),
+        // Проявление + лёгкий «доезд» снизу: шаг не подменяется кадром, а
+        // всплывает на место. Оба направления симметричны, поэтому не нужен
+        // разбор «входящий/уходящий» по ключу.
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.035),
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
+          ),
         ),
         child: _score
             ? _FriendScoreSheet(
@@ -1809,10 +1824,10 @@ class _FriendActionsSheet extends StatelessWidget {
                 theme,
                 icon: Icons.tune,
                 label: Translations.t('profileFriendSetScore', context, 'Очки'),
-                // Даём отдаче проиграть вдавливание, прежде чем сменить
-                // содержимое листа: иначе подмена случалась бы в тот же кадр,
-                // и нажатие не читалось.
-                onTap: () => _pressThen(context, onScore),
+                // Смена шага — сразу, без искусственной паузы: плавность
+                // теперь несёт сам переход (`SlideTransition` + `AnimatedSize`),
+                // а задержка только добавляла лаг между пальцем и откликом.
+                onTap: onScore,
               ),
               _actionTile(
                 context,
@@ -1820,23 +1835,13 @@ class _FriendActionsSheet extends StatelessWidget {
                 icon: Icons.delete_outline,
                 label: Translations.t('delete', context, 'Удалить'),
                 danger: true,
-                onTap: () => _pressThen(context, onRemove),
+                onTap: onRemove,
               ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  /// Выполнить действие через короткую паузу: палец успевает увидеть
-  /// вдавливание строки.
-  static Future<void> _pressThen(
-    BuildContext context,
-    VoidCallback action,
-  ) async {
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (context.mounted) action();
   }
 
   Widget _actionTile(

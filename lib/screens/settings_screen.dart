@@ -2047,15 +2047,20 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                       ),
                     ),
-                    child: IconButton(
-                      key: ValueKey('pin_lock_$_hasPin'),
-                      style: IconButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    child: PressScale(
+                      pressedScale: 0.90,
+                      duration: const Duration(milliseconds: 200),
+                      releaseDuration: const Duration(milliseconds: 320),
+                      child: IconButton(
+                        key: ValueKey('pin_lock_$_hasPin'),
+                        style: IconButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
+                        icon: Icon(_hasPin ? Icons.lock : Icons.lock_open),
+                        onPressed: _managePin,
                       ),
-                      icon: Icon(_hasPin ? Icons.lock : Icons.lock_open),
-                      onPressed: _managePin,
                     ),
                   ),
                   // Кнопка «удалить ПИН» появляется/исчезает плавно, а место
@@ -2072,18 +2077,23 @@ class _SettingsScreenState extends State<SettingsScreen>
                         child: ScaleTransition(scale: anim, child: child),
                       ),
                       child: _hasPin
-                          ? IconButton(
-                              key: const ValueKey('pin_delete_btn'),
-                              style: IconButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                          ? PressScale(
+                              pressedScale: 0.86,
+                              duration: const Duration(milliseconds: 200),
+                              releaseDuration: const Duration(milliseconds: 320),
+                              child: IconButton(
+                                key: const ValueKey('pin_delete_btn'),
+                                style: IconButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                onPressed: _removePin,
                               ),
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.red,
-                              ),
-                              onPressed: _removePin,
                             )
                           : const SizedBox.shrink(
                               key: ValueKey('pin_delete_placeholder'),

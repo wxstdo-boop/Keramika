@@ -7,6 +7,7 @@ import '../services/haptics.dart';
 import '../services/installer.dart';
 import '../services/update_service.dart';
 import '../utils/design_tokens.dart';
+import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
 import 'press_scale.dart';
 
@@ -29,9 +30,19 @@ class _UpdatePillState extends State<UpdatePill>
   bool _busy = false;
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    // Медленнее прежнего: прыжок читается плавным, а не торопливым.
-    duration: const Duration(milliseconds: 1750),
+    // Один полный цикл «дыхания» значка. Медленно и вечно: значок живёт, а
+    // не дёргается — покой читается спокойным.
+    duration: const Duration(milliseconds: 2400),
   );
+
+  @override
+  void initState() {
+    super.initState();
+    // Вечный цикл, а НЕ только на время загрузки: таблетка сама приглашает
+    // тапнуть, поэтому значок живёт всегда. Уважаем «убрать анимации» —
+    // тогда значок стоит.
+    if (!MotionPrefs.shouldReduceMotion) _spin.repeat();
+  }
 
   @override
   void dispose() {
@@ -43,7 +54,6 @@ class _UpdatePillState extends State<UpdatePill>
     if (_busy) return;
     Haptics.light();
     setState(() => _busy = true);
-    _spin.repeat();
     try {
       final info = await Installer.appInfo();
       if (!mounted) return;
@@ -182,8 +192,10 @@ class _UpdatePillState extends State<UpdatePill>
       _toast(Translations.t('updateError', context, 'Ошибка обновления'));
     } finally {
       if (mounted) {
-        _spin.stop();
-        _spin.value = 0;
+        // Вечный цикл НЕ трогаем: значок «дышит» и до, и после тапа.
+        // Сброс `_spin.value` здесь останавливал бы контроллер (сеттер
+        // `value` зовёт `stop()`), поэтому фазу не сбрасываем — на
+        // непрерывном «дыхании» это не видно.
         setState(() {
           _busy = false;
         });
@@ -261,34 +273,29 @@ class _UpdatePillState extends State<UpdatePill>
               child: Row(
                 children: [
                   SizedBox(
-                    // Окно глифа с запасом: в прыжке зайчику есть куда уехать
-                    // вверх, и он не «прищемляется» о край таблетки.
+                    // Окно глифа с запасом: в «дыхании» значку есть куда
+                    // подняться, и он не «прищемляется» о край таблетки.
                     width: 18,
                     height: 18,
                     // САМОЕ ВАЖНОЕ для плавности: глиф рисуется один раз в
-                    // постоянный слой (`RepaintBoundary`), а прыжок — это
-                    // `Transform.translate` над готовым слоем. GPU просто
-                    // переносит закэшированную растровую картинку, БЕЗ
-                    // повторной растеризации глифа каждый кадр. Раньше painter
-                    // слушал контроллер напрямую (`super(repaint:)`) и
-                    // перерисовывал значок на КАЖДОМ кадре в новой дробной
-                    // позиции — мелкий глиф мерцал и «дёргался»; в покое
-                    // (не busy) слоя вообще не трогаем.
+                    // постоянный слой (`RepaintBoundary`), а «дыхание» — это
+                    // `Transform` над готовым слоем. GPU просто переносит
+                    // закэшированную растровую картинку, БЕЗ повторной
+                    // растеризации глифа каждый кадр.
                     child: AnimatedBuilder(
                       animation: _spin,
-                      // Дробное смещение: округление до целых пикселей на
-                      // прыжке в 4 px давало всего пять ступеней, и зайчик
-                      // «дёргался» — читалось как лаг. Дробный сдвиг кэш-слоя
-                      // GPU переносит плавно.
                       builder: (context, child) => Transform.translate(
-                        offset: Offset(0, -_hopLift(_spin.value)),
-                        child: child,
+                        offset: Offset(0, _bobLift(_spin.value)),
+                        child: Transform.scale(
+                          scale: _bobScale(_spin.value),
+                          child: child,
+                        ),
                       ),
                       child: RepaintBoundary(
                         child: CustomPaint(
                           isComplex: true,
                           willChange: false,
-                          painter: _RabbitGlyphPainter(
+                          painter: _UpdateGlyphPainter(
                             color: cs.onPrimaryContainer,
                           ),
                         ),
@@ -321,32 +328,35 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
-/// Вертикальный подъём зайчика для доли цикла [t] (0…1).
+/// Вертикальный подъём значка для доли цикла [t] (0…1).
 ///
-/// Прыжок — ОДНА функция: 0 → 1 → 0. Скорость в нижних точках нулевая
-/// (потолок в `sin(π·h)` и множителе `h·(1-h)`), в верхней — тоже, поэтому
-/// отрыв и касание земли мягкие, без отскока. Остаток цикла зайчик стоит:
-/// короткая пауза отделяет прыжки, чтобы движение читалось как прыжок, а не
-/// как «молотьба».
-double _hopLift(double t) {
-  const hopSpan = 0.55;
-  const amplitude = 3.6;
-  // Чистая полуволна синуса: ровно 0 → 1 → 0 с нулевой скоростью на обоих
-  // концах. Прежняя формула перемножала `h·(1-h)` и `sin(π·h)` — двойной
-  // «горб» давал неровный разгон и читался дёрганым.
-  final h = (t / hopSpan).clamp(0.0, 1.0);
-  return math.sin(math.pi * h) * amplitude;
+/// «Дыхание» — ОДНА гладкая функция 0 → 1 → 0 на всём цикле: в начале и в
+/// конце цикла значение и его производная равны нулю, поэтому вечный цикл
+/// замкнут БЕЗ рывка на стыке. Ровно один «вдох» за цикл (косинус), а не
+/// два — движение читается спокойным покачиванием.
+double _bobLift(double t) {
+  // (1 − cos 2πt)/2: 0 в t=0, 1 в t=0.5, 0 в t=1. Производная = π·sin(2πt)
+  // тоже нулевая на обоих концах — стык цикла бесшовный. Знак минус — значок
+  // ВСПЛЫВАЕТ в середине цикла; амплитуда в пиксель с небольшим: глиф живёт
+  // внутри узкой таблетки и не должен задевать её край.
+  return -(1 - math.cos(t * 2 * math.pi)) / 2 * 1.2;
 }
 
-/// Значок таблетки: ЗАЙЧИК. В покое сидит, при обновлении — подпрыгивает и
-/// мягко садится обратно.
+/// Лёгкое «дыхание» размера: тот же ход, что у подъёма, но чуть отстаёт по
+/// фазе — значок не «пружинит» одной частотой, а мягко набухает в верхней
+/// точке. Оба конца цикла замкнуты (cos), поэтому стык не щёлкает.
+double _bobScale(double t) {
+  return 1 + 0.045 * ((1 - math.cos(t * 2 * math.pi)) / 2);
+}
+
+/// Значок таблетки: «стрелка обновления в круге». Векторный шрифт иконок —
+/// чёткий на любом размере.
 ///
-/// Глиф рисуется векторным шрифтом иконок ([Icons.cruelty_free]) — он чёткий
-/// на любом размере. Painter НЕ анимируется: он рисует значок один раз в
-/// постоянный слой, а прыжок — это `Transform.translate` над готовым слоем
-/// (см. `UpdatePill`), поэтому кадры прыжка не растеризуют глиф заново.
-class _RabbitGlyphPainter extends CustomPainter {
-  _RabbitGlyphPainter({required this.color});
+/// Painter НЕ анимируется: он рисует значок один раз в постоянный слой, а
+/// «дыхание» — это `Transform` над готовым слоем (см. `UpdatePill`), поэтому
+/// кадры анимации не растеризуют глиф заново.
+class _UpdateGlyphPainter extends CustomPainter {
+  _UpdateGlyphPainter({required this.color});
 
   final Color color;
 
@@ -364,11 +374,11 @@ class _RabbitGlyphPainter extends CustomPainter {
     }
     final tp = TextPainter(
       text: TextSpan(
-        text: String.fromCharCode(Icons.cruelty_free.codePoint),
+        text: String.fromCharCode(Icons.system_update_rounded.codePoint),
         style: TextStyle(
           fontSize: fontSize,
-          fontFamily: Icons.cruelty_free.fontFamily,
-          package: Icons.cruelty_free.fontPackage,
+          fontFamily: Icons.system_update_rounded.fontFamily,
+          package: Icons.system_update_rounded.fontPackage,
           color: color,
         ),
       ),
@@ -382,9 +392,9 @@ class _RabbitGlyphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final tp = _glyph(color, size.shortestSide * 0.84);
-    // Глиф прижат к НИЗУ окна: вверх он уезжает прыжком, и запас сверху
-    // остаётся свободным. Рисуем ровно один раз — слой кэшируется.
+    final tp = _glyph(color, size.shortestSide * 0.92);
+    // Глиф по центру окна: «дыхание» смещает его вверх/вниз на считанные
+    // пиксели, запас сверху и снизу одинаков.
     canvas.save();
     canvas.translate(size.width / 2, size.height / 2);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
@@ -392,7 +402,7 @@ class _RabbitGlyphPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RabbitGlyphPainter oldDelegate) =>
+  bool shouldRepaint(covariant _UpdateGlyphPainter oldDelegate) =>
       oldDelegate.color != color;
 }
 

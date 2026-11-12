@@ -165,7 +165,10 @@ class _RingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final r = math.min(size.width, size.height) / 2 - stroke / 2;
+    // Отступ на полную ширину свечения (stroke * 3.2): и обводка, и свет
+    // укладываются ВНУТРЬ окна виджета, поэтому кромка не режется соседним
+    // клипом и квадрату по-прежнему взяться неоткуда.
+    final r = math.min(size.width, size.height) / 2 - stroke * 1.6;
     if (r <= 0) return;
     final rect = Rect.fromCircle(
       center: Offset(size.width / 2, size.height / 2),
@@ -181,20 +184,30 @@ class _RingPainter extends CustomPainter {
         lead.withValues(alpha: alpha),
       ],
     ).createShader(rect);
-    // Мягкое свечение: та же линия с блюром, низкой прозрачностью.
+    // Мягкое свечение — БЕЗ размытия (фильтр маски не применяем).
     //
-    // Сигма блюра ПОСТОЯННА: раньше она зависела от пульса (2 + glow*10) и
-    // менялась каждый кадр — растр кольца пересобирался целиком, и пульс
-    // «лагал». Пульс теперь читается только прозрачностью свечения, а растр
-    // берётся из кэша.
+    // Раньше свечение рисовалось размытой копией линии. На устройстве
+    // (Impeller) блюр применяется к ПРЯМОУГОЛЬНИКУ слоя, и вокруг круглой
+    // обводки проступала светящаяся КВАДРАТНАЯ кромка — та самая «квадратная
+    // подложка», на которую жаловались. Теперь мягкость даёт вторая, более
+    // ШИРОКАЯ полупрозрачная обводка: растр круглый, квадрату взяться неоткуда,
+    // а blur заодно не пересобирается каждый кадр.
     canvas.drawCircle(
       rect.center,
       r,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..shader = sweep(glow)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        // Ширина вдвое больше кольца — свет мягко «выпирает» за линию.
+        ..strokeWidth = stroke * 3.2
+        ..shader = sweep(glow * 0.35),
+    );
+    canvas.drawCircle(
+      rect.center,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke * 1.8
+        ..shader = sweep(glow * 0.6),
     );
     // Сама обводка — тонкая и чёткая. Никаких «пятен сияния»: кольцо должно
     // читаться идеально ровным кругом, а бегущие блики по периметру выглядели

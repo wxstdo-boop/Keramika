@@ -65,25 +65,46 @@ void main() {
     );
   });
 
-  test('прыжок зайчика без округления до целых пикселей', () {
+  test('значок обновления «дышит» плавным замкнутым циклом', () {
     final src = read('lib/widgets/update_pill.dart');
     expect(
-      src.contains('_hopLift(_spin.value).roundToDouble()'),
+      src.contains('_bobLift(_spin.value)'),
+      isTrue,
+      reason: 'дыхание значка идёт от контроллера без округления',
+    );
+    expect(
+      src.contains('.roundToDouble()'),
       isFalse,
-      reason: 'округление на прыжке в 4 px давало пять ступеней — «дёрганье»',
+      reason: 'округление до целых пикселей давало ступени — «дёрганье»',
+    );
+    // Замкнутый цикл: ход задан косинусом, у которого значение И производная
+    // нулевые на обоих концах — стык цикла без рывка.
+    expect(
+      RegExp(r'1 - math\.cos\(t \* 2 \* math\.pi\)').hasMatch(src),
+      isTrue,
+      reason: 'плавные начало и конец вечного цикла',
+    );
+    expect(
+      src.contains('_spin.repeat()'),
+      isTrue,
+      reason: 'значок живёт вечно, а не только на время загрузки',
     );
   });
 
-  test('блюр кольца музыки — постоянная сигма', () {
+  test('свечение кольца музыки — без блюра (квадратной кромки нет)', () {
     final src = read('lib/widgets/music_pulse_ring.dart');
+    // Блюр на Impeller применяется к ПРЯМОУГОЛЬНИКУ слоя и вокруг круглой
+    // обводки давал светящуюся квадратную кромку. Мягкость теперь несёт
+    // вторая, более широкая полупрозрачная обводка — без `MaskFilter`.
     expect(
-      src.contains('const MaskFilter.blur'),
-      isTrue,
-      reason: 'сигма, зависящая от пульса, пересобирала растр каждый кадр',
+      src.contains('MaskFilter'),
+      isFalse,
+      reason: 'блюр режется по прямоугольнику слоя — «квадратное» свечение',
     );
     expect(
-      src.contains('MaskFilter.blur(BlurStyle.normal, 2 + glow * 10)'),
-      isFalse,
+      RegExp(r'strokeWidth = stroke \* 3\.2').hasMatch(src),
+      isTrue,
+      reason: 'мягкое свечение рисуется широкой полупрозрачной обводкой',
     );
   });
 
