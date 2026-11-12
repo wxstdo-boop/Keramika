@@ -58,7 +58,10 @@ DateTime? _chatCloseAt;
 class LiveAdaAvatar extends StatelessWidget {
   final double size;
 
-  const LiveAdaAvatar({super.key, required this.size});
+  /// Монхром — для кнопки-Ады на плите: см. [AdaAvatar.monochrome].
+  final bool monochrome;
+
+  const LiveAdaAvatar({super.key, required this.size, this.monochrome = false});
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +78,8 @@ class LiveAdaAvatar extends StatelessWidget {
         child: AdaAvatar(
           variantIndex: idx,
           size: size,
-          key: ValueKey('live_ada_${size}_$idx'),
+          monochrome: monochrome,
+          key: ValueKey('live_ada_${size}_${monochrome}_$idx'),
         ),
       ),
     );
@@ -134,24 +138,17 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
   }
 
   Widget _buildFab(BuildContext context) {
-    // Премиум-стеклянная плитка (тот же стиль, что OrganicFab):
-    //   1) градиент: белая светится сверху (0.30) → primaryContainer
-    //   2) тень: фирменное свечение (primary, blur 20) + контактный след
-    //   3) стеклянный блик сверху (0.30 → 0) — выпуклость в любой теме
-    //   4) LiveAdaAvatar в центре с лёгкой тенью — «вдавлен в стекло»
-    // Размер держать ЯВНО: прежний FloatingActionButton.small сам задавал
-    // 40×40, а стеклянная плитка без явного размера «обнимает» аватарку
-    // (26px) — кнопка схлопывалась. Возвращаем M3-small (40×40), но
-    // чуть элегантнее: 42×42 (чуть крупнее, мягче сидит в ряду с плюсом).
-    // Единая рецептура [GlassFabTile] (тот же файл, что у кнопки-плюса):
-    // материал ОДИН у всей семьи, отличаются только размер и глиф.
-    // Ада без «вложенной кнопки»: раньше внутри стеклянной плитки лежал
-    // отдельный светлый диск 30×30 со своей тенью — «лишняя хуйня»
-    // (кнопка-внутри-кнопки) и на тёмном фоне ещё и светилась. Теперь
-    // аватарка сидит ПРЯМО на стекле: одна цельная кнопка, никакого
-    // внутреннего диска и его тени. Отдача «вдавливания» — на ВЕСЬУЮ
-    // плитку (0.90/200, как кнопка настроек): плюс и Ада уменьшаются
-    // одинаково заметно.
+    // Та же плитка [GlassFabTile], что и у кнопки-плюса, — и та же рецептура,
+    // что у главной таблетки разделов: плоская нейтральная поверхность,
+    // тонкая кромка, мягкая тень. Раньше здесь был цветной градиент,
+    // primary-ореол и белый блик — кнопка читалась отдельным «стеклянным»
+    // островом. Размер держать ЯВНО: прежний FloatingActionButton.small сам
+    // задавал 40×40, а плитка без размера «обнимает» аватарку и схлопывается.
+    // 42×42 — чуть крупнее M3-small, мягче сидит в ряду с плюсом.
+    // Ада без «вложенной кнопки»: раньше внутри плитки лежал отдельный
+    // светлый диск со своей тенью — «кнопка-внутри-кнопки». Теперь аватарка
+    // сидит ПРЯМО на плите. Отдача «вдавливания» — на ВСЮ плитку (0.90),
+    // как у кнопки-плюса: обе уменьшаются одинаково заметно.
     return PressScale(
       pressedScale: 0.90,
       // Те же 260/360, что у плюса: обе кнопки одной семьи обязаны
@@ -169,7 +166,9 @@ class _AiGuideFloatingButtonState extends State<AiGuideFloatingButton> {
             // открывал чат — «кнопка не срабатывает».
             behavior: HitTestBehavior.opaque,
             onTap: () => showAiGuideChat(context),
-            child: Center(child: const LiveAdaAvatar(size: 26)),
+            // Монхром: значок Ады на кнопке нейтральный, как икона таблетки,
+            // а не яркий цветной кружок на плоской плите.
+            child: const Center(child: LiveAdaAvatar(size: 26, monochrome: true)),
           ),
         ),
       ),

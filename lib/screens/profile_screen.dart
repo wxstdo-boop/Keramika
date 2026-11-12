@@ -21,6 +21,7 @@ import '../widgets/music_pulse_ring.dart';
 import '../widgets/online_dot.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/rolling_counter.dart';
 import '../widgets/new_year_event_banner.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/smooth_typing.dart';
@@ -36,14 +37,14 @@ const String kAgyshaSiteUrl = 'https://agysha.ru';
 /// дёрганой; кубика дешёвая и мягкая, а вход чуть длиннее — лист «выезжает»,
 /// а не выскакивает.
 AnimationStyle _sheetStyle() => AnimationStyle(
-  // Мягкое всплытие с торможением. Прежние 300 мс при коротком пути листа
-  // читались рывком; 360 мс с easeOutQuint дают спокойный, «дорогой» ход.
-  // Выход заметно длиннее прежнего: уход раньше «щёлкал» и выглядел
-  // тормознутым обрывом.
-  curve: Curves.easeOutQuint,
-  duration: const Duration(milliseconds: 360),
-  reverseCurve: Curves.easeInOutCubic,
-  reverseDuration: const Duration(milliseconds: 300),
+  // Мягкое всплытие: `easeOutCubic` разгоняется и плавно тормозит ПО ВСЕЙ
+  // дистанции. Прежний `easeOutQuint` проходил почти весь путь в первой
+  // трети и резко «втыкался» в конце — вход читался тормознутым.
+  curve: Curves.easeOutCubic,
+  duration: const Duration(milliseconds: 340),
+  // Выход короче и ровный: лист уходит собранно, не задерживая палец.
+  reverseCurve: Curves.easeInCubic,
+  reverseDuration: const Duration(milliseconds: 240),
 );
 
 /// Округлая (капсульная) форма кнопок профиля — та же «отдача фоном», что у
@@ -431,35 +432,24 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _editFriend(ProfileFriend friend) async {
-    final action = await showModalBottomSheet<String>(
+    // ОДИН маршрут на оба шага: затемнение одно и живёт непрерывно, поэтому
+    // позади окна очков больше не появляется «второй тёмный фон», а переход
+    // «действия → очки» идёт без паузы и без торможения.
+    final outcome = await showModalBottomSheet<_FriendOutcome>(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.32),
+      // Затемнение мягче (0.32 → 0.26): лист лёгкий, тяжёлый барьер «давил».
+      barrierColor: Colors.black.withValues(alpha: 0.26),
+      isScrollControlled: true,
       sheetAnimationStyle: _sheetStyle(),
-      builder: (ctx) => _FriendActionsSheet(friend: friend),
+      builder: (ctx) => _FriendSheet(friend: friend),
     );
     _dropFocus();
-    if (action == 'remove') {
+    if (outcome is _FriendScoreSaved) {
+      await _service.updateFriend(outcome.friend);
+    } else if (outcome is _FriendRemoved) {
       await _service.removeFriend(friend.id);
       Haptics.light();
-    } else if (action == 'score') {
-      if (!mounted) return;
-      // Лист действий уже получил pop, но его барьер ещё гаснет (обратная
-      // анимация). Если открыть лист очков сразу, оба затемнения коротко
-      // складываются — читается как «второй чёрный фон» позади окна. Ждём
-      // ровно обратный ход листа действий.
-      await Future<void>.delayed(const Duration(milliseconds: 220));
-      if (!mounted) return;
-      final updated = await showModalBottomSheet<ProfileFriend>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.32),
-        isScrollControlled: true,
-        sheetAnimationStyle: _sheetStyle(),
-        builder: (ctx) => _FriendScoreSheet(friend: friend),
-      );
-      _dropFocus();
-      if (updated != null) await _service.updateFriend(updated);
     }
   }
 
@@ -1072,8 +1062,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
               ),
-              Text(
-                '${f.score}',
+              // Очки «докатываются» барабаном, а не щёлкают: своё число и
+              // число друга меняются плавно, как счётчики в остальном
+              // приложении. `sample` держит ширину, чтобы при смене
+              // разрядности («99» → «100») строка не дёргалась по горизонтали.
+              AnimatedCounter(
+                value: f.score.toDouble(),
+                duration: const Duration(milliseconds: 520),
+                sample: '0000',
+                alignment: Alignment.centerRight,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: cs.primary,
                   fontWeight: Weights.bold,
@@ -1692,10 +1689,88 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
 /// Поле, которое печатает встроенная клавиатура листа «Добавить друга».
 enum _FriendField { name, score }
 
+/// Итог листа над другом: сохранённые очки либо удаление.
+sealed class _FriendOutcome {
+  const _FriendOutcome();
+}
+
+class _FriendScoreSaved extends _FriendOutcome {
+  final ProfileFriend friend;
+  const _FriendScoreSaved(this.friend);
+}
+
+class _FriendRemoved extends _FriendOutcome {
+  const _FriendRemoved();
+}
+
+/// Один лист над другом: сначала «Очки/Удалить», по тапу на «Очки» он же
+/// ПЕРЕТЕКАЕТ в правку очков.
+///
+/// Раньше это были два отдельных маршрута: лист действий закрывался, а лист
+/// очков открывался следом. Из-за этого затемнения двух маршрутов коротко
+/// складывались — позади окна появлялся «второй тёмный фон», а пауза перед
+/// открытием читалась торможением. Теперь маршрут ОДИН: затемнение одно и
+/// живёт непрерывно, переключение — мягкая смена содержимого с плавной
+/// высотой, без закрытия/открытия.
+class _FriendSheet extends StatefulWidget {
+  final ProfileFriend friend;
+  const _FriendSheet({required this.friend});
+
+  @override
+  State<_FriendSheet> createState() => _FriendSheetState();
+}
+
+class _FriendSheetState extends State<_FriendSheet> {
+  bool _score = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MotionPrefs.shouldReduceMotion;
+    return AnimatedSize(
+      duration: reduce ? Duration.zero : Motion.slow,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: AnimatedSwitcher(
+        duration: reduce ? Duration.zero : Motion.normal,
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        // Кросс-фейд шагов выравниваем ПО ВЕРХУ: у шага очков высота больше
+        // (внизу клавиатура), и при центрировании короткий список действий
+        // «прыгал» бы вверх. Ширину/высоту тянет `AnimatedSize` выше.
+        layoutBuilder: (current, previous) => Stack(
+          alignment: Alignment.topCenter,
+          children: [...previous, ?current],
+        ),
+        child: _score
+            ? _FriendScoreSheet(
+                key: const ValueKey('friend_score'),
+                friend: widget.friend,
+                onSave: (updated) =>
+                    Navigator.of(context).pop(_FriendScoreSaved(updated)),
+              )
+            : _FriendActionsSheet(
+                key: const ValueKey('friend_actions'),
+                friend: widget.friend,
+                onScore: () => setState(() => _score = true),
+                onRemove: () =>
+                    Navigator.of(context).pop(const _FriendRemoved()),
+              ),
+      ),
+    );
+  }
+}
+
 /// Действия над другом: изменить очки или удалить.
 class _FriendActionsSheet extends StatelessWidget {
   final ProfileFriend friend;
-  const _FriendActionsSheet({required this.friend});
+  final VoidCallback onScore;
+  final VoidCallback onRemove;
+  const _FriendActionsSheet({
+    super.key,
+    required this.friend,
+    required this.onScore,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1734,9 +1809,10 @@ class _FriendActionsSheet extends StatelessWidget {
                 theme,
                 icon: Icons.tune,
                 label: Translations.t('profileFriendSetScore', context, 'Очки'),
-                // Даём отдаче проиграть вдавливание, прежде чем закрыть лист:
-                // раньше pop случался в тот же кадр, и нажатие не читалось.
-                onTap: () => _popAfterPress(context, 'score'),
+                // Даём отдаче проиграть вдавливание, прежде чем сменить
+                // содержимое листа: иначе подмена случалась бы в тот же кадр,
+                // и нажатие не читалось.
+                onTap: () => _pressThen(context, onScore),
               ),
               _actionTile(
                 context,
@@ -1744,7 +1820,7 @@ class _FriendActionsSheet extends StatelessWidget {
                 icon: Icons.delete_outline,
                 label: Translations.t('delete', context, 'Удалить'),
                 danger: true,
-                onTap: () => _popAfterPress(context, 'remove'),
+                onTap: () => _pressThen(context, onRemove),
               ),
             ],
           ),
@@ -1753,13 +1829,14 @@ class _FriendActionsSheet extends StatelessWidget {
     );
   }
 
-  /// Закрыть лист через короткую паузу: палец успевает увидеть вдавливание.
-  static Future<void> _popAfterPress(
+  /// Выполнить действие через короткую паузу: палец успевает увидеть
+  /// вдавливание строки.
+  static Future<void> _pressThen(
     BuildContext context,
-    String result,
+    VoidCallback action,
   ) async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (context.mounted) Navigator.of(context).pop(result);
+    if (context.mounted) action();
   }
 
   Widget _actionTile(
@@ -1773,6 +1850,10 @@ class _FriendActionsSheet extends StatelessWidget {
     final color = danger
         ? theme.colorScheme.error
         : theme.colorScheme.onSurface;
+    // Раньше строка была `ListTile`: его чернильная волна заливала
+    // ПРЯМОУГОЛЬНИК на всю ширину листа, и подсветка читалась «квадратом».
+    // `InkWell` со скруглением повторяет форму строки — вспышка под пальцем
+    // мягкая и округлая.
     return PressScale(
       // Медленнее и глубже: строка ощутимо «уходит» под палец и мягко
       // возвращается — раньше 150 мс читались как резкий щелчок.
@@ -1780,13 +1861,25 @@ class _FriendActionsSheet extends StatelessWidget {
       duration: const Duration(milliseconds: 240),
       releaseDuration: const Duration(milliseconds: 380),
       child: Material(
-        // Свой Material: без него чернильная волна ListTile уходила под фон
+        // Свой Material: без него чернильная волна уходила под фон
         // `Container` листа, и Flutter ругался на невидимые splashes.
         type: MaterialType.transparency,
-        child: ListTile(
-          leading: Icon(icon, color: color),
-          title: Text(label, style: TextStyle(color: color)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Radii.md),
           onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Spacing.md,
+              vertical: Spacing.sm,
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(width: Spacing.md),
+                Text(label, style: TextStyle(color: color)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1796,7 +1889,17 @@ class _FriendActionsSheet extends StatelessWidget {
 /// Изменение очков друга.
 class _FriendScoreSheet extends StatefulWidget {
   final ProfileFriend friend;
-  const _FriendScoreSheet({required this.friend});
+
+  /// Отдать сохранённые очки НАРУЖУ. Раньше лист сам делал `pop`, потому что
+  /// был отдельным маршрутом; теперь он лишь шаг внутри [_FriendSheet], и
+  /// закрывать общий маршрут должен его владелец.
+  final ValueChanged<ProfileFriend> onSave;
+
+  const _FriendScoreSheet({
+    super.key,
+    required this.friend,
+    required this.onSave,
+  });
 
   @override
   State<_FriendScoreSheet> createState() => _FriendScoreSheetState();
@@ -1933,9 +2036,7 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
                         child: FilledButton.tonal(
                           onPressed: () {
                             final score = int.tryParse(_ctrl.text.trim()) ?? 0;
-                            Navigator.of(
-                              context,
-                            ).pop(widget.friend.copyWith(score: score));
+                            widget.onSave(widget.friend.copyWith(score: score));
                           },
                           style: _roundButtonStyle(),
                           child: Text(

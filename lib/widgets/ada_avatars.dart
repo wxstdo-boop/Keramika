@@ -199,7 +199,21 @@ Future<Map<String, dynamic>> readAdaSyncState() async {
 class AdaAvatar extends StatelessWidget {
   final double size;
   final int variantIndex;
-  const AdaAvatar({super.key, this.size = 34, this.variantIndex = -1});
+
+  /// Монхромный вариант — только для КНОПКИ-Ады в ряду с «+».
+  ///
+  /// На нейтральной плите-таблетке цветной градиентный кружок читался
+  /// «ярким островом» и спорил с плоской капсулой разделов. Монхром
+  /// оставляет ту же медальонную форму и значок, но красит их в
+  /// нейтральные роли темы — кнопка сливается с семьёй таблетки.
+  final bool monochrome;
+
+  const AdaAvatar({
+    super.key,
+    this.size = 34,
+    this.variantIndex = -1,
+    this.monochrome = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -239,10 +253,25 @@ class AdaAvatar extends StatelessWidget {
 
   Widget _core(BuildContext context, AdaVariant v) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
     // Монохромная тональная гамма из ТЕКУЩЕЙ темы: аватарка автоматически
     // подстраивается под смену темы (primary → secondary → tertiary),
     // а не остаётся ярким цветным кружком в любой теме.
-    final ramp = themeAdaColors(context);
+    final ramp = monochrome
+        // Монхром для кнопки — ровно тот же нейтральный медальон, что у
+        // невыбранного значка главной таблетки: светлая площадка темы, без
+        // цветного градиента. Так кнопка-Ада читается «своей» для таблетки.
+        ? <Color>[
+            dark ? cs.surfaceContainerHighest : cs.surfaceContainerLowest,
+            dark ? cs.surfaceContainerHighest : cs.surfaceContainerLowest,
+            dark ? cs.surfaceContainerHighest : cs.surfaceContainerLowest,
+          ]
+        : themeAdaColors(context);
+    // Чернила глифа — фирменный primary, как у иконок таблетки; в цветном
+    // режиме — белый поверх градиента.
+    final iconColor = monochrome
+        ? cs.primary
+        : Colors.white.withValues(alpha: 0.95);
     return Container(
       width: size,
       height: size,
@@ -257,7 +286,9 @@ class AdaAvatar extends StatelessWidget {
         // как у снекбаров — только тоньше и чище. Аватарка аккуратно «садится»
         // в любую тему, не торча цветным кружком.
         border: Border.all(
-          color: Colors.black.withValues(alpha: dark ? 0.22 : 0.26),
+          color: monochrome
+              ? cs.outlineVariant.withValues(alpha: dark ? 0.55 : 0.70)
+              : Colors.black.withValues(alpha: dark ? 0.22 : 0.26),
           width: 1.0,
         ),
         // Без тени: в мини-окошке blur-тень обрезается прямоугольной
@@ -266,32 +297,31 @@ class AdaAvatar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Блик сверху — «стеклянный» объём.
-          Positioned(
-            top: size * 0.06,
-            left: size * 0.16,
-            child: Container(
-              width: size * 0.42,
-              height: size * 0.24,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(size),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: dark ? 0.30 : 0.55),
-                    Colors.white.withValues(alpha: 0.0),
-                  ],
+          // Блик сверху — «стеклянный» объём. В монхроме он гасится: на
+          // нейтральной плите белый блик читался «лаком» и спорил с матовой
+          // капсулой разделов.
+          if (!monochrome)
+            Positioned(
+              top: size * 0.06,
+              left: size * 0.16,
+              child: Container(
+                width: size * 0.42,
+                height: size * 0.24,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(size),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: dark ? 0.30 : 0.55),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           // Значок Ады.
-          Icon(
-            v.icon,
-            size: size * 0.42,
-            color: Colors.white.withValues(alpha: 0.95),
-          ),
+          Icon(v.icon, size: size * 0.42, color: iconColor),
         ],
       ),
     );

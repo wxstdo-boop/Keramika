@@ -423,31 +423,42 @@ class _UpdateConfirmDialog extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 380),
           child: Container(
-            // Полупрозрачная градиентная обводка: акцент → прозрачность, как
-            // у «стеклянных» плашек приложения.
-            padding: const EdgeInsets.all(1.2),
+            // Кант плотнее прежнего (1.2 → 1.6) и с четырьмя опорными
+            // точками: акцент сверху-слева, тёплый tertiary снизу-справа —
+            // кромка «переливается» по периметру, а не гаснет в середине.
+            padding: const EdgeInsets.all(1.6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(Radii.xl),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: <Color>[
-                  cs.primary.withValues(alpha: 0.55),
-                  cs.primary.withValues(alpha: 0.08),
-                  cs.tertiary.withValues(alpha: 0.40),
+                  cs.primary.withValues(alpha: 0.85),
+                  cs.tertiary.withValues(alpha: 0.55),
+                  cs.primary.withValues(alpha: 0.28),
+                  cs.tertiary.withValues(alpha: 0.72),
                 ],
-                stops: const <double>[0, 0.55, 1],
+                stops: const <double>[0.0, 0.36, 0.66, 1.0],
               ),
               boxShadow: [
+                // Близкая мягкая «опора» + дальняя рассеянная: окно читается
+                // приподнятым, но не «висит в вакууме».
+                BoxShadow(
+                  color: theme.shadowColor.withValues(alpha: 0.16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
                 BoxShadow(
                   color: theme.shadowColor.withValues(alpha: 0.22),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
+                  blurRadius: 34,
+                  offset: const Offset(0, 16),
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(Radii.xl - 1),
+              // Радиус внутренней подложки на толщину канта меньше внешнего,
+              // иначе кант «съедается» и кромка читается неровной.
+              borderRadius: BorderRadius.circular(Radii.xl - 1.6),
               // БЕЗ `BackdropFilter`: под анимацией появления/ухода размытие
               // пересобирается каждый кадр, и окно заметно МЕРЦАЕТ — ровно
               // та жалоба, что пришла на прошлый круг. Стекло делаем
@@ -455,12 +466,19 @@ class _UpdateConfirmDialog extends StatelessWidget {
               // фильтра, поэтому всплытие идёт ровно.
               child: Container(
                 decoration: BoxDecoration(
-                  // Полупрозрачно: сквозь окно виден фон, но текст остаётся
-                  // читаемым — стекло без мерцания.
-                  color: cs.surfaceContainerHigh.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(Radii.xl - 1),
+                  // Мягкий свет сверху: подложка не «плоская плита», а
+                  // стекло с лёгким бликом у верхней кромки.
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      cs.surfaceContainerHigh.withValues(alpha: 0.96),
+                      cs.surfaceContainerHigh.withValues(alpha: 0.90),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(Radii.xl - 1.6),
                   border: Border.all(
-                    color: cs.onSurface.withValues(alpha: 0.14),
+                    color: cs.onSurface.withValues(alpha: 0.10),
                   ),
                 ),
                 padding: const EdgeInsets.fromLTRB(
@@ -525,9 +543,9 @@ class _UpdateConfirmDialog extends StatelessWidget {
                               onPressed: onCancel,
                               style: TextButton.styleFrom(
                                 minimumSize: const Size(0, 46),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(Radii.md),
-                                ),
+                                // Капсула: та же форма, что у кнопок профиля и
+                                // настроек — окно не выбивается из языка.
+                                shape: const StadiumBorder(),
                               ),
                               child: Text(
                                 Translations.t('cancel', context, 'Отмена'),
@@ -543,9 +561,7 @@ class _UpdateConfirmDialog extends StatelessWidget {
                               onPressed: onConfirm,
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size(0, 46),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(Radii.md),
-                                ),
+                                shape: const StadiumBorder(),
                               ),
                               child: Text(
                                 Translations.t(

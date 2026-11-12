@@ -437,11 +437,7 @@ class _OrganicFabState extends State<OrganicFab>
                     behavior: HitTestBehavior.opaque,
                     onLongPress: widget.onLongPress,
                     onTap: widget.onTap,
-                    child: Icon(
-                      Icons.add,
-                      size: 26,
-                      color: cs.onPrimaryContainer,
-                    ),
+                    child: Icon(Icons.add, size: 26, color: cs.primary),
                   ),
                 ),
               ),
@@ -453,12 +449,14 @@ class _OrganicFabState extends State<OrganicFab>
   }
 }
 
-/// Объёмная стеклянная плитка премиум-класса — ОДНА РЕЦЕПТУРА для всех
-/// фирменных FAB (плюс и Ада). Чтобы две кнопки читались как СЕМЬЯ, а не
-/// как два разных решения, весь материал (градиент, блик, свечение,
-/// контактный след) считается здесь в одном месте и масштабируется только
-/// под [size]. Владельцы отличаются размером и центральным глифом — и
-/// всем.
+/// Объёмная плитка фирменных FAB (плюс и Ада) — ОДНА рецептура для обеих.
+///
+/// Материал тот же, что у главной таблетки разделов (`_GlassCapsule`): одна
+/// плотная нейтральная поверхность, тонкая кромка `outlineVariant` и мягкая
+/// тень СНАРУЖИ скругления. Раньше плитка светилась цветным
+/// `primaryContainer`-градиентом, стеклянным бликом и primary-ореолом —
+/// плюс и Ада читались отдельным «стеклянным» островом и выпадали из семьи
+/// таблетки. Владельцы отличаются размером и центральным глифом — и всем.
 class GlassFabTile extends StatelessWidget {
   const GlassFabTile({
     super.key,
@@ -478,95 +476,53 @@ class GlassFabTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final r = size * 0.36;
-    // В тёмной теме primaryContainer (≈ #26272C) — почти чёрный.
-    // Раньше базу лерпили СМОЛОТНОГО цвета к белому (0.55), из-за чего
-    // плитка «светилась прожектором» на тёмном фоне — «блестит и отдаёт
-    // говном». Теперь тёмный фон берём как ТОНУЮ, ТЁМНУЮ стеклянную
-    // вмятину (subtle elevation): чуть приподнятый grey-glass, с лёгким
-    // фирменным подтоном primary, и мягким (не ярким) верхним светом.
-    // Светлая тема не тронута.
-    final base = isDark
-        ? Color.lerp(
-            Color.lerp(Colors.black, cs.primaryContainer, 0.85)!,
-            cs.primary,
-            0.16,
-          )!
-        : cs.primaryContainer;
-    final top = isDark
-        ? Color.lerp(base, Colors.white, 0.10)!
-        : Color.lerp(Colors.white, base, 0.40)!;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Мягкое скругление — как у капсулы разделов: кнопки читаются её
+    // «оттисками», а не отдельными квадратными плитками.
+    final r = size * 0.40;
+    // ПЛОСКАЯ нейтральная поверхность — тот же тон, что у главной таблетки.
+    final base = dark ? cs.surfaceContainerHigh : cs.surfaceContainerHighest;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(r),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [top, base],
-        ),
         boxShadow: [
-          // Фирменное свечение: широкий мягкий ореол цвета primary —
-          // плитка будто подсвечена изнутри. В тёмной теме свечение
-          // ТОНУЩЕЕ (primary не даёт «прожектора» на чёрном фоне),
-          // в светлой — чуть приглушён, чтобы не «гореть».
+          // Тень снаружи клипа: внутри скругления она обрезается и плитка
+          // выглядит наклеенной. Те же параметры, что у капсулы разделов.
           BoxShadow(
-            color: cs.primary.withValues(alpha: isDark ? 0.22 : 0.28),
-            blurRadius: size * (isDark ? 0.42 : 0.40),
-            spreadRadius: -4,
-            offset: Offset(0, size * 0.14),
-          ),
-          // Контактный след: короткий, близко к основанию — заземляет плитку.
-          // В тёмной теме приглушаем (фон и так тёмный — «чёрный квадрат»
-          // уже читается, добавление чёрного следа только делает грязь).
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.32 : 0.14),
-            blurRadius: size * 0.10,
-            spreadRadius: -1,
-            offset: Offset(0, size * 0.05),
+            color: Colors.black.withValues(alpha: dark ? 0.22 : 0.10),
+            blurRadius: 12,
+            spreadRadius: -3,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        fit: StackFit.expand,
-        alignment: Alignment.center,
-        children: [
-          // Стеклянный блик: белый → 0 к середине. Выпуклость читается при
-          // любом фоне (светлая/тёмная тема).
-          Positioned.fill(
-            child: IgnorePointer(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(r),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      // В тёмной теме верхний глянец тоньше (0.14): белый
-                      // блик на тёмной плитке и есть «блестящая» грязь.
-                      // В светлой — прежний 0.36 (выпуклая стеклянная верхушка).
-                      colors: [
-                        Colors.white.withValues(
-                          alpha: isDark ? 0.14 : 0.36,
-                        ),
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.5],
-                    ),
-                  ),
-                ),
-              ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(r),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(r),
+            color: base,
+            border: Border.all(
+              // Тонкая кромка только для контура, без неоновой рамки.
+              color: cs.outlineVariant.withValues(alpha: dark ? 0.55 : 0.70),
+              width: 1.0,
             ),
           ),
-          child,
-          if (extraLayer != null)
-            Positioned.fill(
-              child: IgnorePointer(child: extraLayer!),
-            ),
-        ],
+          child: Stack(
+            clipBehavior: Clip.none,
+            fit: StackFit.expand,
+            alignment: Alignment.center,
+            children: [
+              child,
+              if (extraLayer != null)
+                Positioned.fill(
+                  child: IgnorePointer(child: extraLayer!),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -23,6 +23,10 @@ class InlineKeyboard extends StatelessWidget {
   final VoidCallback onBackspace;
   final VoidCallback onSpace;
 
+  /// Красный бренда: отлив клавиатуры не должен зависеть от роли темы
+  /// (`primary` на дефолтной палитре — сиреневый, и панель серела).
+  static const Color _brandRed = Color(0xFFE0192F);
+
   /// Высота одной клавиши.
   final double keyHeight;
 
@@ -50,21 +54,21 @@ class InlineKeyboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
       decoration: BoxDecoration(
-        // Полупрозрачная панель с КРАСНЫМ отливом темы: сквозь клавиатуру
-        // просвечивает лист, а тёплый алый тон привязывает её к остальным
-        // «стеклянным» плашкам. Раньше здесь был нейтральный surfaceContainer
-        // — панель читалась чужеродной серой плитой.
+        // Полупрозрачная панель с ЯВНЫМ КРАСНЫМ отливом: сквозь клавиатуру
+        // просвечивает лист, а алый тон привязывает её к остальным
+        // «стеклянным» плашкам. Раньше отлив брался из `cs.primary`, а на
+        // теме по умолчанию primary — сиреневый, и панель читалась просто
+        // СЕРОЙ плитой. Красный задаём константой бренда, а не ролью темы.
         color: Color.alphaBlend(
-          cs.primary.withValues(alpha: 0.12),
-          cs.surfaceContainer.withValues(alpha: 0.78),
+          _brandRed.withValues(alpha: 0.30),
+          theme.colorScheme.surfaceContainer.withValues(alpha: 0.66),
         ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(Radii.xl)),
         border: Border(
-          top: BorderSide(color: cs.primary.withValues(alpha: 0.30)),
+          top: BorderSide(color: _brandRed.withValues(alpha: 0.38)),
         ),
       ),
       child: Column(
@@ -201,12 +205,13 @@ class _KeyState extends State<_Key> {
   Widget build(BuildContext context) {
     final theme = widget.theme;
     final cs = theme.colorScheme;
-    // Полупрозрачные КРАСНЫЕ клавиши: тон primary (у Agysha он алый),
-    // сильно разбавленный, — кнопки читаются «стеклянно-красными» на любом
-    // фоне. Отдача и повтор — в [PressScale]/InkWell ниже.
+    // Полупрозрачные КРАСНЫЕ клавиши: тон бренда, сильно разбавленный, —
+    // кнопки читаются «стеклянно-красными» на любом фоне. Цвет берём из
+    // константы, а не из `cs.primary`: на дефолтной теме primary сиреневый,
+    // и клавиши выходили серо-фиолетовыми вместо красных.
     final keyColor = Color.alphaBlend(
-      cs.primary.withValues(alpha: 0.20),
-      cs.surfaceContainerHighest.withValues(alpha: 0.72),
+      InlineKeyboard._brandRed.withValues(alpha: 0.26),
+      cs.surfaceContainerHighest.withValues(alpha: 0.66),
     );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -231,7 +236,7 @@ class _KeyState extends State<_Key> {
               color: keyColor,
               borderRadius: BorderRadius.circular(Radii.md),
               border: Border.all(
-                color: cs.primary.withValues(alpha: 0.22),
+                color: InlineKeyboard._brandRed.withValues(alpha: 0.30),
               ),
             ),
             child: Container(
@@ -241,7 +246,7 @@ class _KeyState extends State<_Key> {
                   ? Icon(
                       widget.icon,
                       size: 20,
-                      color: cs.primary,
+                      color: InlineKeyboard._brandRed,
                     )
                   : Text(
                       widget.label!,

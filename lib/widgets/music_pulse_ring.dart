@@ -80,6 +80,12 @@ class _MusicPulseRingState extends State<MusicPulseRing>
     final c = Color.lerp(const Color(0xFFFF5A6E), cs.tertiary, 0.18)!;
     return Stack(
       alignment: Alignment.center,
+      // Свечение — размытая копия линии, и оно выходит за границы кружка.
+      // У `Stack` по умолчанию `Clip.hardEdge`, поэтому блюр обрезался ровно
+      // по прямоугольнику виджета: с четырёх сторон читалась СВЕТЯЩАЯСЯ
+      // КВАДРАТНАЯ кромка вокруг круглой обводки. Отключаем клип — свечение
+      // мягко расходится во все стороны, как и задумано.
+      clipBehavior: Clip.none,
       children: [
         // Обводка — отдельный слой ПОД кнопкой, и он не ловит тапы.
         Positioned.fill(
