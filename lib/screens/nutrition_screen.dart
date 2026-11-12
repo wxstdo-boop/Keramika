@@ -17,6 +17,7 @@ import '../widgets/progress_ring.dart';
 import '../widgets/nutrition_trends.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/rolling_counter.dart';
+import '../widgets/smooth_digits.dart';
 
 /// Какое из числовых полей редактирует встроенная клавиатура.
 enum _PadField { calories, water }
@@ -353,7 +354,10 @@ class _NutritionScreenState extends State<NutritionScreen>
               ),
             ),
             const SizedBox(height: 16),
-            // AnimatedSize вЂ” Р•Р”РРќРЎРўР’Р•РќРќР«Р™ РјРµС…Р°РЅРёР·Рј, РєРѕС‚РѕСЂС‹Р№ РјРµРЅСЏРµС‚ РІС‹СЃРѕС‚Сѓ
+            // AnimatedSize — ЕДИНСТВЕННЫЙ механизм, который меняет высоту
+            // блока истории. Так добавление приёма пищи, удаление и уход
+            // заголовка «Сегодня» (вместе с последней записью дня) идут
+            // одной плавной волной, а не двумя спорящими анимациями.
             // блока истории. Так добавление приёма пищи, удаление и уход
             // заголовка «Сегодня» (вместе с последней записью дня) идут
             // одной плавной волной, а не двумя спорящими анимациями.
@@ -372,27 +376,39 @@ class _NutritionScreenState extends State<NutritionScreen>
                   // пусто» идёт одной волной с высотой блока.
                   duration: _mealCollapse,
                   switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeOutCubic,
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  // Свое расположение: уходящий ребёнок кладём Positioned.
-                  // У обычного AnimatedSwitcher оба ребёнка лежат в Stack как
-                  // РѕР±С‹С‡РЅС‹Рµ РґРµС‚Рё вЂ” СЃС‚РµРє СЂР°Р·РґСѓРІР°РµС‚СЃСЏ РґРѕ РњРђРљРЎРРњРђР›Р¬РќРћР™ РІС‹СЃРѕС‚С‹, Рё
-                  // AnimatedSize над ним не видит промежуточных значений:
-                  // высота прыгала к финальной, а текст «Пока нет приёмов пищи»
-                  // дёргался вниз/вверх. Positioned не участвует в размере стека,
-                  // поэтому высота = текущему ребёнку, и её ведёт AnimatedSize.
-                  // В стопке держим ТОЛЬКО текущего ребёнка: уходящий,
-                  // оставленный сверху, накладывал текст «Пока нет приёмов
-                  // пищи» на строки истории — это и читалось как мигание.
-                  // Высоту по-прежнему ведёт AnimatedSize, поэтому переход
-                  // остаётся плавным и без наложения.
-                  layoutBuilder: (child, previous) =>
-                      Stack(alignment: Alignment.topCenter, children: [?child]),
+                  // Уход быстрее входа: пустая подпись гаснет сразу, пока
+                  // растут строки, — иначе она «висела» поверх карточек.
+                  switchOutCurve: Curves.easeOutQuad,
+                  // Уходящий ребёнок остаётся В СТОПКЕ, но ПОД текущим и
+                  // схлопывается по высоте (Align.heightFactor по прогрессу
+                  // анимации). Так подпись «Пока нет приёмов пищи» не
+                  // пропадает кадром (прежний layoutBuilder выбрасывал
+                  // уходящего — и при добавлении первой записи текст мигал),
+                  // но и НЕ накладывается на строки истории: текущий ребёнок
+                  // лежит поверх, а уходящий тает и сжимается вверх. Высоту
+                  // по-прежнему ведёт внешний AnimatedSize.
+                  transitionBuilder: (child, animation) {
+                    final leaving = animation.status == AnimationStatus.reverse;
+                    if (!leaving) {
+                      return FadeTransition(opacity: animation, child: child);
+                    }
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ClipRect(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          heightFactor: animation.value.clamp(0.0, 1.0),
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.topCenter,
+                    children: <Widget>[...previous, ?current],
+                  ),
                   child: !_loaded
                       ? const SizedBox(key: ValueKey('meals_loading'))
-                      : meals.isEmpty
-                      ? const _EmptyMeals()
                       : KeyedSubtree(
                           key: const ValueKey('meals_history'),
                           child: _buildHistory(context, theme, meals),
@@ -428,7 +444,7 @@ class _NutritionScreenState extends State<NutritionScreen>
   /// Красивая обводка-кольцо вокруг карточки: тонкий градиент от акцента к
   /// третичному цвету темы.
   ///
-  /// РРјРµРЅРЅРѕ РєРѕР»СЊС†Рѕ, Р° РЅРµ `BorderSide`: Сѓ СЂР°РјРєРё РѕРґРёРЅ С†РІРµС‚ РЅР° РІСЃРµ С‡РµС‚С‹СЂРµ
+  /// Именно кольцо, а не `BorderSide`: у рамки один цвет на все четыре
   /// стороны, и на большой карточке она читается как «наклейка». Градиент
   /// даёт мягкий перелив по краю, который не спорит с содержимым.
   /// Тень тоже здесь: две тени (своя у Card и у кольца) давали грязный
@@ -647,19 +663,18 @@ class _NutritionScreenState extends State<NutritionScreen>
               ),
             ),
           ),
-          Stack(
+          // Значение приходит из сервиса рывком (добавили приём пищи), а
+          // меняется ПО БУКВАМ — тем же приёмом, что очки рейтинга в профиле
+          // ([SmoothDigits]): изменившаяся цифра проявляется из прозрачного,
+          // старая мягко гаснет. Прежний барабан `AnimatedCounter` читался
+          // подменой кадром. `sample` держит пять разрядов, чтобы счётчик не
+          // толкал соседей по строке.
+          SmoothDigits(
+            value: value,
+            sample: '99999',
             alignment: Alignment.centerLeft,
-            children: [
-              Opacity(opacity: 0, child: Text('99999', style: style)),
-              // Значение приходит из сервиса рывком (добавили приём пищи) —
-              // счётчик докручивается до него сам, длиннее обычного: цифры
-              // должны перетекать, а не успевать «щёлкнуть».
-              AnimatedCounter(
-                value: value.toDouble(),
-                duration: const Duration(milliseconds: 640),
-                style: style,
-              ),
-            ],
+            textAlign: TextAlign.left,
+            style: style,
           ),
           if (unit.isNotEmpty) ...[
             const SizedBox(width: 4),
@@ -742,9 +757,12 @@ class _NutritionScreenState extends State<NutritionScreen>
               ),
             ),
             const Spacer(),
-            AnimatedCounter(
-              value: grams.toDouble(),
-              duration: const Duration(milliseconds: 640),
+            // Граммы БЖУ — тоже посимвольно, как очки рейтинга: при
+            // добавлении приёма пищи цифра перетекает, а не подменяется.
+            SmoothDigits(
+              value: grams,
+              sample: '999',
+              alignment: Alignment.centerRight,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -856,7 +874,10 @@ class _NutritionScreenState extends State<NutritionScreen>
     final cs = theme.colorScheme;
     final active = _padOpen && _pad == field;
     return SmoothTyping(
-      // РџР»Р°РІРЅРѕСЃС‚СЊ С†РёС„СЂ Р’Р•Р РќРЈР›Р: РѕС‚РєР»СЋС‡РёР»Рё С‚РѕР»СЊРєРѕ В«РїСЂРёР·СЂР°РєРѕРІВ» (РіР°СЃРЅСѓС‰РёРµ РєРѕРїРёРё
+            // AnimatedSize — ЕДИНСТВЕННЫЙ механизм, который меняет высоту
+            // блока истории. Так добавление приёма пищи, удаление и уход
+            // заголовка «Сегодня» (вместе с последней записью дня) идут
+            // одной плавной волной, а не двумя спорящими анимациями.
       // удалённых цифр). Заедание было именно на них — при зажатом бэкспейсе
       // значения летят ~20 раз в секунду, и на каждый кадр троился десяток
       // новых TextPainter-ов. Появление цифр по-прежнему плавное, а удаление
@@ -1052,7 +1073,8 @@ class _NutritionScreenState extends State<NutritionScreen>
       return accentColors[seed % accentColors.length];
     }
 
-    // РСЃС‚РѕСЂРёСЏ СЂРµРЅРґРµСЂРёС‚СЃСЏ РєР°Рє РѕР±С‹С‡РЅР°СЏ Column вЂ” СЌРєСЂР°РЅ СЃРєСЂРѕР»Р»РёС‚ РµРґРёРЅС‹Р№
+    // История рендерится как обычная Column — экран скроллит единый
+    // внешний ListView (ленивость не нужна).
     // внешний ListView (ленивость не нужна).
     final dayWidgets = <Widget>[];
     for (final day in sortedKeys) {
@@ -1107,13 +1129,13 @@ class _NutritionScreenState extends State<NutritionScreen>
     final subtitle = meal.isWaterOnly
         ? '$water ${Translations.t('mlShort', context, 'мл')} • $time'
         : '${Translations.t('macroPSingle', context, 'Р‘')} ${macros.protein}'
-              ' В· ${Translations.t('macroFSingle', context, 'Р–')} ${macros.fat}'
+              ' · ${Translations.t('macroFSingle', context, 'Р–')} ${macros.fat}'
               ' · ${Translations.t('macroCSingle', context, 'У')} ${macros.carbs}'
               '${water > 0 ? ' · $water мл' : ''}'
               ' • ${meal.calories} ${Translations.t('kcalShort', context, 'ккал')}'
-              ' вЂў $time';
+              ' • $time';
     final isJustAdded = _addedAt.containsKey(meal.id);
-    // Р—Р°Р·РѕСЂ РјРµР¶РґСѓ РїСЂРёС‘РјР°РјРё РїРёС‰Рё Р¶РёРІС‘С‚ Р’РќРЈРўР Р Dismissible: `resizeDuration`
+    // Зазор между приёмами пищи живёт ВНУТРИ Dismissible: `resizeDuration`
     // анимирует только собственное дитя, и раньше на месте удалённой строки
     // оставались эти 10 px, которые снимались одним кадром после конца
     // сжатия — «следующий чуть дёргается вверх».
@@ -1253,16 +1275,24 @@ class _NutritionScreenState extends State<NutritionScreen>
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(Translations.cancelOf(context)),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(ctx).colorScheme.error,
+              // Отдача кнопок — как на остальных экранах: без [PressScale]
+              // кнопка не отвечает на палец, и окно читается «чужим».
+              PressScale(
+                pressedScale: 0.95,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(Translations.cancelOf(context)),
                 ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(Translations.t('delete', context, 'Удалить')),
+              ),
+              PressScale(
+                pressedScale: 0.95,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(ctx).colorScheme.error,
+                  ),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(Translations.t('delete', context, 'Удалить')),
+                ),
               ),
             ],
           ),
@@ -1508,7 +1538,7 @@ class _NutritionScreenState extends State<NutritionScreen>
         'body': Translations.t(
           'tipWaitBody',
           context,
-          'Wait 10 minutes before giving in вЂ” in 70% of cases the craving passes.',
+          'Wait 10 minutes before giving in — in 70% of cases the craving passes.',
         ),
         'color': Colors.indigo,
       },
@@ -1782,7 +1812,7 @@ class _NutritionScreenState extends State<NutritionScreen>
         'body': Translations.t(
           'tipColdWaterBody',
           context,
-          'A glass of ice water instantly resets mind and body вЂ” the cold shock breaks the craving loop.',
+          'A glass of ice water instantly resets mind and body — the cold shock breaks the craving loop.',
         ),
         'color': Colors.cyan,
         'group': 'sugar',

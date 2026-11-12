@@ -29,8 +29,8 @@ class MusicPulseRing extends StatefulWidget {
     super.key,
     required this.active,
     required this.child,
-    this.baseWidth = 1.1,
-    this.pulseWidth = 1.3,
+    this.baseWidth = 1.3,
+    this.pulseWidth = 0.9,
   });
 
   @override
@@ -123,7 +123,9 @@ class _MusicPulseRingState extends State<MusicPulseRing>
                     final pulse = reduce
                         ? 0.0
                         : (0.5 - 0.5 * math.cos(t * math.pi * 2));
-                    // Медленный поворот градиента: цвет «перетекает» по кругу.
+                    // Медленный поворот градиента: цвет «перетекает» по
+                    // кругу. Один оборот за цикл (не два) — движение читается
+                    // спокойным, без «жужжания».
                     final turn = t * 2 * math.pi;
                     final lead = _wheel(a, b, c, math.sin(turn));
                     final tail = _wheel(b, c, a, math.cos(turn));
@@ -184,41 +186,59 @@ class _RingPainter extends CustomPainter {
     // клипом.
     final r = math.min(size.width, size.height) / 2 - stroke * 1.6;
     if (r <= 0) return;
-    final rect = Rect.fromCircle(
-      center: Offset(size.width / 2, size.height / 2),
-      radius: r,
-    );
-    // ОДИН шейдер на кадр вместо трёх: раньше `SweepGradient.createShader`
-    // звался трижды за кадр (для свечения и линии), и на слабом GPU это
-    // читалось как лаг пульса. Теперь шейдер строится один раз, а нужную
-    // прозрачность слоям даёт `ColorFilter.modulate` — без новой раскладки
-    // градиента.
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(center: center, radius: r);
+    // ОДИН шейдер на кадр: раньше `SweepGradient.createShader` звался трижды
+    // за кадр (для свечения и линии), и на слабом GPU это читалось как лаг
+    // пульса.
     final shader = SweepGradient(
       transform: GradientRotation(turn),
       colors: [lead, tail, lead],
     ).createShader(rect);
 
-    Paint layer(double alpha, double width) => Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width
-      ..shader = shader
-      ..colorFilter = ColorFilter.mode(
-        Color.fromRGBO(255, 255, 255, alpha),
-        BlendMode.modulate,
-      );
-
-    // Мягкое свечение — БЕЗ размытия (фильтр маски не применяем).
+    // Мягкое свечение — ОДИН проход, а не «туча кругов».
     //
-    // Раньше свечение рисовалось размытой копией линии. На устройстве
-    // (Impeller) блюр применяется к ПРЯМОУГОЛЬНИКУ слоя, и вокруг круглой
-    // обводки проступала светящаяся КВАДРАТНАЯ кромка. Теперь мягкость даёт
-    // вторая, более ШИРОКАЯ полупрозрачная обводка: растр круглый, квадрату
-    // взяться неоткуда, а blur заодно не пересобирается каждый кадр.
-    canvas.drawCircle(rect.center, r, layer(glow * 0.35, stroke * 3.2));
-    canvas.drawCircle(rect.center, r, layer(glow * 0.6, stroke * 1.8));
-    // Сама обводка — тонкая и чёткая: кольцо должно читаться идеально ровным
-    // кругом.
-    canvas.drawCircle(rect.center, r, layer(0.9, stroke));
+    // Прежняя мягкость рисовала три концентрических круга (stroke * 3.2,
+    // stroke * 1.8 и саму линию): на каждом кадре это три полных обхода
+    // окружности с градиентным шейдером — на слабом GPU читалось и как лаг,
+    // и как «слоёный бублик».
+    //
+    // Теперь свечение — ОДНА широкая обводка, но её прозрачность задаёт
+    // РАДИАЛЬНЫЙ градиент: альфа растёт от внутренней кромки полосы к
+    // середине и снова падает к наружной. Поэтому свет растворяется по краям
+    // и не даёт резкой окружности, а внутри кольца остаётся прозрачно.
+    final glowWidth = stroke * 3.2;
+    final glowColor = Color.lerp(lead, tail, 0.5)!;
+    final outer = r + glowWidth / 2;
+    // Доли радиуса, на которых лежат кромки и середина полосы свечения.
+    final innerFrac = ((r - glowWidth / 2) / outer).clamp(0.0, 0.98);
+    final midFrac = (r / outer).clamp(innerFrac, 0.99);
+    final glowPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = glowWidth
+      ..shader = RadialGradient(
+        colors: [
+          glowColor.withValues(alpha: 0),
+          glowColor.withValues(alpha: glow * 0.55),
+          glowColor.withValues(alpha: 0),
+        ],
+        stops: [innerFrac, midFrac, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: outer));
+    canvas.drawCircle(center, r, glowPaint);
+
+    // Сама обводка — тонкая и чёткая: кольцо читается ровным кругом.
+    canvas.drawCircle(
+      center,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..shader = shader
+        ..colorFilter = ColorFilter.mode(
+          const Color.fromRGBO(255, 255, 255, 0.9),
+          BlendMode.modulate,
+        ),
+    );
   }
 
   @override

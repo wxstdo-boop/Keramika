@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../l10n/translations.dart';
@@ -29,25 +27,29 @@ class UpdatePill extends StatefulWidget {
 class _UpdatePillState extends State<UpdatePill>
     with SingleTickerProviderStateMixin {
   bool _busy = false;
-  late final AnimationController _spin = AnimationController(
+
+  /// Разовый вход значка: зайчик мягко «проявляется» и чуть набухает при
+  /// появлении таблетки — один раз, без вечного цикла. Прежнее бесконечное
+  /// «дыхание» владелец просил убрать: оно читалось дрожью, а глиф в нём
+  /// растеризовался каждый кадр.
+  late final AnimationController _enter = AnimationController(
     vsync: this,
-    // Один полный цикл «дыхания» значка. Медленно и вечно: значок живёт, а
-    // не дёргается — покой читается спокойным.
-    duration: const Duration(milliseconds: 2400),
+    duration: const Duration(milliseconds: 520),
+  );
+  late final Animation<double> _enterCurve = CurvedAnimation(
+    parent: _enter,
+    curve: Curves.easeOutCubic,
   );
 
   @override
   void initState() {
     super.initState();
-    // Вечный цикл, а НЕ только на время загрузки: таблетка сама приглашает
-    // тапнуть, поэтому значок живёт всегда. Уважаем «убрать анимации» —
-    // тогда значок стоит.
-    if (!MotionPrefs.shouldReduceMotion) _spin.repeat();
+    if (!MotionPrefs.shouldReduceMotion) _enter.forward();
   }
 
   @override
   void dispose() {
-    _spin.dispose();
+    _enter.dispose();
     super.dispose();
   }
 
@@ -193,10 +195,7 @@ class _UpdatePillState extends State<UpdatePill>
       _toast(Translations.t('updateError', context, 'Ошибка обновления'));
     } finally {
       if (mounted) {
-        // Вечный цикл НЕ трогаем: значок «дышит» и до, и после тапа.
-        // Сброс `_spin.value` здесь останавливал бы контроллер (сеттер
-        // `value` зовёт `stop()`), поэтому фазу не сбрасываем — на
-        // непрерывном «дыхании» это не видно.
+        // Вход значка — разовый и уже отыграл; тап его не перезапускает.
         setState(() {
           _busy = false;
         });
@@ -209,7 +208,7 @@ class _UpdatePillState extends State<UpdatePill>
     showBeautifulSnackBar(
       context,
       message: message,
-      icon: Icons.system_update_alt,
+      icon: Icons.downloading_rounded,
       groupKey: 'update',
     );
   }
@@ -274,21 +273,21 @@ class _UpdatePillState extends State<UpdatePill>
               child: Row(
                 children: [
                   SizedBox(
-                    // Окно глифа с запасом: в «дыхании» значку есть куда
-                    // подняться, и он не «прищемляется» о край таблетки.
+                    // Окно глифа с запасом: зайчику есть куда «набухнуть» на
+                    // входе, и он не «прищемляется» о край таблетки.
                     width: 18,
                     height: 18,
-                    // САМОЕ ВАЖНОЕ для плавности: глиф рисуется один раз в
-                    // постоянный слой (`RepaintBoundary`), а «дыхание» — это
-                    // `Transform` над готовым слоем. GPU просто переносит
-                    // закэшированную растровую картинку, БЕЗ повторной
-                    // растеризации глифа каждый кадр.
+                    // Глиф рисуется ОДИН раз в постоянный слой
+                    // (`RepaintBoundary`), а вход — это `Transform` над готовым
+                    // слоем: GPU лишь переносит закэшированную растровую
+                    // картинку. Никакой вечной анимации — кадры не
+                    // растеризуют глиф заново.
                     child: AnimatedBuilder(
-                      animation: _spin,
-                      builder: (context, child) => Transform.translate(
-                        offset: Offset(0, _bobLift(_spin.value)),
-                        child: Transform.scale(
-                          scale: _bobScale(_spin.value),
+                      animation: _enterCurve,
+                      builder: (context, child) => Transform.scale(
+                        scale: 0.72 + 0.28 * _enterCurve.value,
+                        child: Opacity(
+                          opacity: _enterCurve.value.clamp(0.0, 1.0),
                           child: child,
                         ),
                       ),
@@ -296,7 +295,10 @@ class _UpdatePillState extends State<UpdatePill>
                         // Значок Agysha — свой зайчик вместо системной
                         // «стрелки обновления»: чужеродная иконка в мелком
                         // размере сливалась в пятно.
-                        child: AgyshaBunny(size: 18, color: cs.onPrimaryContainer),
+                        child: AgyshaBunny(
+                          size: 18,
+                          color: cs.onPrimaryContainer,
+                        ),
                       ),
                     ),
                   ),
@@ -326,34 +328,13 @@ class _UpdatePillState extends State<UpdatePill>
   }
 }
 
-/// Вертикальный подъём значка для доли цикла [t] (0…1).
-///
-/// «Дыхание» — ОДНА гладкая функция 0 → 1 → 0 на всём цикле: в начале и в
-/// конце цикла значение и его производная равны нулю, поэтому вечный цикл
-/// замкнут БЕЗ рывка на стыке. Ровно один «вдох» за цикл (косинус), а не
-/// два — движение читается спокойным покачиванием.
-double _bobLift(double t) {
-  // (1 − cos 2πt)/2: 0 в t=0, 1 в t=0.5, 0 в t=1. Производная = π·sin(2πt)
-  // тоже нулевая на обоих концах — стык цикла бесшовный. Знак минус — значок
-  // ВСПЛЫВАЕТ в середине цикла; амплитуда в пиксель с небольшим: глиф живёт
-  // внутри узкой таблетки и не должен задевать её край.
-  return -(1 - math.cos(t * 2 * math.pi)) / 2 * 1.5;
-}
-
-/// Лёгкое «дыхание» размера: тот же ход, что у подъёма, но чуть отстаёт по
-/// фазе — значок не «пружинит» одной частотой, а мягко набухает в верхней
-/// точке. Оба конца цикла замкнуты (cos), поэтому стык не щёлкает.
-double _bobScale(double t) {
-  return 1 + 0.055 * ((1 - math.cos(t * 2 * math.pi)) / 2);
-}
-
 /// Окно подтверждения обновления.
 ///
 /// Вместо системного [AlertDialog]: своя карточка со скруглением, кант в
 /// красном бренда (полупрозрачный, как у клавиатуры), текст подписи курсивом,
 /// а кнопки «отдать» при нажатии ([PressScale]) и «подтвердить» — залитая
 /// акцентом с плавной отдачей. Значок в медальоне — свой зайчик Agysha
-/// ([AgyshaBunny]), который «дышит» вечным циклом.
+/// ([AgyshaBunny]); он мягко проявляется ОДИН раз при открытии окна.
 class _UpdateConfirmDialog extends StatefulWidget {
   final String version;
   final VoidCallback onConfirm;
@@ -371,22 +352,26 @@ class _UpdateConfirmDialog extends StatefulWidget {
 
 class _UpdateConfirmDialogState extends State<_UpdateConfirmDialog>
     with SingleTickerProviderStateMixin {
-  /// Вечное «дыхание» зайчика в медальоне: тот же замкнутый косинус, что и у
-  /// значка таблетки, — цикл бесшовный на стыке.
-  late final AnimationController _bob = AnimationController(
+  /// Разовый вход зайчика: глиф «вырастает» и проявляется вместе с
+  /// появлением окна. Вечного «дыхания» нет — оно читалось дрожью.
+  late final AnimationController _enter = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2400),
+    duration: const Duration(milliseconds: 620),
+  );
+  late final Animation<double> _enterCurve = CurvedAnimation(
+    parent: _enter,
+    curve: Curves.easeOutBack,
   );
 
   @override
   void initState() {
     super.initState();
-    if (!MotionPrefs.shouldReduceMotion) _bob.repeat();
+    if (!MotionPrefs.shouldReduceMotion) _enter.forward();
   }
 
   @override
   void dispose() {
-    _bob.dispose();
+    _enter.dispose();
     super.dispose();
   }
 
@@ -477,11 +462,11 @@ class _UpdateConfirmDialogState extends State<_UpdateConfirmDialog>
                           ),
                           child: Center(
                             child: AnimatedBuilder(
-                              animation: _bob,
-                              builder: (context, child) => Transform.translate(
-                                offset: Offset(0, _bobLift(_bob.value)),
-                                child: Transform.scale(
-                                  scale: _bobScale(_bob.value),
+                              animation: _enterCurve,
+                              builder: (context, child) => Transform.scale(
+                                scale: _enterCurve.value,
+                                child: Opacity(
+                                  opacity: _enterCurve.value.clamp(0.0, 1.0),
                                   child: child,
                                 ),
                               ),

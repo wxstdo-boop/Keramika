@@ -386,6 +386,18 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       transitionBuilder: (ctx, _, _, child) => child,
     );
+    // После закрытия ивента клавиатура возвращаться НЕ должна: возврат
+    // фокуса роутом поднимал IME прямо на поле имени («автовызов клавиатуры
+    // после ивента»). Гасим фокус и на следующем кадре — фреймворк успевает
+    // восстановить его уже после `pop`.
+    if (!mounted) return;
+    _nameFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _nameFocus.unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
   }
 
   Future<void> _openEvent(String url) async {

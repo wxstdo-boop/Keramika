@@ -26,7 +26,7 @@ class NewYearEventBanner extends StatefulWidget {
 
 class _NewYearEventBannerState extends State<NewYearEventBanner>
     with TickerProviderStateMixin {
-  static const _kIn = Duration(milliseconds: 520);
+  static const _kIn = Duration(milliseconds: 560);
   static const _kOut = Duration(milliseconds: 380);
   static const _kTotalHats = NewYearEventService.totalDays;
 
@@ -50,6 +50,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
   late final Animation<double> _scrimIn;
   late final Animation<double> _fadeIn;
   late final Animation<double> _popIn;
+  late final Animation<double> _contentIn;
 
   // ── Уход (тот же смысл, но прогресс растёт: 1 → 0) ───────────────────────
   late final Animation<double> _scrimOut;
@@ -97,6 +98,14 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
         parent: _open,
         curve: const Interval(0.0, 0.85, curve: Curves.easeOutBack),
       ),
+    );
+    // Содержимое карточки «догоняет» её появление: заголовок, полоса и
+    // кнопки всплывают на считаные пиксели позже самой плашки. Один общий
+    // прогресс — ни одного лишнего контроллера, а вход читается собранным,
+    // а не «вспышкой целиком».
+    _contentIn = CurvedAnimation(
+      parent: _open,
+      curve: const Interval(0.22, 1.0, curve: Curves.easeOutCubic),
     );
 
     // Фон гаснет за первые 55% ухода (быстрее карточки, но с плавными
@@ -496,12 +505,14 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
 
   /// Пока грузим — компактный скелетон в цветах темы (не белое пятно).
   Widget _skeleton(ColorScheme cs) {
+    // Та же ширина и радиус, что у карточки: скелетон не «прыгает» в
+    // габарит, когда данные доехали.
     return Container(
-      width: 300,
-      padding: const EdgeInsets.all(24),
+      width: 320,
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(26),
       ),
       child: Center(
         child: CircularProgressIndicator(color: cs.primary, strokeWidth: 2.5),
@@ -512,200 +523,333 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
   Widget _card(BuildContext context, ColorScheme cs, bool isDark) {
     final day = _previewDay ?? NewYearEventService().currentDay;
     final isFinalDay = day == _kTotalHats;
-    // В просмотре кнопка всегда «Забрать»: чужой день никто не забирает.
     final marked = _previewDay == null && _marked;
-    final glass = isDark
-        ? cs.surfaceContainerHigh.withValues(alpha: 0.6)
-        : cs.surface.withValues(alpha: 0.78);
     final textMain = cs.onSurface;
     final textSub = isDark
-        ? cs.onSurface.withValues(alpha: 0.65)
+        ? cs.onSurface.withValues(alpha: 0.66)
         : cs.onSurfaceVariant;
 
-    /// Подпись дня. Число шапок едет ВОЛНОЙ, а не перескакивает в цель: иначе
-    /// переезд на 1-й/12-й день выглядел щелчком, хотя полоса уже анимировалась.
-    /// Строка перелистывается только по смене дня, а само число внутри неё
-    /// крутится непрерывно — см. [_HatSubtitle].
+    // Подложка карточки — мягкий вертикальный градиент с фирменным отливом
+    // сверху: окно читается «снежным стеклом», а не плоской плашкой. Градиент
+    // статичен, поэтому ни одного лишнего слоя в кадрах анимации входа.
+    final glass = isDark
+        ? LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.alphaBlend(
+                cs.primary.withValues(alpha: 0.12),
+                cs.surfaceContainerHigh,
+              ),
+              cs.surfaceContainerLow,
+            ],
+          )
+        : LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.alphaBlend(cs.primary.withValues(alpha: 0.06), cs.surface),
+              cs.surfaceContainerLow,
+            ],
+          );
 
     return Material(
       color: Colors.transparent,
       child: Container(
-        width: 300,
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        width: 320,
         decoration: BoxDecoration(
-          color: glass,
-          borderRadius: BorderRadius.circular(22),
+          gradient: glass,
+          borderRadius: BorderRadius.circular(26),
           border: Border.all(
-            color: isDark
-                ? cs.outlineVariant.withValues(alpha: 0.45)
-                : cs.outlineVariant.withValues(alpha: 0.7),
+            color: cs.primary.withValues(alpha: isDark ? 0.32 : 0.20),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.14),
-              blurRadius: 26,
-              spreadRadius: -4,
-              offset: const Offset(0, 10),
+              color: Colors.black.withValues(alpha: isDark ? 0.52 : 0.16),
+              blurRadius: 30,
+              spreadRadius: -6,
+              offset: const Offset(0, 14),
             ),
+            // Верхний блик: карточка «приподнята», а не вклеена в фон.
             BoxShadow(
-              color: Colors.white.withValues(alpha: isDark ? 0.04 : 0.5),
+              color: Colors.white.withValues(alpha: isDark ? 0.05 : 0.6),
               blurRadius: 8,
               spreadRadius: -2,
               offset: const Offset(0, -2),
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _EventIcon(isFinalDay: isFinalDay, glow: cs.primary),
-                const SizedBox(width: 12),
-                Expanded(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(25),
+          child: Stack(
+            children: [
+              // Свечение из верхнего левого угла — «полярное сияние» за
+              // медальоном. Один статичный слой, без пересборки за кадр.
+              Positioned(
+                top: -46,
+                left: -36,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 168,
+                    height: 168,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          cs.primary.withValues(alpha: isDark ? 0.24 : 0.14),
+                          cs.primary.withValues(alpha: 0.0),
+                        ],
+                        stops: const [0.1, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedBuilder(
+                animation: _contentIn,
+                builder: (context, child) => Opacity(
+                  opacity: _contentIn.value.clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, 10 * (1 - _contentIn.value)),
+                    child: child,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        Translations.t('nyEventTitle', context),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: textMain,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      // Подпись 12-го дня: эмодзи-салют 🎆 отсюда убран —
-                      // во-первых, цветной эмодзи рисуется битмапом из
-                      // NotoColorEmoji и не красится в цвет темы, во-вторых,
-                      // на MIUI он местами рендерится тофу. Теперь это
-                      // векторная «хлопушка» Material-шрифта в `cs.primary`.
-                      //
-                      // Слот под значок постоянен (14px всегда, не только в
-                      // 12-й день): иначе при переезде на финальный день
-                      // вся подпись прыгала бы вправо на ширину значка.
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          SizedBox(
-                            width: 14,
-                            child: AnimatedOpacity(
-                              opacity: isFinalDay ? 1 : 0,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOutCubic,
-                              child: AnimatedScale(
-                                scale: isFinalDay ? 1 : 0.5,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOutBack,
-                                child: Icon(
-                                  Icons.celebration_rounded,
-                                  size: 13,
-                                  color: cs.primary,
+                          _EventIcon(isFinalDay: isFinalDay, glow: cs.primary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        Translations.t('nyEventTitle', context),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 15.5,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.1,
+                                          color: textMain,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // День ивента — компактный бейдж справа.
+                                    // Число в нём языконезависимо (день/всего),
+                                    // поэтому новых строк перевода не заводим.
+                                    _DayBadge(
+                                      day: day,
+                                      total: _kTotalHats,
+                                      accent: cs.primary,
+                                      isDark: isDark,
+                                    ),
+                                  ],
                                 ),
-                              ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 14,
+                                      child: AnimatedOpacity(
+                                        opacity: isFinalDay ? 1 : 0,
+                                        duration: const Duration(
+                                          milliseconds: 300,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        child: AnimatedScale(
+                                          scale: isFinalDay ? 1 : 0.5,
+                                          duration: const Duration(
+                                            milliseconds: 300,
+                                          ),
+                                          curve: Curves.easeOutBack,
+                                          child: Icon(
+                                            Icons.celebration_rounded,
+                                            size: 13,
+                                            color: cs.primary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: AnimatedBuilder(
+                                        animation: _hatsCtrl,
+                                        builder: (context, _) => _HatSubtitle(
+                                          template: Translations.t(
+                                            'nyEventBody',
+                                            context,
+                                          ),
+                                          finalText: Translations.t(
+                                            'nyEventFinalDay',
+                                            context,
+                                          ),
+                                          day: day,
+                                          shown: _hatsShown,
+                                          isFinalDay: isFinalDay,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: textSub,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                          Expanded(
-                            // Одна строка ВСЕГДА. Подпись живёт в колонке
-                            // шириной ~200px (карточка 300 минус поля, иконка
-                            // и слот значка), а «С Новым годом! Все 12 шапок
-                            // собраны!» в эту ширину не влезало и роняло
-                            // слово на вторую строку. `maxLines: 1` внутри
-                            // `_SwapBox` сам оборачивает строку в
-                            // FittedBox(scaleDown): текст чуть уменьшается
-                            // (12 → ~11px), но остаётся целым на одной
-                            // строке — и для любого языка, и при любом
-                            // системном масштабе шрифта.
-                            // Карточка-целиком пересобирается только по
-                            // `_open`/`_out`; волна счётчика шапок трогает
-                            // ровно этот узел и полосу ниже.
-                            child: AnimatedBuilder(
-                              animation: _hatsCtrl,
-                              builder: (context, _) => _HatSubtitle(
-                                template: Translations.t(
-                                  'nyEventBody',
-                                  context,
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      AnimatedBuilder(
+                        animation: _hatsCtrl,
+                        builder: (context, _) => _HatProgress(
+                          shown: _hatsShown,
+                          total: _kTotalHats,
+                          accent: cs.primary,
+                          isDark: isDark,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Подарок — отдельная «капсула» с иконкой, а не голая
+                      // строка: читается как награда, а не мелкий приписной
+                      // текст.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withValues(
+                            alpha: isDark ? 0.14 : 0.08,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: cs.primary.withValues(alpha: 0.20),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _prize
+                                  ? Icons.check_circle_rounded
+                                  : Icons.card_giftcard_rounded,
+                              size: 14,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                _prize
+                                    ? Translations.t(
+                                        'nyPrizeDone',
+                                        context,
+                                        'Подарок открыт: тема «Метель», скин '
+                                            'скважины, 60 дней истории питания '
+                                            'и 30 категорий',
+                                      )
+                                    : Translations.t('nyGiftHint', context),
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: textSub.withValues(alpha: 0.95),
+                                  height: 1.3,
                                 ),
-                                finalText: Translations.t(
-                                  'nyEventFinalDay',
-                                  context,
-                                ),
-                                day: day,
-                                shown: _hatsShown,
-                                isFinalDay: isFinalDay,
-                                style: TextStyle(fontSize: 12, color: textSub),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _NyMarkButton(
+                              marked: marked,
+                              onTap: () async {
+                                await _onMark();
+                              },
+                              onTripleTap: _onPreview,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _ClosePill(
+                            isDark: isDark,
+                            onTap: _close,
+                            onLongPress: _onReset,
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            AnimatedBuilder(
-              animation: _hatsCtrl,
-              builder: (context, _) => _HatProgress(
-                shown: _hatsShown,
-                total: _kTotalHats,
-                accent: cs.primary,
               ),
-            ),
-            const SizedBox(height: 7),
-            Row(
-              children: [
-                Icon(
-                  Icons.card_giftcard_rounded,
-                  size: 12,
-                  color: cs.primary.withValues(alpha: 0.9),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    _prize
-                        ? Translations.t(
-                            'nyPrizeDone',
-                            context,
-                            'Подарок открыт: тема «Метель», скин скважины, '
-                                '60 дней истории питания и 30 категорий',
-                          )
-                        : Translations.t('nyGiftHint', context),
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: textSub.withValues(alpha: 0.9),
-                      height: 1.25,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _NyMarkButton(
-                    marked: marked,
-                    onTap: () async {
-                      await _onMark();
-                    },
-                    onTripleTap: _onPreview,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _ClosePill(
-                  isDark: isDark,
-                  onTap: _close,
-                  onLongPress: _onReset,
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// Бейдж дня ивента: «3 / 12». Числа языконезависимы, поэтому новых строк
+/// перевода не требуется, а акцентная капсула держит взгляд на прогрессе.
+class _DayBadge extends StatelessWidget {
+  final int day;
+  final int total;
+  final Color accent;
+  final bool isDark;
+
+  const _DayBadge({
+    required this.day,
+    required this.total,
+    required this.accent,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isDark ? 0.20 : 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: accent.withValues(alpha: 0.32)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$day',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: accent,
+              height: 1.1,
+            ),
+          ),
+          Text(
+            ' / $total',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: accent.withValues(alpha: 0.7),
+              height: 1.1,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -723,34 +867,40 @@ class _EventIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = cs.brightness == Brightness.dark;
     return SizedBox(
-      width: 44,
-      height: 44,
+      width: 46,
+      height: 46,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
+          // Медальон: мягкая заливка + кант акцента. Шапка читается
+          // «наградой» в оправе, а не значком, приклеенным к фону.
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    glow.withValues(alpha: 0.26),
-                    glow.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.25, 0.95],
-                ),
+                color: glow.withValues(alpha: dark ? 0.16 : 0.10),
+                border: Border.all(color: glow.withValues(alpha: 0.30)),
+                boxShadow: [
+                  BoxShadow(
+                    color: glow.withValues(alpha: dark ? 0.22 : 0.14),
+                    blurRadius: 12,
+                    spreadRadius: -3,
+                  ),
+                ],
               ),
             ),
           ),
           CustomPaint(
-            size: const Size(38, 38),
+            size: const Size(34, 34),
             painter: _HatPainter(base: _kHatRed, trim: _kHatFur),
           ),
           Positioned(
-            top: 1,
-            right: 2,
+            top: 0,
+            right: 0,
             // Искра «прилетает» плавно: на переезде в 12-й день по тройному
             // тапу она появлялась одним кадром поверх остального плавного
             // перехода.
@@ -763,9 +913,9 @@ class _EventIcon extends StatelessWidget {
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeOutBack,
                 // Финальный день — та же хлопнушка, что и в подписи: два
-                // «искры-маркёра» разного смысла в одном окне выглядели случайным
-                // набором значков.
-                child: Icon(Icons.celebration_rounded, size: 14, color: glow),
+                // «искры-маркёра» разного смысла в одном окне выглядели
+                // случайным набором значков.
+                child: Icon(Icons.celebration_rounded, size: 15, color: glow),
               ),
             ),
           ),
@@ -977,16 +1127,18 @@ class _HatProgress extends StatelessWidget {
   final double shown;
   final int total;
   final Color accent;
+  final bool isDark;
   const _HatProgress({
     required this.shown,
     required this.total,
     required this.accent,
+    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final empty = cs.outlineVariant.withValues(alpha: 0.55);
+    final empty = cs.outlineVariant.withValues(alpha: isDark ? 0.42 : 0.55);
 
     Widget slot(int i, double px) {
       final isGift = i == total - 1;
@@ -1059,17 +1211,34 @@ class _HatProgress extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Полоса прогресса — своя: у штатной `LinearProgressIndicator` край
+        // «щёлкает» на смене значения. Здесь значение уже дробное (волна), а
+        // закруглённый трек и заливка совпадают по радиусу — край читается
+        // цельным.
         ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(
-            value: total == 0 ? 0 : (shown / total).clamp(0.0, 1.0),
-            minHeight: 7,
-            backgroundColor: cs.outlineVariant.withValues(alpha: 0.4),
-            color: accent,
-            borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 8,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: cs.outlineVariant.withValues(alpha: 0.35)),
+                FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: total == 0 ? 0 : (shown / total).clamp(0.0, 1.0),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [accent, Color.lerp(accent, cs.tertiary, 0.4)!],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 9),
         Row(
           children: [
             for (var i = 0; i < total - 1; i++)
@@ -1405,10 +1574,8 @@ class _SwapBox extends StatelessWidget {
         // строку с самого начала, и ход становится непрерывным.
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeOutQuad,
-        layoutBuilder: (current, previous) => Stack(
-          alignment: align,
-          children: <Widget>[...previous, ?current],
-        ),
+        layoutBuilder: (current, previous) =>
+            Stack(alignment: align, children: <Widget>[...previous, ?current]),
         transitionBuilder: (child, anim) {
           // Уходящая строка доезжает до нуля ВВЕРХ, откуда пришла новая.
           // С одним Tween на оба направления у старого слоя прогресс идёт

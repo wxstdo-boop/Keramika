@@ -47,30 +47,25 @@ void main() {
     expect(src.contains('class _UpdateGlyphPainter'), isFalse);
   });
 
-  test('значок «дышит» вечным замкнутым циклом с плавными концами', () {
+  test('значок обновления входит один раз, без вечного цикла', () {
     final src = read('lib/widgets/update_pill.dart');
-    // Косинус: значение И производная нулевые на обоих концах цикла — стык
-    // без рывка. Один «вдох» за цикл, а не два.
+    // Вечное «дыхание» убрано по жалобе «зайчик лаганый»: глиф теперь
+    // статичен, а появление несёт ОДИН разовый вход с мягкой остановкой.
     expect(
       RegExp(r'1 - math\.cos\(t \* 2 \* math\.pi\)').hasMatch(src),
-      isTrue,
-      reason: 'плавные начало и конец вечного цикла',
-    );
-    expect(
-      src.contains('_bobScale('),
-      isTrue,
-      reason: 'значок мягко набухает, а не только смещается',
-    );
-    // Вечный цикл запускается в `initState`, а не только на время загрузки.
-    expect(
-      RegExp(r'initState\(\)[\s\S]{0,220}?_spin\.repeat\(\)').hasMatch(src),
-      isTrue,
-      reason: 'значок живёт всегда, а не лишь пока идёт проверка',
-    );
-    expect(
-      src.contains('_spin.stop()'),
       isFalse,
-      reason: 'вечный цикл не должен останавливаться по завершении тапа',
+      reason: 'вечного косинусного цикла больше нет',
+    );
+    expect(
+      RegExp(r'initState\(\)[\s\S]{0,220}?_enter\.forward\(\)')
+          .hasMatch(src),
+      isTrue,
+      reason: 'вход запускается один раз в initState',
+    );
+    expect(
+      src.contains('_enterCurve'),
+      isTrue,
+      reason: 'вход идёт по сглаженной кривой, а не линейно',
     );
   });
 
@@ -124,11 +119,18 @@ void main() {
       isTrue,
       reason: 'мягкость даёт широкая полупрозрачная обводка, а не блюр',
     );
-    // Один шейдер на кадр вместо трёх: иначе пульс лагает на слабом GPU.
+    // Два шейдера на кадр вместо трёх: «вращение» тона (sweep) и радиальное
+    // затухание свечения. Оба строятся один раз и переиспользуются на обоих
+    // проходах — прежние три `createShader` и три обхода давали лаг.
     expect(
       RegExp(r'\.createShader\(').allMatches(src).length,
-      1,
-      reason: 'градиент строится один раз за кадр',
+      2,
+      reason: 'шейдеры строятся один раз за кадр, а не на каждый круг',
+    );
+    expect(
+      RegExp(r'canvas\.drawCircle\(').allMatches(src).length,
+      2,
+      reason: 'свечение и линия — два обхода, а не три',
     );
   });
 
@@ -278,21 +280,26 @@ void main() {
       reason: 'силуэт рисуется путями, а не чужим шрифтом иконок',
     );
     expect(
-      RegExp(r'quadraticBezierTo').hasMatch(src),
+      RegExp(r'cubicTo').hasMatch(src),
       isTrue,
-      reason: 'уши — мягкие «лепестки», а не палочки',
+      reason: 'уши и щёки — мягкие кривые, а не палочки',
     );
   });
 
-  test('значок окна обновления тоже дышит вечным циклом', () {
+  test('значок окна обновления проявляется разово вместе с окном', () {
     final src = read('lib/widgets/update_pill.dart');
     final dlg = src.indexOf('class _UpdateConfirmDialogState');
     expect(dlg, greaterThan(0));
-    final body = src.substring(dlg, dlg + 5200);
+    final body = src.substring(dlg, dlg + 6400);
     expect(
       body.contains('_bob.repeat()'),
+      isFalse,
+      reason: 'вечного «дыхания» в окне больше нет',
+    );
+    expect(
+      RegExp(r'_enter\.forward\(\)').hasMatch(body),
       isTrue,
-      reason: 'значок в окне живёт, а не стоит картинкой',
+      reason: 'вход идёт один раз при открытии окна',
     );
     expect(body.contains('AgyshaBunny'), isTrue);
   });
