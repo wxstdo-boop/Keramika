@@ -19,9 +19,9 @@ RepoType: git
 Repo: https://github.com/wxstdo-boop/agysha.git
 
 Builds:
-  - versionName: 1.6.132
-    versionCode: 45204
-    commit: 34879cbc7b44885939cb0ac9881f8fc2bdb4fd4e
+  - versionName: 1.6.169
+    versionCode: 45241
+    commit: 125fc99cf9a6f59b805d83eb4c70681c622f6966
     timeout: 10800
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
@@ -34,7 +34,8 @@ Builds:
       - windows
     prebuild:
       - sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
-      - sed -i -e '/REQUEST_INSTALL_PACKAGES/d' -e '/ENFORCE_UPDATE_OWNERSHIP/d' -e '/UPDATE_PACKAGES_WITHOUT_USER_ACTION/d' android/app/src/main/AndroidManifest.xml
+      - sed -i -e '/REQUEST_INSTALL_PACKAGES/d' -e '/ENFORCE_UPDATE_OWNERSHIP/d' -e
+        '/UPDATE_PACKAGES_WITHOUT_USER_ACTION/d' android/app/src/main/AndroidManifest.xml
       - sed -i -e 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g
         -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|'
         android/gradle.properties
@@ -54,5 +55,5 @@ Builds:
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+\+[0-9]+$
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.6.132
-CurrentVersionCode: 45204
+CurrentVersion: 1.6.169
+CurrentVersionCode: 45241
