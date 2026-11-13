@@ -1654,8 +1654,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ],
               ),
               const SizedBox(height: 16),
-              // Три «плашки» карточки «О приложении» (Заметки о патче,
-              // GitHub, GitFlic) отдают нажатие ТАК ЖЕ плавно, как значки
+              // Плашки карточки «О приложении» (Заметки о патче, GitHub,
+              // GitFlic, GitLab) отдают нажатие ТАК ЖЕ плавно, как значки
               // шапки: мягкое вдавливание при зажатии и плавный возврат,
               // а не мгновенный InkWell-ripple.
               PressScale(
@@ -1809,6 +1809,39 @@ class _SettingsScreenState extends State<SettingsScreen>
                         Expanded(
                           child: Text(
                             'GitFlic',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              PressScale(
+                pressedScale: 0.96,
+                duration: const Duration(milliseconds: 220),
+                releaseDuration: const Duration(milliseconds: 320),
+                child: InkWell(
+                  onTap: _openGitLab,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.merge,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'GitLab',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.primary,
                               fontWeight: FontWeight.w600,
@@ -3748,6 +3781,10 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _openGitHub() async {
     await _openLink('https://github.com/wxstdo-boop/agysha');
+  }
+
+  Future<void> _openGitLab() async {
+    await _openLink('https://gitlab.com/wxstdo/keramika');
   }
 
   Future<void> _clearCache() async {

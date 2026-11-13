@@ -56,7 +56,7 @@ void main() {
     expect(OnlineDot.tapTarget, greaterThan(OnlineDot.dotSize));
   });
 
-  testWidgets('в «О приложении» три плашки отдают нажатие (PressScale)', (
+  testWidgets('в «О приложении» четыре плашки отдают нажатие (PressScale)', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(411, 891) * 3;
@@ -74,16 +74,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 500));
 
-    // Доскроллить до блока «О приложении» и убедиться, что три ссылки
+    // Доскроллить до блока «О приложении» и убедиться, что ссылки
     // обёрнуты в PressScale (плавная отдача), а не голым InkWell.
     await tester.dragUntilVisible(
-      find.text('GitFlic'),
+      find.text('GitLab'),
       find.byType(Scrollable).last,
       const Offset(0, -200),
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    for (final label in ['GitFlic', 'GitHub']) {
+    for (final label in ['GitFlic', 'GitHub', 'GitLab']) {
       final pressScales = find.ancestor(
         of: find.text(label),
         matching: find.byType(PressScale),
