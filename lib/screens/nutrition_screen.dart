@@ -36,6 +36,13 @@ class _NutritionScreenState extends State<NutritionScreen>
   final _mealCtrl = WideDashController();
   final _waterCtrl = WideDashController();
   final Map<String, DateTime> _addedAt = {};
+
+  /// Приём пищи, добавленный в ПУСТУЮ историю. Такую карточку НЕ растим из
+  /// нуля: пустая подпись выше, чем «заголовок дня + карточка нулевой
+  /// высоты», поэтому блок сначала проседал, а потом рос — это и читалось
+  /// рывком при добавлении первой еды. Переход «пусто → история» целиком ведёт
+  /// `AnimatedSwitcher` + `AnimatedSize`: высота растёт монотонно.
+  String? _grownFromEmptyId;
   bool _loaded = false; // Первая загрузка завершена — кнопка не «мигает»
 
   /// Приёмы пищи, чьё удаление подтверждено и уже «отыгрывается» локально:
@@ -187,6 +194,7 @@ class _NutritionScreenState extends State<NutritionScreen>
       water: water,
       date: DateTime.now(),
     );
+    if (_service.meals.isEmpty) _grownFromEmptyId = meal.id;
     _addedAt[meal.id] = DateTime.now();
     // Автоматически убираем метку анимации через секунду.
     Future.delayed(const Duration(milliseconds: 700), () {
@@ -358,9 +366,6 @@ class _NutritionScreenState extends State<NutritionScreen>
             // блока истории. Так добавление приёма пищи, удаление и уход
             // заголовка «Сегодня» (вместе с последней записью дня) идут
             // одной плавной волной, а не двумя спорящими анимациями.
-            // блока истории. Так добавление приёма пищи, удаление и уход
-            // заголовка «Сегодня» (вместе с последней записью дня) идут
-            // одной плавной волной, а не двумя спорящими анимациями.
             _reveal(
               7,
               AnimatedSize(
@@ -407,12 +412,15 @@ class _NutritionScreenState extends State<NutritionScreen>
                     alignment: Alignment.topCenter,
                     children: <Widget>[...previous, ?current],
                   ),
+                  // Ключ «пусто/история» стоит на САМОМ содержимом
+                  // ([_buildHistory] возвращает keyed-поддерево). Пока ключ был
+                  // один и тот же на оба состояния, `AnimatedSwitcher` видел
+                  // «того же ребёнка» и не перелистывал вовсе: подпись «Пока
+                  // нет приёмов пищи» и строки менялись одним кадром — это и
+                  // читалось как неплавный переход «сегодня ↔ пусто».
                   child: !_loaded
                       ? const SizedBox(key: ValueKey('meals_loading'))
-                      : KeyedSubtree(
-                          key: const ValueKey('meals_history'),
-                          child: _buildHistory(context, theme, meals),
-                        ),
+                      : _buildHistory(context, theme, meals),
                 ),
               ),
             ),
@@ -874,10 +882,7 @@ class _NutritionScreenState extends State<NutritionScreen>
     final cs = theme.colorScheme;
     final active = _padOpen && _pad == field;
     return SmoothTyping(
-            // AnimatedSize — ЕДИНСТВЕННЫЙ механизм, который меняет высоту
-            // блока истории. Так добавление приёма пищи, удаление и уход
-            // заголовка «Сегодня» (вместе с последней записью дня) идут
-            // одной плавной волной, а не двумя спорящими анимациями.
+      // Плавность цифр ВЕРНУЛИ: отключили только «призраков» (гаснущие копии
       // удалённых цифр). Заедание было именно на них — при зажатом бэкспейсе
       // значения летят ~20 раз в секунду, и на каждый кадр троился десяток
       // новых TextPainter-ов. Появление цифр по-прежнему плавное, а удаление
@@ -1049,7 +1054,10 @@ class _NutritionScreenState extends State<NutritionScreen>
     final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
     if (sortedKeys.isEmpty || meals.isEmpty) {
-      return const _EmptyMeals();
+      return const KeyedSubtree(
+        key: ValueKey('meals_empty'),
+        child: _EmptyMeals(),
+      );
     }
 
     final accentColors = <Color>[
@@ -1108,9 +1116,12 @@ class _NutritionScreenState extends State<NutritionScreen>
       );
       dayWidgets.add(const SizedBox(height: 16));
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: dayWidgets,
+    return KeyedSubtree(
+      key: const ValueKey('meals_history'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: dayWidgets,
+      ),
     );
   }
 
@@ -1330,7 +1341,7 @@ class _NutritionScreenState extends State<NutritionScreen>
         // соседи подаются вниз НЕПРЕРЫВНО (высота карточки растёт
         // сама), а не прыжком при вставке готовой карточки.
         child: _GrowIntoPlace(
-          active: isJustAdded,
+          active: isJustAdded && meal.id != _grownFromEmptyId,
           child: TweenAnimationBuilder<double>(
             // Въезд (opacity + мягкий сдвиг) — только у новой записи.
             duration: isJustAdded

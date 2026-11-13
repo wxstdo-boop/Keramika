@@ -949,20 +949,33 @@ class _ProfileScreenState extends State<ProfileScreen>
     return _Card(
       title: Translations.t('profileLeaderboard', context, 'Рейтинг'),
       icon: Icons.emoji_events_outlined,
+      // Кнопка «добавить друга» — в тонкой полупрозрачной красной оправе:
+      // капсула того же тона, что и кольцо музыки, поэтому акцент карточки
+      // читается «своим», а не системным серым кружком. Оправа — `Container`
+      // ПОД `IconButton`, чтобы круг не съедал область нажатия: сама кнопка
+      // остаётся того же размера.
       trailing: PressScale(
         pressedScale: 0.86,
-        child: IconButton(
-          // На пределе (50 друзей) кнопка гаснет: понятно, что дальше
-          // добавлять некуда, и не приходится жать «в пустоту».
-          onPressed: _service.canAddFriend ? _addFriend : null,
-          icon: const Icon(Icons.person_add_alt_1_outlined),
-          tooltip: _service.canAddFriend
-              ? Translations.t('profileAddFriend', context, 'Добавить друга')
-              : Translations.t(
-                  'profileFriendsFull',
-                  context,
-                  'В рейтинге уже 50 друзей',
-                ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: BrandColors.red.withValues(alpha: 0.38),
+            ),
+          ),
+          child: IconButton(
+            // На пределе (50 друзей) кнопка гаснет: понятно, что дальше
+            // добавлять некуда, и не приходится жать «в пустоту».
+            onPressed: _service.canAddFriend ? _addFriend : null,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            tooltip: _service.canAddFriend
+                ? Translations.t('profileAddFriend', context, 'Добавить друга')
+                : Translations.t(
+                    'profileFriendsFull',
+                    context,
+                    'В рейтинге уже 50 друзей',
+                  ),
+          ),
         ),
       ),
       // Строки рейтинга ПЕРЕЕЗЖАЮТ плавно: каждая строка лежит в общем

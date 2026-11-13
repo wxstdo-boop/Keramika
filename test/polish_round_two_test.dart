@@ -113,27 +113,24 @@ void main() {
       ),
     );
 
+    // Кольцо живёт ОДНИМ слоем `CustomPaint`: прозрачность считает painter,
+    // поэтому «погашено» видно по исчезновению самого слоя кольца, а не по
+    // чужому `AnimatedOpacity` над ним.
+    Finder ringPaint() => find.descendant(
+      of: find.byType(MusicPulseRing),
+      matching: find.byType(CustomPaint),
+    );
+
     await tester.pumpWidget(wrap(true));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(
-      tester
-          .widget<AnimatedOpacity>(
-            find.byType(AnimatedOpacity),
-          )
-          .opacity,
-      1.0,
-    );
+    expect(ringPaint(), findsWidgets, reason: 'играет — кольцо нарисовано');
 
     await tester.pumpWidget(wrap(false));
     await tester.pump(const Duration(milliseconds: 500));
     expect(
-      tester
-          .widget<AnimatedOpacity>(
-            find.byType(AnimatedOpacity),
-          )
-          .opacity,
-      0.0,
-      reason: 'на паузе кольцо должно быть полностью погашено',
+      ringPaint(),
+      findsNothing,
+      reason: 'на паузе кольцо полностью погашено и слой снят',
     );
   });
 

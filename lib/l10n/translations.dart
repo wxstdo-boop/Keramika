@@ -953,7 +953,7 @@ class Translations {
           '👑 Speak precisely: what you need, by when, and what the next step is.',
       // New Year 2027 event: one santa hat gifted every day
       'nyEventTitle': 'A hat every day',
-      'nyEventBody': 'Day {0} of 12 · Hats collected: {1}',
+      'nyEventBody': 'Hats collected: {1}',
       'nyEventFinalDay': 'Happy New Year! All 12 hats collected!',
       'nyMarkBtn': 'Claim',
       'nyMarkedBtn': 'Received',
@@ -1912,7 +1912,7 @@ class Translations {
           '👑 Говорить точнее: что тебе нужно, к какому сроку и какой следующий шаг.',
       // Новый год 2027 — каждый день дарят одну шапку, они накапливаются
       'nyEventTitle': 'Каждый день дарят шапку',
-      'nyEventBody': 'День {0} из 12 · Шапок собрано: {1}',
+      'nyEventBody': 'Шапок собрано: {1}',
       'nyEventFinalDay': 'С Новым годом! Все 12 шапок собраны!',
       'nyMarkBtn': 'Забрать',
       'nyMarkedBtn': 'Получено',
@@ -2885,7 +2885,7 @@ class Translations {
           '👑 Parlez plus précisément : ce dont vous avez besoin, pour quand, et quelle est la prochaine étape.',
       // Nouvel An 2027 — un chapeau offert chaque jour
       'nyEventTitle': 'Un chapeau chaque jour',
-      'nyEventBody': 'Jour {0} sur 12 · Chapeaux collectés : {1}',
+      'nyEventBody': 'Chapeaux collectés : {1}',
       'nyEventFinalDay': 'Bonne année ! Les 12 chapeaux sont collectés !',
       'nyMarkBtn': 'Récupérer',
       'nyMarkedBtn': 'Reçu',

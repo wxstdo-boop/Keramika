@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import 'package:flutter/material.dart';
@@ -39,9 +39,22 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
   /// уведомления успела прислать физика.
   final _scrollCtrl = ScrollController();
 
+  /// 30 дней графика. Считаем ТОЛЬКО когда данные реально изменились
+  /// ([_onData]), а не на каждой пересборке экрана: `lastDays` обходит все
+  /// привычки за каждый день окна и каждый раз возвращал НОВЫЙ список, из-за
+  /// чего `_DaysBarPainter.shouldRepaint` (сравнение по ссылке) считал график
+  /// изменившимся и перерисовывал 30 столбиков даже когда менялась одна лишь
+  /// надпись. Список-кэш + сравнение по содержимому убирают эту перерисовку.
+  List<DayCompletion> _monthDays = const <DayCompletion>[];
+
+  void _recomputeMonth() {
+    _monthDays = _logSvc.lastDays(30);
+  }
+
   @override
   void initState() {
     super.initState();
+    _recomputeMonth();
     // Перерисовываем экран, когда данные догрузились: без этого график и
     // карточки могли показаться «пустыми» и «прогружались» только при
     // следующем действии — на медленном старте это читалось как «график не
@@ -57,7 +70,9 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
   }
 
   void _onData() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _recomputeMonth();
+    setState(() {});
   }
 
   @override
@@ -113,7 +128,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
     // 30 дней берём ВСЕГДА: lastDays сам дозаполняет дыры из streak
     // привычек, поэтому график виден даже при пустом логе (новая
     // установка) — раньше при пустом логе график вовсе не показывался.
-    final monthDays = _logSvc.lastDays(30);
+    final monthDays = _monthDays;
 
     // Физика — как на ОСТАЛЬНЫХ экранах (привычки, задачи, будильники):
     // упругий BouncingScrollPhysics. AlwaysScrollable поверх — чтобы
@@ -1052,7 +1067,10 @@ class _DaysBarPainter extends CustomPainter {
   bool shouldRepaint(covariant _DaysBarPainter old) =>
       old.grow != grow ||
       old.maxV != maxV ||
-      old.days != days ||
+      // Сравнение ПО СОДЕРЖИМОМУ: пока здесь стояло `old.days != days`,
+      // каждый новый список (даже с теми же числами) тянул полную
+      // перерисовку графика. Теперь меняются только реально изменившиеся дни.
+      !listEquals(old.days, days) ||
       old.habitColor != habitColor ||
       old.taskColor != taskColor;
 }

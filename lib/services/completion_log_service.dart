@@ -22,6 +22,16 @@ class DayCompletion {
 
   Map<String, dynamic> toJson() => {'d': date, 'h': habits, 't': tasks};
 
+  @override
+  bool operator ==(Object other) =>
+      other is DayCompletion &&
+      other.date == date &&
+      other.habits == habits &&
+      other.tasks == tasks;
+
+  @override
+  int get hashCode => Object.hash(date, habits, tasks);
+
   factory DayCompletion.fromJson(Map<String, dynamic> j) => DayCompletion(
     date: j['d'] as String,
     habits: (j['h'] as num?)?.toInt() ?? 0,

@@ -6,7 +6,9 @@ import '../l10n/translations.dart';
 import '../main.dart';
 import '../services/new_year_event_service.dart';
 import '../services/haptics.dart';
+import '../utils/design_tokens.dart';
 import '../utils/snackbar.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/rolling_counter.dart';
 
 /// Компактное окно ивента «Каждый день дарят шапку». Открывается по тапу на
@@ -337,28 +339,32 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     if (_closing) return;
     Haptics.heavy();
     final before = _hats;
-    final sure = await showDialog<bool>(
+    final sure = await showGeneralDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(Translations.t('nyResetTitle', ctx, 'Сбросить ивент?')),
-        content: Text(
-          Translations.t(
-            'nyResetBody',
-            ctx,
-            'Все собранные шапки и подарок исчезнут навсегда.',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(Translations.cancelOf(ctx)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(Translations.t('nyResetConfirm', ctx, 'Сбросить')),
-          ),
-        ],
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      // Затемняет фон сам маршрут, поэтому отдельного скрима внутри окна нет:
+      // окно не «вспыхивает» двойным затемнением на входе.
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      transitionDuration: const Duration(milliseconds: 340),
+      pageBuilder: (ctx, _, _) => _ResetEventDialog(
+        onConfirm: () => Navigator.of(ctx).pop(true),
+        onCancel: () => Navigator.of(ctx).pop(false),
       ),
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+            child: child,
+          ),
+        );
+      },
     );
     if (sure != true || !mounted) return;
     try {
@@ -631,37 +637,47 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        Translations.t('nyEventTitle', context),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 15.5,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.1,
-                                          color: textMain,
-                                        ),
+                                // Заголовок занимает ВСЮ ширину строки: раньше
+                                // рядом с ним стоял бейдж дня, и на узком
+                                // экране «главный» текст ужимался до мелочи
+                                // («не умещается»). Теперь заголовок не делит
+                                // строку ни с кем, а день ушёл вниз — к строке
+                                // со шапками, где раньше он и дублировался
+                                // («День 3 из 12» под бейджем «3 / 12»).
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: AlignmentDirectional.centerStart,
+                                    child: Text(
+                                      Translations.t('nyEventTitle', context),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      style: TextStyle(
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.1,
+                                        color: textMain,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    // День ивента — компактный бейдж справа.
-                                    // Число в нём языконезависимо (день/всего),
-                                    // поэтому новых строк перевода не заводим.
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    // День ивента — компактный бейдж «3 / 12»:
+                                    // ЕДИНСТВЕННОЕ место, где день назван (из
+                                    // подписи ниже его дубль убран). Число
+                                    // языконезависимо, поэтому новых строк
+                                    // перевода не заводим. Бейдж НЕ сжимается.
                                     _DayBadge(
                                       day: day,
                                       total: _kTotalHats,
                                       accent: cs.primary,
                                       isDark: isDark,
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
+                                    const SizedBox(width: 6),
                                     SizedBox(
                                       width: 14,
                                       child: AnimatedOpacity(
@@ -696,7 +712,6 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                                             'nyEventFinalDay',
                                             context,
                                           ),
-                                          day: day,
                                           shown: _hatsShown,
                                           isFinalDay: isFinalDay,
                                           style: TextStyle(
@@ -1352,7 +1367,7 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
       fontSize: 12,
       fontWeight: FontWeight.w700,
       letterSpacing: 0.1,
-      color: widget.marked ? cs.onSurface : cs.onPrimary,
+      color: widget.marked ? cs.onSurface : Colors.white,
     );
     final label = Translations.t(
       widget.marked ? 'nyMarkedBtn' : 'nyMarkBtn',
@@ -1361,13 +1376,18 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
     // Оба состояния — из цветов ТЕКУЩЕЙ темы. Раньше «Получено» красилось
     // плоским `secondary`, который в половине тем совпадал с фоном карточки,
     // и кнопка выглядела серой заглушкой.
+    // Акцент — БРЕНДОВЫЙ АЛЫЙ, а не `cs.primary`: на дефолтной палитре
+    // primary сиреневый, и кнопка «Забрать» в начале ивента читалась синей
+    // «заглушкой» посреди кровавой карточки. Тон темы лишь подмешивается,
+    // чтобы кнопка оставалась в характере светлой/тёмной темы.
+    final brand = Color.lerp(BrandColors.red, cs.primary, 0.18)!;
     final base = widget.marked
         ? Color.lerp(cs.surfaceContainerHigh, cs.primary, dark ? 0.20 : 0.16)!
-        : cs.primary;
+        : brand;
     final deep = widget.marked
         ? Color.lerp(cs.surfaceContainerHigh, cs.primary, dark ? 0.06 : 0.05)!
-        : cs.tertiary;
-    final fg = widget.marked ? cs.onSurface : cs.onPrimary;
+        : Color.lerp(BrandColors.red, const Color(0xFF5E0812), 0.55)!;
+    final fg = widget.marked ? cs.onSurface : Colors.white;
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => setState(() => _pressed = true),
@@ -1376,9 +1396,13 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
       child: GestureDetector(
         onTap: _handleTap,
         child: AnimatedScale(
-          scale: _pressed ? 0.95 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
+          // Зажатие — ровное и монотонное: одна и та же кривая на входе и на
+          // отпускании, без «отскока» и без ускорения к концу. Прежние 150 мс
+          // с `easeOutCubic` читались как щелчок: кнопка «прыгала» под палец
+          // и так же резко возвращалась.
+          scale: _pressed ? 0.955 : 1.0,
+          duration: const Duration(milliseconds: 210),
+          curve: Curves.easeInOut,
           child: AnimatedContainer(
             // Градиент, тень и цвет перетекают, а не переключаются кадром:
             // «Забрать» → «Получено» должно быть одним движением. Время —
@@ -1398,13 +1422,13 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: Colors.white.withValues(
-                  alpha: widget.marked ? (dark ? 0.16 : 0.55) : 0.32,
+                  alpha: widget.marked ? (dark ? 0.16 : 0.55) : 0.34,
                 ),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: cs.primary.withValues(
+                  color: (widget.marked ? cs.primary : brand).withValues(
                     alpha: widget.marked ? (dark ? 0.16 : 0.12) : 0.30,
                   ),
                   blurRadius: 14,
@@ -1662,9 +1686,8 @@ class _SwapText extends StatelessWidget {
 /// дня, а счётчик внутри неё крутится непрерывно за дробной частью значения
 /// ([RollingCounter]).
 class _HatSubtitle extends StatelessWidget {
-  /// Шаблон подписи с {0} — день и {1} — число шапок.
+  /// Шаблон подписи; `{1}` — число собранных шапок.
   final String template;
-  final int day;
 
   /// Показанное сейчас число шапок, дробное во время волны.
   final double shown;
@@ -1674,7 +1697,6 @@ class _HatSubtitle extends StatelessWidget {
 
   const _HatSubtitle({
     required this.template,
-    required this.day,
     required this.shown,
     required this.style,
     required this.isFinalDay,
@@ -1685,18 +1707,13 @@ class _HatSubtitle extends StatelessWidget {
   Widget build(BuildContext context) {
     const tag = '{1}';
     final at = template.indexOf(tag);
-    final head = (at < 0 ? template : template.substring(0, at)).replaceAll(
-      '{0}',
-      '$day',
-    );
-    final tail = at < 0
-        ? ''
-        : template.substring(at + tag.length).replaceAll('{0}', '$day');
+    final head = at < 0 ? template : template.substring(0, at);
+    final tail = at < 0 ? '' : template.substring(at + tag.length);
     return _SwapBox(
       // Одна и та же структура ветки в обоих режимах: если финальный день
       // возвращать другим виджетом, AnimatedSwitcher увидит смену типа и
       // перемонтирует строку одним кадром вместо перелистывания.
-      swapKey: isFinalDay ? 'final' : 'day$day',
+      swapKey: isFinalDay ? 'final' : 'day',
       align: AlignmentDirectional.centerStart,
       maxLines: 1,
       // mainAxisSize.min + внешняя scaleDown: строка живёт на своей
@@ -1712,6 +1729,198 @@ class _HatSubtitle extends StatelessWidget {
                 if (tail.isNotEmpty) Text(tail, style: style, maxLines: 1),
               ],
             ),
+    );
+  }
+}
+
+/// Окно подтверждения сброса ивента — своя «стеклянная» карточка вместо
+/// системного [AlertDialog].
+///
+/// Вид тот же, что у окна обновления: полупрозрачный алый кант бренда,
+/// подложка с красным отливом (сквозь неё просвечивает фон) и мягкие тени.
+/// Системный `AlertDialog` на дефолтной палитре выходил плоской серой
+/// плашкой и выбивался из «кровавой» семьи, а его кнопки не отдавали под
+/// пальцем.
+///
+/// Раскладка нарочно простая: одна колонка, одинаковые поля, кнопки в общей
+/// строке равной ширины — окно не «косит» ни на узком экране, ни при
+/// увеличенном системном шрифте.
+class _ResetEventDialog extends StatelessWidget {
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const _ResetEventDialog({required this.onConfirm, required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Container(
+            padding: const EdgeInsets.all(1.4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.xl),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  BrandColors.red.withValues(alpha: 0.55),
+                  BrandColors.red.withValues(alpha: 0.22),
+                  BrandColors.red.withValues(alpha: 0.46),
+                ],
+                stops: const <double>[0.0, 0.55, 1.0],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.shadowColor.withValues(alpha: 0.16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: theme.shadowColor.withValues(alpha: 0.22),
+                  blurRadius: 34,
+                  offset: const Offset(0, 16),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              // Радиус подложки на толщину канта меньше внешнего: иначе кант
+              // «съедается» и кромка читается неровной.
+              borderRadius: BorderRadius.circular(Radii.xl - 1.4),
+              child: Container(
+                decoration: BoxDecoration(
+                  // Полупрозрачная подложка с красным отливом, как у окна
+                  // обновления: фон просвечивает, но под ней достаточно
+                  // плотности, чтобы текст читался. Без `BackdropFilter` —
+                  // размытие под анимацией всплытия мерцает.
+                  color: Color.alphaBlend(
+                    BrandColors.red.withValues(alpha: 0.24),
+                    cs.surfaceContainerHigh.withValues(alpha: 0.90),
+                  ),
+                  borderRadius: BorderRadius.circular(Radii.xl - 1.4),
+                  border: Border.all(
+                    color: BrandColors.red.withValues(alpha: 0.30),
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  Spacing.lg,
+                  Spacing.lg,
+                  Spacing.md,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: BrandColors.red.withValues(alpha: 0.16),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.restart_alt_rounded,
+                              size: 20,
+                              color: BrandColors.red,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: Spacing.sm),
+                        Expanded(
+                          child: Text(
+                            Translations.t(
+                              'nyResetTitle',
+                              context,
+                              'Сбросить ивент?',
+                            ),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: Weights.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      Translations.t(
+                        'nyResetBody',
+                        context,
+                        'Все собранные шапки и подарок исчезнут навсегда.',
+                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PressScale(
+                            // Отдача нарочно СЛАБАЯ (0.97) и мягкая на
+                            // отпускании: на окне сброса прежний заметный
+                            // «провал» кнопки читался лишней суетой.
+                            pressedScale: 0.97,
+                            duration: const Duration(milliseconds: 180),
+                            releaseDuration: const Duration(milliseconds: 300),
+                            child: TextButton(
+                              onPressed: onCancel,
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(0, 46),
+                                shape: const StadiumBorder(),
+                              ),
+                              child: Text(Translations.cancelOf(context)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: Spacing.sm),
+                        Expanded(
+                          child: PressScale(
+                            pressedScale: 0.97,
+                            duration: const Duration(milliseconds: 180),
+                            releaseDuration: const Duration(milliseconds: 300),
+                            child: FilledButton(
+                              onPressed: onConfirm,
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(0, 46),
+                                shape: const StadiumBorder(),
+                                // Кнопка подтверждения — в брендовом алом, а не
+                                // в сиреневом `primary`: на дефолтной палитре
+                                // она читалась чужеродной синей плашкой.
+                                backgroundColor: Color.lerp(
+                                  BrandColors.red,
+                                  cs.primary,
+                                  0.18,
+                                ),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(
+                                Translations.t(
+                                  'nyResetConfirm',
+                                  context,
+                                  'Сбросить',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
