@@ -534,10 +534,15 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     );
   }
 
-  /// Пока грузим — компактный скелетон в цветах темы (не белое пятно).
+  /// Пока грузим — компактная «дышащая» заглушка в цветах темы.
+  ///
+  /// Раньше здесь крутилось штатное `CircularProgressIndicator`: оно
+  /// перерисовывается КАЖДЫЙ кадр, пока идёт чтение, и вход окна читался
+  /// «дёрганым» (жалоба «загрузка лаги остались»). Пульсация сделана на
+  /// `TweenAnimationBuilder` — короткий разовый проход, дальше кадры не
+  /// тратятся. Габарит тот же, что у карточки, поэтому переход в неё не
+  /// «прыгает».
   Widget _skeleton(ColorScheme cs) {
-    // Та же ширина и радиус, что у карточки: скелетон не «прыгает» в
-    // габарит, когда данные доехали.
     return Container(
       width: 320,
       padding: const EdgeInsets.all(28),
@@ -545,8 +550,20 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
         color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(26),
       ),
-      child: Center(
-        child: CircularProgressIndicator(color: cs.primary, strokeWidth: 2.5),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.4, end: 0.85),
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeInOut,
+        builder: (context, t, _) => Center(
+          child: Container(
+            width: 120,
+            height: 10,
+            decoration: BoxDecoration(
+              color: cs.onSurfaceVariant.withValues(alpha: 0.16 * t),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -559,6 +576,12 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     final textSub = isDark
         ? cs.onSurface.withValues(alpha: 0.66)
         : cs.onSurfaceVariant;
+    // Единый акцент карточки — АЛЫЙ с лёгкой примесью тона темы. Раньше
+    // медальон, бейдж дня, полоса прогресса и значок подарка брали
+    // `cs.primary`: на дефолтной палитре это сирень, в «Метели» — бирюза, и
+    // внутри кровавой карточки они читались чужими вставками. Теперь весь
+    // набор — в одном красном роду, тема лишь подкрашивает его на 10 %.
+    final accent = Color.lerp(BrandColors.red, cs.primary, 0.10)!;
 
     // Подложка карточки — мягкий вертикальный градиент с фирменным отливом
     // сверху: окно читается «снежным стеклом», а не плоской плашкой. Градиент
@@ -663,7 +686,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          _EventIcon(isFinalDay: isFinalDay, glow: cs.primary),
+                          _EventIcon(isFinalDay: isFinalDay, glow: accent),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -727,7 +750,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                                                   _kTotalHats.toDouble(),
                                                 ),
                                           total: _kTotalHats,
-                                          accent: cs.primary,
+                                          accent: accent,
                                           isDark: isDark,
                                         ),
                                       ),
@@ -749,7 +772,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                                             child: Icon(
                                               Icons.celebration_rounded,
                                               size: 13,
-                                              color: cs.primary,
+                                              color: accent,
                                             ),
                                           ),
                                         ),
@@ -789,7 +812,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                         builder: (context, _) => _HatProgress(
                           shown: _hatsShown,
                           total: _kTotalHats,
-                          accent: cs.primary,
+                          accent: accent,
                           isDark: isDark,
                         ),
                       ),
@@ -839,7 +862,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                                     ? Icons.check_circle_rounded
                                     : Icons.card_giftcard_rounded,
                                 size: 14,
-                                color: cs.primary,
+                                color: accent,
                               ),
                             ),
                             const SizedBox(width: 7),
@@ -1326,8 +1349,14 @@ class _HatProgress extends StatelessWidget {
                   widthFactor: total == 0 ? 0 : (shown / total).clamp(0.0, 1.0),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
+                      // Полоса — от светлого аля к глубокому, БЕЗ примеси
+                      // `tertiary`: в «Метели» третичный фиолетовый, и заливка
+                      // уезжала в чужой тон посреди красной карточки.
                       gradient: LinearGradient(
-                        colors: [accent, Color.lerp(accent, cs.tertiary, 0.4)!],
+                        colors: [
+                          Color.lerp(accent, Colors.white, 0.18)!,
+                          Color.lerp(accent, const Color(0xFF5E0812), 0.35)!,
+                        ],
                       ),
                     ),
                   ),
@@ -1464,10 +1493,12 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
     // плоским `secondary`, который в половине тем совпадал с фоном карточки,
     // и кнопка выглядела серой заглушкой.
     // Акцент — БРЕНДОВЫЙ АЛЫЙ, а не `cs.primary`: на дефолтной палитре
-    // primary сиреневый, и кнопка «Забрать» в начале ивента читалась синей
-    // «заглушкой» посреди кровавой карточки. Тон темы лишь подмешивается,
-    // чтобы кнопка оставалась в характере светлой/тёмной темы.
-    final brand = Color.lerp(BrandColors.red, cs.primary, 0.18)!;
+    // primary сиреневый, а в «Метели» — бирюзовый, и кнопка «Забрать» в
+    // начале ивента читалась чужеродной синей/зелёной «заглушкой» посреди
+    // кровавой карточки («в начале кнопка ваще синяя блевотная»). Тон темы
+    // теперь лишь едва подмешивается (8% вместо 18%): кнопка остаётся
+    // АЛОЙ в любой палитре, но не выпадает из характера светлой/тёмной темы.
+    final brand = Color.lerp(BrandColors.red, cs.primary, 0.08)!;
     final base = widget.marked
         ? Color.lerp(cs.surfaceContainerHigh, cs.primary, dark ? 0.20 : 0.16)!
         : brand;
@@ -1508,12 +1539,18 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
               ),
               borderRadius: BorderRadius.circular(14),
               // «Забрать» — белый кант по алому (стеклянная кромка).
-              // «Получено» — НЕ белый: на светлой поверхности он читался
-              // грубой молочной обводкой вокруг серой плашки. Теперь кант
-              // тематический (outline), тонкий и в тон фону.
+              // «Получено» — НЕ белый и НЕ серый `outlineVariant`: на светлой
+              // поверхности серое кольцо читалось грубой молочной обводкой
+              // («обводка ублюдская»). Теперь кромка — полупрозрачно-алая,
+              // та же, что у капсулы подарка: обе плашки читаются одним
+              // набором, а не двумя разными рамками.
               border: Border.all(
                 color: widget.marked
-                    ? cs.outlineVariant.withValues(alpha: dark ? 0.5 : 0.7)
+                    ? Color.lerp(
+                        BrandColors.red,
+                        cs.outlineVariant,
+                        0.35,
+                      )!.withValues(alpha: dark ? 0.42 : 0.32)
                     : Colors.white.withValues(alpha: 0.34),
                 width: 1,
               ),
@@ -1981,28 +2018,18 @@ class _ResetEventDialog extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
           child: Container(
-            padding: const EdgeInsets.all(1.4),
+            padding: const EdgeInsets.all(0.9),
             decoration: BoxDecoration(
+              // ОДНА ровная алая кромка вместо диагонального градиента: тот
+              // по периметру давал разный тон на каждой стороне и читался
+              // пёстрой кривой рамкой («окно криво»). Толщина — волосяная.
               borderRadius: BorderRadius.circular(Radii.xl),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  BrandColors.red.withValues(alpha: 0.55),
-                  BrandColors.red.withValues(alpha: 0.22),
-                  BrandColors.red.withValues(alpha: 0.46),
-                ],
-                stops: const <double>[0.0, 0.55, 1.0],
-              ),
+              color: BrandColors.red.withValues(alpha: 0.34),
               boxShadow: [
                 BoxShadow(
-                  color: theme.shadowColor.withValues(alpha: 0.16),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: theme.shadowColor.withValues(alpha: 0.22),
+                  color: theme.shadowColor.withValues(alpha: 0.18),
                   blurRadius: 34,
+                  spreadRadius: -4,
                   offset: const Offset(0, 16),
                 ),
               ],
@@ -2010,7 +2037,7 @@ class _ResetEventDialog extends StatelessWidget {
             child: ClipRRect(
               // Радиус подложки на толщину канта меньше внешнего: иначе кант
               // «съедается» и кромка читается неровной.
-              borderRadius: BorderRadius.circular(Radii.xl - 1.4),
+              borderRadius: BorderRadius.circular(Radii.xl - 0.9),
               child: Container(
                 decoration: BoxDecoration(
                   // Полупрозрачная подложка с красным отливом, как у окна
@@ -2018,13 +2045,10 @@ class _ResetEventDialog extends StatelessWidget {
                   // плотности, чтобы текст читался. Без `BackdropFilter` —
                   // размытие под анимацией всплытия мерцает.
                   color: Color.alphaBlend(
-                    BrandColors.red.withValues(alpha: 0.24),
-                    cs.surfaceContainerHigh.withValues(alpha: 0.90),
+                    BrandColors.red.withValues(alpha: 0.20),
+                    cs.surfaceContainerHigh.withValues(alpha: 0.86),
                   ),
-                  borderRadius: BorderRadius.circular(Radii.xl - 1.4),
-                  border: Border.all(
-                    color: BrandColors.red.withValues(alpha: 0.30),
-                  ),
+                  borderRadius: BorderRadius.circular(Radii.xl - 0.9),
                 ),
                 padding: const EdgeInsets.fromLTRB(
                   Spacing.lg,

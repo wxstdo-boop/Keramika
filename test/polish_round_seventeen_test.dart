@@ -110,9 +110,9 @@ void main() {
   test('ивент: кнопка «Забрать» — брендовый алый, зажатие монотонное', () {
     final src = read('lib/widgets/new_year_event_banner.dart');
     expect(
-      src.contains('Color.lerp(BrandColors.red, cs.primary, 0.18)!'),
+      src.contains('Color.lerp(BrandColors.red, cs.primary, 0.08)!'),
       isTrue,
-      reason: 'сиреневый primary читался синей «заглушкой»',
+      reason: 'в «Метели» primary бирюзовый — кнопка обязана остаться алой',
     );
     expect(
       src.contains('scale: _pressed ? 0.955 : 1.0'),

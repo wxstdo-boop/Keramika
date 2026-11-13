@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import 'package:flutter/material.dart';
@@ -26,13 +26,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
   final _habitSvc = HabitService();
   final _taskSvc = TaskService();
   final _logSvc = CompletionLogService();
-
-  /// Фаза «глитча» чисел. Держим её НЕПОДВИЖНОЙ: прежняя вечная анимация
-  /// перерисовывала десяток теней-«двойников» каждый кадр и была главным
-  /// источником лага экрана статистики (плюс сами цифры читались
-  /// «иероглифом» от бегущих цветных двойников). Свечение осталось —
-  /// оно статично и стоит ровно одну отрисовку.
-  final ValueNotifier<double> _glitchPhase = ValueNotifier<double>(0);
 
   /// Скролл статистики: деформация растяжения читает его позицию каждый кадр
   /// (см. [_StretchScroll]) — так возврат в покой не зависит от того, какие
@@ -81,7 +74,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
     _habitSvc.removeListener(_onData);
     _taskSvc.removeListener(_onData);
     _logSvc.removeListener(_onData);
-    _glitchPhase.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -144,7 +136,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
       header: _buildOverallSummary(context, theme, overallPct),
       child: Column(
         children: [
-          _MonthChart(days: monthDays, glitch: _glitchPhase, theme: theme),
+          _MonthChart(days: monthDays, theme: theme),
           const SizedBox(height: 16),
           // Daily Motivation Card — верхняя панель и сама цитата сидят на
           // своих плашках «округлённый квадрат» (мягкий радиус 12, тонкая
@@ -241,7 +233,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
               rcToday,
               rcTotal,
               accent: theme.colorScheme.tertiary,
-              glitch: _glitchPhase,
             ),
             const SizedBox(height: 16),
           ],
@@ -253,7 +244,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
             habitsDone,
             habitsTotal,
             accent: theme.colorScheme.primary,
-            glitch: _glitchPhase,
           ),
           const SizedBox(height: 16),
           _buildStatCard(
@@ -264,7 +254,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
             tasksDone,
             tasksTotal,
             accent: theme.colorScheme.secondary,
-            glitch: _glitchPhase,
           ),
         ],
       ),
@@ -335,10 +324,9 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
                     transitionBuilder: (child, animation) {
                       return FadeTransition(opacity: animation, child: child);
                     },
-                    child: _GlitchText(
+                    child: _StatNumber(
                       '${(pct * 100).toInt()}%',
                       key: ValueKey('overall_${(pct * 100).toInt()}'),
-                      ctrl: _glitchPhase,
                       style: theme.textTheme.headlineLarge?.copyWith(
                         color: theme.colorScheme.onPrimaryContainer,
                         fontWeight: FontWeight.bold,
@@ -363,7 +351,6 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
     int done,
     int total, {
     required Color accent,
-    required ValueListenable<double> glitch,
   }) {
     final pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 0.0;
     return PressScale(
@@ -412,10 +399,9 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
                             child: child,
                           );
                         },
-                        child: _GlitchText(
+                        child: _StatNumber(
                           '$done / $total',
                           key: ValueKey('count_$done/$total'),
-                          ctrl: glitch,
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.bold,
@@ -506,32 +492,22 @@ Widget _ringedCard({
 
 /// Число статистики. Раньше это был «глитч»: под текстом бежали два цветных
 /// двойника-тени, и мелкое число на светлом фоне читалось мутным пятном
-/// («иероглиф»), а вечная перерисовка тормозила экран. Теперь — чистый текст
-/// с одной очень мягкой тенью: читается резко и не стоит ни одного лишнего
-/// кадра.
-class _GlitchText extends StatelessWidget {
+/// («иероглиф»). Теперь — ЧИСТЫЙ текст без свечения и тени: мелкая цифра
+/// читается резко, а не расплывается «иероглифом», и не стоит лишних кадров.
+class _StatNumber extends StatelessWidget {
   final String text;
   final TextStyle? style;
-  final ValueListenable<double> ctrl;
 
-  const _GlitchText(this.text, {super.key, required this.ctrl, this.style});
+  const _StatNumber(this.text, {super.key, this.style});
 
   @override
   Widget build(BuildContext context) {
-    final base = style ?? const TextStyle();
     return Text(
       text,
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.visible,
-      style: base.copyWith(
-        shadows: [
-          Shadow(
-            color: base.color?.withValues(alpha: 0.22) ?? Colors.transparent,
-            blurRadius: 6,
-          ),
-        ],
-      ),
+      style: style,
     );
   }
 }
@@ -542,14 +518,9 @@ class _GlitchText extends StatelessWidget {
 /// Плавный рост при входе, подписи дней недели и «лучший день».
 class _MonthChart extends StatelessWidget {
   final List<DayCompletion> days;
-  final ValueListenable<double> glitch;
   final ThemeData theme;
 
-  const _MonthChart({
-    required this.days,
-    required this.glitch,
-    required this.theme,
-  });
+  const _MonthChart({required this.days, required this.theme});
 
   @override
   Widget build(BuildContext context) {
@@ -627,10 +598,9 @@ class _MonthChart extends StatelessWidget {
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerRight,
-                          child: _GlitchText(
+                          child: _StatNumber(
                             '$totalHabit + $totalTask',
-                            ctrl: glitch,
-                            style: theme.textTheme.titleSmall?.copyWith(
+                              style: theme.textTheme.titleSmall?.copyWith(
                               color: theme.colorScheme.primary,
                               fontWeight: FontWeight.bold,
                             ),
@@ -693,9 +663,8 @@ class _MonthChart extends StatelessWidget {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerRight,
-                        child: _GlitchText(
+                        child: _StatNumber(
                           '$activeDays ${Translations.t('monthChartDays', context)}',
-                          ctrl: glitch,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.primary,
                             fontWeight: FontWeight.bold,
@@ -903,6 +872,17 @@ class _DaysBarPainter extends CustomPainter {
       }
     }
 
+    // Кисти — ОДИН раз на кадр, а не по штуке на столбик: тридцать
+    // аллокаций `Paint` каждый кадр роста были лишним мусором на слабом GPU.
+    final emptyDot = Paint()..color = axisColor.withValues(alpha: 0.55);
+    final habitPaint = Paint()..color = habitColor;
+    final taskPaint = Paint()..color = taskColor;
+    final outlinePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.4
+      ..isAntiAlias = true
+      ..color = todayColor.withValues(alpha: 0.10);
+
     for (var i = 0; i < n; i++) {
       final d = days[i];
       final total = d.habits + d.tasks;
@@ -910,11 +890,7 @@ class _DaysBarPainter extends CustomPainter {
       if (total <= 0) {
         // Пустой день — маленькая точка у базовой линии, а не пустое
         // место: видно, что день был, но активности нет.
-        canvas.drawCircle(
-          Offset(cx, chartBottom - 1.6),
-          1.6,
-          Paint()..color = axisColor.withValues(alpha: 0.55),
-        );
+        canvas.drawCircle(Offset(cx, chartBottom - 1.6), 1.6, emptyDot);
         continue;
       }
       final full = chartH * (total / maxValue);
@@ -934,24 +910,17 @@ class _DaysBarPainter extends CustomPainter {
       canvas.clipRRect(rect);
       canvas.drawRect(
         Rect.fromLTWH(left, chartBottom - habitH, barW, habitH),
-        Paint()..color = habitColor,
+        habitPaint,
       );
       canvas.drawRect(
         Rect.fromLTWH(left, chartBottom - h, barW, taskH),
-        Paint()..color = taskColor,
+        taskPaint,
       );
       canvas.restore();
       // Тонкий контур — столбики не «слипаются» на тёмной теме. Волосяной:
       // раньше линия 1 px на каждом столбике складывалась в «частокол» и
       // график читался жирным.
-      canvas.drawRRect(
-        rect,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.4
-          ..isAntiAlias = true
-          ..color = todayColor.withValues(alpha: 0.10),
-      );
+      canvas.drawRRect(rect, outlinePaint);
 
       // «Сегодня» — последний столбик: подписываем дату акцентом.
       final isToday = i == n - 1;
@@ -966,12 +935,13 @@ class _DaysBarPainter extends CustomPainter {
         // Растёт ИЗ НУЛЯ: прежний радиус стартовал с половины и читался как
         // «звёздочка выскочила». Теперь она именно «разгорается» из точки.
         final r = 4.2 * ease;
+        // Ореол — РОВНЫЙ круг малой плотности, без `MaskFilter.blur`:
+        // размытие пересчитывалось каждый кадр роста и на слабом GPU давало
+        // лаг, а на мелком масштабе само пятно читалось «иероглифом».
         canvas.drawCircle(
           starC,
           r * 2.1,
-          Paint()
-            ..color = todayColor.withValues(alpha: 0.12 * ease)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+          Paint()..color = todayColor.withValues(alpha: 0.10 * ease),
         );
         if (r > 0.05) {
           _drawStar(
@@ -1029,14 +999,20 @@ class _DaysBarPainter extends CustomPainter {
           text: day.replaceFirst(RegExp(r'^0'), ''),
           style: TextStyle(
             color: labelColor,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: TextDirection.ltr,
       )..layout(),
     );
-    final x = align == TextAlign.left ? 0.0 : size.width - tp.width;
+    // Небольшой отступ от краёв: подпись не касается кромки холста и не
+    // сливается с первым/последним столбиком — иначе последнее число
+    // читалось мутной кляксой («иероглифом»).
+    const inset = 3.0;
+    final x = align == TextAlign.left
+        ? inset
+        : size.width - tp.width - inset;
     tp.paint(canvas, Offset(x, y - tp.height));
   }
 
