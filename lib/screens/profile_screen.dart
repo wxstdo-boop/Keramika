@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -340,19 +341,33 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (picked?.path == null) return;
     final srcPath = picked!.path!;
     try {
+      // Отпечаток содержимого считаем ДО копирования: один и тот же звук
+      // нельзя добавить дважды, и проверять это надо по байтам, а не по
+      // имени файла.
+      final bytes = await File(srcPath).readAsBytes();
+      final fingerprint = _fingerprintOf(bytes);
+      if (_service.hasTrackWithFingerprint(fingerprint)) {
+        // Тот же звук уже в подборке. Тихо выходим: повторное добавление
+        // ничего не меняет, а всплывашка тут только мешала бы.
+        return;
+      }
       final dir = await getApplicationDocumentsDirectory();
       final soundsDir = Directory('${dir.path}/sounds');
       await soundsDir.create(recursive: true);
       final ext = _extensionOf(srcPath);
       final newPath =
-          '${soundsDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      await File(srcPath).copy(newPath);
+          '${soundsDir.path}/profile_${DateTime.now().microsecondsSinceEpoch}.$ext';
+      await File(newPath).writeAsBytes(bytes);
       if (!mounted) return;
-      // Имя файла — только «семя» для подписи: настоящие названия треков
-      // придумываем сами, чтобы подборка читалась живой, а не списком
-      // служебных имён вроде «record_2024_05_11».
-      final title = _funSongTitle(srcPath);
-      final added = await _service.addTrack(path: newPath, title: title);
+      // Название берём из отпечатка: разные звуки получают РАЗНЫЕ имена (а
+      // не имя файла вроде «record_2024_05_11»), а служба сама добавит
+      // номер, если имя всё же совпало с уже занятым.
+      final title = _funSongTitle(fingerprint);
+      final added = await _service.addTrack(
+        path: newPath,
+        title: title,
+        fingerprint: fingerprint,
+      );
       if (!mounted) return;
       if (!added) {
         _toast(
@@ -361,10 +376,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         );
         return;
       }
-      _newTrackIds.add(newPath);
-      Future.delayed(const Duration(milliseconds: 700), () {
-        if (mounted) setState(() => _newTrackIds.remove(newPath));
-      });
+      // Новую строку помечаем по её же id — так «вросла из нуля» отыграет
+      // именно она, даже если ключ ищется среди соседей.
+      final fresh = _service.tracks.where((t) => t.path == newPath).firstOrNull;
+      if (fresh != null) {
+        _newTrackIds.add(fresh.id);
+        Future.delayed(const Duration(milliseconds: 760), () {
+          if (mounted) setState(() => _newTrackIds.remove(fresh.id));
+        });
+      }
       _toast(Translations.t('profileMusicSet', context, 'Музыка сохранена'));
     } catch (_) {
       if (!mounted) return;
@@ -377,6 +397,12 @@ class _ProfileScreenState extends State<ProfileScreen>
         icon: Icons.error_outline,
       );
     }
+  }
+
+  /// SHA-256 содержимого файла — «отпечаток» трека для защиты от дублей.
+  static String _fingerprintOf(List<int> bytes) {
+    final hash = sha256.convert(bytes);
+    return hash.toString();
   }
 
   static String _extensionOf(String path) {
@@ -815,51 +841,54 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _musicCard(ThemeData theme) {
     final tracks = _service.tracks;
-    final hasMusic = tracks.isNotEmpty;
     final cs = theme.colorScheme;
     final dur = MotionPrefs.shouldReduceMotion ? Duration.zero : Motion.slow;
 
     return _Card(
       title: Translations.t('profileMusic', context, 'Твоя музыка'),
       icon: Icons.music_note_outlined,
-      trailing: hasMusic
-          ? Text(
-              '${tracks.length}/${ProfileService.maxTracks}',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-              ),
-            )
-          : null,
+      // Счётчик подборки меняется ПО ЦИФРАМ, как очки рейтинга: при
+      // добавлении/удалении трека разряд не подменяется кадром, а мягко
+      // перетекает. Знаменатель — константа, поэтому он статичен.
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SmoothDigits(
+            value: tracks.length,
+            sample: '00',
+            alignment: Alignment.centerRight,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: cs.primary,
+              fontWeight: Weights.semibold,
+            ),
+          ),
+          Text(
+            '/${ProfileService.maxTracks}',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Переход «пусто ↔ подборка» тянет ОДИН AnimatedSize: высота блока
-          // растёт и опадает непрерывно, а не прыгает при вставке готового
-          // списка. Проявку текста делает AnimatedSwitcher под ним.
+          // Высота блока тянется ОДНИМ AnimatedSize: и появление первого
+          // трека, и удаление последнего идут непрерывно. Пустая подсказка
+          // живёт ВНУТРИ этого блока и сама схлопывается/раскрывается по
+          // высоте — поэтому переход «последний трек → пусто» не дёргает
+          // раскладку влево (раньше список и подсказка менялись двумя
+          // разными механизмами, и текст прыгал).
           AnimatedSize(
             duration: dur,
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
-            child: AnimatedSwitcher(
-              duration: dur,
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeOutQuad,
-              child: hasMusic
-                  ? _trackList(theme)
-                  : Padding(
-                      key: const ValueKey('music_empty'),
-                      padding: const EdgeInsets.only(bottom: Spacing.xs),
-                      child: Text(
-                        Translations.t(
-                          'profileMusicEmpty',
-                          context,
-                          'Добавьте свой трек — он будет играть в профиле',
-                        ),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _emptyMusicHint(theme, visible: tracks.isEmpty),
+                for (final t in tracks) _trackRow(theme, t),
+              ],
             ),
           ),
           const SizedBox(height: Spacing.xs),
@@ -868,9 +897,9 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: PressScale(
               pressedScale: 0.94,
               child: FilledButton.tonalIcon(
-                // Кнопка больше НЕ «Заменить»: подборка, а не одиночный трек,
-                // поэтому всегда «Добавить». На пределе гаснет — понятно, что
-                // дальше добавлять некуда.
+                // Кнопка всегда «Добавить»: это подборка, а не одиночный
+                // трек. На пределе гаснет — понятно, что дальше добавлять
+                // некуда.
                 onPressed: _service.canAddTrack ? _addMusic : null,
                 style: _roundButtonStyle(),
                 icon: const Icon(Icons.library_music_outlined),
@@ -891,44 +920,59 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  /// Список треков подборки. Строки переезжают плавно: каждая лежит в общем
-  /// «слое» на своей позиции по ключу трека, поэтому удаление середины
-  /// сдвигает соседей анимацией, а не мгновенной перестановкой.
-  Widget _trackList(ThemeData theme) {
-    final tracks = _service.tracks;
-    return KeyedSubtree(
-      key: const ValueKey('music_list'),
-      child: Column(
-        key: const ValueKey('music_list_col'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final t in tracks) _trackRow(theme, t),
-        ],
-      ),
-    );
-  }
-
-  Widget _trackRow(ThemeData theme, MusicTrack track) {
-    final playing = _music.playing && _music.path == track.path;
-    final removing = _removingTrackIds.contains(track.id);
-    final isNew = _newTrackIds.contains(track.path);
+  /// Подсказка «добавьте трек»: растёт из нуля и так же уходит. Живёт в
+  /// общем блоке с треками, поэтому переход к пустому состоянию (и обратно)
+  /// идёт одной плавной раскладкой, без рывка текста влево.
+  Widget _emptyMusicHint(ThemeData theme, {required bool visible}) {
+    final dur = MotionPrefs.shouldReduceMotion ? Duration.zero : _trackCollapse;
     return TweenAnimationBuilder<double>(
-      key: ValueKey('track_${track.id}'),
-      // Появление — «вросло из нуля» (высота + проявление), удаление —
-      // схлопывание. Длительность и кривая те же, что у AnimatedSize выше.
-      tween: Tween(begin: 1.0, end: removing ? 0.0 : 1.0),
-      duration: _trackCollapse,
+      tween: Tween(begin: 0, end: visible ? 1.0 : 0.0),
+      duration: dur,
       curve: Curves.easeOutCubic,
       builder: (context, v, child) => ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
           heightFactor: v.clamp(0.0, 1.0),
+          child: Opacity(opacity: v.clamp(0.0, 1.0), child: child),
+        ),
+      ),
+      child: Padding(
+        key: const ValueKey('music_empty'),
+        padding: const EdgeInsets.only(bottom: Spacing.xs),
+        child: Text(
+          Translations.t(
+            'profileMusicEmpty',
+            context,
+            'Добавьте свой трек — он будет играть в профиле',
+          ),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Одна строка трека: появление «врастает» из нуля, удаление схлопывается.
+  /// Длительность и кривая те же, что у [AnimatedSize] над блоком, поэтому
+  /// соседи подаются вверх ОДНОЙ анимацией, а не двумя спорящими.
+  Widget _trackRow(ThemeData theme, MusicTrack track) {
+    final playing = _music.playing && _music.path == track.path;
+    final removing = _removingTrackIds.contains(track.id);
+    final isNew = _newTrackIds.contains(track.id);
+    final dur = MotionPrefs.shouldReduceMotion ? Duration.zero : _trackCollapse;
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('track_${track.id}'),
+      tween: Tween(begin: 0.0, end: removing ? 0.0 : 1.0),
+      duration: dur,
+      curve: Curves.easeInOutCubic,
+      builder: (context, v, child) => ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: v.clamp(0.0, 1.0),
           child: Opacity(
-            opacity: v.clamp(0.0, 1.0),
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.xs),
-              child: child,
-            ),
+            opacity: Curves.easeOut.transform(v).clamp(0.0, 1.0),
+            child: child,
           ),
         ),
       ),
@@ -1564,17 +1608,48 @@ const List<String> _kSongTitles = [
   'Лови настроение',
   'Ещё один припев',
   'Специально для тебя',
+  'Пусть играет',
+  'Ночная волна',
+  'Между строк',
+  'Этот бит — мой',
+  'Держи ритм',
+  'Один на один с музыкой',
+  'Тёплый звук',
+  'В ритме города',
+  'На репите',
+  'Мелодия для тебя',
+  'Без слов понятно',
+  'Свет и звук',
+  'Твоя частота',
 ];
 
-/// Детерминированное «весёлое» название трека по «семени» (обычно — имя
-/// файла): один и тот же файл всегда получает одно и то же имя, но разные
-/// файлы — разные, поэтому подборка выглядит разнообразной.
+/// Хвосты к названию: с ними одна и та же основа не повторяется, и подборка
+/// читается живой даже когда фраз из основного списка не хватает.
+const List<String> _kSongTails = [
+  '',
+  '',
+  ' · live',
+  ' · remix',
+  ' (nocturne)',
+  ' · acoustic',
+  ' (night mix)',
+  ' · slow',
+];
+
 String _funSongTitle(String seed) {
+  // Два независимых хеша от одного семени: основа и хвост выбираются по
+  // разным разрядам, поэтому пары не «слипаются» в один порядок.
   var h = 17;
   for (final c in seed.codeUnits) {
     h = (h * 31 + c) & 0x7fffffff;
   }
-  return _kSongTitles[h % _kSongTitles.length];
+  var h2 = 7;
+  for (final c in seed.codeUnits) {
+    h2 = (h2 * 53 + c) & 0x7fffffff;
+  }
+  final base = _kSongTitles[h % _kSongTitles.length];
+  final tail = _kSongTails[h2 % _kSongTails.length];
+  return '$base$tail';
 }
 
 /// Добавление друга: имя, аватарка, стартовые очки.

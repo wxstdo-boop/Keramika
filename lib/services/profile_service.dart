@@ -83,6 +83,7 @@ class MusicTrack {
     required this.path,
     required this.title,
     required this.addedAt,
+    this.fingerprint = '',
   });
 
   final String id;
@@ -97,11 +98,17 @@ class MusicTrack {
   /// подписей.
   final int addedAt;
 
+  /// Отпечаток содержимого файла (SHA-256). Один и тот же звук нельзя
+  /// добавить дважды: сравниваем не имя и не путь, а сами байты — тот же
+  /// трек под другим именем тоже не пройдёт.
+  final String fingerprint;
+
   MusicTrack copyWith({String? title}) => MusicTrack(
     id: id,
     path: path,
     title: title ?? this.title,
     addedAt: addedAt,
+    fingerprint: fingerprint,
   );
 
   Map<String, dynamic> toJson() => {
@@ -109,6 +116,7 @@ class MusicTrack {
     'path': path,
     'title': title,
     'at': addedAt,
+    'fp': fingerprint,
   };
 
   factory MusicTrack.fromJson(Map<String, dynamic> j) => MusicTrack(
@@ -116,6 +124,7 @@ class MusicTrack {
     path: (j['path'] ?? '').toString(),
     title: (j['title'] ?? '').toString(),
     addedAt: (j['at'] as num?)?.toInt() ?? 0,
+    fingerprint: (j['fp'] ?? '').toString(),
   );
 }
 
@@ -297,20 +306,41 @@ class ProfileService extends ChangeNotifier {
     await _save();
   }
 
-  /// Добавить трек в подборку. Путь ведёт на копию в приватной папке
-  /// (см. экран профиля) — она переживёт очистку кэша. Возвращает `false`,
-  /// если подборка уже полна ([maxTracks]).
+  /// Есть ли в подборке трек с таким отпечатком содержимого.
+  bool hasTrackWithFingerprint(String fingerprint) {
+    if (fingerprint.isEmpty) return false;
+    return _tracks.any((t) => t.fingerprint == fingerprint);
+  }
+
+  /// Свободное название: если такое уже занято в подборке, добавляем номер
+  /// («… 2», «… 3»). Иначе два трека читались бы одним и тем же именем.
+  String uniqueTitle(String title) {
+    final base = title.trim().isEmpty ? 'Трек' : title.trim();
+    final taken = _tracks.map((t) => t.title).toSet();
+    if (!taken.contains(base)) return base;
+    var n = 2;
+    while (taken.contains('$base $n')) {
+      n++;
+    }
+    return '$base $n';
+  }
+
+  /// Добавить трек в подборку. Возвращает `false`, если места нет ИЛИ такой
+  /// звук уже в подборке (сравнение по отпечатку содержимого).
   Future<bool> addTrack({
     required String path,
     required String title,
+    String fingerprint = '',
   }) async {
     if (_tracks.length >= maxTracks) return false;
+    if (hasTrackWithFingerprint(fingerprint)) return false;
     _tracks.add(
       MusicTrack(
         id: 't${DateTime.now().microsecondsSinceEpoch}',
         path: path,
-        title: title,
+        title: uniqueTitle(title),
         addedAt: DateTime.now().millisecondsSinceEpoch,
+        fingerprint: fingerprint,
       ),
     );
     notifyListeners();

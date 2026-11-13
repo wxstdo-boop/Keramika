@@ -27,6 +27,9 @@ dependencies:
   dynamic_color: ^1.9.0
   characters: ^1.4.1
   cryptography: ^2.7.0
+  # SHA-256 отпечатка файла: защита подборки музыки от повторного добавления
+  # одного и того же звука. Пакет и так приходил транзитивно (см. pubspec.lock).
+  crypto: ^3.0.8
   flutter_secure_storage: ^11.2.0
   shared_preferences: ^2.5.0
   uuid: ^4.5.1

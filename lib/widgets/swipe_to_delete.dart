@@ -25,6 +25,11 @@ class SwipeToDelete extends StatefulWidget {
   final DismissDirectionCallback? onDismissed;
   final ConfirmDismissCallback? confirmDismiss;
   final Duration? movementDuration;
+
+  /// Схлопывание строки при удалении. `null` выключает собственную анимацию
+  /// высоты у [Dismissible]: тогда место освобождает внешний [AnimatedSize]
+  /// (см. питание) — одна анимация высоты на экране, без «двух спорящих».
+  final Duration? resizeDuration;
   final double borderRadius;
 
   /// Отступ фона удаления от границ [Dismissible]. Фон рисуется в тех же
@@ -42,6 +47,7 @@ class SwipeToDelete extends StatefulWidget {
     this.onDismissed,
     this.confirmDismiss,
     this.movementDuration,
+    this.resizeDuration = const Duration(milliseconds: 320),
     this.borderRadius = 20,
     this.inset = EdgeInsets.zero,
   });
@@ -68,7 +74,7 @@ class _SwipeToDeleteState extends State<SwipeToDelete> {
       movementDuration:
           widget.movementDuration ?? const Duration(milliseconds: 450),
       // Схлопывание строки при удалении — тоже мягко.
-      resizeDuration: const Duration(milliseconds: 320),
+      resizeDuration: widget.resizeDuration,
       direction: DismissDirection.endToStart,
       confirmDismiss: widget.confirmDismiss,
       onDismissed: widget.onDismissed,

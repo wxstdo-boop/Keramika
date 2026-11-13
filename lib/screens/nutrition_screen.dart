@@ -2,6 +2,8 @@ import 'dart:math';
 import '../services/haptics.dart';
 import 'package:flutter/material.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
+import '../widgets/swipe_to_delete.dart';
+import '../utils/motion_prefs.dart';
 import '../services/nutrition_service.dart';
 import '../l10n/translations.dart';
 import '../widgets/smooth_char_counter.dart';
@@ -369,59 +371,23 @@ class _NutritionScreenState extends State<NutritionScreen>
             // одной плавной волной, а не двумя спорящими анимациями.
             _reveal(
               7,
+              // Высоту блока истории ведёт ОДИН AnimatedSize: добавление
+              // приёма пищи, удаление и переход «пусто ↔ история» идут одной
+              // плавной волной. Подсказка «Приёмов пищи пока нет» живёт ВНУТРИ
+              // этого блока и сама тянется по высоте — раньше она была
+              // отдельным состоянием AnimatedSwitcher и появлялась/исчезала
+              // рывком.
               AnimatedSize(
-                // Та же длительность и кривая, что у схлопывания строки
-                // ([_mealCollapse]): AnimatedSize подхватывает ровно тот ход,
-                // который отыгрывает строка, и не спорит с ним за высоту.
                 duration: _mealCollapse,
                 curve: _mealCollapseCurve,
                 alignment: Alignment.topCenter,
                 clipBehavior: Clip.hardEdge,
-                child: AnimatedSwitcher(
-                  // Та же длительность, что у AnimatedSize: смена «история ↔
-                  // пусто» идёт одной волной с высотой блока.
-                  duration: _mealCollapse,
-                  switchInCurve: Curves.easeOutCubic,
-                  // Уход быстрее входа: пустая подпись гаснет сразу, пока
-                  // растут строки, — иначе она «висела» поверх карточек.
-                  switchOutCurve: Curves.easeOutQuad,
-                  // Уходящий ребёнок остаётся В СТОПКЕ, но ПОД текущим и
-                  // схлопывается по высоте (Align.heightFactor по прогрессу
-                  // анимации). Так подпись «Пока нет приёмов пищи» не
-                  // пропадает кадром (прежний layoutBuilder выбрасывал
-                  // уходящего — и при добавлении первой записи текст мигал),
-                  // но и НЕ накладывается на строки истории: текущий ребёнок
-                  // лежит поверх, а уходящий тает и сжимается вверх. Высоту
-                  // по-прежнему ведёт внешний AnimatedSize.
-                  transitionBuilder: (child, animation) {
-                    final leaving = animation.status == AnimationStatus.reverse;
-                    if (!leaving) {
-                      return FadeTransition(opacity: animation, child: child);
-                    }
-                    return FadeTransition(
-                      opacity: animation,
-                      child: ClipRect(
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          heightFactor: animation.value.clamp(0.0, 1.0),
-                          child: child,
-                        ),
-                      ),
-                    );
-                  },
-                  layoutBuilder: (current, previous) => Stack(
-                    alignment: Alignment.topCenter,
-                    children: <Widget>[...previous, ?current],
-                  ),
-                  // Ключ «пусто/история» стоит на САМОМ содержимом
-                  // ([_buildHistory] возвращает keyed-поддерево). Пока ключ был
-                  // один и тот же на оба состояния, `AnimatedSwitcher` видел
-                  // «того же ребёнка» и не перелистывал вовсе: подпись «Пока
-                  // нет приёмов пищи» и строки менялись одним кадром — это и
-                  // читалось как неплавный переход «сегодня ↔ пусто».
-                  child: !_loaded
-                      ? const SizedBox(key: ValueKey('meals_loading'))
-                      : _buildHistory(context, theme, meals),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _emptyMealsHint(visible: _loaded && meals.isEmpty),
+                    if (_loaded) _buildHistory(context, theme, meals),
+                  ],
                 ),
               ),
             ),
@@ -447,6 +413,30 @@ class _NutritionScreenState extends State<NutritionScreen>
           ),
         );
       },
+    );
+  }
+
+  /// Подсказка «Приёмов пищи пока нет»: раскрывается и схлопывается ПО
+  /// ВЫСОТЕ, как строка трека в профиле. Живёт в общем блоке с историей,
+  /// поэтому переход «пусто ↔ есть записи» идёт одной раскладкой, без рывка.
+  Widget _emptyMealsHint({required bool visible}) {
+    final reduce = MotionPrefs.shouldReduceMotion;
+    final dur = reduce ? Duration.zero : _mealCollapse;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: visible ? 1.0 : 0.0),
+      duration: dur,
+      curve: _mealCollapseCurve,
+      builder: (context, v, child) => ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: v.clamp(0.0, 1.0),
+          child: Opacity(opacity: v.clamp(0.0, 1.0), child: child),
+        ),
+      ),
+      child: const KeyedSubtree(
+        key: ValueKey('meals_empty'),
+        child: _EmptyMeals(),
+      ),
     );
   }
 
@@ -1054,11 +1044,11 @@ class _NutritionScreenState extends State<NutritionScreen>
     }
     final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
+    // Пустая история больше НЕ отдельное состояние: подсказка «Приёмов пищи
+    // пока нет» живёт рядом с историей в общем блоке (см. каркас), поэтому
+    // здесь просто ничего не рисуем.
     if (sortedKeys.isEmpty || meals.isEmpty) {
-      return const KeyedSubtree(
-        key: ValueKey('meals_empty'),
-        child: _EmptyMeals(),
-      );
+      return const SizedBox.shrink();
     }
 
     final accentColors = <Color>[
@@ -1147,117 +1137,23 @@ class _NutritionScreenState extends State<NutritionScreen>
               ' • ${meal.calories} ${Translations.t('kcalShort', context, 'ккал')}'
               ' • $time';
     final isJustAdded = _addedAt.containsKey(meal.id);
-    // Зазор между приёмами пищи живёт ВНУТРИ Dismissible: `resizeDuration`
-    // анимирует только собственное дитя, и раньше на месте удалённой строки
-    // оставались эти 10 px, которые снимались одним кадром после конца
-    // сжатия — «следующий чуть дёргается вверх».
-    // Ключ на ВСЕЙ ячейке, а не только на Dismissible: иначе при вставке
-    // новой карточки соседи сдвигаются по позиции, их состояние анимации
-    // переезжает на чужой приём пищи, и «раскрытие» ловили уже добавленные
-    // карточки.
-    return Dismissible(
-      key: ValueKey('slot_${meal.id}'),
-      movementDuration: const Duration(milliseconds: 320),
-      // Своё сжатие строки выключено намеренно. Пока оно было, высоту
-      // анимировали ДВА механизма сразу — Dismissible и AnimatedSize над
-      // блоком истории. Место освобождалось рывком после того, как оба
-      // доиграют. Теперь карточка уезжает за край, а её место схлопывает
-      // только AnimatedSize — одна анимация высоты на экране.
+    // Карточка приёма пищи повторяет привычку/задачу: свайп влево — удаление
+    // с красной плашкой, ДОЛГОЕ НАЖАТИЕ — закрепить/снять закреп. Раньше тут
+    // жил свой Dismissible с двумя разноцветными подложками: «закрепить»
+    // свайпом читалось чужеродно, а красная плашка была другого тона, чем на
+    // остальных экранах. Теперь и удаление, и закреп ведут себя как везде.
+    return SwipeToDelete(
+      dismissKey: ValueKey('meal_${meal.id}'),
+      // Фон удаления = границы карточки: у неё горизонтальный margin 16.
+      inset: const EdgeInsets.symmetric(horizontal: 16),
+      // Своё сжатие строки выключено: высоту ведёт внешний AnimatedSize над
+      // блоком истории (см. каркас), поэтому на экране одна анимация высоты,
+      // а не две спорящие.
       resizeDuration: null,
-      direction: DismissDirection.horizontal,
-      // Красная подложка гаснет СРАЗУ, как только удаление подтверждено:
-      // Dismissible ещё держит строку на месте, пока идёт схлопывание, и
-      // раньше эта красная плашка «заедала» в конце на все 350 мс.
-      background: AnimatedOpacity(
-        opacity: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
-        duration: _mealCollapse,
-        curve: _mealCollapseCurve,
-        child: Container(
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          decoration: BoxDecoration(
-            color: Colors.red.shade400,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.delete_outline, color: Colors.white, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                Translations.deleteOf(context),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      secondaryBackground: AnimatedOpacity(
-        opacity: _removingMealIds.contains(meal.id) ? 0.0 : 1.0,
-        duration: _mealCollapse,
-        curve: _mealCollapseCurve,
-        child: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 190),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: ScaleTransition(scale: animation, child: child),
-                ),
-                child: Text(
-                  meal.pinned
-                      ? Translations.t('unpinMeal', context)
-                      : Translations.t('pinMeal', context),
-                  key: ValueKey('pin_status_${meal.pinned}'),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 190),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: Icon(
-                  meal.pinned ? Icons.push_pin_outlined : Icons.push_pin,
-                  key: ValueKey('pin_icon_${meal.pinned}'),
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      // Перед удалением приёма пищи — мягкий диалог
-      // «Удалить приём пищи? Отменить / Удалить».
-      confirmDismiss: (dir) async {
+      confirmDismiss: (_) async {
         // Свайп — это жест, клавиатура после него возвращаться не должна.
         FocusManager.instance.primaryFocus?.unfocus();
         _hidePad();
-        if (dir == DismissDirection.endToStart) {
-          Haptics.medium();
-          _service.togglePin(meal.id);
-          return false;
-        }
-        // Защита от случайного удаления жестом: требуем явного подтверждения.
         final ok = await showAgyshaConfirm(
           context,
           title: Translations.t(
@@ -1274,34 +1170,16 @@ class _NutritionScreenState extends State<NutritionScreen>
           confirmLabel: Translations.t('delete', context, 'Удалить'),
           destructive: true,
         );
-        if (ok == true) {
-          // Подтверждённое удаление: строка САМА отыгрывает уход
-          // (растворение 240 мс + схлопывание высоты 340 мс — см.
-          // _removingMealIds в каркасе ребёнка), и только после этого
-          // Dismissible завершает жест. Пока фаза идёт, место под строкой
-          // освобождается непрерывно — соседи подаются вверх плавно.
-          if (mounted) setState(() => _removingMealIds.add(meal.id));
-          // Ждём ровно схлопывание: к этому моменту слот пуст, и красная
-          // подложка не простаивает ни кадра.
+        if (ok == true && mounted) {
+          // Строка сама отыгрывает уход (растворение + схлопывание), и только
+          // после этого Dismissible завершает жест: место освобождается
+          // непрерывно, соседи подаются вверх плавно.
+          setState(() => _removingMealIds.add(meal.id));
           await Future<void>.delayed(_mealCollapse);
-          // НЕЧАЯННОЕ «ЗАЕДАНИЕ» В КОНЦЕ УБРАНО: раньше здесь снимали id из
-          // _removingMealIds перед возвратом true — end-обоих tween'ов
-          // возвращался в 1.0, и на один кадр строка вспыхивала на полную
-          // высоту перед размонтированием. Теперь id оставляем в наборе:
-          // строка уходит из дерева в onDismissed и набор просто не нужен.
         }
         return ok == true;
       },
-      onDismissed: (dir) {
-        if (dir == DismissDirection.startToEnd) {
-          // Убираем приём пищи СРАЗУ: карточка уже уехала за край, а её
-          // место схлопывает AnimatedSize — плавно и в том же кадре, где
-          // модель перестала о ней знать. Раньше удаление откладывалось на
-          // 360 мс «до конца сжатия»; место при этом снималось одним кадром
-          // уже после того, как сжатие отыграло, — это и был прыжок.
-          _service.remove(meal.id);
-        }
-      },
+      onDismissed: (_) => _service.remove(meal.id),
       child: RepaintBoundary(
         // Вросло из нуля только у только что добавленной записи:
         // соседи подаются вниз НЕПРЕРЫВНО (высота карточки растёт
@@ -1370,7 +1248,25 @@ class _NutritionScreenState extends State<NutritionScreen>
                   pressedScale: 0.982,
                   duration: const Duration(milliseconds: 240),
                   releaseDuration: const Duration(milliseconds: 340),
-                  child: Card(
+                  // Долгое нажатие — закрепить/снять закреп: ровно то же
+                  // действие, что у привычки и задачи. Подсказка после
+                  // переключения та же, что там, поэтому экраны читаются
+                  // одним языком.
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onLongPress: () {
+                      Haptics.medium();
+                      final willPin = !meal.pinned;
+                      _service.togglePin(meal.id);
+                      showBeautifulSnackBar(
+                        context,
+                        message: willPin
+                            ? Translations.t('mealPinned', context, 'Приём пищи закреплён')
+                            : Translations.t('mealUnpinned', context, 'Закреп снят'),
+                        icon: willPin ? Icons.push_pin : Icons.push_pin_outlined,
+                      );
+                    },
+                    child: Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -1460,6 +1356,7 @@ class _NutritionScreenState extends State<NutritionScreen>
                         vertical: 12,
                         horizontal: 16,
                       ),
+                    ),
                     ),
                   ),
                 ),

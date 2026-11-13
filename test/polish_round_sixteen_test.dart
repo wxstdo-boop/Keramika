@@ -40,22 +40,19 @@ void main() {
     expect(src.contains('AgyshaBunny'), isTrue);
   });
 
-  test('кольцо музыки: свечение одним обходом, а не тремя кругами', () {
+  test('кольцо музыки: расходящиеся волны без градиентных шейдеров', () {
     final src = read('lib/widgets/music_pulse_ring.dart');
+    // Монотонный пульс: тон один, поэтому шейдеры-градиенты не нужны вовсе —
+    // кадр стоит две обводки вместо прежних трёх шейдеров и трёх обходов.
     expect(
       RegExp(r'\.createShader\(').allMatches(src).length,
-      2,
-      reason: 'sweep-тон и радиальное затухание — по разу за кадр',
-    );
-    expect(
-      src.contains('RadialGradient'),
-      isTrue,
-      reason: 'края свечения растворяются, а не обрываются кольцом',
+      0,
+      reason: 'градиентных шейдеров больше нет — только ровные обводки',
     );
     expect(
       RegExp(r'canvas\.drawCircle\(').allMatches(src).length,
       2,
-      reason: 'два прохода: свечение и сама линия (было три)',
+      reason: 'опорная кромка и волны — по одному вызову',
     );
     expect(src.contains('MaskFilter'), isFalse);
   });
@@ -127,19 +124,29 @@ void main() {
     );
   });
 
-  test('переход «пусто ↔ история» не выбрасывает уходящего ребёнка', () {
+  test('переход «пусто ↔ история» тянется по высоте, без подмены кадром', () {
     final src = read('lib/screens/nutrition_screen.dart');
-    final start = src.indexOf('child: AnimatedSwitcher(');
-    final body = src.substring(start, start + 2200);
+    // Пустая подсказка и история живут в ОДНОМ блоке под одним AnimatedSize:
+    // подсказка сама раскрывается и схлопывается по высоте (heightFactor),
+    // поэтому переход «пусто ↔ история» идёт непрерывно, а не подменой
+    // состояния AnimatedSwitcher'ом (тот мигал текстом).
+    final hint = src.indexOf('Widget _emptyMealsHint(');
+    expect(hint, greaterThan(0));
+    final body = src.substring(hint, hint + 900);
     expect(
       body.contains('heightFactor'),
       isTrue,
-      reason: 'уходящая подпись тает и схлопывается, а не пропадает кадром',
+      reason: 'подсказка тает и схлопывается, а не пропадает кадром',
     );
     expect(
-      body.contains("children: [?child]"),
-      isFalse,
-      reason: 'выбрасывание уходящего давало мигание текста',
+      body.contains('_mealCollapse'),
+      isTrue,
+      reason: 'та же длительность, что у истории и строки',
+    );
+    expect(
+      src.contains("ValueKey('meals_empty')"),
+      isTrue,
+      reason: 'у подсказки свой ключ',
     );
   });
 }

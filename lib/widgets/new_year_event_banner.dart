@@ -1507,10 +1507,14 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
                 stops: const [0.0, 0.46, 1.0],
               ),
               borderRadius: BorderRadius.circular(14),
+              // «Забрать» — белый кант по алому (стеклянная кромка).
+              // «Получено» — НЕ белый: на светлой поверхности он читался
+              // грубой молочной обводкой вокруг серой плашки. Теперь кант
+              // тематический (outline), тонкий и в тон фону.
               border: Border.all(
-                color: Colors.white.withValues(
-                  alpha: widget.marked ? (dark ? 0.16 : 0.55) : 0.34,
-                ),
+                color: widget.marked
+                    ? cs.outlineVariant.withValues(alpha: dark ? 0.5 : 0.7)
+                    : Colors.white.withValues(alpha: 0.34),
                 width: 1,
               ),
               boxShadow: [

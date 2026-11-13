@@ -16,9 +16,15 @@ import 'press_scale.dart';
 ///
 /// Символы отдаются наружу через [onChar]; управление — через [onBackspace]
 /// и [onSpace]. Набор намеренно короткий: буквы (кириллица + латиница),
-/// цифры, пробел и возврат — этого достаточно, чтобы спокойно набрать и имя,
-/// и счёт.
-class InlineKeyboard extends StatelessWidget {
+/// цифры, пробел, возврат и КЛАВИША-РЕГИСТР — этого достаточно, чтобы
+/// спокойно набрать и имя, и счёт.
+///
+/// Регистр держит сама клавиатура (состояние [_shift]): тап по «⇧» делает
+/// СЛЕДУЮЩУЮ букву заглавной и сам гаснет — как на системной панели, где
+/// Shift одноразовый. Раньше во второй строке стоял ВТОРОЙ «стереть»: две
+/// одинаковые кнопки возврата в одной панели читались ошибкой раскладки, а
+/// заглавную букву набрать было нельзя вообще.
+class InlineKeyboard extends StatefulWidget {
   final ValueChanged<String> onChar;
   final VoidCallback onBackspace;
   final VoidCallback onSpace;
@@ -52,6 +58,14 @@ class InlineKeyboard extends StatelessWidget {
     this.keyHeight = 44,
   });
 
+  @override
+  State<InlineKeyboard> createState() => _InlineKeyboardState();
+}
+
+class _InlineKeyboardState extends State<InlineKeyboard> {
+  /// Регистр включён: следующая буква уйдёт ЗАГЛАВНОЙ, после чего гаснет.
+  bool _shift = false;
+
   static const List<String> _digits = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
   ];
@@ -77,36 +91,41 @@ class InlineKeyboard extends StatelessWidget {
         // теме по умолчанию primary — сиреневый, и панель читалась просто
         // СЕРОЙ плитой. Красный задаём константой бренда, а не ролью темы.
         color: Color.alphaBlend(
-          _brandRed.withValues(alpha: 0.30),
+          InlineKeyboard._brandRed.withValues(alpha: 0.30),
           theme.colorScheme.surfaceContainer.withValues(alpha: 0.66),
         ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(Radii.xl)),
         border: Border(
-          top: BorderSide(color: _brandRed.withValues(alpha: 0.38)),
+          top: BorderSide(
+            color: InlineKeyboard._brandRed.withValues(alpha: 0.38),
+          ),
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _row(theme, _digits, keyHeight),
+          _row(theme, _digits, widget.keyHeight),
           const SizedBox(height: 6),
-          _row(theme, _row1, keyHeight),
+          _row(theme, _row1, widget.keyHeight),
           const SizedBox(height: 6),
-          _row(theme, _row2, keyHeight),
+          _row(theme, _row2, widget.keyHeight),
           const SizedBox(height: 6),
-          _row(theme, _row3, keyHeight, trailingBackspace: true),
+          // В нижнем ряду букв — РЕГИСТР. «Стереть» на панели ОДИН (в нижней
+          // строке): второй возврат рядом с буквами читался ошибкой раскладки,
+          // а заглавную букву набрать было нельзя вообще.
+          _row(theme, _row3, widget.keyHeight, leadingShift: true),
           const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
                 // Кнопка-действие отъедает часть строки у пробела: так она
                 // заметная, но не отдельная «полка» под клавиатурой.
-                flex: actionLabel == null ? 5 : 3,
+                flex: widget.actionLabel == null ? 5 : 3,
                 child: _Key(
                   theme: theme,
                   label: 'пробел',
-                  height: keyHeight,
-                  onTap: onSpace,
+                  height: widget.keyHeight,
+                  onTap: widget.onSpace,
                 ),
               ),
               const SizedBox(width: 4),
@@ -115,23 +134,23 @@ class InlineKeyboard extends StatelessWidget {
                 child: _Key(
                   theme: theme,
                   icon: Icons.backspace_outlined,
-                  height: keyHeight,
+                  height: widget.keyHeight,
                   // Возврат повторяется при удержании — как у системной
                   // клавиатуры: стереть длинное имя одним тапом было нельзя.
                   repeat: true,
-                  onTap: onBackspace,
+                  onTap: widget.onBackspace,
                 ),
               ),
-              if (actionLabel != null) ...[
+              if (widget.actionLabel != null) ...[
                 const SizedBox(width: 4),
                 Expanded(
                   flex: 3,
                   child: _Key(
                     theme: theme,
-                    label: actionLabel,
-                    height: keyHeight,
-                    emphasized: actionEmphasized,
-                    onTap: onAction ?? () {},
+                    label: widget.actionLabel,
+                    height: widget.keyHeight,
+                    emphasized: widget.actionEmphasized,
+                    onTap: widget.onAction ?? () {},
                   ),
                 ),
               ],
@@ -142,37 +161,46 @@ class InlineKeyboard extends StatelessWidget {
     );
   }
 
+  /// Отдать букву наружу. Регистр ОДНОРАЗОВЫЙ: заглавная уходит, и «⇧» сам
+  /// гаснет — как на системной панели.
+  void _tap(String ch) {
+    final text = _shift ? ch.toUpperCase() : ch;
+    if (_shift) setState(() => _shift = false);
+    widget.onChar(text);
+  }
+
   Widget _row(
     ThemeData theme,
     List<String> chars,
     double height, {
-    bool trailingBackspace = false,
+    bool leadingShift = false,
   }) {
     return Row(
       children: [
+        if (leadingShift)
+          Expanded(
+            child: _Key(
+              theme: theme,
+              icon: _shift
+                  ? Icons.keyboard_capslock
+                  : Icons.keyboard_capslock_outlined,
+              height: height,
+              active: _shift,
+              onTap: () => setState(() => _shift = !_shift),
+            ),
+          ),
         for (final c in chars)
           Expanded(
             child: _Key(
               theme: theme,
-              label: c,
+              label: _shift ? c.toUpperCase() : c,
               height: height,
-              onTap: () => onChar(c),
-            ),
-          ),
-        if (trailingBackspace)
-          Expanded(
-            child: _Key(
-              theme: theme,
-              icon: Icons.backspace_outlined,
-              height: height,
-              repeat: true,
-              onTap: onBackspace,
+              onTap: () => _tap(c),
             ),
           ),
       ],
     );
   }
-
 }
 
 /// Одна клавиша: «вдавливание» под пальцем, тактильный отклик и (для возврата)
@@ -191,6 +219,10 @@ class _Key extends StatefulWidget {
   /// Повторять действие, пока палец держится (для «стереть»).
   final bool repeat;
 
+  /// Клавиша-режим в активном состоянии (например, включённый регистр):
+  /// подсвечена, чтобы было видно, что следующий ввод — заглавный.
+  final bool active;
+
   const _Key({
     required this.theme,
     required this.height,
@@ -199,6 +231,7 @@ class _Key extends StatefulWidget {
     this.icon,
     this.repeat = false,
     this.emphasized = false,
+    this.active = false,
   });
 
   @override
@@ -245,6 +278,8 @@ class _KeyState extends State<_Key> {
     // и клавиши выходили серо-фиолетовыми вместо красных.
     final keyColor = widget.emphasized
         ? InlineKeyboard._brandRed.withValues(alpha: 0.92)
+        : widget.active
+        ? InlineKeyboard._brandRed.withValues(alpha: 0.72)
         : Color.alphaBlend(
             InlineKeyboard._brandRed.withValues(alpha: 0.26),
             cs.surfaceContainerHighest.withValues(alpha: 0.66),
@@ -272,7 +307,9 @@ class _KeyState extends State<_Key> {
               color: keyColor,
               borderRadius: BorderRadius.circular(Radii.md),
               border: Border.all(
-                color: InlineKeyboard._brandRed.withValues(alpha: 0.30),
+                color: InlineKeyboard._brandRed.withValues(
+                  alpha: widget.active || widget.emphasized ? 0.6 : 0.30,
+                ),
               ),
             ),
             child: Container(
@@ -282,7 +319,9 @@ class _KeyState extends State<_Key> {
                   ? Icon(
                       widget.icon,
                       size: 20,
-                      color: InlineKeyboard._brandRed,
+                      color: widget.active
+                          ? Colors.white
+                          : InlineKeyboard._brandRed,
                     )
                   : Text(
                       widget.label!,
