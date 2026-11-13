@@ -288,4 +288,43 @@ void main() {
     expect(svc.todayCalories, 500);
     expect(find.text('Суп'), findsWidgets);
   });
+
+  testWidgets('история: заголовок «Сегодня» тает плавно, а не гаснет кадром', (
+    tester,
+  ) async {
+    // Высокое окно: блок истории должен попасть в кадр целиком.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final svc = NutritionService();
+    await tester.runAsync(() async {
+      await svc.add(
+        Meal(id: 'm1', name: 'Суп', calories: 200, date: DateTime.now()),
+      );
+      await tester.pumpWidget(wrap(const NutritionScreen()));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    });
+    // Ждём «въезд» экрана: раньше именно его смена структуры пересоздавала
+    // заголовок дня и обнуляла его анимацию ухода.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Сегодня'), findsOneWidget);
+
+    await tester.runAsync(() => svc.remove('m1'));
+    await tester.pump();
+    // Сразу после удаления заголовок ещё на месте (начинается уход).
+    expect(find.text('Сегодня'), findsOneWidget);
+    // Середина затухания: заголовок ещё виден — значит тает, а не гаснет
+    // одним кадром.
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      find.text('Сегодня'),
+      findsOneWidget,
+      reason: 'заголовок дня обязан таять, а не исчезать кадром',
+    );
+    // К концу анимации он снят из дерева.
+    await tester.pumpAndSettle();
+    expect(find.text('Сегодня'), findsNothing);
+  });
 }

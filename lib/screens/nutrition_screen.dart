@@ -120,14 +120,18 @@ class _NutritionScreenState extends State<NutritionScreen>
   Widget _reveal(int slot, Widget child) {
     return AnimatedBuilder(
       animation: _enter,
-      builder: (context, _) {
+      // Структура ДЕРЕВА постоянна, меняется только paint. Раньше при `t == 0`
+      // возвращался `Opacity(child)`, а при `t > 0` — `Opacity(Transform(child))`:
+      // на старте «въезда» тип ребёнка менялся, и всё поддерево (включая
+      // заголовки дней истории) пересоздавалось с нуля. У `_DayHeader` это
+      // сбрасывало собственный контроллер в 0, и ушедший день-«призрак» таял
+      // мгновенно, а не плавно. Теперь `Transform` есть всегда, а `child`
+      // передаётся через `child`-слот AnimatedBuilder и строится один раз.
+      builder: (context, child) {
         // Окно старта: первые 55% прогресса раздает старты по слотам.
-        final total = 10;
+        const total = 10;
         final start = (slot / total).clamp(0.0, 0.55);
         final t = ((_enter.value - start) / 0.45).clamp(0.0, 1.0);
-        if (t <= 0.0) {
-          return Opacity(opacity: 0, child: child);
-        }
         final eased = Curves.easeOutCubic.transform(t);
         return Opacity(
           opacity: eased,
@@ -138,6 +142,7 @@ class _NutritionScreenState extends State<NutritionScreen>
           ),
         );
       },
+      child: child,
     );
   }
 
