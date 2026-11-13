@@ -27,7 +27,11 @@ class NewYearEventBanner extends StatefulWidget {
 
 class _NewYearEventBannerState extends State<NewYearEventBanner>
     with TickerProviderStateMixin {
-  static const _kIn = Duration(milliseconds: 560);
+  // Вход удлинён (560 → 700 мс): окно набирало плотность и «вспыхивало»
+  // заметно раньше содержимого, из-за чего внутренность читалась дёрганой
+  // (владелец: «внутри события появляется всё неплавно и лагает»). Чем
+  // длиннее общий ход, тем мягче выглядит «догон» содержимого.
+  static const _kIn = Duration(milliseconds: 700);
   static const _kOut = Duration(milliseconds: 380);
   static const _kTotalHats = NewYearEventService.totalDays;
 
@@ -96,7 +100,9 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     );
     // Без `easeOutBack`: «отскок» за единицу читался рывком в конце
     // появления — карточка «дёргалась» на последних кадрах.
-    _popIn = Tween<double>(begin: 0.94, end: 1.0).animate(
+    // Старт 0.94 читался «прыжком»: разница в 6 % на крупной карточке —
+    // это резкий наезд. 0.975 даёт едва заметное «проявление» масштаба.
+    _popIn = Tween<double>(begin: 0.975, end: 1.0).animate(
       CurvedAnimation(
         parent: _open,
         curve: const Interval(0.0, 0.90, curve: Curves.easeOutCubic),
@@ -106,9 +112,12 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     // кнопки всплывают на считаные пиксели позже самой плашки. Один общий
     // прогресс — ни одного лишнего контроллера, а вход читается собранным,
     // а не «вспышкой целиком».
+    // Содержимое стартует ПОЗЖЕ (0.34 вместо 0.22) и доезжает к самому
+    // концу входа: заголовок, полоса и кнопки «догоняют» карточку длинным
+    // мягким ходом, а не вспышкой на её фоне.
     _contentIn = CurvedAnimation(
       parent: _open,
-      curve: const Interval(0.22, 1.0, curve: Curves.easeOutCubic),
+      curve: const Interval(0.34, 1.0, curve: Curves.easeOutCubic),
     );
 
     // Фон гаснет за первые 55% ухода (быстрее карточки, но с плавными
@@ -125,7 +134,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
         curve: const Interval(0.15, 1.0, curve: Curves.easeInOut),
       ),
     );
-    _popOut = Tween<double>(begin: 1.0, end: 0.94).animate(
+    _popOut = Tween<double>(begin: 1.0, end: 0.975).animate(
       CurvedAnimation(
         parent: _out,
         curve: const Interval(0.15, 1.0, curve: Curves.easeInOut),
@@ -186,15 +195,42 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
         _loading = false;
         _prize = svc.prizeGranted;
       });
-      // Первый показ — каскадом: шапки засеваются одна за другой.
+      // Первый показ — каскадом: шапки засеваются одна за другой, но НЕ
+      // одновременно с раскрытием окна. Если волна стартует сразу, рост
+      // слотов идёт поверх ещё «доезжающего» содержимого, и вход читается
+      // дёрганым. Ждём, пока карточка пройдёт 60 % хода, и только тогда
+      // засеваем — уже на стоящей плашке.
       _hatsReal = hats;
-      _setHats(hats, ms: 160 + 50 * hats);
+      _seedHatsAfterEntrance(hats);
       // Коллекция уже собрана, а подарок не выдан (например, снекбар не
       // дожил до записи) — доезжает молча, без повторного поздравления.
       if (hats >= _kTotalHats) await _grantPrize(announce: false);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Запустить первый каскад шапок ПОСЛЕ того, как вход окна пройдёт 60 %.
+  /// Если вход уже позади (данные приехали поздно) — сеем сразу.
+  void _seedHatsAfterEntrance(int hats) {
+    void fire() {
+      if (!mounted) return;
+      _setHats(hats, ms: 160 + 50 * hats);
+    }
+
+    const gate = 0.6;
+    if (_open.value >= gate) {
+      fire();
+      return;
+    }
+    void check() {
+      if (_open.value >= gate) {
+        _open.removeListener(check);
+        fire();
+      }
+    }
+
+    _open.addListener(check);
   }
 
   Future<void> _onMark() async {

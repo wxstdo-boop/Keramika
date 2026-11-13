@@ -62,9 +62,35 @@ class InlineKeyboard extends StatefulWidget {
   State<InlineKeyboard> createState() => _InlineKeyboardState();
 }
 
-class _InlineKeyboardState extends State<InlineKeyboard> {
+class _InlineKeyboardState extends State<InlineKeyboard>
+    with SingleTickerProviderStateMixin {
   /// Регистр включён: следующая буква уйдёт ЗАГЛАВНОЙ, после чего гаснет.
   bool _shift = false;
+
+  /// Прогресс переключения регистра 0..1: ведёт плавный подъём/опускание букв.
+  late final AnimationController _caseAnim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 240),
+  );
+  late final Animation<double> _caseCurve = CurvedAnimation(
+    parent: _caseAnim,
+    curve: Curves.easeInOutCubic,
+  );
+
+  @override
+  void dispose() {
+    _caseAnim.dispose();
+    super.dispose();
+  }
+
+  void _setShift(bool on) {
+    setState(() => _shift = on);
+    if (on) {
+      _caseAnim.forward();
+    } else {
+      _caseAnim.reverse();
+    }
+  }
 
   static const List<String> _digits = [
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
@@ -165,7 +191,7 @@ class _InlineKeyboardState extends State<InlineKeyboard> {
   /// гаснет — как на системной панели.
   void _tap(String ch) {
     final text = _shift ? ch.toUpperCase() : ch;
-    if (_shift) setState(() => _shift = false);
+    if (_shift) _setShift(false);
     widget.onChar(text);
   }
 
@@ -186,15 +212,22 @@ class _InlineKeyboardState extends State<InlineKeyboard> {
                   : Icons.keyboard_capslock_outlined,
               height: height,
               active: _shift,
-              onTap: () => setState(() => _shift = !_shift),
+              onTap: () => _setShift(!_shift),
             ),
           ),
         for (final c in chars)
           Expanded(
-            child: _Key(
-              theme: theme,
-              label: _shift ? c.toUpperCase() : c,
+            // Регистр переключается ПЛАВНО: буква уходит вверх и возвращается
+            // на место кроссфейдом со сдвигом, а не подменяется кадром
+            // (владелец: «при делании заглавными буквы плавно поднимаются
+            // опускаются»). Один общий прогресс [_caseAnim] — на все буквы
+            // ряда сразу, поэтому ряд «дышит» синхронно.
+            child: _CaseGlyph(
+              lower: c,
+              upper: c.toUpperCase(),
+              animation: _caseCurve,
               height: height,
+              theme: theme,
               onTap: () => _tap(c),
             ),
           ),
@@ -287,9 +320,14 @@ class _KeyState extends State<_Key> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: PressScale(
-        pressedScale: 0.9,
-        duration: const Duration(milliseconds: 90),
-        releaseDuration: const Duration(milliseconds: 180),
+        // Отдача клавиши — заметно медленнее и мягче прежних 90/180 мс:
+        // на быстром наборе клавиша «щёлкала» кадром и не читалась как
+        // вдавливание (владелец: «отдачу плавнее и медленнее надо, а то
+        // быстро»). Вход мягче, возврат ещё длиннее — палец успевает
+        // почувствовать ход, а следующая клавиша нажимается поверх.
+        pressedScale: 0.86,
+        duration: const Duration(milliseconds: 190),
+        releaseDuration: const Duration(milliseconds: 340),
         // Отдачу рисует сам PressScale: `Material`+`InkWell` на каждую клавишу
         // — лишние слои и чернильные всплески. Держим только один «блик»
         // нажатия через `Listener` внутри PressScale, а тап отдаёт GestureDetector.
@@ -336,4 +374,93 @@ class _KeyState extends State<_Key> {
       ),
     );
   }
+}
+
+/// Одна буква клавиши, у которой регистр меняется ПЛАВНО.
+///
+/// Обе начертания («а» и «А») стоят стопкой в одном слоте: нижнее уезжает
+/// вниз и тает, верхнее поднимается из-под пальца и проявляется. Сдвиг —
+/// только `Transform`/`Opacity`, поэтому раскладка клавиши не пересобирается.
+class _CaseGlyph extends StatelessWidget {
+  final String lower;
+  final String upper;
+  final Animation<double> animation;
+  final double height;
+  final ThemeData theme;
+  final VoidCallback onTap;
+
+  const _CaseGlyph({
+    required this.lower,
+    required this.upper,
+    required this.animation,
+    required this.height,
+    required this.theme,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PressScale(
+      pressedScale: 0.86,
+      duration: const Duration(milliseconds: 190),
+      releaseDuration: const Duration(milliseconds: 340),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Haptics.select();
+          onTap();
+        },
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(
+              InlineKeyboard._brandRed.withValues(alpha: 0.26),
+              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.66),
+            ),
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: Border.all(
+              color: InlineKeyboard._brandRed.withValues(alpha: 0.30),
+            ),
+          ),
+          child: SizedBox(
+            height: height,
+            child: AnimatedBuilder(
+              animation: animation,
+              builder: (context, _) {
+                final t = animation.value;
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Нижняя буква: уходит вниз и тает по мере включения.
+                    Opacity(
+                      opacity: (1 - t).clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        offset: Offset(0, 5 * t),
+                        child: _glyph(lower),
+                      ),
+                    ),
+                    // Верхняя буква: поднимается снизу и проявляется.
+                    Opacity(
+                      opacity: t.clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        offset: Offset(0, -5 * (1 - t)),
+                        child: _glyph(upper),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _glyph(String ch) => Text(
+    ch,
+    style: theme.textTheme.titleMedium?.copyWith(
+      fontWeight: Weights.semibold,
+      color: theme.colorScheme.onSurface,
+    ),
+  );
 }

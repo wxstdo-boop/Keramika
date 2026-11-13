@@ -61,6 +61,15 @@ class _NutritionScreenState extends State<NutritionScreen>
   static const Duration _mealCollapse = Duration(milliseconds: 320);
   static const Curve _mealCollapseCurve = Curves.easeOutCubic;
 
+  /// Группы дней, которые УЖЕ ушли из модели, но ещё доигрывают уход:
+  /// заголовок дня («Сегодня») и его карточки тают и схлопываются, пока
+  /// соседи съезжают. Без этого заголовок дня исчезал одним кадром — это и
+  /// читалось как «Сегодня появляется и исчезает неплавно».
+  final List<_DayGhost> _dayGhosts = [];
+
+  /// Снимок состава дней на прошлой сборке: по нему вычисляем ушедшие дни.
+  Set<int> _liveDays = <int>{};
+
   /// Поле, открытое под встроенной клавиатурой, и сама открыта ли панель.
   /// `_pad` переживает закрытие: за 260 мс сложения панели её содержимое
   /// обязано оставаться валидным, иначе на половине анимации контроллер
@@ -1044,12 +1053,13 @@ class _NutritionScreenState extends State<NutritionScreen>
     }
     final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
-    // Пустая история больше НЕ отдельное состояние: подсказка «Приёмов пищи
-    // пока нет» живёт рядом с историей в общем блоке (см. каркас), поэтому
-    // здесь просто ничего не рисуем.
-    if (sortedKeys.isEmpty || meals.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    // Раньше пустая история обрывала сборку через `SizedBox.shrink()` — и
+    // вместе с ней пропускался весь блок «призраков». Именно поэтому
+    // удаление ПОСЛЕДНЕГО приёма пищи убирало заголовок «Сегодня» кадром
+    // (владелец жаловался на этот случай отдельно). Теперь пустой список —
+    // это просто пустой `sortedKeys`: ниже он честно отдаёт ушедшие дни в
+    // призраки, а подсказка «Приёмов пищи пока нет» живёт рядом и растёт
+    // своей анимацией.
 
     final accentColors = <Color>[
       Colors.deepOrange,
@@ -1074,8 +1084,8 @@ class _NutritionScreenState extends State<NutritionScreen>
 
     // История рендерится как обычная Column — экран скроллит единый
     // внешний ListView (ленивость не нужна).
-    // внешний ListView (ленивость не нужна).
-    final dayWidgets = <Widget>[];
+    final liveDiffs = <int>{};
+    final byDiff = <int, List<Widget>>{};
     for (final day in sortedKeys) {
       final dayMeals = groups[day]!
         ..sort((a, b) {
@@ -1083,36 +1093,88 @@ class _NutritionScreenState extends State<NutritionScreen>
           return b.date.compareTo(a.date);
         });
       final diff = today.difference(day).inDays;
-      final label = diff == 0
-          ? Translations.t('today', context)
-          : diff == 1
-          ? Translations.t('yesterday', context)
-          : '${day.day}/${day.month}/${day.year}';
+      liveDiffs.add(diff);
+      byDiff[diff] = [
+        _dayHeader(context, theme, diff, _dayLabel(context, diff, day)),
+        ...dayMeals.map((meal) => _mealCard(context, theme, meal, dayAccent)),
+        const SizedBox(height: 16),
+      ];
+    }
 
+    // УШЕДШИЕ дни: заголовок дня, который только что пропал из модели, не
+    // должен исчезать кадром. Раньше «Сегодня» вместе с последней записью
+    // пропадал мгновенно (владелец: «Сегодня появляется и исчезает
+    // неплавно»). Оставляем его «призраком»: он схлопывается и тает, пока
+    // соседи съезжают, а сами карточки приёмов пищи к этому моменту уже
+    // отыграли свой уход через `_removingMealIds`.
+    for (final diff in _liveDays) {
+      if (liveDiffs.contains(diff)) continue;
+      if (_dayGhosts.any((g) => g.diff == diff)) continue;
+      _dayGhosts.add(_DayGhost(diff, _dayLabel(context, diff, null)));
+    }
+    _liveDays = liveDiffs;
+    // День вернулся раньше, чем его «призрак» догорел (например, в «Сегодня»
+    // снова добавили приём пищи) — призрак снимаем сразу: два заголовка с
+    // одним ключом в одной колонке — это ошибка дублирующегося ключа.
+    _dayGhosts.removeWhere((g) => liveDiffs.contains(g.diff));
+    final ghostDiffs = _dayGhosts.map((g) => g.diff).toSet();
+
+    // Порядок: свежие дни сверху (по возрастанию diff), а призраки встают на
+    // своё прежнее место — тот же ключ сортировки.
+    final allDiffs = <int>{...liveDiffs, ...ghostDiffs}.toList()..sort();
+    final dayWidgets = <Widget>[];
+    for (final diff in allDiffs) {
+      final live = byDiff[diff];
+      if (live != null) {
+        dayWidgets.addAll(live);
+        continue;
+      }
+      final ghost = _dayGhosts.firstWhere((g) => g.diff == diff);
       dayWidgets.add(
-        Padding(
+        _DayHeader(
           key: ValueKey('day_$diff'),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            label,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          label: ghost.label,
+          theme: theme,
+          removing: true,
+          onDone: () {
+            if (!mounted) return;
+            setState(() => _dayGhosts.removeWhere((g) => g.diff == diff));
+          },
         ),
       );
-      dayWidgets.addAll(
-        dayMeals.map((meal) => _mealCard(context, theme, meal, dayAccent)),
-      );
-      dayWidgets.add(const SizedBox(height: 16));
     }
+
     return KeyedSubtree(
       key: const ValueKey('meals_history'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: dayWidgets,
       ),
+    );
+  }
+
+  /// Подпись дня истории. `null`-день (призрак) сохраняет числовой формат
+  /// только для далёких дней — «Сегодня»/«Вчера» считаем по [diff].
+  String _dayLabel(BuildContext context, int diff, DateTime? day) {
+    if (diff == 0) return Translations.t('today', context);
+    if (diff == 1) return Translations.t('yesterday', context);
+    if (day == null) return '';
+    return '${day.day}/${day.month}/${day.year}';
+  }
+
+  /// Заголовок дня: появляется и исчезает ПО ВЫСОТЕ с затуханием, а не
+  /// подменой кадром. Новый день «раскрывается» сверху, ушедший —
+  /// схлопывается и тает.
+  Widget _dayHeader(
+    BuildContext context,
+    ThemeData theme,
+    int diff,
+    String label,
+  ) {
+    return _DayHeader(
+      key: ValueKey('day_$diff'),
+      label: label,
+      theme: theme,
     );
   }
 
@@ -1144,8 +1206,13 @@ class _NutritionScreenState extends State<NutritionScreen>
     // остальных экранах. Теперь и удаление, и закреп ведут себя как везде.
     return SwipeToDelete(
       dismissKey: ValueKey('meal_${meal.id}'),
-      // Фон удаления = границы карточки: у неё горизонтальный margin 16.
+      // Фон удаления = границы карточки (у неё горизонтальный margin 16), а
+      // скругление — ТО ЖЕ 20, что у карточек привычек и задач. Раньше здесь
+      // стоял радиус 16 по умолчанию, и красная плашка на пару пикселей не
+      // совпадала с карточкой по углам (владелец: «не под размер и не
+      // закруглён как в других карточках»).
       inset: const EdgeInsets.symmetric(horizontal: 16),
+      borderRadius: 20,
       // Своё сжатие строки выключено: высоту ведёт внешний AnimatedSize над
       // блоком истории (см. каркас), поэтому на экране одна анимация высоты,
       // а не две спорящие.
@@ -1269,7 +1336,10 @@ class _NutritionScreenState extends State<NutritionScreen>
                     child: Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      // Радиус 20 — как у карточек привычек и задач: с 16
+                      // карточка выбивалась из общего языка скруглений, а
+                      // красная плашка удаления не совпадала с ней по углам.
+                      borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
                         color: accent.withValues(alpha: 0.3),
                         width: 1,
@@ -1302,15 +1372,25 @@ class _NutritionScreenState extends State<NutritionScreen>
                             ),
                           ),
                           AnimatedSize(
-                            duration: const Duration(milliseconds: 210),
+                            duration: const Duration(milliseconds: 240),
                             curve: Curves.easeOutCubic,
                             child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 190),
-                              switchInCurve: Curves.easeOutBack,
+                              // Значок закрепа («зрачок») появляется и гаснет
+                              // ПЛАВНО: прежний `easeOutBack` давал отскок за
+                              // единицу — значок «выскакивал», а на 16 px это
+                              // читалось дёрганьем (владелец: «зрачок
+                              // закрепления плавно появляться исчезать
+                              // должен»). Теперь мягкий разгон без отскока и
+                              // рост с 0.7, а не с нуля.
+                              duration: const Duration(milliseconds: 220),
+                              switchInCurve: Curves.easeOutCubic,
                               switchOutCurve: Curves.easeInCubic,
                               transitionBuilder: (child, animation) =>
                                   ScaleTransition(
-                                    scale: animation,
+                                    scale: Tween<double>(
+                                      begin: 0.7,
+                                      end: 1.0,
+                                    ).animate(animation),
                                     child: FadeTransition(
                                       opacity: animation,
                                       child: child,
@@ -2019,6 +2099,104 @@ class _GrowIntoPlaceState extends State<_GrowIntoPlace>
         ),
       ),
       child: widget.child,
+    );
+  }
+}
+
+/// Ушедший день истории: держим его подпись, пока заголовок доигрывает уход.
+class _DayGhost {
+  const _DayGhost(this.diff, this.label);
+  final int diff;
+  final String label;
+}
+
+/// Заголовок дня истории с плавным появлением и исчезновением.
+///
+/// Появление: высота «раскрывается» из нуля вместе с проявлением — новый день
+/// не втыкается кадром. Исчезновение ([removing]) — зеркально, после чего
+/// зовёт [onDone], и родитель убирает призрака из дерева.
+class _DayHeader extends StatefulWidget {
+  const _DayHeader({
+    super.key,
+    required this.label,
+    required this.theme,
+    this.removing = false,
+    this.onDone,
+  });
+
+  final String label;
+  final ThemeData theme;
+  final bool removing;
+  final VoidCallback? onDone;
+
+  @override
+  State<_DayHeader> createState() => _DayHeaderState();
+}
+
+class _DayHeaderState extends State<_DayHeader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+    value: widget.removing ? 1.0 : 0.0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.removing) {
+      _run(false);
+    } else {
+      _run(true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _DayHeader old) {
+    super.didUpdateWidget(old);
+    if (widget.removing && !old.removing) _run(false);
+  }
+
+  void _run(bool visible) {
+    if (visible) {
+      _c.forward();
+    } else {
+      _c.reverse().whenComplete(() {
+        if (mounted) widget.onDone?.call();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final t = Curves.easeOutCubic.transform(_c.value.clamp(0.0, 1.0));
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: t,
+            child: Opacity(opacity: t, child: child),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(
+          widget.label,
+          style: widget.theme.textTheme.titleSmall?.copyWith(
+            color: widget.theme.colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -847,6 +847,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     return _Card(
       title: Translations.t('profileMusic', context, 'Твоя музыка'),
       icon: Icons.music_note_outlined,
+      // Без общей отдачи: внутри списка треков свои жесты (свайп, драг,
+      // переключение) — крупная плашка не должна отзываться на каждое
+      // касание строки и спорить с ними за палец.
+      pressable: false,
       // Счётчик подборки меняется ПО ЦИФРАМ, как очки рейтинга: при
       // добавлении/удалении трека разряд не подменяется кадром, а мягко
       // перетекает. Знаменатель — константа, поэтому он статичен.
@@ -1365,7 +1369,19 @@ class _Card extends StatelessWidget {
   final Widget? trailing;
   final Widget child;
 
-  const _Card({this.title, this.icon, this.trailing, required this.child});
+  const _Card({
+    this.title,
+    this.icon,
+    this.trailing,
+    required this.child,
+    this.pressable = true,
+  });
+
+  /// Отдача «вдавливанием» на зажатие. По умолчанию включена: все карточки
+  /// профиля мягко уменьшаются под пальцем (владелец: «у всех карточек пусть
+  /// будет отдача уменьшения небольшая»). Карточки, у которых внутри свои
+  /// жесты (список музыки), могут её выключить, чтобы не спорить за палец.
+  final bool pressable;
 
   @override
   Widget build(BuildContext context) {
@@ -1373,7 +1389,7 @@ class _Card extends StatelessWidget {
     // Material, а не просто DecoratedBox: ListTile внутри карточки рисует
     // чернильные волны на ближайшем Material, и без него они были бы
     // «спрятаны» фоном карточки (Flutter ругается assertion'ом).
-    return Material(
+    final card = Material(
       color: theme.colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(Radii.xl),
       clipBehavior: Clip.antiAlias,
@@ -1411,6 +1427,17 @@ class _Card extends StatelessWidget {
           ],
         ),
       ),
+    );
+    if (!pressable) return card;
+    // Отдача небольшая и мягкая (0.99): карточка крупная, глубокое уменьшение
+    // читалось бы «прыжком» всего блока, а лёгкая просадка вместе с потерей
+    // плотности даёт понятный, но спокойный отклик.
+    return PressScale(
+      pressedScale: 0.99,
+      duration: const Duration(milliseconds: 220),
+      releaseDuration: const Duration(milliseconds: 360),
+      pressedOpacity: 0.94,
+      child: card,
     );
   }
 }
@@ -1992,16 +2019,37 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                   ],
                 ),
               ),
+              // Главное действие — ОТДЕЛЬНАЯ широкая кнопка над клавиатурой,
+              // как было изначально: встроенная в панель клавиша «Добавить»
+              // отъедала место у пробела и читалась как ещё одна буква
+              // (владелец: «нахуй ты кнопку в клавиатуру встроил, верни где
+              // была»). Клавиатура остаётся чистой панелью набора.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.md,
+                  Spacing.xs,
+                  Spacing.md,
+                  Spacing.sm,
+                ),
+                child: PressScale(
+                  pressedScale: 0.97,
+                  duration: const Duration(milliseconds: 200),
+                  releaseDuration: const Duration(milliseconds: 340),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _submit,
+                      child: Text(Translations.t('add', context, 'Добавить')),
+                    ),
+                  ),
+                ),
+              ),
               // Клавиатура — в самом низу листа, под тему приложения.
-              // Главное действие («Добавить») ВСТРОЕНО в неё, а не висит
-              // отдельной кнопкой над панелью: палец после набора не уходит
-              // вверх через весь лист, а сразу жмёт акцентную клавишу.
               InlineKeyboard(
                 onChar: _insert,
                 onBackspace: _backspace,
                 onSpace: _space,
-                actionLabel: Translations.t('add', context, 'Добавить'),
-                onAction: _submit,
               ),
             ],
           ),

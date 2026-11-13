@@ -57,7 +57,7 @@ class _MetelAuroraState extends State<MetelAurora>
     // экране цветной кашей поверх контента. Теперь небо — фон, а не сцена:
     // плотность вдвое ниже, поэтому текст и карточки остаются читаемыми.
     _bands = [
-      const _Band(dy: 0.05, wf: 1.60, hf: 0.34, hue: 0.10, alpha: 0.16),
+      const _Band(dy: 0.05, wf: 1.60, hf: 0.34, hue: 0.10, alpha: 0.11),
       const _Band(
         curtain: true,
         dx: 0.30,
@@ -66,7 +66,7 @@ class _MetelAuroraState extends State<MetelAurora>
         hf: 0.34,
         tilt: -0.12,
         hue: 0.02,
-        alpha: 0.20,
+        alpha: 0.13,
         segs: 2,
       ),
       const _Band(
@@ -77,7 +77,7 @@ class _MetelAuroraState extends State<MetelAurora>
         hf: 0.32,
         tilt: 0.10,
         hue: 0.22,
-        alpha: 0.18,
+        alpha: 0.12,
         segs: 2,
       ),
     ];
@@ -89,8 +89,8 @@ class _MetelAuroraState extends State<MetelAurora>
       return _Flake(
         dx: rng.nextDouble(),
         dy: rng.nextDouble(),
-        r: 1.2 + rng.nextDouble() * 1.7,
-        alpha: 0.07 + rng.nextDouble() * 0.11,
+        r: 1.3 + rng.nextDouble() * 1.5,
+        alpha: 0.16 + rng.nextDouble() * 0.20,
         seed: rng.nextDouble() * pi * 2,
         // Снег идёт вниз и его сносит ветром: каждая снежинка — со своей
         // скоростью и своим сносом, иначе «метель» выглядит вихрем из одной
@@ -347,35 +347,27 @@ class _AuroraPainter extends CustomPainter {
       }
     }
 
-    // Снежинки — холодного сине-серого оттенка: на почти белом фоне белая
-    // пылинка не видна вовсе. Крупные идут КОРОТКИМ ШТРИХОМ вниз: так снег
-    // читается падающим, а не рассыпанным по экрану мусором, а штрих с
-    // круглыми торцами стоит ровно столько же, сколько круг.
+    // Снежинки — КРУГЛЯШИ: полупрозрачные круглые точки, которые падают
+    // вниз и уезжают по ветру. Прежние короткие штрихи читались на экране
+    // грязными «царапинами», а тёмный сине-серый тон делал их похожими на
+    // мусор. Теперь это светлые кружки (владелец: «снежинки падают кругляши
+    // полупрозр»), мягкие настолько, чтобы не спорить с текстом поверх.
     //
-    // Раньше они только покачивались вокруг своей точки — для темы с именем
-    // «Метель» это было ничем. Теперь снег ИДЁТ: своя скорость вниз и снос
-    // ветром, с выходом за край и возвращением сверху (по модулю, доля
-    // экрана, а не пиксели — телепорта на глазах не видно).
-    final snow = Paint()
-      ..isAntiAlias = true
-      ..strokeCap = StrokeCap.round;
+    // Два круга на снежинку: ядро поплотнее и широкий ореол-«пушок» — так
+    // точка читается снежинкой, а не пикселем, и стоит ровно два drawCircle.
+    final core = Paint()..isAntiAlias = true;
+    final halo = Paint()..isAntiAlias = true;
     for (final f in flakes) {
       final fall = (f.dy + t * f.speed) % 1.0;
       final gust = sin(animationPhase * 0.5 + f.seed) * 0.014;
       final sway = sin(animationPhase + f.seed) * 0.004;
       final x = ((f.dx + fall * f.wind * 0.25 + gust + sway) % 1.0) * w;
       final y = fall * h;
-      snow.color = const Color(0xFF5C7C8C).withValues(alpha: f.alpha);
-      if (f.r > 2.4) {
-        snow.strokeWidth = f.r * 1.5;
-        canvas.drawLine(
-          Offset(x, y),
-          Offset(x + gust * w * 0.4, y + f.r * 3.2),
-          snow,
-        );
-      } else {
-        canvas.drawCircle(Offset(x, y), f.r, snow);
-      }
+      final c = Offset(x, y);
+      halo.color = const Color(0xFFFFFFFF).withValues(alpha: f.alpha * 0.45);
+      canvas.drawCircle(c, f.r * 1.9, halo);
+      core.color = const Color(0xFFF4FBFF).withValues(alpha: f.alpha);
+      canvas.drawCircle(c, f.r, core);
     }
   }
 

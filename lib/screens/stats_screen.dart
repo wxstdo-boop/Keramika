@@ -313,26 +313,19 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ClipRect(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 350),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    // Без Transform.translate(-10px): внутри ClipRect текст при
-                    // подъёме обрезался сверху — «половины цифр не видно».
-                    // Чистый fade не режет цифры.
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                    child: _StatNumber(
-                      '${(pct * 100).toInt()}%',
-                      key: ValueKey('overall_${(pct * 100).toInt()}'),
-                      style: theme.textTheme.headlineLarge?.copyWith(
-                        color: theme.colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
-                        height: 1.05,
-                      ),
-                    ),
+                // Число БЕЗ `AnimatedSwitcher`: во время его 350-мс
+                // кроссфейда старый и новый процент рисовались друг поверх
+                // друга — две цифры в одной точке читались «иероглифом»
+                // (владелец: «иероглиф остался»), а сам свитчер держал лишний
+                // слой на каждый кадр. Процент меняется по действиям, не
+                // каждый кадр, поэтому мгновенная подмена незаметна, зато
+                // никакого наложения и никакой лишней работы.
+                _StatNumber(
+                  '${(pct * 100).toInt()}%',
+                  style: theme.textTheme.headlineLarge?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    height: 1.05,
                   ),
                 ),
               ],
@@ -388,25 +381,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    ClipRect(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 350),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          );
-                        },
-                        child: _StatNumber(
-                          '$done / $total',
-                          key: ValueKey('count_$done/$total'),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                    // Счётчик «сделано / всего» — тоже чистым текстом: тот же
+                    // кроссфейд-«иероглиф» из двух наложенных чисел.
+                    _StatNumber(
+                      '$done / $total',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
@@ -498,7 +479,7 @@ class _StatNumber extends StatelessWidget {
   final String text;
   final TextStyle? style;
 
-  const _StatNumber(this.text, {super.key, this.style});
+  const _StatNumber(this.text, {this.style});
 
   @override
   Widget build(BuildContext context) {
@@ -905,25 +886,34 @@ class _DaysBarPainter extends CustomPainter {
         topRight: radius,
       );
 
-      // Стек: снизу привычки, сверху задачи.
-      canvas.save();
-      canvas.clipRRect(rect);
-      canvas.drawRect(
-        Rect.fromLTWH(left, chartBottom - habitH, barW, habitH),
-        habitPaint,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(left, chartBottom - h, barW, taskH),
-        taskPaint,
-      );
-      canvas.restore();
+      // Стек: снизу привычки, сверху задачи. Сегменты рисуются БЕЗ
+      // `clipRRect`: каждый клип по RRect — это отдельный слой отсечения, и
+      // тридцать таких слоёв на кадр роста были главным источником лага
+      // графика на слабом GPU («статистика лагает»). Вместо клипа верхний
+      // сегмент получает скруглённую верхнюю кромку сам, а нижний остаётся
+      // прямоугольным — форма столбика та же, работы в разы меньше.
+      if (taskH > 0) {
+        canvas.drawRect(
+          Rect.fromLTWH(left, chartBottom - habitH, barW, habitH),
+          habitPaint,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndCorners(
+            Rect.fromLTWH(left, chartBottom - h, barW, taskH),
+            topLeft: radius,
+            topRight: radius,
+          ),
+          taskPaint,
+        );
+      } else {
+        // Только привычки — скругление уходит на их верхнюю кромку.
+        canvas.drawRRect(rect, habitPaint);
+      }
       // Тонкий контур — столбики не «слипаются» на тёмной теме. Волосяной:
       // раньше линия 1 px на каждом столбике складывалась в «частокол» и
       // график читался жирным.
       canvas.drawRRect(rect, outlinePaint);
 
-      // «Сегодня» — последний столбик: подписываем дату акцентом.
-      final isToday = i == n - 1;
       if (bestIndex == i && grow > 0.45) {
         // Метка «лучший день»: звёздочка над столбиком. Появляется ПЛАВНО —
         // проявляется и «разгорается» вместе с ростом столбиков, а не
@@ -952,13 +942,11 @@ class _DaysBarPainter extends CustomPainter {
           );
         }
       }
-      if (isToday) {
-        canvas.drawCircle(
-          Offset(cx, chartBottom + 6),
-          2.0,
-          Paint()..color = todayColor,
-        );
-      }
+      // Точку-маркер «сегодня» под столбиком УБРАЛИ: она рисовалась на
+      // `chartBottom + 6`, ровно там же, где стоит подпись последнего дня
+      // (`chartBottom + 14`), и вместе они складывались в мутный «иероглиф»
+      // у правого края (владелец жаловался именно на «конечное число»).
+      // Сам последний столбик и так подсвечен фоном-колонкой.
     }
 
     // Подписи дат по краям: первый и последний день диапазона. Короткие

@@ -25,6 +25,13 @@ class PressScale extends StatefulWidget {
   /// родителя): нажатие не учитывается, элемент мягко возвращается в размер.
   final bool enabled;
 
+  /// Насколько элемент ПРИГЛУШАЕТСЯ под пальцем (0 — не трогаем прозрачность).
+  /// Нужно большим карточкам: одно уменьшение на крупной плашке читается
+  /// слабо, а лёгкая просадка плотности вместе с ним даёт понятный отклик.
+  /// Считается тем же прогрессом, что и масштаб, поэтому стоит ноль лишних
+  /// кадров: слой прозрачности и так появляется на время нажатия.
+  final double pressedOpacity;
+
   const PressScale({
     super.key,
     required this.child,
@@ -33,6 +40,7 @@ class PressScale extends StatefulWidget {
     this.releaseDuration,
     this.curve = Curves.easeOutCubic,
     this.enabled = true,
+    this.pressedOpacity = 1.0,
   });
 
   @override
@@ -96,8 +104,17 @@ class _PressScaleState extends State<PressScale>
       child: AnimatedBuilder(
         animation: _anim,
         builder: (context, child) {
-          final s = 1.0 + (widget.pressedScale - 1.0) * _anim.value;
-          return Transform.scale(scale: s, child: child);
+          final v = _anim.value;
+          final s = 1.0 + (widget.pressedScale - 1.0) * v;
+          final scaled = Transform.scale(scale: s, child: child);
+          if (widget.pressedOpacity >= 1.0) return scaled;
+          // Прозрачность — только пока палец реально вдавил (v > 0): при
+          // отпускании она возвращается к 1 вместе с масштабом. В покое
+          // Opacity 1.0 рисуется fast-path'ом без слоя.
+          return Opacity(
+            opacity: 1.0 - (1.0 - widget.pressedOpacity) * v,
+            child: scaled,
+          );
         },
         child: widget.child,
       ),
