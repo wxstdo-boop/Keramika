@@ -19,30 +19,50 @@ class ProfileFriend {
     required this.name,
     required this.colorIndex,
     required this.score,
+    this.imagePath,
   });
 
   final String id;
   final String name;
 
-  /// Индекс градиента аватарки в [profileAvatarVariants].
+  /// Индекс градиента аватарки в [profileAvatarVariants]. Показывается, пока
+  /// не выбрана своя картинка ([imagePath]).
   final int colorIndex;
 
   /// Очки «Agysha-рейтинга» (см. [ProfileService.localScore]).
   final int score;
 
-  ProfileFriend copyWith({String? name, int? colorIndex, int? score}) =>
-      ProfileFriend(
-        id: id,
-        name: name ?? this.name,
-        colorIndex: colorIndex ?? this.colorIndex,
-        score: score ?? this.score,
-      );
+  /// Своя аватарка друга из галереи — путь к копии в приватной папке.
+  /// Пока путь задан, в рейтинге и в листах показывается она, а не
+  /// сгенерированный градиент. Ноль означает «вариант по цвету».
+  final String? imagePath;
+
+  /// Показывать ли картинку вместо сгенерированного варианта.
+  bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
+
+  /// Копия с изменёнными полями. [clearImage] снимает свою картинку: `null`
+  /// в [imagePath] значит «не трогать» (иначе нельзя было бы отличить
+  /// «не передан» от «стереть»), поэтому возврат к градиенту идёт флагом.
+  ProfileFriend copyWith({
+    String? name,
+    int? colorIndex,
+    int? score,
+    String? imagePath,
+    bool clearImage = false,
+  }) => ProfileFriend(
+    id: id,
+    name: name ?? this.name,
+    colorIndex: colorIndex ?? this.colorIndex,
+    score: score ?? this.score,
+    imagePath: clearImage ? null : (imagePath ?? this.imagePath),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'color': colorIndex,
     'score': score,
+    'image': imagePath,
   };
 
   factory ProfileFriend.fromJson(Map<String, dynamic> j) => ProfileFriend(
@@ -50,6 +70,7 @@ class ProfileFriend {
     name: (j['name'] ?? '').toString(),
     colorIndex: (j['color'] as num?)?.toInt() ?? 0,
     score: (j['score'] as num?)?.toInt() ?? 0,
+    imagePath: j['image']?.toString(),
   );
 }
 
@@ -226,6 +247,7 @@ class ProfileService extends ChangeNotifier {
     required String name,
     required int colorIndex,
     required int score,
+    String? imagePath,
   }) async {
     if (!canAddFriend) return false;
     _friends.add(
@@ -234,6 +256,7 @@ class ProfileService extends ChangeNotifier {
         name: name,
         colorIndex: colorIndex,
         score: score,
+        imagePath: imagePath,
       ),
     );
     notifyListeners();
@@ -285,6 +308,7 @@ class ProfileService extends ChangeNotifier {
         name: displayName.isEmpty ? selfFallback : displayName,
         colorIndex: _avatarIndex,
         score: localScore(),
+        imagePath: _avatarImagePath,
       ),
       ..._friends,
     ]..sort((a, b) => b.score.compareTo(a.score));

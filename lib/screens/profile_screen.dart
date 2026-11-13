@@ -261,9 +261,24 @@ class _ProfileScreenState extends State<ProfileScreen>
   /// приватную папку — путь из галереи/кэша переживёт не всякий день, а своя
   /// аватарка должна оставаться на месте.
   Future<void> _pickAvatarFromGallery() async {
+    final path = await _copyPickedImageToPrivateDir();
+    if (path == null) return;
+    await _service.setAvatarImage(path);
+    if (!mounted) return;
+    Haptics.light();
+    _toast(Translations.t('profileAvatarSet', context, 'Аватарка обновлена'));
+  }
+
+  /// Выбор картинки из галереи с копированием в приватную папку `avatars`.
+  /// Возвращает путь копии либо `null`, если пользователь отменил выбор или
+  /// копирование не удалось (тогда показываем мягкую ошибку).
+  ///
+  /// Вынесено отдельно: тем же путём идёт аватарка друга, и дублировать
+  /// копирование/обработку ошибок во втором месте не нужно.
+  Future<String?> _copyPickedImageToPrivateDir() async {
     final picked = await FilePicker.pickFile(type: FileType.image);
-    if (picked?.path == null) return;
-    final srcPath = picked!.path!;
+    if (picked == null || picked.path == null) return null;
+    final src = picked.path!;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final avatarDir = Directory('${dir.path}/avatars');
@@ -272,22 +287,21 @@ class _ProfileScreenState extends State<ProfileScreen>
           ? picked.extension!
           : 'png';
       final newPath =
-          '${avatarDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      await File(srcPath).copy(newPath);
-      await _service.setAvatarImage(newPath);
-      if (!mounted) return;
-      Haptics.light();
-      _toast(Translations.t('profileAvatarSet', context, 'Аватарка обновлена'));
+          '${avatarDir.path}/avatar_${DateTime.now().microsecondsSinceEpoch}.$ext';
+      await File(src).copy(newPath);
+      return newPath;
     } catch (_) {
-      if (!mounted) return;
-      _toast(
-        Translations.t(
-          'profileAvatarFailed',
-          context,
-          'Не удалось загрузить аватарку',
-        ),
-        icon: Icons.error_outline,
-      );
+      if (mounted) {
+        _toast(
+          Translations.t(
+            'profileAvatarFailed',
+            context,
+            'Не удалось загрузить аватарку',
+          ),
+          icon: Icons.error_outline,
+        );
+      }
+      return null;
     }
   }
 
@@ -417,7 +431,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       sheetAnimationStyle: _sheetStyle(),
-      builder: (ctx) => const _AddFriendSheet(),
+      // Лист сам открыть системный пикер не может: после его открытия поверх
+      // листа системное окно вернулось бы в приложение, и «свой» лист остался
+      // бы под ним. Поэтому выбор картинки идёт через владельца экрана, а лист
+      // лишь получает готовый путь и показывает его.
+      builder: (ctx) =>
+          _AddFriendSheet(onPickImage: _copyPickedImageToPrivateDir),
     );
     // Лист «Добавить друга» несёт собственную клавиатуру; после его закрытия
     // снимаем фокус, иначе система поднимет системную панель в профиле.
@@ -427,6 +446,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       name: result.name,
       colorIndex: result.colorIndex,
       score: result.score,
+      imagePath: result.imagePath,
     );
     if (!mounted) return;
     if (!ok) {
@@ -454,7 +474,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       barrierColor: Colors.black.withValues(alpha: 0.26),
       isScrollControlled: true,
       sheetAnimationStyle: _sheetStyle(),
-      builder: (ctx) => _FriendSheet(friend: friend),
+      builder: (ctx) => _FriendSheet(
+        friend: friend,
+        onPickImage: _copyPickedImageToPrivateDir,
+      ),
     );
     _dropFocus();
     if (outcome is _FriendScoreSaved) {
@@ -1062,9 +1085,11 @@ class _ProfileScreenState extends State<ProfileScreen>
               ProfileAvatar(
                 index: f.colorIndex,
                 size: 36,
-                // Своя аватарка из галереи — и в строке «Я» рейтинга, чтобы
-                // она не «подменялась» сгенерированным вариантом.
-                imagePath: isMe ? _service.avatarImagePath : null,
+                // Своя аватарка из галереи — и в строке «Я» рейтинга, и у
+                // друзей: картинка приходит в самой строке (`f.imagePath`),
+                // поэтому после выбора она сразу и плавно встаёт на место
+                // сгенерированного варианта.
+                imagePath: f.imagePath,
               ),
               const SizedBox(width: Spacing.sm),
               Expanded(
@@ -1384,7 +1409,11 @@ class _FriendDraft {
   final String name;
   final int colorIndex;
   final int score;
-  const _FriendDraft(this.name, this.colorIndex, this.score);
+
+  /// Своя аватарка из галереи, если её выбрали в листе. `null` — показываем
+  /// сгенерированный вариант по [colorIndex].
+  final String? imagePath;
+  const _FriendDraft(this.name, this.colorIndex, this.score, {this.imagePath});
 }
 
 /// Максимальная длина имени друга.
@@ -1414,7 +1443,12 @@ String _funScore(String seed) {
 
 /// Добавление друга: имя, аватарка, стартовые очки.
 class _AddFriendSheet extends StatefulWidget {
-  const _AddFriendSheet();
+  /// Выбор своей картинки из галереи. Лист сам системный пикер не открывает
+  /// (см. `_addFriend`): владелец экрана возвращает готовый путь копии либо
+  /// `null`, если выбор отменили или копирование не удалось.
+  final Future<String?> Function() onPickImage;
+
+  const _AddFriendSheet({required this.onPickImage});
 
   @override
   State<_AddFriendSheet> createState() => _AddFriendSheetState();
@@ -1423,6 +1457,14 @@ class _AddFriendSheet extends StatefulWidget {
 class _AddFriendSheetState extends State<_AddFriendSheet> {
   final _ctrl = TextEditingController();
   int _avatar = 0;
+
+  /// Своя аватарка друга, выбранная в этом листе. Пока задана — крупный
+  /// кружок показывает её, а не сгенерированный вариант по [_avatar].
+  String? _imagePath;
+
+  /// Идёт ли выбор картинки: пока системный пикер открыт, повторные тапы по
+  /// аватарке не должны запускать второй запрос.
+  bool _picking = false;
   final _scoreCtrl = TextEditingController();
 
   /// Какое поле печатает встроенная клавиатура. Системная панель тут не
@@ -1489,7 +1531,23 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
     final name = _ctrl.text.trim();
     if (name.isEmpty) return;
     final score = int.tryParse(_scoreCtrl.text.trim()) ?? 0;
-    Navigator.of(context).pop(_FriendDraft(name, _avatar, score));
+    Navigator.of(
+      context,
+    ).pop(_FriendDraft(name, _avatar, score, imagePath: _imagePath));
+  }
+
+  /// Тап по крупной аватарке: своя картинка из галереи. Пока выбор идёт —
+  /// повторные тапы игнорируются, а по возвращении путь мягко подставляется
+  /// в кружок (кроссфейд делает сам `ProfileAvatar`).
+  Future<void> _pickImage() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    final path = await widget.onPickImage();
+    if (!mounted) return;
+    setState(() {
+      _picking = false;
+      if (path != null) _imagePath = path;
+    });
   }
 
   @override
@@ -1530,7 +1588,50 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                     const SizedBox(height: Spacing.md),
                     Row(
                       children: [
-                        ProfileAvatar(index: _avatar, size: 52),
+                        // Крупная аватарка — сама по себе кнопка «своя из
+                        // галереи»: тап открывает пикер, выбранная картинка
+                        // встаёт на место градиента кроссфейдом. Значок
+                        // камеры подсказывает, что кружок нажимается.
+                        PressScale(
+                          pressedScale: 0.9,
+                          duration: const Duration(milliseconds: 240),
+                          releaseDuration: const Duration(milliseconds: 460),
+                          child: GestureDetector(
+                            onTap: _pickImage,
+                            behavior: HitTestBehavior.opaque,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                ProfileAvatar(
+                                  index: _avatar,
+                                  size: 52,
+                                  imagePath: _imagePath,
+                                  showIcon: _imagePath == null,
+                                ),
+                                Positioned(
+                                  right: -2,
+                                  bottom: -2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: theme.colorScheme.surface,
+                                      border: Border.all(
+                                        color: theme.colorScheme.primary
+                                            .withValues(alpha: 0.45),
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.photo_camera_outlined,
+                                      size: 13,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                         const SizedBox(width: Spacing.md),
                         Expanded(
                           child: SmoothTyping(
@@ -1583,7 +1684,13 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                           duration: const Duration(milliseconds: 180),
                           releaseDuration: const Duration(milliseconds: 340),
                           child: GestureDetector(
-                            onTap: () => setState(() => _avatar = i),
+                            // Выбор градиента снимает свою картинку: иначе
+                            // непонятно, что показывать в кружке, — и аватарка
+                            // мягко возвращается к сгенерированному варианту.
+                            onTap: () => setState(() {
+                              _avatar = i;
+                              _imagePath = null;
+                            }),
                             child: AnimatedContainer(
                               duration: MotionPrefs.shouldReduceMotion
                                   ? Duration.zero
@@ -1730,7 +1837,14 @@ class _FriendRemoved extends _FriendOutcome {
 /// высотой, без закрытия/открытия.
 class _FriendSheet extends StatefulWidget {
   final ProfileFriend friend;
-  const _FriendSheet({required this.friend});
+
+  /// Выбор своей картинки из галереи (см. `_copyPickedImageToPrivateDir`).
+  /// Передаётся в шаги, чтобы аватарку друга можно было сменить прямо из
+  /// листа: тап по кружку — пикер, картинка встаёт на место градиента
+  /// кроссфейдом, а в рейтинге строка обновляется тем же сохранением.
+  final Future<String?> Function() onPickImage;
+
+  const _FriendSheet({required this.friend, required this.onPickImage});
 
   @override
   State<_FriendSheet> createState() => _FriendSheetState();
@@ -1785,6 +1899,15 @@ class _FriendSheetState extends State<_FriendSheet> {
                 onScore: () => setState(() => _score = true),
                 onRemove: () =>
                     Navigator.of(context).pop(const _FriendRemoved()),
+                // Смена аватарки сохраняется сразу: лист закрывается с новым
+                // другом, и строка рейтинга перетекает на его новую картинку.
+                onAvatar: () async {
+                  final path = await widget.onPickImage();
+                  if (path == null || !context.mounted) return;
+                  Navigator.of(context).pop(
+                    _FriendScoreSaved(widget.friend.copyWith(imagePath: path)),
+                  );
+                },
               ),
       ),
     );
@@ -1796,11 +1919,16 @@ class _FriendActionsSheet extends StatelessWidget {
   final ProfileFriend friend;
   final VoidCallback onScore;
   final VoidCallback onRemove;
+
+  /// Тап по аватарке друга: сменить её на свою из галереи.
+  final VoidCallback onAvatar;
+
   const _FriendActionsSheet({
     super.key,
     required this.friend,
     required this.onScore,
     required this.onRemove,
+    required this.onAvatar,
   });
 
   @override
@@ -1821,7 +1949,49 @@ class _FriendActionsSheet extends StatelessWidget {
                 padding: const EdgeInsets.all(Spacing.md),
                 child: Row(
                   children: [
-                    ProfileAvatar(index: friend.colorIndex, size: 44),
+                    // Кружок нажимается: своя аватарка друга из галереи.
+                    // Значок камеры — подсказка, что аватарка меняется.
+                    PressScale(
+                      pressedScale: 0.9,
+                      duration: const Duration(milliseconds: 240),
+                      releaseDuration: const Duration(milliseconds: 460),
+                      child: GestureDetector(
+                        onTap: onAvatar,
+                        behavior: HitTestBehavior.opaque,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ProfileAvatar(
+                              index: friend.colorIndex,
+                              size: 44,
+                              imagePath: friend.imagePath,
+                              showIcon: !friend.hasImage,
+                            ),
+                            Positioned(
+                              right: -2,
+                              bottom: -2,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: theme.colorScheme.surface,
+                                  border: Border.all(
+                                    color: theme.colorScheme.primary.withValues(
+                                      alpha: 0.45,
+                                    ),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.photo_camera_outlined,
+                                  size: 12,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: Spacing.sm),
                     Text(
                       friend.name,
@@ -1982,6 +2152,8 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
                         ProfileAvatar(
                           index: widget.friend.colorIndex,
                           size: 40,
+                          imagePath: widget.friend.imagePath,
+                          showIcon: !widget.friend.hasImage,
                         ),
                         const SizedBox(width: Spacing.sm),
                         Expanded(
