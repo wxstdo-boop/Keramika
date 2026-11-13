@@ -21,6 +21,7 @@ import '../widgets/stagger_in.dart';
 import '../widgets/priority_selector.dart';
 import '../widgets/smooth_keyboard_body.dart';
 import '../services/haptics.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final Task? existing;
@@ -429,10 +430,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   // край неподвижен, меняется только левый.
                   layoutBuilder: (currentChild, previousChildren) => Stack(
                     alignment: Alignment.centerRight,
-                    children: [
-                      ...previousChildren,
-                      ?currentChild,
-                    ],
+                    children: [...previousChildren, ?currentChild],
                   ),
                   // Только КРОССФЕЙД: раньше подпись въезжала справа
                   // (Offset(0.25, 0)) и читалась как «дёргает вправо».
@@ -809,44 +807,22 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                                 color: theme.colorScheme.error,
                                               ),
                                               onPressed: () async {
-                                                final confirm = await showDialog<bool>(
-                                                  context: context,
-                                                  builder: (ctx) => AlertDialog(
-                                                    title: Text(
-                                                      Translations.t(
+                                                final confirm =
+                                                    await showAgyshaConfirm(
+                                                      context,
+                                                      title: Translations.t(
                                                         'deleteCategory',
                                                         context,
                                                       ),
-                                                    ),
-                                                    content: Text(_category),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              false,
-                                                            ),
-                                                        child: Text(
-                                                          Translations.cancelOf(
-                                                            context,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              true,
-                                                            ),
-                                                        child: Text(
+                                                      body: _category,
+                                                      icon: Icons
+                                                          .delete_outline_rounded,
+                                                      confirmLabel:
                                                           Translations.deleteOf(
                                                             context,
                                                           ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
+                                                      destructive: true,
+                                                    );
                                                 if (confirm == true &&
                                                     mounted) {
                                                   setState(() {

@@ -47,6 +47,7 @@ import '../utils/snackbar.dart';
 import 'changelog_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 
 part 'settings_components.dart';
 
@@ -888,22 +889,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _removePin() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(Translations.removePinOf(context)),
-        content: Text(Translations.t('areYouSure', context)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(Translations.cancelOf(context)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(Translations.deleteOf(context)),
-          ),
-        ],
-      ),
+    final confirm = await showAgyshaConfirm(
+      context,
+      title: Translations.removePinOf(context),
+      body: Translations.t('areYouSure', context),
+      icon: Icons.lock_outline_rounded,
+      confirmLabel: Translations.deleteOf(context),
+      destructive: true,
     );
     if (confirm == true) {
       // Плавно стираем ПИН: выключаем размытие в «недавних» через несколько
@@ -1774,8 +1766,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primaryContainer
                                   .withValues(
-                                    alpha:
-                                        theme.brightness == Brightness.dark
+                                    alpha: theme.brightness == Brightness.dark
                                         ? 0.72
                                         : 0.78,
                                   ),
@@ -2080,7 +2071,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ? PressScale(
                               pressedScale: 0.86,
                               duration: const Duration(milliseconds: 200),
-                              releaseDuration: const Duration(milliseconds: 320),
+                              releaseDuration: const Duration(
+                                milliseconds: 320,
+                              ),
                               child: IconButton(
                                 key: const ValueKey('pin_delete_btn'),
                                 style: IconButton.styleFrom(
@@ -3408,10 +3401,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14),
                 leading: const Icon(
-                 Icons.hardware_rounded,
+                  Icons.hardware_rounded,
                   color: Color(0xFF8D6E63),
                 ),
-                title: Text(Translations.t('forgeTitle', routeContext, 'Кузница')),
+                title: Text(
+                  Translations.t('forgeTitle', routeContext, 'Кузница'),
+                ),
                 subtitle: Text(
                   Translations.t('forgeSubtitle', routeContext),
                   maxLines: 2,
@@ -3432,7 +3427,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   );
                 },
-
               ),
             ],
           );

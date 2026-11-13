@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 
 class StartupRecoveryScreen extends StatefulWidget {
   const StartupRecoveryScreen({required this.onRestore, super.key});
@@ -49,25 +50,14 @@ class _StartupRecoveryScreenState extends State<StartupRecoveryScreen> {
         throw const FormatException('No Agysha data found in this file');
       }
       if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Восстановить резервную копию?'),
-          content: Text(
+      final confirmed = await showAgyshaConfirm(
+        context,
+        title: 'Восстановить резервную копию?',
+        body:
             'Будет восстановлен файл «${file.name}». Старые зашифрованные '
             'файлы останутся нетронутыми. Выберите самую свежую копию.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Восстановить'),
-            ),
-          ],
-        ),
+        icon: Icons.restore_rounded,
+        confirmLabel: 'Восстановить',
       );
       if (confirmed != true || !mounted) return;
       await widget.onRestore(backup);

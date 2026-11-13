@@ -28,6 +28,7 @@ import '../utils/section_tints.dart';
 import '../widgets/section_pill.dart'
     show kSectionPillSlotHeight, sectionCurrentIndex;
 import 'add_task_screen.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 
 class TasksScreen extends StatefulWidget {
   /// Персональный notifier скролла раздела (см. AlarmsScreen).
@@ -594,7 +595,8 @@ class _TasksScreenState extends State<TasksScreen>
             ),
           ),
         ),
-        if (archiveEnabled) _taskSliver(context, theme, done, all, reveal: _splitFade),
+        if (archiveEnabled)
+          _taskSliver(context, theme, done, all, reveal: _splitFade),
       ],
     );
 
@@ -773,25 +775,15 @@ class _TasksScreenState extends State<TasksScreen>
       // без этого красная плашка выходила за карточку со всех сторон.
       inset: const EdgeInsets.all(4),
       confirmDismiss: (_) async {
-        return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(Translations.deleteOf(context)),
-            content: Text(task.title),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(Translations.cancelOf(context)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(Translations.deleteOf(context)),
-              ),
-            ],
-          ),
+        // Единая «стеклянная» карточка подтверждения вместо системного
+        // `AlertDialog` — как у окна сброса ивента.
+        return await showAgyshaConfirm(
+          context,
+          title: Translations.deleteOf(context),
+          body: task.title,
+          icon: Icons.delete_outline_rounded,
+          confirmLabel: Translations.deleteOf(context),
+          destructive: true,
         );
       },
       onDismissed: (_) => _service.remove(task.id),

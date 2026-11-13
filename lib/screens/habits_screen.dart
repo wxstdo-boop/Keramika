@@ -26,6 +26,7 @@ import '../utils/section_tints.dart';
 import '../widgets/section_pill.dart'
     show kSectionPillSlotHeight, sectionCurrentIndex;
 import 'add_habit_screen.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 
 class _PerfPlaque {
   final String titleKey;
@@ -1156,22 +1157,13 @@ class _HabitsScreenState extends State<HabitsScreen>
       // Фон удаления = границы карточки (у неё margin снизу 8, см. Card ниже).
       inset: const EdgeInsets.only(bottom: 8),
       confirmDismiss: (direction) async {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(Translations.deleteOf(context)),
-            content: Text('${habit.name}?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(Translations.cancelOf(context)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(Translations.deleteOf(context)),
-              ),
-            ],
-          ),
+        final confirmed = await showAgyshaConfirm(
+          context,
+          title: Translations.deleteOf(context),
+          body: '${habit.name}?',
+          icon: Icons.delete_outline_rounded,
+          confirmLabel: Translations.deleteOf(context),
+          destructive: true,
         );
         return confirmed ?? false;
       },

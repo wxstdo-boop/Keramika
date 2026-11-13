@@ -150,20 +150,20 @@ void main() {
     );
   });
 
-  test('профиль: у «добавить друга» тонкая полупрозрачная красная оправа', () {
+  test('профиль: у «добавить друга» НЕТ цветной оправы', () {
     final src = read('lib/screens/profile_screen.dart');
     final start = src.indexOf('profileLeaderboard');
     expect(start, greaterThan(0));
-    final body = src.substring(start, (start + 2600).clamp(0, src.length));
+    final body = src.substring(start, (start + 1800).clamp(0, src.length));
     expect(
-      body.contains('BrandColors.red.withValues(alpha: 0.38)'),
-      isTrue,
-      reason: 'оправа — тонкая и полупрозрачная, как кольцо музыки',
+      body.contains('BrandColors.red'),
+      isFalse,
+      reason: 'красный кант вокруг иконки убран по просьбе владельца',
     );
     expect(
-      body.contains('shape: BoxShape.circle'),
+      body.contains('PressScale('),
       isTrue,
-      reason: 'оправа круглая — повторяет форму IconButton',
+      reason: 'отдача под пальцем остаётся',
     );
   });
 

@@ -9,7 +9,6 @@ import '../services/haptics.dart';
 import '../utils/design_tokens.dart';
 import '../utils/snackbar.dart';
 import '../widgets/press_scale.dart';
-import '../widgets/rolling_counter.dart';
 
 /// Компактное окно ивента «Каждый день дарят шапку». Открывается по тапу на
 /// Деду Морозу в заголовке: за каждый день ивента выдаётся одна шапка, и к
@@ -95,10 +94,12 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
       parent: _open,
       curve: const Interval(0.0, 0.60, curve: Curves.easeOutCubic),
     );
-    _popIn = Tween<double>(begin: 0.92, end: 1.0).animate(
+    // Без `easeOutBack`: «отскок» за единицу читался рывком в конце
+    // появления — карточка «дёргалась» на последних кадрах.
+    _popIn = Tween<double>(begin: 0.94, end: 1.0).animate(
       CurvedAnimation(
         parent: _open,
-        curve: const Interval(0.0, 0.85, curve: Curves.easeOutBack),
+        curve: const Interval(0.0, 0.90, curve: Curves.easeOutCubic),
       ),
     );
     // Содержимое карточки «догоняет» её появление: заголовок, полоса и
@@ -142,18 +143,26 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
   double get _fadeT => _fadeIn.value * _fadeOut.value;
   double get _popT => _popIn.value * _popOut.value;
 
+  /// Кривая текущей волны. Для коротких переходов — мягкий разгон,
+  /// для длинных (0→12, сброс) — симметричная `easeInOutCubic`: она трогается
+  /// и останавливается плавно, поэтому цифры и полоса не «взмывают» на первых
+  /// кадрах и не «втыкаются» в конце.
+  Curve _hatsCurve = Curves.easeOutCubic;
+
   /// Показанное сейчас число шапок (0..12, дробное во время перетекания).
   double get _hatsShown {
-    final t = Curves.easeOutCubic.transform(_hatsCtrl.value);
+    final t = _hatsCurve.transform(_hatsCtrl.value);
     return _hatsFrom + (_hatsTo - _hatsFrom) * t;
   }
 
   /// Плавно перевести счётчик шапок к новому значению. [ms] — тем длиннее,
   /// чем больше шапок участвует в волне.
   void _setHats(int next, {required int ms}) {
+    final delta = (next.toDouble() - _hatsShown).abs();
     _hatsFrom = _hatsShown;
     _hatsTo = next.toDouble();
     _hats = next;
+    _hatsCurve = delta >= 4 ? Curves.easeInOutCubic : Curves.easeOutCubic;
     _hatsCtrl.duration = Duration(milliseconds: ms);
     _hatsCtrl.forward(from: 0);
   }
@@ -499,9 +508,25 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                   ),
                 ),
               ),
-              child: _loading || !NewYearEventService.isActive
-                  ? _skeleton(cs)
-                  : _card(context, cs, isDark),
+              // Пока грузим — скелетон, дальше карточка. Смена идёт
+              // КРОССФЕЙДОМ: раньше карточка (вместе с кнопкой «Забрать»)
+              // появлялась одним кадром поверх скелетона и читалась как
+              // «дёрнулась». Тот же мягкий ход, что у прочих окон.
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.97, end: 1).animate(anim),
+                    child: child,
+                  ),
+                ),
+                child: _loading || !NewYearEventService.isActive
+                    ? _skeleton(cs)
+                    : _card(context, cs, isDark),
+              ),
             ),
           ),
         ),
@@ -544,7 +569,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
             end: Alignment.bottomCenter,
             colors: [
               Color.alphaBlend(
-                cs.primary.withValues(alpha: 0.12),
+                BrandColors.red.withValues(alpha: 0.14),
                 cs.surfaceContainerHigh,
               ),
               cs.surfaceContainerLow,
@@ -554,7 +579,10 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color.alphaBlend(cs.primary.withValues(alpha: 0.06), cs.surface),
+              Color.alphaBlend(
+                BrandColors.red.withValues(alpha: 0.05),
+                cs.surface,
+              ),
               cs.surfaceContainerLow,
             ],
           );
@@ -566,9 +594,12 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
         decoration: BoxDecoration(
           gradient: glass,
           borderRadius: BorderRadius.circular(26),
+          // Кант карточки — полупрозрачный БРЕНДОВЫЙ АЛЫЙ, а не сиреневый
+          // `primary`: на дефолтной палитре окно читалось чужеродным синим
+          // ободком посреди кровавой семьи.
           border: Border.all(
-            color: cs.primary.withValues(alpha: isDark ? 0.32 : 0.20),
-            width: 1,
+            color: BrandColors.red.withValues(alpha: isDark ? 0.42 : 0.34),
+            width: 1.1,
           ),
           boxShadow: [
             BoxShadow(
@@ -603,8 +634,10 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          cs.primary.withValues(alpha: isDark ? 0.24 : 0.14),
-                          cs.primary.withValues(alpha: 0.0),
+                          BrandColors.red.withValues(
+                            alpha: isDark ? 0.20 : 0.10,
+                          ),
+                          BrandColors.red.withValues(alpha: 0.0),
                         ],
                         stops: const [0.1, 1.0],
                       ),
@@ -663,65 +696,87 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                                   ),
                                 ),
                                 const SizedBox(height: 5),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    // День ивента — компактный бейдж «3 / 12»:
-                                    // ЕДИНСТВЕННОЕ место, где день назван (из
-                                    // подписи ниже его дубль убран). Число
-                                    // языконезависимо, поэтому новых строк
-                                    // перевода не заводим. Бейдж НЕ сжимается.
-                                    _DayBadge(
-                                      day: day,
-                                      total: _kTotalHats,
-                                      accent: cs.primary,
-                                      isDark: isDark,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    SizedBox(
-                                      width: 14,
-                                      child: AnimatedOpacity(
-                                        opacity: isFinalDay ? 1 : 0,
-                                        duration: const Duration(
-                                          milliseconds: 300,
+                                // `AnimatedSize` держит высоту строки живой:
+                                // при смене подписи на 12-й день (строка
+                                // переносится) высота доезжает, а не прыгает
+                                // кадром — карточка не «дёргается».
+                                AnimatedSize(
+                                  duration: const Duration(milliseconds: 380),
+                                  curve: Curves.easeInOut,
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      // День ивента — компактный бейдж «3 / 12»:
+                                      // ЕДИНСТВЕННОЕ место, где день назван (из
+                                      // подписи ниже его дубль убран). Число
+                                      // языконезависимо, поэтому новых строк
+                                      // перевода не заводим. Бейдж НЕ сжимается.
+                                      // Бейдж дня идёт за ДРОБНОЙ волной
+                                      // счётчика: на 12-й день и при сбросе
+                                      // число перекатывается вместе с шапками,
+                                      // а не щёлкает кадром.
+                                      AnimatedBuilder(
+                                        animation: _hatsCtrl,
+                                        builder: (context, _) => _DayBadge(
+                                          dayShown: _previewDay != null
+                                              ? _previewDay!.toDouble()
+                                              : (_hatsShown + 1).clamp(
+                                                  1.0,
+                                                  _kTotalHats.toDouble(),
+                                                ),
+                                          total: _kTotalHats,
+                                          accent: cs.primary,
+                                          isDark: isDark,
                                         ),
-                                        curve: Curves.easeOutCubic,
-                                        child: AnimatedScale(
-                                          scale: isFinalDay ? 1 : 0.5,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      SizedBox(
+                                        width: 14,
+                                        child: AnimatedOpacity(
+                                          opacity: isFinalDay ? 1 : 0,
                                           duration: const Duration(
                                             milliseconds: 300,
                                           ),
-                                          curve: Curves.easeOutBack,
-                                          child: Icon(
-                                            Icons.celebration_rounded,
-                                            size: 13,
-                                            color: cs.primary,
+                                          curve: Curves.easeOutCubic,
+                                          child: AnimatedScale(
+                                            scale: isFinalDay ? 1 : 0.5,
+                                            duration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            curve: Curves.easeOutBack,
+                                            child: Icon(
+                                              Icons.celebration_rounded,
+                                              size: 13,
+                                              color: cs.primary,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    Expanded(
-                                      child: AnimatedBuilder(
-                                        animation: _hatsCtrl,
-                                        builder: (context, _) => _HatSubtitle(
-                                          template: Translations.t(
-                                            'nyEventBody',
-                                            context,
-                                          ),
-                                          finalText: Translations.t(
-                                            'nyEventFinalDay',
-                                            context,
-                                          ),
-                                          shown: _hatsShown,
-                                          isFinalDay: isFinalDay,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textSub,
+                                      Expanded(
+                                        child: AnimatedBuilder(
+                                          animation: _hatsCtrl,
+                                          builder: (context, _) => _HatSubtitle(
+                                            template: Translations.t(
+                                              'nyEventBody',
+                                              context,
+                                            ),
+                                            finalText: Translations.t(
+                                              'nyEventFinalDay',
+                                              context,
+                                            ),
+                                            shown: _hatsShown,
+                                            isFinalDay: isFinalDay,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: textSub,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -748,39 +803,65 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: cs.primary.withValues(
-                            alpha: isDark ? 0.14 : 0.08,
+                          color: BrandColors.red.withValues(
+                            alpha: isDark ? 0.13 : 0.06,
                           ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: cs.primary.withValues(alpha: 0.20),
+                            color: BrandColors.red.withValues(
+                              alpha: isDark ? 0.26 : 0.18,
+                            ),
                           ),
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              _prize
-                                  ? Icons.check_circle_rounded
-                                  : Icons.card_giftcard_rounded,
-                              size: 14,
-                              color: cs.primary,
+                            // Значок и текст меняются КРОССФЕЙДОМ, а не кадром:
+                            // на 12-й день и при сбросе капсула «перетекает»,
+                            // как и остальные надписи окна.
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 380),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeOutQuad,
+                              transitionBuilder: (child, anim) =>
+                                  FadeTransition(
+                                    opacity: anim,
+                                    child: ScaleTransition(
+                                      scale: Tween<double>(
+                                        begin: 0.72,
+                                        end: 1,
+                                      ).animate(anim),
+                                      child: child,
+                                    ),
+                                  ),
+                              child: Icon(
+                                key: ValueKey(_prize),
+                                _prize
+                                    ? Icons.check_circle_rounded
+                                    : Icons.card_giftcard_rounded,
+                                size: 14,
+                                color: cs.primary,
+                              ),
                             ),
                             const SizedBox(width: 7),
                             Expanded(
-                              child: Text(
-                                _prize
-                                    ? Translations.t(
-                                        'nyPrizeDone',
-                                        context,
-                                        'Подарок открыт: тема «Метель», скин '
-                                            'скважины, 60 дней истории питания '
-                                            'и 30 категорий',
-                                      )
-                                    : Translations.t('nyGiftHint', context),
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: textSub.withValues(alpha: 0.95),
-                                  height: 1.3,
+                              child: _SwapBox(
+                                swapKey: _prize,
+                                align: AlignmentDirectional.centerStart,
+                                child: Text(
+                                  _prize
+                                      ? Translations.t(
+                                          'nyPrizeDone',
+                                          context,
+                                          'Подарок открыт: тема «Метель», скин '
+                                              'скважины, 60 дней истории '
+                                              'питания и 30 категорий',
+                                        )
+                                      : Translations.t('nyGiftHint', context),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: textSub.withValues(alpha: 0.95),
+                                    height: 1.3,
+                                  ),
                                 ),
                               ),
                             ),
@@ -822,13 +903,15 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
 /// Бейдж дня ивента: «3 / 12». Числа языконезависимы, поэтому новых строк
 /// перевода не требуется, а акцентная капсула держит взгляд на прогрессе.
 class _DayBadge extends StatelessWidget {
-  final int day;
+  /// Дробный день ивента: перекатывается вместе с волной шапок, поэтому
+  /// смена дня (в том числе на 12-й и при сбросе) идёт плавно.
+  final double dayShown;
   final int total;
   final Color accent;
   final bool isDark;
 
   const _DayBadge({
-    required this.day,
+    required this.dayShown,
     required this.total,
     required this.accent,
     required this.isDark,
@@ -846,8 +929,8 @@ class _DayBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '$day',
+          _RollDigits(
+            value: dayShown,
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
@@ -1254,14 +1337,18 @@ class _HatProgress extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 9),
-        Row(
-          children: [
-            for (var i = 0; i < total - 1; i++)
-              Expanded(child: Center(child: slot(i, 14))),
-            // Подарок отделён и крупнее — он не «ещё одна шапка».
-            const SizedBox(width: 5),
-            slot(total - 1, 19),
-          ],
+        // Строка слотов живёт в собственном слое: тики волны перерисовывают
+        // только её, а не полосу, подписи и кнопки карточки.
+        RepaintBoundary(
+          child: Row(
+            children: [
+              for (var i = 0; i < total - 1; i++)
+                Expanded(child: Center(child: slot(i, 14))),
+              // Подарок отделён и крупнее — он не «ещё одна шапка».
+              const SizedBox(width: 5),
+              slot(total - 1, 19),
+            ],
+          ),
         ),
       ],
     );
@@ -1684,7 +1771,7 @@ class _SwapText extends StatelessWidget {
 /// не успевали закончиться и накладывались друг на друга — строки
 /// «переплетались». Теперь фраза перелистывается ровно один раз, по смене
 /// дня, а счётчик внутри неё крутится непрерывно за дробной частью значения
-/// ([RollingCounter]).
+/// ([_RollDigits]) — по цифрам, как очки рейтинга, а не «колесом».
 class _HatSubtitle extends StatelessWidget {
   /// Шаблон подписи; `{1}` — число собранных шапок.
   final String template;
@@ -1725,10 +1812,139 @@ class _HatSubtitle extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(head, style: style, maxLines: 1),
-                RollingCounter(value: shown, style: style),
+                _RollDigits(value: shown, style: style),
                 if (tail.isNotEmpty) Text(tail, style: style, maxLines: 1),
               ],
             ),
+    );
+  }
+}
+
+/// Число, которое меняется ПО ЦИФРАМ — тем же приёмом, что «очки рейтинга»
+/// ([SmoothDigits] в профиле): изменившийся разряд проявляется из
+/// прозрачного и чуть увеличивается, старый так же мягко гаснет.
+///
+/// Это НЕ «колесо»: прежний [RollingCounter] крутил всё число одной лентой,
+/// и на «3» читалось перекатывание целиком, хотя менялась одна цифра.
+/// Здесь колонка оживает только если разряд реально меняется при +1
+/// («9 → 10» — да, «3 → 4» — одна колонка), поэтому движение всегда
+/// осмысленное и мелкое.
+///
+/// Значение ДРОБНОЕ: кроссфейд идёт за волной счётчика непрерывно, а не
+/// скачком на смене целого, — поэтому даже быстрая волна 0→12 не «дёргает»
+/// цифры. Слоёв ровно два на разряд: `AnimatedSwitcher` здесь не годится —
+/// на двенадцать смен подряд он накладывал бы переходы друг на друга.
+///
+/// Ширина берётся у табличной цифры: без этого разряды «пляшут» по
+/// горизонтали на каждом шаге.
+class _RollDigits extends StatelessWidget {
+  final double value;
+  final TextStyle style;
+
+  const _RollDigits({required this.value, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = value.isFinite && value > 0 ? value : 0.0;
+    final lo = v.floor();
+    final f = (v - lo).clamp(0.0, 1.0);
+    // Табличные цифры: все разряды одной ширины — колонки не дышат.
+    final s = style.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final chars = '$lo'.split('');
+    final last = chars.length - 1;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < chars.length; i++)
+          _DigitSlot(
+            // Позиция от ПРАВОГО края: единицы остаются единицами, и при
+            // «9 → 10» появляется ровно один новый разряд.
+            position: last - i,
+            lo: lo,
+            fraction: f,
+            style: s,
+          ),
+      ],
+    );
+  }
+}
+
+/// Один разряд: текущая цифра гаснет, следующая проявляется — доля
+/// [fraction] задаёт ход кроссфейда. Если разряд при +1 не меняется,
+/// слот статичен (никакого ложного оживания).
+class _DigitSlot extends StatelessWidget {
+  /// Габарит одной табличной цифры. Считается один раз на стиль: `TextPainter`
+  /// на каждый разряд в каждом кадре волны стоил заметной работы, а стиль за
+  /// анимацию не меняется.
+  static final Map<TextStyle, Size> _sizes = {};
+
+  final int position;
+  final int lo;
+  final double fraction;
+  final TextStyle style;
+
+  const _DigitSlot({
+    required this.position,
+    required this.lo,
+    required this.fraction,
+    required this.style,
+  });
+
+  Size _measure() {
+    final cached = _sizes[style];
+    if (cached != null) return cached;
+    final tp = TextPainter(
+      text: TextSpan(text: '0', style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    final size = Size(tp.width, tp.height);
+    _sizes[style] = size;
+    return size;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pow = math.pow(10, position).round();
+    final d0 = (lo ~/ pow) % 10;
+    final d1 = ((lo + 1) ~/ pow) % 10;
+    // Разряд не меняется — слот статичен, никакого ложного перехода.
+    final f = d0 == d1 ? 0.0 : fraction;
+    final size = _measure();
+    // Ход кроссфейда — по мягкой кривой: без неё последние кадры волны
+    // выглядят рывком, как было с линейной дробной частью.
+    final eased = Curves.easeOutCubic.transform(f);
+    // Прозрачность задаётся ЦВЕТОМ, а не `Opacity`: `Opacity` с alpha между
+    // 0 и 1 заводит `saveLayer` на каждый разряд в каждом кадре — на
+    // raster-bound телефоне это и есть «лагающее событие». Цвет с альфой
+    // рисуется тем же проходом, без слоя.
+    final fade = style.color ?? const Color(0xFF000000);
+    TextStyle at(double a) => style.copyWith(
+      color: fade.withValues(alpha: fade.a * a.clamp(0.0, 1.0)),
+    );
+    return SizedBox(
+      width: size.width,
+      height: size.height,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // Уходящая цифра: гаснет и чуть уменьшается — «отходит» назад.
+          if (eased < 1.0)
+            Transform.scale(
+              scale: 1 - 0.16 * eased,
+              child: Text('$d0', style: at(1 - eased), maxLines: 1),
+            ),
+          // Приходящая: проявляется и надувается из 0.84 до полного.
+          if (eased > 0.0)
+            Transform.scale(
+              scale: 0.84 + 0.16 * eased,
+              child: Text('$d1', style: at(eased), maxLines: 1),
+            ),
+        ],
+      ),
     );
   }
 }

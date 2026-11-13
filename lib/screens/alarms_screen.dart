@@ -26,6 +26,7 @@ import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_alarm_screen.dart';
 import 'add_timer_screen.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 
 class AlarmsScreen extends StatefulWidget {
@@ -70,10 +71,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     // Данные уже загружены в main() до первого кадра — показываем их СРАЗУ,
     // без ожидания повторного load() (иначе после сплэша раздел мигает).
     if (_service.isLoaded && _timerSvc.isLoaded) _loaded = true;
-    Future.wait<void>([
-      _service.load(),
-      _timerSvc.load(),
-    ]).then((_) {
+    Future.wait<void>([_service.load(), _timerSvc.load()]).then((_) {
       if (mounted) setState(() => _loaded = true);
     });
     SettingsService.loadExperimental();
@@ -372,29 +370,34 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                               key: ValueKey('alarms_loading'),
                             )
                           : AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 320),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) => FadeTransition(
-                          opacity: animation,
-                          child: ScaleTransition(
-                            scale: Tween<double>(
-                              begin: 0.98,
-                              end: 1.0,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        ),
-                        child: hasAlarms
-                            ? KeyedSubtree(
-                                key: const ValueKey('alarms_list'),
-                                child: _buildAlarmList(context, theme, alarms),
-                              )
-                            : KeyedSubtree(
-                                key: const ValueKey('alarms_empty'),
-                                child: _buildAlarmEmpty(context, theme),
-                              ),
-                      ),
+                              duration: const Duration(milliseconds: 320),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: ScaleTransition(
+                                      scale: Tween<double>(
+                                        begin: 0.98,
+                                        end: 1.0,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
+                                  ),
+                              child: hasAlarms
+                                  ? KeyedSubtree(
+                                      key: const ValueKey('alarms_list'),
+                                      child: _buildAlarmList(
+                                        context,
+                                        theme,
+                                        alarms,
+                                      ),
+                                    )
+                                  : KeyedSubtree(
+                                      key: const ValueKey('alarms_empty'),
+                                      child: _buildAlarmEmpty(context, theme),
+                                    ),
+                            ),
                     ),
                   ],
                 ),
@@ -480,22 +483,13 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           // между будильниками). Без этого красная плашка выше карточки.
           inset: const EdgeInsets.only(bottom: 8),
           confirmDismiss: (_) async {
-            return await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Text(Translations.deleteOf(context)),
-                content: Text(alarm.timeLabel),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: Text(Translations.cancelOf(context)),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: Text(Translations.deleteOf(context)),
-                  ),
-                ],
-              ),
+            return await showAgyshaConfirm(
+              context,
+              title: Translations.deleteOf(context),
+              body: alarm.timeLabel,
+              icon: Icons.delete_outline_rounded,
+              confirmLabel: Translations.deleteOf(context),
+              destructive: true,
             );
           },
           onDismissed: (_) {
@@ -792,22 +786,13 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                           // Фон удаления = границы карточки (у неё горизонтальный
                           // margin 12, см. Card ниже).
                           inset: const EdgeInsets.symmetric(horizontal: 12),
-                          confirmDismiss: (_) async => await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: Text(Translations.deleteOf(context)),
-                              content: Text(timer.displayLabel),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: Text(Translations.cancelOf(context)),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  child: Text(Translations.deleteOf(context)),
-                                ),
-                              ],
-                            ),
+                          confirmDismiss: (_) async => await showAgyshaConfirm(
+                            context,
+                            title: Translations.deleteOf(context),
+                            body: timer.displayLabel,
+                            icon: Icons.delete_outline_rounded,
+                            confirmLabel: Translations.deleteOf(context),
+                            destructive: true,
                           ),
                           onDismissed: (_) => _timerSvc.remove(timer.id),
                           child: Card(
@@ -1121,4 +1106,3 @@ class _AlarmTimeHighlight extends StatelessWidget {
     );
   }
 }
-

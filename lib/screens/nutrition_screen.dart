@@ -18,6 +18,7 @@ import '../widgets/nutrition_trends.dart';
 import '../widgets/press_scale.dart';
 import '../widgets/rolling_counter.dart';
 import '../widgets/smooth_digits.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 
 /// Какое из числовых полей редактирует встроенная клавиатура.
 enum _PadField { calories, water }
@@ -1257,56 +1258,21 @@ class _NutritionScreenState extends State<NutritionScreen>
           return false;
         }
         // Защита от случайного удаления жестом: требуем явного подтверждения.
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded, size: 22),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    Translations.t(
-                      'deleteMealConfirmTitle',
-                      context,
-                      'Удалить приём пищи?',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            content: Text(
-              Translations.t(
-                'deleteMealConfirmBody',
-                context,
-                'Этот приём пищи будет удалён. Действие нельзя отменить.',
-              ),
-            ),
-            actions: [
-              // Отдача кнопок — как на остальных экранах: без [PressScale]
-              // кнопка не отвечает на палец, и окно читается «чужим».
-              PressScale(
-                pressedScale: 0.95,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: Text(Translations.cancelOf(context)),
-                ),
-              ),
-              PressScale(
-                pressedScale: 0.95,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(ctx).colorScheme.error,
-                  ),
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: Text(Translations.t('delete', context, 'Удалить')),
-                ),
-              ),
-            ],
+        final ok = await showAgyshaConfirm(
+          context,
+          title: Translations.t(
+            'deleteMealConfirmTitle',
+            context,
+            'Удалить приём пищи?',
           ),
+          body: Translations.t(
+            'deleteMealConfirmBody',
+            context,
+            'Этот приём пищи будет удалён. Действие нельзя отменить.',
+          ),
+          icon: Icons.delete_outline_rounded,
+          confirmLabel: Translations.t('delete', context, 'Удалить'),
+          destructive: true,
         );
         if (ok == true) {
           // Подтверждённое удаление: строка САМА отыгрывает уход

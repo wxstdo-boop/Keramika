@@ -130,10 +130,14 @@ class _MusicPulseRingState extends State<MusicPulseRing>
     // Кровавая гамма: алый → тёмно-красный → розово-красный. Тон темы лишь
     // подмешивается к краям, чтобы кольцо оставалось «в характере» светлой или
     // тёмной темы, но читалось именно красным.
+    // Палитра богаче прежней: глубокий бордо → алый → коралл → розовый.
+    // Четыре опоры дают непрерывный перелив без «двух цветов», а светлый
+    // коралл держит кольцо читаемым и на тёмной, и на светлой теме.
     final palette = [
-      Color.lerp(BrandColors.red, cs.primary, 0.22)!,
-      const Color(0xFF7A0B16),
-      Color.lerp(const Color(0xFFFF5A6E), cs.tertiary, 0.18)!,
+      Color.lerp(const Color(0xFF8E0B1C), cs.primary, 0.16)!,
+      Color.lerp(BrandColors.red, cs.primary, 0.20)!,
+      Color.lerp(const Color(0xFFFF4D63), cs.tertiary, 0.24)!,
+      Color.lerp(const Color(0xFFFF8AA0), cs.primary, 0.14)!,
     ];
     return Stack(
       alignment: Alignment.center,
@@ -161,7 +165,9 @@ class _MusicPulseRingState extends State<MusicPulseRing>
                       ? 0.0
                       : (0.5 - 0.5 * math.cos(t * math.pi * 2));
                   // Медленный поворот градиента: цвет «перетекает» по кругу.
-                  final turn = t * 2 * math.pi;
+                  // Половина оборота за «вдох»: перелив идёт спокойно, а не
+                  // «крутится» под бликом.
+                  final turn = t * math.pi;
                   return CustomPaint(
                     painter: _RingPainter(
                       palette: palette,
@@ -227,12 +233,16 @@ class _RingPainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: r);
     final lead = _tone(palette, turn);
     final tail = _tone(palette, turn + 2 * math.pi / 3);
+    final mid = Color.lerp(lead, tail, 0.5)!;
+    // Пульс восстановлен из `glow`: блик дышит вместе с кольцом, иначе он
+    // выглядит «приклеенным» к живому кольцу.
+    final pulse = ((glow - 0.10) / 0.30).clamp(0.0, 1.0);
 
     // Мягкая аура: ОДНА широкая обводка вокруг линии. Радиальный градиент
     // держит прозрачность на ноль по краям полосы и максимум на её середине —
     // свет растворяется и внутрь, и наружу, без резкой окружности.
     final auraWidth = stroke * 3.2;
-    final auraColor = Color.lerp(lead, tail, 0.5)!;
+    final auraColor = mid;
     final outer = r + auraWidth / 2;
     final innerFrac = ((r - auraWidth / 2) / outer).clamp(0.0, 0.98);
     final midFrac = (r / outer).clamp(innerFrac, 0.99);
@@ -261,13 +271,49 @@ class _RingPainter extends CustomPainter {
         ..strokeWidth = stroke
         ..shader = SweepGradient(
           transform: GradientRotation(turn),
-          colors: [lead, tail, lead],
+          // Четыре стопа вместо трёх: перелив без «стыка» на замыкании —
+          // тон читается как у металла, а не как два цвета.
+          colors: [lead, mid, tail, lead],
+          stops: const [0.0, 0.38, 0.72, 1.0],
         ).createShader(rect)
         ..colorFilter = ColorFilter.mode(
           Color.fromRGBO(255, 255, 255, 0.9 * alpha),
           BlendMode.modulate,
         ),
     );
+
+    // Стеклянный блик: узкая яркая дуга слева-сверху (свет «падает» на
+    // полированную оправу) плюс широкая мягкая — объём и глянец. Дуги
+    // статичны по месту, а перелив тона идёт ПОД ними, поэтому кольцо
+    // читается объёмным, а не «раскрашенным кружком».
+    final glint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = stroke * 1.30
+      ..color = Colors.white.withValues(
+        alpha: 0.30 * alpha * (0.55 + 0.45 * pulse),
+      );
+    canvas.drawArc(rect, -2.42, 1.06, false, glint);
+
+    final sheen = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = stroke * 2.60
+      ..color = Colors.white.withValues(
+        alpha: 0.10 * alpha * (0.5 + 0.5 * pulse),
+      );
+    canvas.drawArc(rect, -2.70, 1.70, false, sheen);
+
+    // Тень на противоположной стороне: без неё блик выглядит наклейкой, а с
+    // ней кольцо «стоит» в объёме.
+    final shade = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = stroke * 1.90
+      ..color = const Color(
+        0xFF2A0308,
+      ).withValues(alpha: 0.16 * alpha * (0.6 + 0.4 * pulse));
+    canvas.drawArc(rect, 0.72, 1.90, false, shade);
   }
 
   @override

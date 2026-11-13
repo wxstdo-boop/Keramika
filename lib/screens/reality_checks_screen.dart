@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../services/haptics.dart';
 import '../services/sounds.dart';
@@ -21,6 +21,7 @@ import '../utils/snackbar.dart';
 import '../widgets/animated_fab_row.dart';
 import '../widgets/premium_empty_state.dart';
 import 'add_reality_check_screen.dart';
+import '../widgets/agysha_confirm_dialog.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 
 class RealityChecksScreen extends StatefulWidget {
@@ -103,7 +104,6 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
     super.dispose();
   }
 
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Возврат из фона: keep-alive восстановил позицию скролла, а общий
@@ -115,7 +115,6 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
       });
     }
   }
-
 
   void _syncPillOffset() {
     final target = widget.scrollOffset;
@@ -435,25 +434,13 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
             // Фон удаления = границы карточки (стандартный margin [Card] 4 px).
             inset: const EdgeInsets.all(4),
             confirmDismiss: (_) async {
-              return await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  title: Text(Translations.deleteOf(context)),
-                  content: Text(check.question),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: Text(Translations.cancelOf(context)),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: Text(Translations.deleteOf(context)),
-                    ),
-                  ],
-                ),
+              return await showAgyshaConfirm(
+                context,
+                title: Translations.deleteOf(context),
+                body: check.question,
+                icon: Icons.delete_outline_rounded,
+                confirmLabel: Translations.deleteOf(context),
+                destructive: true,
               );
             },
             onDismissed: (_) async {
@@ -566,8 +553,9 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                                 // Линия берётся НЕ `outline`: он светлее
                                 // текста примерно на 15 уровней серого, и на
                                 // телефоне зачёркивание не читалось совсем.
-                                strikeColor:
-                                    Colors.red.shade500.withValues(alpha: 0.9),
+                                strikeColor: Colors.red.shade500.withValues(
+                                  alpha: 0.9,
+                                ),
                                 maxLines: null,
                               ),
                             ),
@@ -666,32 +654,13 @@ class _RealityChecksScreenState extends State<RealityChecksScreen>
                     child: IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
                       onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            title: Text(Translations.t('rcReset', context)),
-                            content: Text(
-                              Translations.t('rcResetBody', context),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: Text(Translations.cancelOf(context)),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: Text(
-                                  Translations.t('rcReset', context),
-                                  style: TextStyle(
-                                    color: theme.colorScheme.error,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                        final confirm = await showAgyshaConfirm(
+                          context,
+                          title: Translations.t('rcReset', context),
+                          body: Translations.t('rcResetBody', context),
+                          icon: Icons.restart_alt_rounded,
+                          confirmLabel: Translations.t('rcReset', context),
+                          destructive: true,
                         );
                         if (confirm == true) {
                           _service.resetAllStats();

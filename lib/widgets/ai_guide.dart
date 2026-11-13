@@ -28,6 +28,7 @@ import '../widgets/beautiful_selection.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/model_label.dart';
 import '../widgets/smooth_typing.dart';
+import 'agysha_confirm_dialog.dart';
 
 export 'berserk_sheet.dart';
 part 'ai_guide_bubbles.dart';
@@ -988,29 +989,17 @@ class _AiChatBodyState extends State<_AiChatBody>
     // Разрешения нет — объясняем и ведём в настройки. Значок при этом
     // НЕ включается: вернёшься с выданным разрешением — включится сам
     // (didChangeAppLifecycleState → _refreshScreenPerm).
-    final cs = Theme.of(context).colorScheme;
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.visibility_outlined, size: 44, color: cs.primary),
-        title: const Text('Ада видит экран'),
-        content: const Text(
+    final go = await showAgyshaConfirm(
+      context,
+      title: 'Ада видит экран',
+      body:
           'Чтобы Ада могла подсказать ответ собеседнику (например, в '
           'мессенджере), разреши Agysha «Специальные возможности».\n\n'
           'Текст экрана не сохраняется и никуда не отправляется — он '
           'попадает в Аду только вместе с твоим сообщением.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Не сейчас'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Открыть настройки'),
-          ),
-        ],
-      ),
+      icon: Icons.visibility_outlined,
+      confirmLabel: 'Открыть настройки',
+      cancelLabel: 'Не сейчас',
     );
     if (go == true && mounted) {
       await ScreenReaderService.openSystemSettings();
@@ -1782,121 +1771,123 @@ class _AiChatBodyState extends State<_AiChatBody>
               child: Row(
                 children: [
                   Expanded(
-                  // Обводка поля плавно «разгорается» при фокусе и гаснет
-                  // при снятии (короткая 220мс анимация, чтобы не тормозить
-                  // клавиатуру, но и не «щёлкать» цветом).
-                  child: AnimatedBuilder(
-                    animation: _focusAnim,
-                    builder: (context, child) {
-                      final t = Curves.easeOutCubic.transform(_focusAnim.value);
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: cs.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Color.lerp(
-                              cs.outlineVariant.withValues(alpha: 0.4),
-                              cs.primary.withValues(alpha: 0.7),
-                              t,
-                            )!,
-                            width: 1.5 + t * 0.4,
-                          ),
-                        ),
-                        child: child,
-                      );
-                    },
-                    child: Stack(
-                      children: [
-                        // Каждую букву рисует SmoothTyping: она проявляется
-                        // из пустоты и плавно гаснет при стирании. Само поле
-                        // ниже — прозрачное, оно отвечает за каретку,
-                        // выделение и клавиатуру.
-                        SmoothTyping(
-                          controller: _inputCtrl,
-                          cursorColor: cs.primary,
-                          style: TextStyle(
-                            fontSize: 18,
-                            height: 1.4,
-                            color: cs.onSurface,
-                          ),
-                          builder: (style) => TextField(
-                            style: style,
-                            magnifierConfiguration:
-                                TextMagnifierConfiguration.disabled,
-                            controller: _inputCtrl,
-                            focusNode: _inputFocus,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _send(),
-                            minLines: 1,
-                            maxLines: 4,
-                            maxLength: 13000,
-                            inputFormatters: [WideDashFormatter()],
-                            // Отключаем автоподсказки/автокоррекцию
-                            // клавиатуры: Gboard/MIUI добавляет свой
-                            // автопробел после выбранного слова — отсюда
-                            // «пробел в конце».
-                            enableSuggestions: false,
-                            autocorrect: false,
-                            // Меню при зажатии: только Копировать/Вставить/
-                            // Вырезать/Курсив — без «Поделиться»,
-                            // «Спросить Copilot» и лишних пунктов.
-                            contextMenuBuilder: minimalContextMenuBuilder,
-                            // Не запускать дополнительный автоскролл
-                            // EditableText при каждом кадре IME: лист уже
-                            // сам двигается.
-                            scrollPadding: EdgeInsets.zero,
-                            // Каретка мигает ПЛАВНО (fade-переход, а не
-                            // резкое вкл/выкл) — «палка» не дёргается.
-                            cursorOpacityAnimates: true,
-                            decoration: InputDecoration(
-                              counterText: '',
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 12,
-                              ),
+                    // Обводка поля плавно «разгорается» при фокусе и гаснет
+                    // при снятии (короткая 220мс анимация, чтобы не тормозить
+                    // клавиатуру, но и не «щёлкать» цветом).
+                    child: AnimatedBuilder(
+                      animation: _focusAnim,
+                      builder: (context, child) {
+                        final t = Curves.easeOutCubic.transform(
+                          _focusAnim.value,
+                        );
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Color.lerp(
+                                cs.outlineVariant.withValues(alpha: 0.4),
+                                cs.primary.withValues(alpha: 0.7),
+                                t,
+                              )!,
+                              width: 1.5 + t * 0.4,
                             ),
                           ),
-                        ),
-                        // Плавная подсказка «Спроси меня»: гаснет, когда
-                        // начинаешь вводить, и мягко возвращается, когда
-                        // поле пустое — вместо резкого щелчка.
-                        IgnorePointer(
-                          child: ValueListenableBuilder<TextEditingValue>(
-                            valueListenable: _inputCtrl,
-                            builder: (context, v, _) => AnimatedOpacity(
-                              opacity: v.text.isEmpty ? 1.0 : 0.0,
-                              duration: const Duration(milliseconds: 240),
-                              curve: Curves.easeOutCubic,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
+                          child: child,
+                        );
+                      },
+                      child: Stack(
+                        children: [
+                          // Каждую букву рисует SmoothTyping: она проявляется
+                          // из пустоты и плавно гаснет при стирании. Само поле
+                          // ниже — прозрачное, оно отвечает за каретку,
+                          // выделение и клавиатуру.
+                          SmoothTyping(
+                            controller: _inputCtrl,
+                            cursorColor: cs.primary,
+                            style: TextStyle(
+                              fontSize: 18,
+                              height: 1.4,
+                              color: cs.onSurface,
+                            ),
+                            builder: (style) => TextField(
+                              style: style,
+                              magnifierConfiguration:
+                                  TextMagnifierConfiguration.disabled,
+                              controller: _inputCtrl,
+                              focusNode: _inputFocus,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _send(),
+                              minLines: 1,
+                              maxLines: 4,
+                              maxLength: 13000,
+                              inputFormatters: [WideDashFormatter()],
+                              // Отключаем автоподсказки/автокоррекцию
+                              // клавиатуры: Gboard/MIUI добавляет свой
+                              // автопробел после выбранного слова — отсюда
+                              // «пробел в конце».
+                              enableSuggestions: false,
+                              autocorrect: false,
+                              // Меню при зажатии: только Копировать/Вставить/
+                              // Вырезать/Курсив — без «Поделиться»,
+                              // «Спросить Copilot» и лишних пунктов.
+                              contextMenuBuilder: minimalContextMenuBuilder,
+                              // Не запускать дополнительный автоскролл
+                              // EditableText при каждом кадре IME: лист уже
+                              // сам двигается.
+                              scrollPadding: EdgeInsets.zero,
+                              // Каретка мигает ПЛАВНО (fade-переход, а не
+                              // резкое вкл/выкл) — «палка» не дёргается.
+                              cursorOpacityAnimates: true,
+                              decoration: InputDecoration(
+                                counterText: '',
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 18,
                                   vertical: 12,
                                 ),
-                                child: Text(
-                                  Translations.t(
-                                    'aiGuideHint',
-                                    context,
-                                    'Ask me…',
+                              ),
+                            ),
+                          ),
+                          // Плавная подсказка «Спроси меня»: гаснет, когда
+                          // начинаешь вводить, и мягко возвращается, когда
+                          // поле пустое — вместо резкого щелчка.
+                          IgnorePointer(
+                            child: ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _inputCtrl,
+                              builder: (context, v, _) => AnimatedOpacity(
+                                opacity: v.text.isEmpty ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 240),
+                                curve: Curves.easeOutCubic,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                    vertical: 12,
                                   ),
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    height: 1.4,
-                                    color: cs.onSurfaceVariant.withValues(
-                                      alpha: 0.8,
+                                  child: Text(
+                                    Translations.t(
+                                      'aiGuideHint',
+                                      context,
+                                      'Ask me…',
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      height: 1.4,
+                                      color: cs.onSurfaceVariant.withValues(
+                                        alpha: 0.8,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _SendButton(busy: _busy, onTap: () => _send()),
+                  const SizedBox(width: 8),
+                  _SendButton(busy: _busy, onTap: () => _send()),
                 ],
               ),
             ),
