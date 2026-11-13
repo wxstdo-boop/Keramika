@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/json_file.dart';
 import '../services/new_year_event_service.dart';
 import '../services/prefs.dart';
+import '../services/score_service.dart';
 
 /// Сколько дней истории храним и показываем. Было 7 — за это время нельзя
 /// было построить ни одного тренда, а запись «приёмов не больше 20»
@@ -332,6 +333,11 @@ class NutritionService extends ChangeNotifier {
     try {
       await _save();
       notifyListeners();
+      // Очки за записанный приём пищи и отметка активного дня. Начисляем
+      // ПОСЛЕ удачной записи: если сохранить не удалось, достижения не
+      // «рисуем».
+      await ScoreService().award(ScoreKind.meal);
+      await ScoreService().markActiveDay();
     } catch (e) {
       _meals.remove(meal);
       debugPrint('Error saving nutrition data: $e');

@@ -6,6 +6,7 @@ import 'completion_log_service.dart';
 import 'habit_service.dart';
 import 'json_file.dart';
 import 'prefs.dart';
+import 'score_service.dart';
 import 'task_service.dart';
 
 /// Друг в рейтинге «Agysha-юзеров».
@@ -74,6 +75,50 @@ class ProfileFriend {
   );
 }
 
+/// Трек «своей музыки» профиля. Хранится списком: до [ProfileService.maxTracks]
+/// штук, чтобы в профиле была не одна песня, а небольшая своя подборка.
+class MusicTrack {
+  const MusicTrack({
+    required this.id,
+    required this.path,
+    required this.title,
+    required this.addedAt,
+  });
+
+  final String id;
+
+  /// Путь к копии файла в приватной папке приложения.
+  final String path;
+
+  /// Подпись трека. По умолчанию — имя файла; название можно менять.
+  final String title;
+
+  /// Когда трек добавлен (мс с эпохи) — для стабильного порядка и «свежих»
+  /// подписей.
+  final int addedAt;
+
+  MusicTrack copyWith({String? title}) => MusicTrack(
+    id: id,
+    path: path,
+    title: title ?? this.title,
+    addedAt: addedAt,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'path': path,
+    'title': title,
+    'at': addedAt,
+  };
+
+  factory MusicTrack.fromJson(Map<String, dynamic> j) => MusicTrack(
+    id: (j['id'] ?? '').toString(),
+    path: (j['path'] ?? '').toString(),
+    title: (j['title'] ?? '').toString(),
+    addedAt: (j['at'] as num?)?.toInt() ?? 0,
+  );
+}
+
 /// Профиль «Agysha-юзера» и его локальный рейтинг.
 ///
 /// Своё имя и цвет аватарки, список друзей с очками, своя музыка для
@@ -93,8 +138,7 @@ class ProfileService extends ChangeNotifier {
   String? _snapshot;
   String _name = '';
   int _avatarIndex = 0;
-  String? _musicPath;
-  String? _musicTitle;
+  final List<MusicTrack> _tracks = [];
 
   /// Своя аватарка из галереи: путь к скопированному в приватную папку файлу.
   /// Пока он задан — он и показывается вместо сгенерированного варианта.
@@ -104,8 +148,23 @@ class ProfileService extends ChangeNotifier {
   bool get loaded => _loaded;
   String get name => _name;
   int get avatarIndex => _avatarIndex;
-  String? get musicPath => _musicPath;
-  String? get musicTitle => _musicTitle;
+  /// Своя подборка музыки (до [maxTracks] штук).
+  List<MusicTrack> get tracks => List.unmodifiable(_tracks);
+
+  /// Первый трек подборки: на него ориентируются «кто играет» и мини-плеер.
+  MusicTrack? get firstTrack => _tracks.isEmpty ? null : _tracks.first;
+
+  /// Путь первого трека — совместимость с прежним одиночным полем.
+  String? get musicPath => firstTrack?.path;
+
+  /// Подпись первого трека.
+  String? get musicTitle => firstTrack?.title;
+
+  /// Предел подборки: дальше список не принимает треки.
+  static const int maxTracks = 15;
+
+  /// Есть ли ещё место в подборке.
+  bool get canAddTrack => _tracks.length < maxTracks;
   String? get avatarImagePath => _avatarImagePath;
   List<ProfileFriend> get friends => List.unmodifiable(_friends);
 
@@ -138,8 +197,7 @@ class ProfileService extends ChangeNotifier {
     // иначе повторный load() в том же процессе «протекает» старыми данными.
     _name = '';
     _avatarIndex = 0;
-    _musicPath = null;
-    _musicTitle = null;
+    _tracks.clear();
     _avatarImagePath = null;
     _friends.clear();
     if (raw != null && raw.isNotEmpty) {
@@ -147,8 +205,30 @@ class ProfileService extends ChangeNotifier {
         final map = jsonDecode(raw) as Map<String, dynamic>;
         _name = (map['name'] ?? '').toString();
         _avatarIndex = (map['avatar'] as num?)?.toInt() ?? 0;
-        _musicPath = map['musicPath']?.toString();
-        _musicTitle = map['musicTitle']?.toString();
+        // Новая форма — список треков. Старые профили (одно поле musicPath)
+        // читаем как подборку из одного трека: иначе у тех, кто уже выбрал
+        // музыку, она бы «потерялась» после обновления.
+        final rawTracks = (map['tracks'] as List?) ?? const [];
+        _tracks
+          ..clear()
+          ..addAll(
+            rawTracks.map(
+              (e) => MusicTrack.fromJson(Map<String, dynamic>.from(e as Map)),
+            ),
+          );
+        if (_tracks.isEmpty) {
+          final legacyPath = map['musicPath']?.toString();
+          if (legacyPath != null && legacyPath.isNotEmpty) {
+            _tracks.add(
+              MusicTrack(
+                id: 'legacy',
+                path: legacyPath,
+                title: map['musicTitle']?.toString() ?? '',
+                addedAt: 0,
+              ),
+            );
+          }
+        }
         _avatarImagePath = map['avatarImage']?.toString();
         final list = (map['friends'] as List?) ?? const [];
         _friends
@@ -174,8 +254,11 @@ class ProfileService extends ChangeNotifier {
     final value = jsonEncode({
       'name': _name,
       'avatar': _avatarIndex,
-      'musicPath': _musicPath,
-      'musicTitle': _musicTitle,
+      'tracks': _tracks.map((t) => t.toJson()).toList(),
+      // Дублируем первый трек в старые поля: мини-плеер и прочие места,
+      // читающие одиночную музыку, продолжают работать без правок.
+      'musicPath': musicPath,
+      'musicTitle': musicTitle,
       'avatarImage': _avatarImagePath,
       'friends': _friends.map((f) => f.toJson()).toList(),
     });
@@ -214,11 +297,46 @@ class ProfileService extends ChangeNotifier {
     await _save();
   }
 
-  /// Твоя музыка профиля: хранится ПУТЬ к уже скопированному в приватную
-  /// папку файлу (см. экран профиля) — он переживёт очистку кэша.
-  Future<void> setMusic({String? path, String? title}) async {
-    _musicPath = path;
-    _musicTitle = title;
+  /// Добавить трек в подборку. Путь ведёт на копию в приватной папке
+  /// (см. экран профиля) — она переживёт очистку кэша. Возвращает `false`,
+  /// если подборка уже полна ([maxTracks]).
+  Future<bool> addTrack({
+    required String path,
+    required String title,
+  }) async {
+    if (_tracks.length >= maxTracks) return false;
+    _tracks.add(
+      MusicTrack(
+        id: 't${DateTime.now().microsecondsSinceEpoch}',
+        path: path,
+        title: title,
+        addedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    notifyListeners();
+    await _save();
+    return true;
+  }
+
+  /// Убрать трек из подборки.
+  Future<void> removeTrack(String id) async {
+    _tracks.removeWhere((t) => t.id == id);
+    notifyListeners();
+    await _save();
+  }
+
+  /// Переименовать трек (своя подпись вместо имени файла).
+  Future<void> renameTrack(String id, String title) async {
+    final idx = _tracks.indexWhere((t) => t.id == id);
+    if (idx < 0) return;
+    _tracks[idx] = _tracks[idx].copyWith(title: title.trim());
+    notifyListeners();
+    await _save();
+  }
+
+  /// Очистить всю подборку (кнопка «удалить всё»).
+  Future<void> clearTracks() async {
+    _tracks.clear();
     notifyListeners();
     await _save();
   }
@@ -278,13 +396,19 @@ class ProfileService extends ChangeNotifier {
     await _save();
   }
 
-  /// Локальный счёт «Agysha-рейтинга»: сумма текущих стриков привычек и
-  /// числа выполненных задач плюс бонус за активные дни в логе выполнения.
+  /// Локальный счёт «Agysha-рейтинга» — ПОЖИЗНЕННАЯ копилка [ScoreService].
   ///
-  /// Считается из реальной активности, а не вводится руками, — иначе рейтинг
-  /// был бы красивой пустышкой.
+  /// Раньше считался только из ТЕКУЩЕГО состояния: снял галочку или потерял
+  /// стрик — очки падали, и цифра ничего не значила. Теперь копилка растёт от
+  /// каждого действия (привычка, задача, сообщение Аде, приём пищи, проверка
+  /// реальности, активный день) и не уменьшается — рейтинг читается как
+  /// достижение.
+  ///
+  /// Текущие стрики и выполненное «сегодня» добавляем СВЕРХУ: это «живой»
+  /// срез на случай, когда копилку ещё не успели прогнать (первый запуск
+  /// после обновления), — так цифра не обнуляется у тех, кто уже что-то сделал.
   int localScore() {
-    var score = 0;
+    var score = ScoreService().total;
     for (final h in HabitService().habits) {
       if (h.streak > 0) score += h.streak;
     }
@@ -294,9 +418,14 @@ class ProfileService extends ChangeNotifier {
     for (final d in days) {
       if (d.habits > 0 || d.tasks > 0) active++;
     }
-    score += active * 3;
+    score += active * ScoreWeight.activeDay;
     return score;
   }
+
+  /// Разбор «за что очки»: по каждой категории — сколько накоплено и сколько
+  /// приносит одна единица. Идёт из одного источника со счётом, поэтому
+  /// подписи не разъезжаются с цифрами.
+  Map<ScoreKind, int> scoreBreakdown() => ScoreService().breakdown;
 
   /// Рейтинг: друзья + сам пользователь, отсортировано по очкам (по убыванию).
   /// [selfFallback] — подпись себя, когда имя ещё не задано (перевод задаёт

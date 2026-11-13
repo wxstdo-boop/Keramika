@@ -4,6 +4,7 @@ import '../models/task.dart';
 import 'json_file.dart';
 import 'new_year_event_service.dart';
 import 'prefs.dart';
+import 'score_service.dart';
 
 /// Потолок категорий записей.
 const int kMaxCategories = 15;
@@ -144,6 +145,12 @@ class TaskService extends ChangeNotifier {
     await globalPrefs.setInt('ai_tasks_done_total', clamped);
     notifyListeners();
     await _save();
+    // Очки за выполненную задачу: только при переходе в «сделано». Отмена
+    // галочки копилку не уменьшает — достижения не отбираем.
+    if (_tasks[idx].done) {
+      await ScoreService().award(ScoreKind.task);
+      await ScoreService().markActiveDay();
+    }
     return _tasks[idx].done;
   }
 

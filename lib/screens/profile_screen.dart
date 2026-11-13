@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -12,6 +13,7 @@ import '../services/haptics.dart';
 import '../services/music_service.dart';
 import '../services/new_year_event_service.dart';
 import '../services/profile_service.dart';
+import '../services/score_service.dart';
 import '../utils/context_menu.dart';
 import '../utils/design_tokens.dart';
 import '../utils/motion_prefs.dart';
@@ -112,6 +114,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   /// аватарка буквально «уходит под матовое стекло» шапки, а не просто
   /// уползает за край.
   final _scrollCtrl = ScrollController();
+
+  /// Схлопывание строки трека при удалении — как у приёмов пищи в питании:
+  /// одна длительность и кривая на всю анимацию, чтобы не спорили между собой.
+  static const Duration _trackCollapse = Duration(milliseconds: 320);
+
+  /// Треки, которые сейчас уходят: их строки схлопываются по высоте, а из
+  /// модели они исчезают после анимации — соседи подаются вверх непрерывно.
+  final Set<String> _removingTrackIds = {};
+
+  /// Пути только что добавленных треков: их строки «врастают» из нуля, а не
+  /// вставляются готовыми.
+  final Set<String> _newTrackIds = {};
 
   /// Прозрачность подсказки «Как вас звать?»: видна, пока поле НЕ в фокусе.
   /// Подсказка гаснет плавно, как только пользователь открыл поле, и так же
@@ -310,33 +324,47 @@ class _ProfileScreenState extends State<ProfileScreen>
     await _service.toggleOnline();
   }
 
-  Future<void> _pickMusic() async {
+  /// Добавить трек в подборку. Файл копируем в приватную папку: путь из
+  /// общего хранилища или кэша переживёт не всякий день, а свой трек должен
+  /// играть всегда.
+  Future<void> _addMusic() async {
+    if (!_service.canAddTrack) {
+      _toast(
+        Translations.t('profileMusicFull', context, 'Уже 15 треков'),
+        icon: Icons.info_outline,
+      );
+      return;
+    }
     // Системный пикер — на время открытия гасим «свои» эффекты.
     final picked = await FilePicker.pickFile(type: FileType.audio);
     if (picked?.path == null) return;
     final srcPath = picked!.path!;
     try {
-      // Копируем в приватную папку приложения: путь из общего хранилища или
-      // кэша переживёт не всякий день, а свой файл должен играть всегда.
       final dir = await getApplicationDocumentsDirectory();
       final soundsDir = Directory('${dir.path}/sounds');
       await soundsDir.create(recursive: true);
-      final ext = picked.extension?.isNotEmpty == true
-          ? picked.extension!
-          : 'mp3';
+      final ext = _extensionOf(srcPath);
       final newPath =
           '${soundsDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await File(srcPath).copy(newPath);
-      final title = picked.name.isNotEmpty ? picked.name : 'Моя музыка';
-      // Останавливаем старый трек и сразу ставим новый. Прежде между ними
-      // была искусственная пауза с «пустым» состоянием: карточка успевала
-      // показать заглушку, потом прыгала на трек — читалось как рывок и
-      // мигание текста. Переход между состояниями делает сам
-      // `AnimatedSwitcher` карточки, без ручной задержки.
-      await _music.stop();
       if (!mounted) return;
-      await _service.setMusic(path: newPath, title: title);
+      // Имя файла — только «семя» для подписи: настоящие названия треков
+      // придумываем сами, чтобы подборка читалась живой, а не списком
+      // служебных имён вроде «record_2024_05_11».
+      final title = _funSongTitle(srcPath);
+      final added = await _service.addTrack(path: newPath, title: title);
       if (!mounted) return;
+      if (!added) {
+        _toast(
+          Translations.t('profileMusicFull', context, 'Уже 15 треков'),
+          icon: Icons.info_outline,
+        );
+        return;
+      }
+      _newTrackIds.add(newPath);
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (mounted) setState(() => _newTrackIds.remove(newPath));
+      });
       _toast(Translations.t('profileMusicSet', context, 'Музыка сохранена'));
     } catch (_) {
       if (!mounted) return;
@@ -351,11 +379,17 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  Future<void> _toggleMusicPlayback() async {
-    final path = _service.musicPath;
-    if (path == null) return;
+  static String _extensionOf(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot < 0 || dot == path.length - 1) return 'mp3';
+    final ext = path.substring(dot + 1);
+    return ext.length <= 5 ? ext : 'mp3';
+  }
+
+  /// Запустить/остановить конкретный трек подборки.
+  Future<void> _toggleTrack(MusicTrack track) async {
     Haptics.light();
-    final ok = await _music.toggle(path);
+    final ok = await _music.toggle(track.path);
     if (!ok && mounted) {
       _toast(
         Translations.t('profileMusicMissing', context, 'Файл не найден'),
@@ -364,15 +398,21 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  Future<void> _removeMusic() async {
-    // Состояние меняем СРАЗУ, а затухание плеера уходит в фон: раньше карточка
-    // ждала окончания фейда (до 420 мс) и схлопывалась с запозданием —
-    // читалось как «дёрнуло». Теперь плашка уезжает плавно и сразу, а звук
-    // стихает параллельно.
-    final stopping = _music.stop();
-    await _service.setMusic();
-    await stopping;
+  /// Убрать трек: строку сначала ПЛАВНО схлопываем (см. `_removingTrackIds`),
+  /// и только потом убираем из модели — соседи подаются вверх непрерывно.
+  Future<void> _removeTrack(MusicTrack track) async {
+    setState(() => _removingTrackIds.add(track.id));
+    if (_music.playing && _music.path == track.path) {
+      unawaited(_music.stop());
+    }
+    await Future<void>.delayed(_trackCollapse);
+    if (!mounted) return;
+    await _service.removeTrack(track.id);
+    if (!mounted) return;
+    setState(() => _removingTrackIds.remove(track.id));
   }
+
+
 
   /// Открыть окно новогоднего ивента (пункт «Новогодний ивент» в событиях).
   /// Если ивент сейчас неактивен — сообщаем об этом, а не открываем пустое
@@ -517,6 +557,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             _musicCard(theme),
             const SizedBox(height: Spacing.md),
             _leaderboardCard(theme),
+            const SizedBox(height: Spacing.md),
+            // Очки — сразу после рейтинга: «за что» читается рядом с «кто
+            // сколько», а карточки музыки и рейтинга остаются на своих местах.
+            _scoreCard(theme),
             const SizedBox(height: Spacing.md),
             _eventsCard(theme),
           ],
@@ -770,192 +814,74 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _musicCard(ThemeData theme) {
-    final hasMusic = _service.musicPath != null;
-    final playing = _music.playing && _music.path == _service.musicPath;
-    // Плашка меняется ПЛАВНО: между «пусто», строкой трека и подписью
-    // кнопки играет AnimatedSize + AnimatedSwitcher — добавление, замена и
-    // удаление музыки не «щёлкают» раскладкой.
-    final crossDur = MotionPrefs.shouldReduceMotion
-        ? Duration.zero
-        : Motion.slow;
+    final tracks = _service.tracks;
+    final hasMusic = tracks.isNotEmpty;
+    final cs = theme.colorScheme;
+    final dur = MotionPrefs.shouldReduceMotion ? Duration.zero : Motion.slow;
+
     return _Card(
       title: Translations.t('profileMusic', context, 'Твоя музыка'),
       icon: Icons.music_note_outlined,
+      trailing: hasMusic
+          ? Text(
+              '${tracks.length}/${ProfileService.maxTracks}',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Смена «пусто ↔ трек» — ОДНИМ механизмом: `AnimatedCrossFade`
-          // сам и проявляет, и тянет высоту ОДНОЙ кривой. Раньше проявку
-          // делал `AnimatedSwitcher`, а высоту — внешний `AnimatedSize`, и
-          // они спорили: карточка дёргала текст и «скукоживалась» рывком
-          // при удалении трека.
-          AnimatedCrossFade(
-            duration: crossDur,
-            sizeCurve: Curves.easeOutCubic,
-            firstCurve: Curves.easeOut,
-            secondCurve: Curves.easeIn,
-            crossFadeState: hasMusic
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
-            firstChild: hasMusic
-                // Гасим чернильные всплески ListTile: без этого при тапе по
-                // строке под пальцем вспыхивал прямоугольник на всю ширину
-                // карточки («квадрат»). Кнопки внутри сохраняют свой отклик.
-                ? Theme(
-                    data: theme.copyWith(
-                      splashColor: Colors.transparent,
-                      highlightColor: Colors.transparent,
-                      hoverColor: Colors.transparent,
-                    ),
-                    child: ListTile(
-                      key: const ValueKey('music_row'),
-                      contentPadding: EdgeInsets.zero,
-                      // Слева — кнопка проигрывания, справа — корзина:
-                      // привычный порядок строки, как было раньше.
-                      leading: PressScale(
-                        pressedScale: 0.88,
-                        child: MusicPulseRing(
-                          active: playing,
-                          child: IconButton(
-                            onPressed: _toggleMusicPlayback,
-                            // Полностью прозрачно: под пальцем нет ни
-                            // квадратной заливки, ни круга — только кольцо.
-                            style: IconButton.styleFrom(
-                              shape: const CircleBorder(),
-                              backgroundColor: Colors.transparent,
-                              foregroundColor: theme.colorScheme.primary,
-                              highlightColor: Colors.transparent,
-                              hoverColor: Colors.transparent,
-                            ),
-                            icon: AnimatedSwitcher(
-                              // Значок плей/пауза сменяется медленно и мягко,
-                              // а не подменой кадром.
-                              duration: MotionPrefs.shouldReduceMotion
-                                  ? Duration.zero
-                                  : const Duration(milliseconds: 460),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              // Оба значка в одной ячейке, выровнены по
-                              // центру: иначе «пауза» и «плей» разной ширины
-                              // дёргали бы кнопку вбок при смене.
-                              layoutBuilder: (current, previous) => Stack(
-                                alignment: Alignment.center,
-                                children: [...previous, ?current],
-                              ),
-                              // Мягкая смена: входящий значок проявляется и
-                              // чуть подрастает, уходящий так же плавно
-                              // гаснет. Считаем ПРОСТО по `anim` (без
-                              // сравнения ключей): прежний вариант с
-                              // `child.key == ValueKey(playing)` при быстром
-                              // двойном тапе путал «входящий/уходящий» и
-                              // оставлял значок с нулевой прозрачностью —
-                              // кнопка на миг пропадала.
-                              transitionBuilder: (child, anim) =>
-                                  FadeTransition(
-                                    opacity: anim,
-                                    child: ScaleTransition(
-                                      scale: Tween<double>(
-                                        begin: 0.75,
-                                        end: 1,
-                                      ).animate(anim),
-                                      child: child,
-                                    ),
-                                  ),
-                              child: Icon(
-                                playing
-                                    ? Icons.pause
-                                    : Icons.play_arrow_rounded,
-                                key: ValueKey(playing),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Подпись — как была раньше: «Играет бодрый звук».
-                      title: Text(
+          // Переход «пусто ↔ подборка» тянет ОДИН AnimatedSize: высота блока
+          // растёт и опадает непрерывно, а не прыгает при вставке готового
+          // списка. Проявку текста делает AnimatedSwitcher под ним.
+          AnimatedSize(
+            duration: dur,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: AnimatedSwitcher(
+              duration: dur,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeOutQuad,
+              child: hasMusic
+                  ? _trackList(theme)
+                  : Padding(
+                      key: const ValueKey('music_empty'),
+                      padding: const EdgeInsets.only(bottom: Spacing.xs),
+                      child: Text(
                         Translations.t(
-                          'profileMusicPlaying',
+                          'profileMusicEmpty',
                           context,
-                          'Играет бодрый звук',
+                          'Добавьте свой трек — он будет играть в профиле',
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: PressScale(
-                        pressedScale: 0.86,
-                        child: IconButton(
-                          onPressed: _removeMusic,
-                          style: IconButton.styleFrom(
-                            shape: const CircleBorder(),
-                            highlightColor: Colors.transparent,
-                            hoverColor: Colors.transparent,
-                          ),
-                          icon: const Icon(Icons.delete_outline),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ),
-                  )
-                : const SizedBox.shrink(),
-            secondChild: Padding(
-              padding: const EdgeInsets.only(bottom: Spacing.xs),
-              child: Text(
-                Translations.t(
-                  'profileMusicEmpty',
-                  context,
-                  'Добавьте свой трек — он будет играть в профиле',
-                ),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
             ),
           ),
+          const SizedBox(height: Spacing.xs),
           Align(
             alignment: Alignment.centerLeft,
             child: PressScale(
               pressedScale: 0.94,
-              // Подпись кнопки («Выбрать файл» ↔ «Заменить») меняется
-              // ПЛАВНО: AnimatedSize тянет ширину, AnimatedSwitcher — текст.
-              // Длительность — та же, что у самой карточки: добавление и
-              // удаление трека идут ОДНОЙ анимацией, а не двумя
-              // рассинхронизированными (кнопка «доъезжала» после плашки).
-              child: AnimatedSize(
-                duration: MotionPrefs.shouldReduceMotion
-                    ? Duration.zero
-                    : Motion.slow,
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.centerLeft,
-                child: FilledButton.tonalIcon(
-                  onPressed: _pickMusic,
-                  style: _roundButtonStyle(),
-                  icon: const Icon(Icons.library_music_outlined),
-                  label: AnimatedSwitcher(
-                    duration: MotionPrefs.shouldReduceMotion
-                        ? Duration.zero
-                        : Motion.normal,
-                    // Свой layoutBuilder: ширина берётся по ВХОДЯЩЕЙ
-                    // подписи, а не по максимуму из двух. Штатный `Stack`
-                    // раздувал кнопку под «Заменить»/«Выбрать файл» сразу,
-                    // и AnimatedSize потом «доводил» её рывком.
-                    layoutBuilder: (current, previous) =>
-                        current ?? const SizedBox.shrink(),
-                    transitionBuilder: (child, anim) =>
-                        FadeTransition(opacity: anim, child: child),
-                    child: Text(
-                      hasMusic
-                          ? Translations.t(
-                              'profileMusicChange',
-                              context,
-                              'Заменить',
-                            )
-                          : Translations.t(
-                              'profileMusicAdd',
-                              context,
-                              'Выбрать файл',
-                            ),
-                      key: ValueKey('music_btn_$hasMusic'),
-                    ),
-                  ),
+              child: FilledButton.tonalIcon(
+                // Кнопка больше НЕ «Заменить»: подборка, а не одиночный трек,
+                // поэтому всегда «Добавить». На пределе гаснет — понятно, что
+                // дальше добавлять некуда.
+                onPressed: _service.canAddTrack ? _addMusic : null,
+                style: _roundButtonStyle(),
+                icon: const Icon(Icons.library_music_outlined),
+                label: Text(
+                  _service.canAddTrack
+                      ? Translations.t('profileMusicAdd', context, 'Добавить')
+                      : Translations.t(
+                          'profileMusicFull',
+                          context,
+                          'Уже 15 треков',
+                        ),
                 ),
               ),
             ),
@@ -964,6 +890,184 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
     );
   }
+
+  /// Список треков подборки. Строки переезжают плавно: каждая лежит в общем
+  /// «слое» на своей позиции по ключу трека, поэтому удаление середины
+  /// сдвигает соседей анимацией, а не мгновенной перестановкой.
+  Widget _trackList(ThemeData theme) {
+    final tracks = _service.tracks;
+    return KeyedSubtree(
+      key: const ValueKey('music_list'),
+      child: Column(
+        key: const ValueKey('music_list_col'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final t in tracks) _trackRow(theme, t),
+        ],
+      ),
+    );
+  }
+
+  Widget _trackRow(ThemeData theme, MusicTrack track) {
+    final playing = _music.playing && _music.path == track.path;
+    final removing = _removingTrackIds.contains(track.id);
+    final isNew = _newTrackIds.contains(track.path);
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('track_${track.id}'),
+      // Появление — «вросло из нуля» (высота + проявление), удаление —
+      // схлопывание. Длительность и кривая те же, что у AnimatedSize выше.
+      tween: Tween(begin: 1.0, end: removing ? 0.0 : 1.0),
+      duration: _trackCollapse,
+      curve: Curves.easeOutCubic,
+      builder: (context, v, child) => ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: v.clamp(0.0, 1.0),
+          child: Opacity(
+            opacity: v.clamp(0.0, 1.0),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.xs),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+      child: _TrackRow(
+        track: track,
+        playing: playing,
+        growFromZero: isNew,
+        onToggle: () => _toggleTrack(track),
+        onRemove: () => _removeTrack(track),
+      ),
+    );
+  }
+
+  /// Карточка «Твои очки»: итог копилки и разбор «за что начислено».
+  ///
+  /// Цифры значимые — каждая категория растёт от реального действия, и это
+  /// видно прямо здесь: понятно, за что именно набежали очки, а не просто
+  /// «какое-то число».
+  Widget _scoreCard(ThemeData theme) {
+    final breakdown = _service.scoreBreakdown();
+    final total = _service.localScore();
+    final maxPoints = breakdown.values.fold<int>(0, (a, b) => a > b ? a : b);
+    return _Card(
+      title: Translations.t('scoreTitle', context, 'Твои очки'),
+      icon: Icons.workspace_premium_outlined,
+      trailing: SmoothDigits(
+        value: total,
+        sample: '0000',
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: Weights.bold,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final kind in ScoreKind.values)
+            if (breakdown[kind]! > 0 || _showEmptyScore)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.xs),
+                child: _scoreRow(
+                  theme,
+                  kind,
+                  breakdown[kind]!,
+                  maxPoints: maxPoints,
+                ),
+              ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            Translations.t(
+              'scoreHint',
+              context,
+              'Очки растут за реальные дела: привычки, задачи, общение с Адой, '
+                  'еду и проверки. Их не отбирают — это твои достижения.',
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Всегда ли показывать нулевые категории. Пока очков нет вовсе — список
+  /// пустых строк читался бы «сломанным», поэтому прячем их, но итог держим.
+  bool get _showEmptyScore => false;
+
+  Widget _scoreRow(
+    ThemeData theme,
+    ScoreKind kind,
+    int points, {
+    required int maxPoints,
+  }) {
+    final cs = theme.colorScheme;
+    final frac = maxPoints <= 0 ? 0.0 : (points / maxPoints).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        SizedBox(
+          width: 118,
+          child: Text(
+            _scoreLabel(kind),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+        const SizedBox(width: Spacing.xs),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: frac),
+              duration: MotionPrefs.shouldReduceMotion
+                  ? Duration.zero
+                  : Motion.slow,
+              curve: Curves.easeOutCubic,
+              builder: (context, v, _) => LinearProgressIndicator(
+                value: v,
+                minHeight: 6,
+                backgroundColor: cs.surfaceContainerHighest.withValues(
+                  alpha: 0.6,
+                ),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  cs.primary.withValues(alpha: 0.75),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: Spacing.xs),
+        SizedBox(
+          width: 52,
+          child: SmoothDigits(
+            value: points,
+            sample: '000',
+            alignment: Alignment.centerRight,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: Weights.semibold,
+              color: cs.primary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _scoreLabel(ScoreKind kind) => switch (kind) {
+    ScoreKind.habit => Translations.t('scoreHabit', context, 'Привычки'),
+    ScoreKind.task => Translations.t('scoreTask', context, 'Задачи'),
+    ScoreKind.ai => Translations.t('scoreAi', context, 'Общение с Адой'),
+    ScoreKind.meal => Translations.t('scoreMeal', context, 'Приёмы пищи'),
+    ScoreKind.check => Translations.t(
+      'scoreCheck',
+      context,
+      'Проверки реальности',
+    ),
+    ScoreKind.day => Translations.t('scoreDay', context, 'Активные дни'),
+  };
 
   Widget _leaderboardCard(ThemeData theme) {
     final rows = _service.leaderboard(
@@ -1441,6 +1545,38 @@ String _funScore(String seed) {
   return '${40 + ((r + h) % 951)}';
 }
 
+/// Пул «человеческих» названий для треков подборки. Имена файлов показывать
+/// неинтересно («record_2024_05_11»), поэтому трек получает живое название из
+/// этого списка — так подборка читается как плейлист, а не как папка.
+const List<String> _kSongTitles = [
+  'Тебе нравится эта песня?',
+  'Танцуй, пока играет',
+  'Утро начинается с тебя',
+  'Не выключай',
+  'Громче, чем вчера',
+  'Оставь на повтор',
+  'Песня для дороги домой',
+  'Что-то в этом есть',
+  'Слушай до конца',
+  'Мой личный саундтрек',
+  'Тише, я думаю о тебе',
+  'Эта мелодия — про нас',
+  'Лови настроение',
+  'Ещё один припев',
+  'Специально для тебя',
+];
+
+/// Детерминированное «весёлое» название трека по «семени» (обычно — имя
+/// файла): один и тот же файл всегда получает одно и то же имя, но разные
+/// файлы — разные, поэтому подборка выглядит разнообразной.
+String _funSongTitle(String seed) {
+  var h = 17;
+  for (final c in seed.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  return _kSongTitles[h % _kSongTitles.length];
+}
+
 /// Добавление друга: имя, аватарка, стартовые очки.
 class _AddFriendSheet extends StatefulWidget {
   /// Выбор своей картинки из галереи. Лист сам системный пикер не открывает
@@ -1778,28 +1914,19 @@ class _AddFriendSheetState extends State<_AddFriendSheet> {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(height: Spacing.md),
-                    SizedBox(
-                      width: double.infinity,
-                      child: PressScale(
-                        pressedScale: 0.96,
-                        child: FilledButton.tonal(
-                          onPressed: _submit,
-                          style: _roundButtonStyle(),
-                          child: Text(
-                            Translations.t('add', context, 'Добавить'),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
               // Клавиатура — в самом низу листа, под тему приложения.
+              // Главное действие («Добавить») ВСТРОЕНО в неё, а не висит
+              // отдельной кнопкой над панелью: палец после набора не уходит
+              // вверх через весь лист, а сразу жмёт акцентную клавишу.
               InlineKeyboard(
                 onChar: _insert,
                 onBackspace: _backspace,
                 onSpace: _space,
+                actionLabel: Translations.t('add', context, 'Добавить'),
+                onAction: _submit,
               ),
             ],
           ),
@@ -2248,6 +2375,154 @@ class _FriendScoreSheetState extends State<_FriendScoreSheet> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Одна строка трека в подборке профиля: кнопка проигрывания с пульсирующим
+/// кольцом, название и корзина.
+///
+/// [growFromZero] — только у только что добавленного трека: первый кадр
+/// строка строится нулевой высоты и «вырастает», поэтому соседи подаются
+/// вниз непрерывно, а не прыжком при вставке готовой строки.
+class _TrackRow extends StatefulWidget {
+  final MusicTrack track;
+  final bool playing;
+  final bool growFromZero;
+  final VoidCallback onToggle;
+  final VoidCallback onRemove;
+
+  const _TrackRow({
+    required this.track,
+    required this.playing,
+    required this.growFromZero,
+    required this.onToggle,
+    required this.onRemove,
+  });
+
+  @override
+  State<_TrackRow> createState() => _TrackRowState();
+}
+
+class _TrackRowState extends State<_TrackRow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _grow = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.growFromZero) {
+      _grow.forward();
+    } else {
+      _grow.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _grow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final reduce = MotionPrefs.shouldReduceMotion;
+    final track = widget.track;
+    final playing = widget.playing;
+    return AnimatedBuilder(
+      animation: _grow,
+      builder: (context, child) {
+        final v = Curves.easeOutCubic.transform(_grow.value);
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: v.clamp(0.0, 1.0),
+            child: child,
+          ),
+        );
+      },
+      child: Theme(
+        // Гасим чернильные всплески: под пальцем на строке не должно
+        // вспыхивать прямоугольника на всю ширину карточки.
+        data: theme.copyWith(
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+        ),
+        child: Row(
+          children: [
+            PressScale(
+              pressedScale: 0.88,
+              child: MusicPulseRing(
+                active: playing,
+                child: IconButton(
+                  onPressed: widget.onToggle,
+                  style: IconButton.styleFrom(
+                    shape: const CircleBorder(),
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: cs.primary,
+                    highlightColor: Colors.transparent,
+                    hoverColor: Colors.transparent,
+                  ),
+                  icon: AnimatedSwitcher(
+                    duration: reduce
+                        ? Duration.zero
+                        : const Duration(milliseconds: 420),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: Alignment.center,
+                      children: [...previous, ?current],
+                    ),
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.75,
+                          end: 1,
+                        ).animate(anim),
+                        child: child,
+                      ),
+                    ),
+                    child: Icon(
+                      playing ? Icons.pause : Icons.play_arrow_rounded,
+                      key: ValueKey(playing),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: Spacing.xs),
+            Expanded(
+              child: Text(
+                track.title.isEmpty
+                    ? Translations.t('profileMusicTrack', context, 'Трек')
+                    : track.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            PressScale(
+              pressedScale: 0.86,
+              child: IconButton(
+                onPressed: widget.onRemove,
+                style: IconButton.styleFrom(
+                  shape: const CircleBorder(),
+                  highlightColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
+                ),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ),
+          ],
         ),
       ),
     );

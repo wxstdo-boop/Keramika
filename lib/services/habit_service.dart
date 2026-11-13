@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import 'json_file.dart';
 import 'notification_service_instance.dart';
+import 'score_service.dart';
 import 'settings_service.dart';
 
 class HabitService extends ChangeNotifier {
@@ -295,6 +298,14 @@ class HabitService extends ChangeNotifier {
     _normalizeOrder();
     notifyListeners();
     await _save();
+    // Очки за отметку: за хорошую привычку — по длине стрика (дольше серия,
+    // больше награда), за вредную — фиксированно. Только ПРИБАВЛЯЕМ: снятие
+    // отметки копилку не трогает, достижения не отбираем.
+    if (h.type == 'good') {
+      await ScoreService().award(ScoreKind.habit, math.max(1, newStreak));
+    } else {
+      await ScoreService().award(ScoreKind.habit);
+    }
   }
 
   static bool _sameLocalDay(DateTime a, DateTime b) =>

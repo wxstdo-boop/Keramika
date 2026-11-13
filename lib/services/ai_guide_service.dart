@@ -14,6 +14,7 @@ import 'nutrition_service.dart';
 import 'json_file.dart';
 import 'prefs.dart';
 import 'reality_check_service.dart';
+import 'score_service.dart';
 import 'settings_service.dart';
 import 'notification_service.dart';
 import 'task_service.dart';
@@ -1625,6 +1626,10 @@ class AiGuideService {
       await globalPrefs.setString(_adaStreakLastKey, today);
       await globalPrefs.setInt(_adaStreakKey, newCount);
       adaStreak.value = newCount;
+      // Очки за общение с Адой: каждое сообщение пользователя. Плюс отметка
+      // активного дня — «зашёл и поговорил» тоже считается достижением.
+      await ScoreService().award(ScoreKind.ai);
+      await ScoreService().markActiveDay();
       if (grew && newCount >= 2) {
         final lang = await SettingsService.resolveLanguageCode();
         final text = _hotStreakLine(newCount, lang == 'ru');

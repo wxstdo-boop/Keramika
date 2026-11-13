@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/reality_check.dart';
 import 'json_file.dart';
+import 'score_service.dart';
 
 class RealityCheckService extends ChangeNotifier {
   static final RealityCheckService _instance = RealityCheckService._();
@@ -296,6 +297,9 @@ class RealityCheckService extends ChangeNotifier {
 
       notifyListeners();
       await _save();
+      // Очки за пройденную проверку реальности и отметка активного дня.
+      await ScoreService().award(ScoreKind.check);
+      await ScoreService().markActiveDay();
     }
   }
 

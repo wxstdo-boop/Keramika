@@ -23,6 +23,17 @@ class InlineKeyboard extends StatelessWidget {
   final VoidCallback onBackspace;
   final VoidCallback onSpace;
 
+  /// Необязательная кнопка-действие прямо в клавиатуре (например, «Добавить»
+  /// в листе друга): подпись и обработчик. Пусто — клавиатура остаётся
+  /// «чистой», без кнопки. Так главное действие листа можно подтвердить,
+  /// не отрывая палец от набора.
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  /// Акцентный тон кнопки-действия: её должно быть видно, она отличается от
+  /// обычных клавиш набора.
+  final bool actionEmphasized;
+
   /// Красный бренда: отлив клавиатуры не должен зависеть от роли темы
   /// (`primary` на дефолтной палитре — сиреневый, и панель серела).
   static const Color _brandRed = BrandColors.red;
@@ -35,6 +46,9 @@ class InlineKeyboard extends StatelessWidget {
     required this.onChar,
     required this.onBackspace,
     required this.onSpace,
+    this.actionLabel,
+    this.onAction,
+    this.actionEmphasized = true,
     this.keyHeight = 44,
   });
 
@@ -85,7 +99,9 @@ class InlineKeyboard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                flex: 5,
+                // Кнопка-действие отъедает часть строки у пробела: так она
+                // заметная, но не отдельная «полка» под клавиатурой.
+                flex: actionLabel == null ? 5 : 3,
                 child: _Key(
                   theme: theme,
                   label: 'пробел',
@@ -106,6 +122,19 @@ class InlineKeyboard extends StatelessWidget {
                   onTap: onBackspace,
                 ),
               ),
+              if (actionLabel != null) ...[
+                const SizedBox(width: 4),
+                Expanded(
+                  flex: 3,
+                  child: _Key(
+                    theme: theme,
+                    label: actionLabel,
+                    height: keyHeight,
+                    emphasized: actionEmphasized,
+                    onTap: onAction ?? () {},
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -155,6 +184,10 @@ class _Key extends StatefulWidget {
   final double height;
   final VoidCallback onTap;
 
+  /// Акцентная клавиша-действие: залита брендовым красным плотнее прочих и
+  /// с белым текстом — она читается как кнопка, а не как буква.
+  final bool emphasized;
+
   /// Повторять действие, пока палец держится (для «стереть»).
   final bool repeat;
 
@@ -165,6 +198,7 @@ class _Key extends StatefulWidget {
     this.label,
     this.icon,
     this.repeat = false,
+    this.emphasized = false,
   });
 
   @override
@@ -209,10 +243,12 @@ class _KeyState extends State<_Key> {
     // кнопки читаются «стеклянно-красными» на любом фоне. Цвет берём из
     // константы, а не из `cs.primary`: на дефолтной теме primary сиреневый,
     // и клавиши выходили серо-фиолетовыми вместо красных.
-    final keyColor = Color.alphaBlend(
-      InlineKeyboard._brandRed.withValues(alpha: 0.26),
-      cs.surfaceContainerHighest.withValues(alpha: 0.66),
-    );
+    final keyColor = widget.emphasized
+        ? InlineKeyboard._brandRed.withValues(alpha: 0.92)
+        : Color.alphaBlend(
+            InlineKeyboard._brandRed.withValues(alpha: 0.26),
+            cs.surfaceContainerHighest.withValues(alpha: 0.66),
+          );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: PressScale(
@@ -252,7 +288,7 @@ class _KeyState extends State<_Key> {
                       widget.label!,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: Weights.semibold,
-                        color: cs.onSurface,
+                        color: widget.emphasized ? Colors.white : cs.onSurface,
                       ),
                     ),
             ),

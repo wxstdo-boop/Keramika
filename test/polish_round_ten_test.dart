@@ -124,7 +124,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('карточка музыки меняет состояние через AnimatedCrossFade', (
+  testWidgets('карточка музыки ведёт «пусто ↔ подборка» одним механизмом', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -139,10 +139,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 900));
 
+    // Проявку текста ведёт AnimatedSwitcher, а высоту — ОДИН AnimatedSize
+    // над ним: раньше эти роли спорили между двумя механизмами, и карточка
+    // «скукоживалась» рывком. Карточка музыки — единственное место профиля,
+    // где подборка переходит в пустое состояние.
     expect(
-      find.byType(AnimatedCrossFade),
+      find.byKey(const ValueKey('music_empty')),
       findsOneWidget,
-      reason: 'проявка и высота трека должны идти одним механизмом',
+      reason: 'без треков карточка показывает пустое состояние',
     );
     expect(tester.takeException(), isNull);
   });
