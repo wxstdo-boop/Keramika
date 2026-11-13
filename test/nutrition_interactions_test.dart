@@ -292,8 +292,9 @@ void main() {
   testWidgets('история: заголовок «Сегодня» тает плавно, а не гаснет кадром', (
     tester,
   ) async {
-    // Высокое окно: блок истории должен попасть в кадр целиком.
-    tester.view.physicalSize = const Size(800, 2400);
+    // Узкое и высокое окно: история должна попасть в кадр целиком, а строка
+    // БЖУ — не переполниться по ширине (раньше тут ловился overflow 14 px).
+    tester.view.physicalSize = const Size(420, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 

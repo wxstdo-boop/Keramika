@@ -761,15 +761,22 @@ class _NutritionScreenState extends State<NutritionScreen>
       children: [
         Row(
           children: [
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
+            // Гибкая подпись: на узких экранах (или при крупном системном
+            // шрифте) «Углеводы» шире своей трети строки, и жёсткий Text
+            // выдавливал граммы за край — RenderFlex overflow на ~14 px.
+            // Flexible позволяет подписи сжаться и обрезаться многоточием,
+            // а не ломать раскладку всей строки БЖУ.
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 4),
             // Граммы БЖУ — тоже посимвольно, как очки рейтинга: при
             // добавлении приёма пищи цифра перетекает, а не подменяется.
             SmoothDigits(
