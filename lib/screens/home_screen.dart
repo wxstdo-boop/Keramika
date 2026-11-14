@@ -92,10 +92,10 @@ class _HomeScreenState extends State<HomeScreen>
   late final PageSpring _dragSpring = PageSpring(
     vsync: this,
     controller: _pageController,
-    // Мягче тап-пружины: экран идёт ЗА пальцем с лёгким запаздыванием —
-    // это и даёт «плавно», а не «дёргано».
-    stiffness: 300,
-    dampingRatio: 0.95,
+    // Критически демпфированная пружина (dampingRatio 1.05): экран идёт
+    // за пальцем идеально плавно, без вибраций и паразитных отскоков.
+    stiffness: 420,
+    dampingRatio: 1.05,
   );
   double _dragTargetPage = 0;
 

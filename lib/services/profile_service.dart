@@ -165,6 +165,13 @@ class ProfileService extends ChangeNotifier {
       _prestigeTitle.trim().isEmpty ? 'Cyberpunk 2077 Legend' : _prestigeTitle;
   int get zenKarma => _zenKarma;
   List<ProfileGift> get gifts => List.unmodifiable(_gifts);
+  ProfileGift? get activeTalisman {
+    try {
+      return _gifts.firstWhere((g) => g.isFavorite);
+    } catch (_) {
+      return null;
+    }
+  }
   /// Своя подборка музыки (до [maxTracks] штук).
   List<MusicTrack> get tracks => List.unmodifiable(_tracks);
 
@@ -321,11 +328,19 @@ class ProfileService extends ChangeNotifier {
     return _zenKarma;
   }
 
-  /// Переключить статус избранного для артефакта.
+  /// Переключить статус избранного (главного талисмана) для артефакта.
   Future<void> toggleGiftFavorite(String giftId) async {
     final idx = _gifts.indexWhere((g) => g.id == giftId);
     if (idx >= 0) {
-      _gifts[idx] = _gifts[idx].copyWith(isFavorite: !_gifts[idx].isFavorite);
+      final willBeFav = !_gifts[idx].isFavorite;
+      for (var i = 0; i < _gifts.length; i++) {
+        if (_gifts[i].isFavorite) {
+          _gifts[i] = _gifts[i].copyWith(isFavorite: false);
+        }
+      }
+      if (willBeFav) {
+        _gifts[idx] = _gifts[idx].copyWith(isFavorite: true);
+      }
       notifyListeners();
       await _save();
     }

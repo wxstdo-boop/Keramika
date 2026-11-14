@@ -617,12 +617,9 @@ class _SectionPillState extends State<SectionPill>
         // — захваченная _releasePull, затухающая по settle.
         final stretch = _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
-        // НЕПРЕРЫВНОЕ направление растяжки (заменяет дискретный _anchorSide):
-        // знак тяги через [smoothSign] — у нуля он проходит через НОЛЬ, а не
-        // перескакивает −1→1 кадром. Прежний `_edgePull.sign` давал рывок
-        // якоря ровно на порогах раздела (тяга пересекает 0) — то самое
-        // «дёргано в углах».
-        final stretchDir = smoothSign(stretch);
+        final transitOffset = p - p.roundToDouble();
+        final transitDir = smoothSign(transitOffset * 2.0);
+        final stretchDir = edgeStretch > 0.001 ? smoothSign(stretch) : transitDir;
         // ОБЪЁМНЫЙ СЛОЙ: «резинка» (wave) — наливка/растяжение выбранной
         // вкладки по ходу к СЛЕДУЮЩЕЙ секции. Под пальцем амплитуда ~0.85,
         // в свободном полёте — 1.0 (см. выше). Это и есть то самое
@@ -686,7 +683,7 @@ final visualStretch = math.min(0.98, edgeStretch + 0.90 * wave);
                   // вытягивается по ходу секции (wave) и за краем (edgeStretch),
                   // после отпускания — сползает по _edgeSettle. Единый
                   // коэффициент, без дискретных переключений.
-                  scaleX: 1.0 + 0.42 * visualStretch,
+                  scaleX: 1.0 + 0.55 * visualStretch,
                   // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
                   // breath). Дышащий масштаб идёт через Transform — иначе
                   // каждый кадр пересобирался layout, камень «дёргался».

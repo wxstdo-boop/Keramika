@@ -31,7 +31,6 @@ import '../widgets/new_year_event_banner.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/volumetric_switch.dart';
-import '../widgets/zen_particles.dart';
 
 /// Официальный сайт Agysha. Здесь — события проекта; список кэшируется
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
@@ -576,47 +575,47 @@ class _ProfileScreenState extends State<ProfileScreen>
         leading: const BackButtonTooltip(),
         centerTitle: true,
       ),
-      body: ZenParticlesOverlay(
-        child: AnimatedBuilder(
-          animation: _service,
-          builder: (context, _) => ListView(
-            controller: _scrollCtrl,
-            padding: const EdgeInsets.fromLTRB(
-              Spacing.md,
-              Spacing.sm,
-              Spacing.md,
-              Spacing.xxl,
-            ),
-            children: [
-              _headerCard(theme),
-              const SizedBox(height: Spacing.md),
-              _nameCard(theme),
-              const SizedBox(height: Spacing.md),
-              _onlineCard(theme),
-              const SizedBox(height: Spacing.md),
-              _musicCard(theme),
-              const SizedBox(height: Spacing.md),
-              _leaderboardCard(theme),
-              const SizedBox(height: Spacing.md),
-              // Очки — сразу после рейтинга: «за что» читается рядом с «кто
-              // сколько», а карточки музыки и рейтинга остаются на своих местах.
-              _scoreCard(theme),
-              const SizedBox(height: Spacing.md),
-              _giftsCard(theme),
-              const SizedBox(height: Spacing.md),
-              _eventsCard(theme),
-            ],
+      body: AnimatedBuilder(
+        animation: _service,
+        builder: (context, _) => ListView(
+          controller: _scrollCtrl,
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.sm,
+            Spacing.md,
+            Spacing.xxl,
           ),
+          children: [
+            _headerCard(theme),
+            const SizedBox(height: Spacing.md),
+            _nameCard(theme),
+            const SizedBox(height: Spacing.md),
+            _onlineCard(theme),
+            const SizedBox(height: Spacing.md),
+            _musicCard(theme),
+            const SizedBox(height: Spacing.md),
+            _leaderboardCard(theme),
+            const SizedBox(height: Spacing.md),
+            // Очки — сразу после рейтинга: «за что» читается рядом с «кто
+            // сколько», а карточки музыки и рейтинга остаются на своих местах.
+            _scoreCard(theme),
+            const SizedBox(height: Spacing.md),
+            _giftsCard(theme),
+            const SizedBox(height: Spacing.md),
+            _eventsCard(theme),
+          ],
         ),
       ),
     );
   }
 
-  /// Шапка профиля: крупная аватарка со спектром и дзен-кликером, имя и титул.
+  /// Шапка профиля: крупная аватарка со спектром, активным талисманом, имя и престижный титул.
   Widget _headerCard(ThemeData theme) {
     final name = _service.displayName.isEmpty
         ? Translations.t('profileAnonymous', context, 'Аноним')
         : _service.displayName;
+    final talisman = _service.activeTalisman;
+
     return _Card(
       child: Column(
         children: [
@@ -627,34 +626,70 @@ class _ProfileScreenState extends State<ProfileScreen>
               clipBehavior: Clip.none,
               alignment: Alignment.center,
               children: [
+                // Плавно парящий главный талисман на фоне аватарки (плавное появление/смена/исчезновение)
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.82, end: 1.0).animate(anim),
+                      child: child,
+                    ),
+                  ),
+                  child: talisman != null
+                      ? Container(
+                          key: ValueKey('talisman_${talisman.id}'),
+                          width: 124,
+                          height: 124,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                BrandColors.red.withValues(alpha: 0.28),
+                                talisman.rarity.color.withValues(alpha: 0.16),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.65, 1.0],
+                            ),
+                          ),
+                          child: Align(
+                            alignment: const Alignment(0, -0.92),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF101018),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: BrandColors.red.withValues(alpha: 0.8),
+                                  width: 1.2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: BrandColors.red.withValues(alpha: 0.45),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                talisman.icon,
+                                size: 16,
+                                color: BrandColors.red,
+                              ),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('none')),
+                ),
+                // Аватарка с тактильным откликом
                 PressScale(
-                  pressedScale: 0.92,
-                  duration: const Duration(milliseconds: 520),
-                  releaseDuration: const Duration(milliseconds: 620),
+                  pressedScale: 0.94,
+                  duration: const Duration(milliseconds: 240),
+                  releaseDuration: const Duration(milliseconds: 320),
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTapDown: (details) {
-                      final overlay = ZenParticlesOverlay.of(context);
-                      overlay?.spawnParticles(
-                        details.globalPosition,
-                        theme.colorScheme.primary,
-                      );
-                    },
-                    onTap: () async {
-                      await Haptics.select();
-                      final karma = await _service.incrementZenKarma();
-                      if (karma == 25 ||
-                          karma == 50 ||
-                          karma == 100 ||
-                          karma == 250 ||
-                          karma == 500) {
-                        Haptics.medium();
-                        _toast(
-                          '✨ Дзен-прорыв: $karma очков гармонии!',
-                          icon: Icons.auto_awesome,
-                        );
-                      }
-                    },
+                    onTap: _pickAvatar,
                     onLongPress: _pickAvatar,
                     child: ProfileAvatar(
                       index: _service.avatarIndex,
@@ -667,34 +702,36 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                 ),
+                // Компактный значок смены авы (не заслоняет саму аватарку)
                 Positioned(
-                  right: 0,
-                  bottom: 0,
+                  right: 2,
+                  bottom: 2,
                   child: PressScale(
+                    pressedScale: 0.88,
                     child: GestureDetector(
                       onTap: _pickAvatar,
                       behavior: HitTestBehavior.opaque,
                       child: Container(
-                        width: 32,
-                        height: 32,
+                        width: 24,
+                        height: 24,
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: theme.colorScheme.surface,
-                            width: 2.5,
+                            width: 1.8,
                           ),
                           boxShadow: [
                             BoxShadow(
                               color: theme.colorScheme.primary
-                                  .withValues(alpha: 0.35),
-                              blurRadius: 6,
+                                  .withValues(alpha: 0.40),
+                              blurRadius: 5,
                             ),
                           ],
                         ),
                         child: const Icon(
                           Icons.photo_camera_rounded,
-                          size: 16,
+                          size: 13,
                           color: Colors.white,
                         ),
                       ),
@@ -704,52 +741,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               ],
             ),
           ),
-          const SizedBox(height: Spacing.sm),
-          // Дзен-бейдж под аватаркой
-          GestureDetector(
-            onTap: () async {
-              await Haptics.select();
-              final karma = await _service.incrementZenKarma();
-              if (karma == 25 ||
-                  karma == 50 ||
-                  karma == 100 ||
-                  karma == 250 ||
-                  karma == 500) {
-                Haptics.medium();
-                _toast(
-                  '✨ Дзен-прорыв: $karma очков гармонии!',
-                  icon: Icons.auto_awesome,
-                );
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(Radii.pill),
-                border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.30),
-                  width: 0.8,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.auto_awesome, size: 12, color: Colors.amber),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Дзен: ${_service.zenKarma} • Тапни сферу',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: Spacing.sm),
+          const SizedBox(height: Spacing.md),
           // Кружок слева от имени
           Center(
             child: Transform.translate(
@@ -786,37 +778,49 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           const SizedBox(height: 6),
-          // Престижный титул (клик открывает выбор)
+          // Престижный титул (с плавным переключением и кровавой подсветкой)
           PressScale(
+            pressedScale: 0.94,
             child: GestureDetector(
               onTap: _showPrestigeTitlePicker,
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.colorScheme.primary.withValues(alpha: 0.14),
-                      theme.colorScheme.secondary.withValues(alpha: 0.14),
-                    ],
-                  ),
+                  color: BrandColors.red.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(Radii.pill),
                   border: Border.all(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.35),
+                    color: BrandColors.red.withValues(alpha: 0.42),
                     width: 0.9,
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.bolt_rounded, size: 14, color: Colors.amber),
+                    const Icon(Icons.bolt_rounded, size: 14, color: BrandColors.red),
                     const SizedBox(width: 4),
-                    Text(
-                      _service.prestigeTitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.onSurface,
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 320),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.2),
+                            end: Offset.zero,
+                          ).animate(anim),
+                          child: child,
+                        ),
+                      ),
+                      child: Text(
+                        _service.prestigeTitle,
+                        key: ValueKey(_service.prestigeTitle),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 2),
@@ -849,6 +853,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void _showPrestigeTitlePicker() {
     Haptics.select();
     final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -857,9 +862,13 @@ class _ProfileScreenState extends State<ProfileScreen>
         return Container(
           padding: const EdgeInsets.all(Spacing.lg),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
+            color: dark ? const Color(0xFF12121C) : theme.colorScheme.surface,
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(
+              color: BrandColors.red.withValues(alpha: 0.35),
+              width: 1.2,
+            ),
           ),
           child: SafeArea(
             top: false,
@@ -869,11 +878,11 @@ class _ProfileScreenState extends State<ProfileScreen>
               children: [
                 Center(
                   child: Container(
-                    width: 36,
+                    width: 38,
                     height: 4,
                     decoration: BoxDecoration(
                       color:
-                          theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                          theme.colorScheme.onSurface.withValues(alpha: 0.22),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -895,15 +904,59 @@ class _ProfileScreenState extends State<ProfileScreen>
                   runSpacing: Spacing.xs,
                   children: _prestigeTitles.map((t) {
                     final isSelected = _service.prestigeTitle == t;
-                    return ChoiceChip(
-                      label: Text(t),
-                      selected: isSelected,
-                      onSelected: (_) async {
-                        await Haptics.select();
-                        await _service.setPrestigeTitle(t);
-                        if (mounted) setState(() {});
-                        if (ctx.mounted) Navigator.of(ctx).pop();
-                      },
+                    return PressScale(
+                      pressedScale: 0.94,
+                      child: GestureDetector(
+                        onTap: () async {
+                          await Haptics.select();
+                          await _service.setPrestigeTitle(t);
+                          if (mounted) setState(() {});
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? BrandColors.red
+                                : theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(Radii.pill),
+                            border: Border.all(
+                              color: isSelected
+                                  ? BrandColors.red
+                                  : theme.colorScheme.outline
+                                      .withValues(alpha: 0.25),
+                              width: isSelected ? 1.4 : 1.0,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: BrandColors.red
+                                          .withValues(alpha: 0.35),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Text(
+                            t,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                              color: isSelected
+                                  ? Colors.white
+                                  : theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
                     );
                   }).toList(),
                 ),
@@ -934,19 +987,21 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       child: SizedBox(
         height: 220,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          clipBehavior: Clip.none,
-          child: Row(
-            children: [
-              for (var i = 0; i < gifts.length; i++) ...[
-                if (i > 0) const SizedBox(width: Spacing.sm),
-                GiftCard3D(
-                  gift: gifts[i],
-                  onFavoriteToggled: () => setState(() {}),
-                ),
+        child: RepaintBoundary(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            child: Row(
+              children: [
+                for (var i = 0; i < gifts.length; i++) ...[
+                  if (i > 0) const SizedBox(width: Spacing.sm),
+                  GiftCard3D(
+                    gift: gifts[i],
+                    onFavoriteToggled: () => setState(() {}),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

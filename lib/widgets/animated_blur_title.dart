@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../services/haptics.dart';
 import '../services/prefs.dart';
 import '../services/profile_service.dart';
 import 'online_dot.dart';
@@ -51,6 +53,7 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
   }
 
   void _toggle() {
+    Haptics.select();
     setState(() => _hidden = !_hidden);
     globalPrefs.setBool('title_blurred', _hidden);
     if (_hidden) {
@@ -71,8 +74,31 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
     return GestureDetector(
       onTap: _toggle,
       behavior: HitTestBehavior.opaque,
-      child: FadeTransition(
-        opacity: CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = _controller.value;
+          final opacity = Curves.easeInOutCubic.transform(t);
+          final scale = 0.94 + 0.06 * Curves.easeOutBack.transform(t.clamp(0.0, 1.0));
+          Widget content = Opacity(
+            opacity: opacity,
+            child: Transform.scale(
+              scale: scale,
+              child: child,
+            ),
+          );
+          if (t < 0.999) {
+            final blurSigma = (1.0 - t) * 5.5;
+            content = ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(
+                sigmaX: blurSigma,
+                sigmaY: blurSigma,
+              ),
+              child: content,
+            );
+          }
+          return content;
+        },
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: AnimatedBuilder(

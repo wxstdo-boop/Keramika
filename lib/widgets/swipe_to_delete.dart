@@ -92,11 +92,8 @@ class _SwipeToDeleteState extends State<SwipeToDelete> {
                 // целиком. Альфа запекается в цвета (см.
                 // [animatedDeleteBackground]), без слоя Opacity.
                 final opacity = ((p - 0.12) / 0.88).clamp(0.0, 1.0);
-                // Плашка РАСТЁТ вместе со свайпом: она прижата к ПРАВОМУ краю
-                // карточки и открывается влево ровно на столько, на сколько
-                // уехала карточка. Так левая кромка красного всегда совпадает
-                // с линией отсечения [Dismissible], а не «плывёт» отдельно.
-                final revealed = p.clamp(0.0, 1.0) * w;
+                final cardWidth = (w - inset.left - inset.right).clamp(0.0, w);
+                final revealed = (p.clamp(0.0, 1.0) * cardWidth).clamp(0.0, cardWidth);
                 if (revealed < 0.5) return const SizedBox.shrink();
                 return Stack(
                   children: [

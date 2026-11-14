@@ -4,17 +4,16 @@ import 'package:flutter/material.dart';
 
 import '../utils/motion_prefs.dart';
 
-/// «Белка в колесе» — живой значок обновления (вместо прежнего зайчика):
-/// колесо плавно и непрерывно вращается, белочка сидит в нём.
+/// «Белка в колесе» — живой, стильный и ультра-плавный значок обновления:
+/// колесо непрерывно и плавно вращается на GPU, а белочка бежит внутри него.
 ///
-/// Почему дёшево и «плавное» (в отличие от старого прыгающего зайчика):
-/// и белочка, и колесо рисуются ОДИН раз в постоянных слоях
-/// (`RepaintBoundary`), а вращение — это `Transform.rotate` по готовому
-/// растру: GPU двигает кэшированную картинку, кривые за кадр не
-/// пересобираются. Никаких покадровых аллокаций и «дрожащего» дыхания.
-///
-/// Уважает «убрать анимации» ([MotionPrefs]): тогда колесо стоит, а белочка
-/// и колесо остаются видимыми (вход принудительно завершён).
+/// Архитектура без лагов:
+/// - Колесо и силуэт белки кэшируются через [RepaintBoundary].
+/// - Вращение колеса осуществляется через [Transform.rotate], исключая
+///   покадровую пересборку векторных путей.
+/// - Вектор белки отрисован единым сглаженным контуром, четко читаемым
+///   как при компактном размере (18x18 в таблетке), так и в модальном окне (40x40).
+/// - Учитывает системную настройку [MotionPrefs.shouldReduceMotion].
 class SquirrelWheel extends StatefulWidget {
   const SquirrelWheel({
     super.key,
@@ -22,24 +21,22 @@ class SquirrelWheel extends StatefulWidget {
     required this.color,
     this.innerColor,
     this.enter,
-    this.period = const Duration(milliseconds: 3200),
+    this.period = const Duration(milliseconds: 2800),
   });
 
   /// Вписанный квадрат значка, px.
   final double size;
 
-  /// Основной тон белки (полная заливка).
+  /// Основной цвет белки и акцентов колеса.
   final Color color;
 
-  /// Тон колеса (задний, приглушённый). По умолчанию — тот же [color]
-  /// с прозрачностью: белочка читается поверх, колесо — фоном.
+  /// Цвет обода и спиц колеса (по умолчанию полупрозрачный от [color]).
   final Color? innerColor;
 
-  /// Необязательный разовый вход (фэйд + «набухание»). Если `null` —
-  /// значок виден сразу.
+  /// Разовый вход (плавное появление и масштабирование).
   final Animation<double>? enter;
 
-  /// Время одного оборота колеса.
+  /// Период одного полного оборота колеса.
   final Duration period;
 
   @override
@@ -53,8 +50,6 @@ class _SquirrelWheelState extends State<SquirrelWheel>
   @override
   void initState() {
     super.initState();
-    // Вечное вращение: крутится, только если движение разрешено. При
-    // «убрать анимации» колело стоит (frozen), но белочка остаётся видимой.
     _spin = ambientRepeat(
       AnimationController(vsync: this, duration: widget.period),
     );
@@ -69,48 +64,63 @@ class _SquirrelWheelState extends State<SquirrelWheel>
   @override
   Widget build(BuildContext context) {
     final color = widget.color;
-    final inner = widget.innerColor ?? color.withValues(alpha: 0.42);
-    // При «убрать анимации» или без [enter] — значок виден сразу (иначе
-    // остался бы невидимым на нулевом контроллере: тот же приём, что был
-    // у зайчика).
-    final entered =
-        MotionPrefs.shouldReduceMotion || widget.enter == null
-            ? 1.0
-            : widget.enter!.value.clamp(0.0, 1.0);
+    final inner = widget.innerColor ?? color.withValues(alpha: 0.45);
+    final reduceMotion = MotionPrefs.shouldReduceMotion;
+    final entered = reduceMotion || widget.enter == null
+        ? 1.0
+        : widget.enter!.value.clamp(0.0, 1.0);
 
     return RepaintBoundary(
       child: Opacity(
         opacity: entered,
         child: Transform.scale(
-          scale: 0.86 + 0.14 * entered,
+          scale: 0.88 + 0.12 * entered,
           child: SizedBox(
             width: widget.size,
             height: widget.size,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Колесо (за белкой): вращается Transform'ом готового растра.
+                // 1. Вращающееся колесо (задний слой)
                 RepaintBoundary(
                   child: AnimatedBuilder(
                     animation: _spin,
                     builder: (context, _) => Transform.rotate(
-                      angle: _spin.value * 2 * math.pi,
+                      angle: reduceMotion ? 0.0 : _spin.value * 2 * math.pi,
                       child: RepaintBoundary(
                         child: CustomPaint(
+                          size: Size(widget.size, widget.size),
                           isComplex: true,
                           willChange: false,
-                          painter: _WheelPainter(inner),
+                          painter: _WheelPainter(
+                            wheelColor: inner,
+                            accentColor: color.withValues(alpha: 0.75),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-                // Белочка (по колесу): статичный слой, не перерисовывается.
+                // 2. Бегущая белочка внутри колеса (с мягким легким покачиванием в такт)
                 RepaintBoundary(
-                  child: CustomPaint(
-                    isComplex: true,
-                    willChange: false,
-                    painter: _SquirrelPainter(color),
+                  child: AnimatedBuilder(
+                    animation: _spin,
+                    builder: (context, _) {
+                      final bob = reduceMotion
+                          ? 0.0
+                          : math.sin(_spin.value * 4 * math.pi) * (widget.size * 0.025);
+                      return Transform.translate(
+                        offset: Offset(0, bob),
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            size: Size(widget.size, widget.size),
+                            isComplex: true,
+                            willChange: false,
+                            painter: _SquirrelPainter(color: color),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -122,131 +132,163 @@ class _SquirrelWheelState extends State<SquirrelWheel>
   }
 }
 
-/// Колесо: обод + три спицы + ступица. Спиц три (симметрия 120°), поэтому
-/// непрерывное вращение читается как «колесо крутится», а не «стало на место».
+/// Элегантное беговое колесо: внешний обод, внутренний трек и 4 спицы-турбины
 class _WheelPainter extends CustomPainter {
-  _WheelPainter(this.color);
+  final Color wheelColor;
+  final Color accentColor;
 
-  final Color color;
+  _WheelPainter({
+    required this.wheelColor,
+    required this.accentColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final s = math.min(size.width, size.height);
-    final c = Offset(s / 2, s / 2);
-    final r = s * 0.47;
+    final center = Offset(size.width / 2, size.height / 2);
+    final outerRadius = s * 0.46;
+    final innerRadius = s * 0.40;
 
-    final ring = Paint()
-      ..color = color
+    // Внешний обод
+    final outerPaint = Paint()
+      ..color = wheelColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.075
+      ..strokeWidth = s * 0.065
       ..isAntiAlias = true;
-    canvas.drawCircle(c, r, ring);
+    canvas.drawCircle(center, outerRadius, outerPaint);
 
-    final spoke = Paint()
-      ..color = color
+    // Внутренний тонкий обод
+    final innerPaint = Paint()
+      ..color = wheelColor.withValues(alpha: 0.35)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.055
+      ..strokeWidth = s * 0.03
+      ..isAntiAlias = true;
+    canvas.drawCircle(center, innerRadius, innerPaint);
+
+    // 4 изогнутые аэродинамические спицы (симметрия 90° для плавности)
+    final spokePaint = Paint()
+      ..color = wheelColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s * 0.05
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
-    // Три спицы (120°): непрерывный поворот читается как вращение колеса.
-    for (var i = 0; i < 3; i++) {
-      final a = i * math.pi * 2 / 3;
-      canvas.drawLine(
-        c,
-        c + Offset(math.cos(a), math.sin(a)) * (r - s * 0.03),
-        spoke,
-      );
+
+    for (var i = 0; i < 4; i++) {
+      final angle = i * (math.pi / 2);
+      final pEnd = center + Offset(math.cos(angle), math.sin(angle)) * (innerRadius - s * 0.02);
+      final pMid = center +
+          Offset(
+            math.cos(angle + 0.35) * (innerRadius * 0.55),
+            math.sin(angle + 0.35) * (innerRadius * 0.55),
+          );
+      final spokePath = Path()
+        ..moveTo(center.dx, center.dy)
+        ..quadraticBezierTo(pMid.dx, pMid.dy, pEnd.dx, pEnd.dy);
+      canvas.drawPath(spokePath, spokePaint);
     }
 
-    final hub = Paint()
-      ..color = color
+    // Центральная ступица (ось колеса)
+    final hubPaint = Paint()
+      ..color = accentColor
+      ..style = PaintingStyle.fill
       ..isAntiAlias = true;
-    canvas.drawCircle(c, s * 0.085, hub);
+    canvas.drawCircle(center, s * 0.075, hubPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _WheelPainter old) => old.color != color;
+  bool shouldRepaint(covariant _WheelPainter old) =>
+      old.wheelColor != wheelColor || old.accentColor != accentColor;
 }
 
-/// Белочка в профиль (смотрит вправо): пушистый хвост-виток, туловище,
-/// голова с ушком и лапка. Лицо — не заливка, а ВЫРЕЗ (`BlendMode.clear`),
-/// поэтому значок читается и на светлом, и на тёмном фоне, и на колесе за ним.
+/// Идеально выверенный векторный силуэт бегущей белочки в профиль
 class _SquirrelPainter extends CustomPainter {
-  _SquirrelPainter(this.color);
-
   final Color color;
 
-  /// Нормированная точка 0…1 → пиксели (центр окна = 0.5,0.5).
-  static Offset _p(double x, double y, double s, double ox, double oy) =>
-      Offset(ox + x * s, oy + y * s);
+  _SquirrelPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
     final s = math.min(size.width, size.height);
     final ox = (size.width - s) / 2;
     final oy = (size.height - s) / 2;
-    Offset p(double x, double y) => _p(x, y, s, ox, oy);
 
-    // Пушистый хвост — виток (штрих с округлыми торцами), а не «штрих-царапина»:
-    // читается именно хвостом белки.
-    final tail = Path()
-      ..moveTo(p(0.42, 0.58).dx, p(0.42, 0.58).dy)
+    Offset pt(double x, double y) => Offset(ox + x * s, oy + y * s);
+
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    // Пушистый хвост дугой вперед над спинкой
+    final tailPath = Path()
+      ..moveTo(pt(0.36, 0.60).dx, pt(0.36, 0.60).dy)
       ..cubicTo(
-        p(0.28, 0.56).dx,
-        p(0.28, 0.56).dy,
-        p(0.24, 0.44).dx,
-        p(0.24, 0.44).dy,
-        p(0.30, 0.34).dx,
-        p(0.30, 0.34).dy,
+        pt(0.20, 0.58).dx, pt(0.20, 0.58).dy,
+        pt(0.18, 0.36).dx, pt(0.18, 0.36).dy,
+        pt(0.28, 0.26).dx, pt(0.28, 0.26).dy,
       )
       ..cubicTo(
-        p(0.35, 0.27).dx,
-        p(0.35, 0.27).dy,
-        p(0.45, 0.30).dx,
-        p(0.45, 0.30).dy,
-        p(0.46, 0.40).dx,
-        p(0.46, 0.40).dy,
-      );
+        pt(0.35, 0.19).dx, pt(0.35, 0.19).dy,
+        pt(0.48, 0.22).dx, pt(0.48, 0.22).dy,
+        pt(0.48, 0.33).dx, pt(0.48, 0.33).dy,
+      )
+      ..cubicTo(
+        pt(0.48, 0.42).dx, pt(0.48, 0.42).dy,
+        pt(0.34, 0.38).dx, pt(0.34, 0.38).dy,
+        pt(0.32, 0.46).dx, pt(0.32, 0.46).dy,
+      )
+      ..cubicTo(
+        pt(0.30, 0.52).dx, pt(0.30, 0.52).dy,
+        pt(0.36, 0.56).dx, pt(0.36, 0.56).dy,
+        pt(0.40, 0.58).dx, pt(0.40, 0.58).dy,
+      )
+      ..close();
+    canvas.drawPath(tailPath, fillPaint);
 
-    // Силуэт: хвост (штрих) + туловище + голова + ушко + лапка.
-    canvas.drawPath(
-      tail,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = s * 0.12
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..isAntiAlias = true,
-    );
+    // Тело бегущей белки (стремительный наклон вперед к бегу)
+    final bodyPath = Path()
+      ..moveTo(pt(0.36, 0.62).dx, pt(0.36, 0.62).dy)
+      ..cubicTo(
+        pt(0.42, 0.54).dx, pt(0.42, 0.54).dy,
+        pt(0.52, 0.50).dx, pt(0.52, 0.50).dy,
+        pt(0.60, 0.48).dx, pt(0.60, 0.48).dy,
+      )
+      // Голова с ушком
+      ..cubicTo(
+        pt(0.68, 0.44).dx, pt(0.68, 0.44).dy,
+        pt(0.72, 0.36).dx, pt(0.72, 0.36).dy,
+        pt(0.70, 0.32).dx, pt(0.70, 0.32).dy,
+      )
+      // Кончик ушка и мордочка вперед
+      ..lineTo(pt(0.72, 0.38).dx, pt(0.72, 0.38).dy)
+      ..cubicTo(
+        pt(0.77, 0.44).dx, pt(0.77, 0.44).dy,
+        pt(0.76, 0.52).dx, pt(0.76, 0.52).dy,
+        pt(0.70, 0.55).dx, pt(0.70, 0.55).dy,
+      )
+      // Передняя лапка вытянута вперед в беге
+      ..lineTo(pt(0.68, 0.65).dx, pt(0.68, 0.65).dy)
+      ..lineTo(pt(0.64, 0.64).dx, pt(0.64, 0.64).dy)
+      ..lineTo(pt(0.62, 0.58).dx, pt(0.62, 0.58).dy)
+      // Животик
+      ..cubicTo(
+        pt(0.54, 0.63).dx, pt(0.54, 0.63).dy,
+        pt(0.46, 0.66).dx, pt(0.46, 0.66).dy,
+        pt(0.38, 0.67).dx, pt(0.38, 0.67).dy,
+      )
+      // Задняя лапка отталкивается от колеса
+      ..lineTo(pt(0.35, 0.72).dx, pt(0.35, 0.72).dy)
+      ..lineTo(pt(0.31, 0.70).dx, pt(0.31, 0.70).dy)
+      ..lineTo(pt(0.34, 0.64).dx, pt(0.34, 0.64).dy)
+      ..close();
+    canvas.drawPath(bodyPath, fillPaint);
 
-    final fill = Paint()
-      ..color = color
+    // Маленький сияющий глазок
+    final eyePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.95)
+      ..style = PaintingStyle.fill
       ..isAntiAlias = true;
-    // Туловище.
-    canvas.drawCircle(p(0.50, 0.575), s * 0.155, fill);
-    // Голова.
-    canvas.drawCircle(p(0.60, 0.45), s * 0.120, fill);
-    // Ушко.
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: p(0.655, 0.365),
-        width: s * 0.055,
-        height: s * 0.095,
-      ),
-      fill,
-    );
-    // Передняя лапка.
-    canvas.drawCircle(p(0.49, 0.70), s * 0.045, fill);
-
-    // Глаз — вырез (сквозь него видно колесо/фон, а не заливку).
-    canvas.saveLayer(Offset.zero & size, Paint());
-    canvas.drawCircle(
-      p(0.628, 0.435),
-      s * 0.026,
-      Paint()..blendMode = BlendMode.clear..isAntiAlias = true,
-    );
-    canvas.restore();
+    canvas.drawCircle(pt(0.68, 0.46), s * 0.022, eyePaint);
   }
 
   @override

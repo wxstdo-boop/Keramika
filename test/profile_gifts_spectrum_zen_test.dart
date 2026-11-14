@@ -114,7 +114,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('ProfileScreen renders header with spectrum, zen and gifts shelf', (tester) async {
+    testWidgets('ProfileScreen renders header with spectrum, prestige title and gifts shelf', (tester) async {
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
@@ -130,7 +130,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.byType(AudioSpectrumRing), findsOneWidget);
-      expect(find.textContaining('Дзен:'), findsOneWidget);
+      expect(find.textContaining('Дзен:'), findsNothing);
+      expect(find.text('Cyberpunk 2077 Legend'), findsOneWidget);
       expect(find.text('Коллекция артефактов'), findsOneWidget);
       expect(find.byType(GiftCard3D), findsWidgets);
       expect(tester.takeException(), isNull);
