@@ -29,6 +29,8 @@ const Map<String, String> _ru = {
   'deleteMealConfirm': 'Удалить приём пищи',
   'profile': 'Профиль',
   'profileAnonymous': 'Аноним',
+  'profilePrestigeTitle': 'Престижный титул профиля',
+  'profileArtifactsTitle': 'Коллекция артефактов',
   'profileName': 'Короткое имя',
   'profileNameHint': 'Как вас звать?',
   'profileNameSaved': 'Имя сохранено',

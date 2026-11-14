@@ -1,59 +1,46 @@
-AntiFeatures:
-  NonFreeNet:
-    en-US: The optional AI assistant Ada talks to third-party model providers (OpenRouter,
-      Poolside and other free public OpenAI-compatible endpoints). The rest of the
-      app works fully offline.
 Categories:
-  - Alarm Clock
-  - Habit Tracker
-  - Task
+  - Time
+  - Productivity
 License: MIT
-AuthorName: Wetidom
-SourceCode: https://github.com/wxstdo-boop/agysha
-IssueTracker: https://github.com/wxstdo-boop/agysha/issues
-Changelog: https://github.com/wxstdo-boop/agysha/releases
+AuthorName: Wet Corporation
+SourceCode: https://github.com/wxstdo-boop/Agysha
+IssueTracker: https://github.com/wxstdo-boop/Agysha/issues
+Changelog: https://github.com/wxstdo-boop/Agysha/releases
 
 AutoName: Agysha
+Summary: 100% Reliable Open Source alarm clock, tasks, habits & reality checks
+Description: |-
+  Agysha is a modern, ultra-reliable Open Source alarm clock with habit tracking,
+  task manager, and reality checks crafted with Material You & Cyberpunk 2077 aesthetics.
+
+  Features:
+  * 100% Guaranteed wake-up using Android AlarmClock API + WakeLock handover
+  * Cyberpunk 2077 OLED Black theme with 120 FPS buttery smooth transitions
+  * Live radial audio equalizer dancing around your avatar
+  * Collectible 3D-tilt holographic artifacts (NFT gifts / Steam trophies style)
+  * Daily Zen Sphere clicker with soothing haptic micro-feedback
+  * Prestige titles and badges ("Night City Legend", "Cyberpunk 2077 Legend")
+  * Offline-first, encrypted local JSON storage (no ads, no tracking)
+  * Smart wake-up math and color puzzles to stop oversleeping
 
 RepoType: git
-Repo: https://github.com/wxstdo-boop/agysha.git
+Repo: https://github.com/wxstdo-boop/Agysha.git
 
 Builds:
-  - versionName: 1.6.172
-    versionCode: 45244
-    commit: 990bf0baccffdf6fa6b3080ddb2ed74760c6236b
-    timeout: 10800
+  - versionName: 1.6.176
+    versionCode: 45248
+    commit: main
+    subdir: .
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
-      - flutter@3.47.5
-    rm:
-      - ios
-      - linux
-      - macos
-      - web
-      - windows
+      - flutter@stable
     prebuild:
-      - sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
-      - sed -i -e '/REQUEST_INSTALL_PACKAGES/d' -e '/ENFORCE_UPDATE_OWNERSHIP/d' -e
-        '/UPDATE_PACKAGES_WITHOUT_USER_ACTION/d' android/app/src/main/AndroidManifest.xml
-      - sed -i -e 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g
-        -XX:ReservedCodeCacheSize=256m -XX:+UseParallelGC -Dfile.encoding=UTF-8|'
-        android/gradle.properties
-      - sed -i -e 's|^org.gradle.workers.max=.*|org.gradle.workers.max=4|' android/gradle.properties
-      - sed -i -e 's|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=-Xmx1g|' android/gradle.properties
-      - echo "flutter.sdk=$$flutter$$" >> android/local.properties
-      - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
-      - $$flutter$$/bin/flutter pub get --enforce-lockfile
-    scandelete:
-      - .pub-cache
+      - $$flutter$$/bin/flutter pub get
     build:
-      - export PUB_CACHE=$(pwd)/.pub-cache
-      - $$flutter$$/bin/flutter build apk --release --dart-define=AGYSHA_NO_SELF_UPDATE=true
-    ndk: 28.2.13676358
+      - $$flutter$$/bin/flutter build apk --release
 
 AutoUpdateMode: Version
-UpdateCheckMode: Tags ^v[0-9.]+\+[0-9]+$
-UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.6.172
-CurrentVersionCode: 45244
+UpdateCheckMode: Tags
+CurrentVersion: 1.6.176
+CurrentCode: 45248

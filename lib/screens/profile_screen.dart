@@ -19,6 +19,8 @@ import '../utils/context_menu.dart';
 import '../utils/design_tokens.dart';
 import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
+import '../widgets/audio_spectrum_ring.dart';
+import '../widgets/gift_card_3d.dart';
 import '../widgets/inline_keyboard.dart';
 import '../widgets/music_pulse_ring.dart';
 import '../widgets/online_dot.dart';
@@ -29,6 +31,7 @@ import '../widgets/new_year_event_banner.dart';
 import '../widgets/smooth_tooltip.dart';
 import '../widgets/smooth_typing.dart';
 import '../widgets/volumetric_switch.dart';
+import '../widgets/zen_particles.dart';
 
 /// Официальный сайт Agysha. Здесь — события проекта; список кэшируется
 /// локально, а пункты открываются в браузере. Когда появится публичный фид,
@@ -573,46 +576,44 @@ class _ProfileScreenState extends State<ProfileScreen>
         leading: const BackButtonTooltip(),
         centerTitle: true,
       ),
-      body: AnimatedBuilder(
-        animation: _service,
-        builder: (context, _) => ListView(
-          controller: _scrollCtrl,
-          padding: const EdgeInsets.fromLTRB(
-            Spacing.md,
-            Spacing.sm,
-            Spacing.md,
-            Spacing.xxl,
+      body: ZenParticlesOverlay(
+        child: AnimatedBuilder(
+          animation: _service,
+          builder: (context, _) => ListView(
+            controller: _scrollCtrl,
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm,
+              Spacing.md,
+              Spacing.xxl,
+            ),
+            children: [
+              _headerCard(theme),
+              const SizedBox(height: Spacing.md),
+              _nameCard(theme),
+              const SizedBox(height: Spacing.md),
+              _onlineCard(theme),
+              const SizedBox(height: Spacing.md),
+              _musicCard(theme),
+              const SizedBox(height: Spacing.md),
+              _giftsCard(theme),
+              const SizedBox(height: Spacing.md),
+              _leaderboardCard(theme),
+              const SizedBox(height: Spacing.md),
+              // Очки — сразу после рейтинга: «за что» читается рядом с «кто
+              // сколько», а карточки музыки и рейтинга остаются на своих местах.
+              _scoreCard(theme),
+              const SizedBox(height: Spacing.md),
+              _eventsCard(theme),
+            ],
           ),
-          children: [
-            _headerCard(theme),
-            const SizedBox(height: Spacing.md),
-            _nameCard(theme),
-            const SizedBox(height: Spacing.md),
-            _onlineCard(theme),
-            const SizedBox(height: Spacing.md),
-            _musicCard(theme),
-            const SizedBox(height: Spacing.md),
-            _leaderboardCard(theme),
-            const SizedBox(height: Spacing.md),
-            // Очки — сразу после рейтинга: «за что» читается рядом с «кто
-            // сколько», а карточки музыки и рейтинга остаются на своих местах.
-            _scoreCard(theme),
-            const SizedBox(height: Spacing.md),
-            _eventsCard(theme),
-          ],
         ),
       ),
     );
   }
 
-  /// Шапка профиля: крупная аватарка (тап — смена цвета) и имя, слева от
-  /// которого — кружок онлайна (тап переключает статус).
-  ///
-  /// Текстовой строки «В сети / Не в сети» больше нет: статус читается по
-  /// кружку, который сам плавно перетекает между красным и пустым.
+  /// Шапка профиля: крупная аватарка со спектром и дзен-кликером, имя и титул.
   Widget _headerCard(ThemeData theme) {
-    // Пустое имя в шапке подписываем «Аноним» — как и было; приглашение
-    // «Как вас звать?» живёт в поле ввода, а не на месте имени.
     final name = _service.displayName.isEmpty
         ? Translations.t('profileAnonymous', context, 'Аноним')
         : _service.displayName;
@@ -620,39 +621,136 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Column(
         children: [
           const SizedBox(height: Spacing.xs),
-          PressScale(
-            pressedScale: 0.92,
-            // Заметно медленнее штатного: аватарка «уходит» под палец и
-            // возвращается мягко, а не щёлкает размером.
-            duration: const Duration(milliseconds: 520),
-            releaseDuration: const Duration(milliseconds: 620),
-            child: GestureDetector(
-              onTap: _pickAvatar,
-              behavior: HitTestBehavior.opaque,
-              // При прокрутке аватарка мягко уходит под верхнюю полку:
-              // содержимое внутри круга «расплывается» (blur нарастает) и
-              // чуть сдвигается — обводка-круг стоит на месте, поэтому нет
-              // ни «разрезов», ни дрожания формы. Обратно так же плавно.
-              //
-              // Источник прокрутки отдан САМОЙ аватарке ([ProfileAvatar.motion]):
-              // она перестраивает только свой слой. Раньше `AnimatedBuilder`
-              // стоял здесь и каждый кадр прокрутки пересобирал аватарку
-              // целиком (со всей шапкой) — на слабом телефоне это лагало.
-              child: ProfileAvatar(
-                index: _service.avatarIndex,
-                size: 96,
-                imagePath: _service.avatarImagePath,
-                motion: _scrollCtrl,
-                motionOf: () =>
-                    _scrollCtrl.hasClients ? (_scrollCtrl.offset / 140) : 0.0,
+          AudioSpectrumRing(
+            radius: 48,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                PressScale(
+                  pressedScale: 0.92,
+                  duration: const Duration(milliseconds: 520),
+                  releaseDuration: const Duration(milliseconds: 620),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (details) {
+                      final overlay = ZenParticlesOverlay.of(context);
+                      overlay?.spawnParticles(
+                        details.globalPosition,
+                        theme.colorScheme.primary,
+                      );
+                    },
+                    onTap: () async {
+                      await Haptics.select();
+                      final karma = await _service.incrementZenKarma();
+                      if (karma == 25 ||
+                          karma == 50 ||
+                          karma == 100 ||
+                          karma == 250 ||
+                          karma == 500) {
+                        Haptics.medium();
+                        _toast(
+                          '✨ Дзен-прорыв: $karma очков гармонии!',
+                          icon: Icons.auto_awesome,
+                        );
+                      }
+                    },
+                    onLongPress: _pickAvatar,
+                    child: ProfileAvatar(
+                      index: _service.avatarIndex,
+                      size: 96,
+                      glow: true,
+                      imagePath: _service.avatarImagePath,
+                      motion: _scrollCtrl,
+                      motionOf: () =>
+                          _scrollCtrl.hasClients ? (_scrollCtrl.offset / 140) : 0.0,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: PressScale(
+                    child: GestureDetector(
+                      onTap: _pickAvatar,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: theme.colorScheme.surface,
+                            width: 2.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.colorScheme.primary
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.photo_camera_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          // Дзен-бейдж под аватаркой
+          GestureDetector(
+            onTap: () async {
+              await Haptics.select();
+              final karma = await _service.incrementZenKarma();
+              if (karma == 25 ||
+                  karma == 50 ||
+                  karma == 100 ||
+                  karma == 250 ||
+                  karma == 500) {
+                Haptics.medium();
+                _toast(
+                  '✨ Дзен-прорыв: $karma очков гармонии!',
+                  icon: Icons.auto_awesome,
+                );
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(Radii.pill),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.30),
+                  width: 0.8,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_awesome, size: 12, color: Colors.amber),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Дзен: ${_service.zenKarma} • Тапни сферу',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: Spacing.md),
-          // Кружок слева от имени — тап по нему переключает онлайн-статус.
-          // Зона тапа кружка (30 px) шире глифа (11 px): сдвигаем всю группу
-          // влево на её «свес», чтобы по центру карточки осталось ИМЯ, а не
-          // середина пары «кружок + имя».
+          const SizedBox(height: Spacing.sm),
+          // Кружок слева от имени
           Center(
             child: Transform.translate(
               offset: Offset(-_dotOverhang, 0),
@@ -660,10 +758,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   OnlineDot(size: _dotSize, onTap: _toggleOnline),
-                  // Зазор мал: кружок стоит вплотную к первой букве имени, а
-                  // не «висит» отдельно от него.
                   const SizedBox(width: 1),
-                  // Смена имени (и «Аноним») — плавным кросс-фейдом, а не кадром.
                   AnimatedSwitcher(
                     duration: MotionPrefs.shouldReduceMotion
                         ? Duration.zero
@@ -690,7 +785,170 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ),
           ),
+          const SizedBox(height: 6),
+          // Престижный титул (клик открывает выбор)
+          PressScale(
+            child: GestureDetector(
+              onTap: _showPrestigeTitlePicker,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.primary.withValues(alpha: 0.14),
+                      theme.colorScheme.secondary.withValues(alpha: 0.14),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(Radii.pill),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.35),
+                    width: 0.9,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.bolt_rounded, size: 14, color: Colors.amber),
+                    const SizedBox(width: 4),
+                    Text(
+                      _service.prestigeTitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  static const List<String> _prestigeTitles = [
+    'Cyberpunk 2077 Legend',
+    'Night City Legend',
+    'Самурай сна',
+    'Повелитель времени',
+    'Кибер-ранняя пташка',
+    'Неоновый призрак',
+    'Мастер дзена',
+    'Хранитель рассвета',
+  ];
+
+  void _showPrestigeTitlePicker() {
+    Haptics.select();
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      sheetAnimationStyle: _sheetStyle(),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(Spacing.lg),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Spacing.md),
+                Text(
+                  Translations.t(
+                    'profilePrestigeTitle',
+                    context,
+                    'Престижный титул профиля',
+                  ),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: Weights.bold,
+                  ),
+                ),
+                const SizedBox(height: Spacing.sm),
+                Wrap(
+                  spacing: Spacing.xs,
+                  runSpacing: Spacing.xs,
+                  children: _prestigeTitles.map((t) {
+                    final isSelected = _service.prestigeTitle == t;
+                    return ChoiceChip(
+                      label: Text(t),
+                      selected: isSelected,
+                      onSelected: (_) async {
+                        await Haptics.select();
+                        await _service.setPrestigeTitle(t);
+                        if (mounted) setState(() {});
+                        if (ctx.mounted) Navigator.of(ctx).pop();
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _giftsCard(ThemeData theme) {
+    final gifts = _service.gifts;
+    return _Card(
+      title: Translations.t(
+        'profileArtifactsTitle',
+        context,
+        'Коллекция артефактов',
+      ),
+      icon: Icons.auto_awesome,
+      trailing: Text(
+        '${gifts.length} шт.',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: theme.colorScheme.primary,
+        ),
+      ),
+      child: SizedBox(
+        height: 220,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: [
+              for (var i = 0; i < gifts.length; i++) ...[
+                if (i > 0) const SizedBox(width: Spacing.sm),
+                GiftCard3D(
+                  gift: gifts[i],
+                  onFavoriteToggled: () => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

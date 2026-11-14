@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/profile_gift.dart';
 import 'completion_log_service.dart';
 import 'habit_service.dart';
 import 'json_file.dart';
@@ -148,6 +149,9 @@ class ProfileService extends ChangeNotifier {
   String _name = '';
   int _avatarIndex = 0;
   final List<MusicTrack> _tracks = [];
+  String _prestigeTitle = 'Cyberpunk 2077 Legend';
+  int _zenKarma = 0;
+  final List<ProfileGift> _gifts = [];
 
   /// Своя аватарка из галереи: путь к скопированному в приватную папку файлу.
   /// Пока он задан — он и показывается вместо сгенерированного варианта.
@@ -157,6 +161,10 @@ class ProfileService extends ChangeNotifier {
   bool get loaded => _loaded;
   String get name => _name;
   int get avatarIndex => _avatarIndex;
+  String get prestigeTitle =>
+      _prestigeTitle.trim().isEmpty ? 'Cyberpunk 2077 Legend' : _prestigeTitle;
+  int get zenKarma => _zenKarma;
+  List<ProfileGift> get gifts => List.unmodifiable(_gifts);
   /// Своя подборка музыки (до [maxTracks] штук).
   List<MusicTrack> get tracks => List.unmodifiable(_tracks);
 
@@ -211,11 +219,29 @@ class ProfileService extends ChangeNotifier {
     _tracks.clear();
     _avatarImagePath = null;
     _friends.clear();
+    _prestigeTitle = 'Cyberpunk 2077 Legend';
+    _zenKarma = 0;
+    _gifts
+      ..clear()
+      ..addAll(ProfileGift.initialShowcase());
     if (raw != null && raw.isNotEmpty) {
       try {
         final map = jsonDecode(raw) as Map<String, dynamic>;
         _name = (map['name'] ?? '').toString();
         _avatarIndex = (map['avatar'] as num?)?.toInt() ?? 0;
+        _prestigeTitle =
+            (map['prestigeTitle'] ?? 'Cyberpunk 2077 Legend').toString();
+        _zenKarma = (map['zenKarma'] as num?)?.toInt() ?? 0;
+        final rawGifts = (map['gifts'] as List?) ?? const [];
+        if (rawGifts.isNotEmpty) {
+          _gifts
+            ..clear()
+            ..addAll(
+              rawGifts.map(
+                (e) => ProfileGift.fromJson(Map<String, dynamic>.from(e as Map)),
+              ),
+            );
+        }
         // Новая форма — список треков. Старые профили (одно поле musicPath)
         // читаем как подборку из одного трека: иначе у тех, кто уже выбрал
         // музыку, она бы «потерялась» после обновления.
@@ -265,6 +291,9 @@ class ProfileService extends ChangeNotifier {
     final value = jsonEncode({
       'name': _name,
       'avatar': _avatarIndex,
+      'prestigeTitle': _prestigeTitle,
+      'zenKarma': _zenKarma,
+      'gifts': _gifts.map((g) => g.toJson()).toList(),
       'tracks': _tracks.map((t) => t.toJson()).toList(),
       // Дублируем первый трек в старые поля: мини-плеер и прочие места,
       // читающие одиночную музыку, продолжают работать без правок.
@@ -275,6 +304,38 @@ class ProfileService extends ChangeNotifier {
     });
     final resolved = await JsonFile.writeWithSnapshot(_fileKey, value, _snapshot);
     if (resolved == value) _snapshot = resolved;
+  }
+
+  /// Установить престижный титул (отображается под именем в профиле).
+  Future<void> setPrestigeTitle(String title) async {
+    _prestigeTitle = title.trim();
+    notifyListeners();
+    await _save();
+  }
+
+  /// Увеличить дзен-карму от антистресс-тапов по сфере аватарки.
+  Future<int> incrementZenKarma([int amount = 1]) async {
+    _zenKarma += amount;
+    notifyListeners();
+    await _save();
+    return _zenKarma;
+  }
+
+  /// Переключить статус избранного для артефакта.
+  Future<void> toggleGiftFavorite(String giftId) async {
+    final idx = _gifts.indexWhere((g) => g.id == giftId);
+    if (idx >= 0) {
+      _gifts[idx] = _gifts[idx].copyWith(isFavorite: !_gifts[idx].isFavorite);
+      notifyListeners();
+      await _save();
+    }
+  }
+
+  /// Добавить новый разблокированный артефакт в коллекцию.
+  Future<void> addGift(ProfileGift gift) async {
+    _gifts.insert(0, gift);
+    notifyListeners();
+    await _save();
   }
 
   /// Максимальная длина короткого имени. Поле ввода уже ограничивает

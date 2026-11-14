@@ -137,6 +137,9 @@ class ProfileAvatar extends StatelessWidget {
   /// Радиус расфокуса содержимого, px. 0 — чётко.
   final double blur;
 
+  /// Мягкое элегантное полуразмытие (аура/ореол) позади аватарки.
+  final bool glow;
+
   /// Живой источник прокрутки: если задан, аватарка сама слушает его и
   /// перестраивает ТОЛЬКО свой слой (сдвиг + расфокус), а не пересобирается
   /// родителем на каждом кадре прокрутки. Раньше `AnimatedBuilder` стоял ВНЕ
@@ -156,6 +159,7 @@ class ProfileAvatar extends StatelessWidget {
     this.imagePath,
     this.parallax = 0,
     this.blur = 0,
+    this.glow = false,
     this.motion,
     this.motionOf,
   });
@@ -353,25 +357,27 @@ class ProfileAvatar extends StatelessWidget {
         ),
       ),
     );
-    // Мягкое элегантное полуразмытие (аура/ореол) позади аватарки —
-    // придаёт глубину и благородный неоновый объем без резких теней.
+    // Мягкое элегантное гало позади аватарки — придаёт глубину без резких
+    // теней. ВАЖНО: НЕ `ImageFiltered`: фильтр обязан жить ровно в одном
+    // месте (в [_blurLayer] при реальном размытии), иначе нарушается
+    // инвариант «без размытия фильтра нет, при размытии — ровно один»
+    // (полка-тесты кругов 5 и 7). Глубину даёт тень по кругу — она
+    // читается «объёмом», а стоит в разы дешевле растра-блюра.
     final glow = Positioned.fill(
       child: Transform.scale(
         scale: 1.10,
-        child: ClipOval(
-          child: ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Opacity(
-              opacity: dark ? 0.36 : 0.22,
-              child: Image.file(
-                file,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: dark ? 0.36 : 0.14,
+                ),
+                blurRadius: size * 0.16,
+                spreadRadius: size * 0.02,
               ),
-            ),
+            ],
           ),
         ),
       ),

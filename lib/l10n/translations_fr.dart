@@ -34,6 +34,8 @@ const Map<String, String> _fr = {
   'deleteMealConfirm': 'Supprimer le repas',
   'profile': 'Profil',
   'profileAnonymous': 'Anonyme',
+  'profilePrestigeTitle': 'Titre de prestige du profil',
+  'profileArtifactsTitle': 'Collection d’artefacts',
   'profileName': 'Nom court',
   'profileNameHint': 'Comment vous appeler ?',
   'profileNameSaved': 'Nom enregistré',

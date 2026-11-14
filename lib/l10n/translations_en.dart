@@ -29,6 +29,8 @@ const Map<String, String> _en = {
   'deleteMealConfirm': 'Delete meal',
   'profile': 'Profile',
   'profileAnonymous': 'Anonymous',
+  'profilePrestigeTitle': 'Profile prestige title',
+  'profileArtifactsTitle': 'Artifact collection',
   'profileName': 'Short name',
   'profileNameHint': 'What should we call you?',
   'profileNameSaved': 'Name saved',
