@@ -170,7 +170,7 @@ jobs:
           {
             echo "notes<<EOF"
             git log --no-merges --pretty=format:'- %s' "$RANGE" \
-              | grep -v '^- release:' || true
+              | bash tool/release_notes.sh
             echo ""
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -210,7 +210,7 @@ jobs:
             printf '%s\n' "$MANUAL_NOTES" > "$FILE"
           else
             git log --no-merges --pretty=format:'- %s' "$RANGE" \
-              | grep -v '^- release:' > "$FILE" || true
+              | bash tool/release_notes.sh > "$FILE" || true
           fi
           # F-Droid отбрасывает пустой changelog — подстраховываемся.
           [ -s "$FILE" ] || printf -- '- Обновление\n' > "$FILE"
