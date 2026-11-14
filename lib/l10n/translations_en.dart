@@ -115,7 +115,7 @@ const Map<String, String> _en = {
   'language': 'Language',
   'light': 'Light',
   'dark': 'Dark',
-  'themeOled': 'OLED Black',
+  'themeOled': 'Cyberpunk 2077',
   'system': 'System',
   'themeSystemLight': 'Sys. Light.',
   'peach': 'Peach',

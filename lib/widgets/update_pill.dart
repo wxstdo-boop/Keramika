@@ -7,7 +7,7 @@ import '../services/update_service.dart';
 import '../utils/design_tokens.dart';
 import '../utils/motion_prefs.dart';
 import '../utils/snackbar.dart';
-import 'agysha_bunny.dart';
+import 'squirrel_wheel.dart';
 import 'press_scale.dart';
 
 /// Компактная таблетка «Обновления» рядом с версией в
@@ -276,22 +276,24 @@ class _UpdatePillState extends State<UpdatePill>
               child: Row(
                 children: [
                   SizedBox(
-                    // Окно глифа с запасом: зайчику есть куда «набухнуть» на
-                    // входе, и он не «прищемляется» о край таблетки.
+                    // Окно значка с запасом: белке в колесе есть куда
+                    // «набухнуть» на входе, и она не «прищемляется» о край.
                     width: 18,
                     height: 18,
-                    // Глиф рисуется ОДИН раз в постоянный слой
-                    // (`RepaintBoundary`), а движение — это `Transform` над
-                    // готовым слоем: GPU лишь переносит закэшированную растровую
-                    // картинку. Зайчик живой (мягкий подскок), но кривые за
-                    // кадр не пересобираются — поэтому он не «лагает».
-                    child: AnimatedBunny(
+                    // Колесо и белочка рисуются ОДИН раз в постоянные слои
+                    // (`RepaintBoundary`), а вращение — это `Transform.rotate`
+                    // над готовым растром: GPU лишь вращает закэшированную
+                    // картинку, кривые за кадр не пересобираются — значит
+                    // «Белка» не «лагает» и не «дрожит», как старый прыгающий
+                    // зайчик. Колесо крутится непрерывно и плавно.
+                    child: SquirrelWheel(
                       size: 18,
                       color: cs.onPrimaryContainer,
                       enter: _enterCurve,
-                      // В таблетке запас по высоте мал — подскок мягче, чтобы
-                      // уши не задевали край плашки.
-                      lift: 0.10,
+                      // Колесо крутится плавно и непрерывно: оборот чуть
+                      // быстрее, чем у окна, чтобы в узкой таблетке движение
+                      // читалось, но не суетилось.
+                      period: const Duration(milliseconds: 2600),
                     ),
                   ),
                   const SizedBox(width: 3),
@@ -325,9 +327,9 @@ class _UpdatePillState extends State<UpdatePill>
 /// Вместо системного [AlertDialog]: своя карточка со скруглением, кант в
 /// красном бренда (полупрозрачный, как у клавиатуры), текст подписи курсивом,
 /// а кнопки «отдать» при нажатии ([PressScale]) и «подтвердить» — залитая
-/// акцентом с плавной отдачей. Значок в медальоне — свой зайчик Agysha
-/// ([AnimatedBunny] поверх [AgyshaBunny]); он мягко проявляется и оживает
-/// подскоком при открытии окна.
+/// акцентом с плавной отдачей. Значок в медальоне — «белка в колесе»
+/// ([SquirrelWheel]): колесо плавно и непрерывно вращается, белочка мягко
+/// проявляется вместе с окном.
 class _UpdateConfirmDialog extends StatefulWidget {
   final String version;
   final VoidCallback onConfirm;
@@ -456,12 +458,14 @@ class _UpdateConfirmDialogState extends State<_UpdateConfirmDialog>
                             color: BrandColors.red.withValues(alpha: 0.16),
                           ),
                           child: Center(
-                            child: AnimatedBunny(
+                            // Медальон 40 px: у колеса больше запас — оборот
+                            // медленнее, вращение читается как «белка
+                            // не спешит», а не суетится.
+                            child: SquirrelWheel(
                               size: 22,
                               color: cs.primary,
                               enter: _enterCurve,
-                              // В медальоне 40 px запас есть — подскок заметнее.
-                              lift: 0.20,
+                              period: const Duration(milliseconds: 3600),
                             ),
                           ),
                         ),

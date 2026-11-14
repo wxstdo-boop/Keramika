@@ -53,9 +53,9 @@ void main() {
 
     test('Translations contains themeOled in all supported locales', () {
       final raw = Translations.rawData;
-      expect(raw['en']?['themeOled'], 'OLED Black');
-      expect(raw['ru']?['themeOled'], 'OLED Чёрный');
-      expect(raw['fr']?['themeOled'], 'OLED Noir');
+      expect(raw['en']?['themeOled'], 'Cyberpunk 2077');
+      expect(raw['ru']?['themeOled'], 'Cyberpunk 2077');
+      expect(raw['fr']?['themeOled'], 'Cyberpunk 2077');
     });
 
     testWidgets('AgyshaApp switches to OLED theme with pure black surface', (

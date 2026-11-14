@@ -353,10 +353,33 @@ class ProfileAvatar extends StatelessWidget {
         ),
       ),
     );
+    // Мягкое элегантное полуразмытие (аура/ореол) позади аватарки —
+    // придаёт глубину и благородный неоновый объем без резких теней.
+    final glow = Positioned.fill(
+      child: Transform.scale(
+        scale: 1.10,
+        child: ClipOval(
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Opacity(
+              opacity: dark ? 0.36 : 0.22,
+              child: Image.file(
+                file,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
     return Stack(
       alignment: Alignment.center,
       clipBehavior: Clip.none,
-      children: [clipped, ring],
+      children: [glow, clipped, ring],
     );
   }
 
@@ -401,9 +424,28 @@ class ProfileAvatar extends StatelessWidget {
     final dark = context == null
         ? false
         : Theme.of(context).brightness == Brightness.dark;
+    final color = profileAvatarColors(index).first;
     return Stack(
       clipBehavior: Clip.none,
       children: [
+        // Мягкое элегантное полуразмытие (аура/ореол) позади шарика
+        Positioned.fill(
+          child: Transform.scale(
+            scale: 1.10,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: dark ? 0.38 : 0.22),
+                    blurRadius: size * 0.22,
+                    spreadRadius: size * 0.03,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
         // Основа: мягкий градиент — светлое «стеклянное» пятно сверху-слева,
         // к плотному красному внизу. Ровная обводка как у кружков привычек.
         Positioned.fill(

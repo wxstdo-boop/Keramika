@@ -303,7 +303,17 @@ class _ProfileScreenState extends State<ProfileScreen>
           : 'png';
       final newPath =
           '${avatarDir.path}/avatar_${DateTime.now().microsecondsSinceEpoch}.$ext';
-      await File(src).copy(newPath);
+      final targetFile = File(newPath);
+      // Читаем байты полностью и пишем с flush: true в изолированное хранилище приложения.
+      // Даже если пользователь удалит исходную фотографию из Галереи или папки Загрузок,
+      // собственная копия в Agysha останется целой навсегда.
+      final sourceFile = File(src);
+      if (await sourceFile.exists()) {
+        final bytes = await sourceFile.readAsBytes();
+        await targetFile.writeAsBytes(bytes, flush: true);
+      } else {
+        await sourceFile.copy(newPath);
+      }
       return newPath;
     } catch (_) {
       if (mounted) {

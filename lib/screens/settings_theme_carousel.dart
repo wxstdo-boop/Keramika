@@ -20,7 +20,7 @@ extension _SettingsThemeCarousel on _SettingsScreenState {
       _ThemeEntry('dark', Translations.darkOf(context), Icons.dark_mode),
       _ThemeEntry(
         'oled',
-        Translations.t('themeOled', context, 'OLED Black'),
+        Translations.t('themeOled', context, 'Cyberpunk 2077'),
         Icons.brightness_2_outlined,
       ),
       _ThemeEntry(

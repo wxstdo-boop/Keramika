@@ -31,12 +31,17 @@ void main() {
     return f.readAsStringSync();
   }
 
-  test('значок обновления — свой зайчик Agysha, а не чужая иконка', () {
+  test('значок обновления — «белка в колесе», а не чужая иконка', () {
     final src = read('lib/widgets/update_pill.dart');
     expect(
-      src.contains('AnimatedBunny'),
+      src.contains('SquirrelWheel'),
       isTrue,
-      reason: 'таблетка и окно несут СВОЙ живой значок Agysha',
+      reason: 'таблетка и окно несут живой значок «белка в колесе»',
+    );
+    expect(
+      src.contains('AnimatedBunny'),
+      isFalse,
+      reason: 'прыгающий зайчик заменён на плавно крутящееся колесо',
     );
     expect(
       src.contains('Icons.cruelty_free'),
@@ -351,7 +356,8 @@ void main() {
       isTrue,
       reason: 'вход идёт один раз при открытии окна',
     );
-    expect(body.contains('AnimatedBunny'), isTrue);
+    expect(body.contains('SquirrelWheel'), isTrue);
+    expect(body.contains('AnimatedBunny'), isFalse);
   });
 
   test('кольцо музыки не «замерзает» на паузе', () {

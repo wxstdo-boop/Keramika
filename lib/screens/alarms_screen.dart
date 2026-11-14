@@ -27,6 +27,7 @@ import '../widgets/premium_empty_state.dart';
 import 'add_alarm_screen.dart';
 import 'add_timer_screen.dart';
 import '../widgets/agysha_confirm_dialog.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart' show SmoothTooltip;
 
 class AlarmsScreen extends StatefulWidget {
@@ -515,44 +516,80 @@ class _AlarmsScreenState extends State<AlarmsScreen>
       text = '$when $timeStr · через $durationStr';
     }
 
+    final pillBg = hasActive
+        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.22)
+        : theme.colorScheme.surfaceContainerLow;
+    final borderColor = hasActive
+        ? theme.colorScheme.primary.withValues(alpha: 0.35)
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.30);
+
     return Padding(
       key: const ValueKey('next_alarm_hero_pill'),
       padding: const EdgeInsets.only(bottom: 12),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
-              width: 0.8,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                hasActive ? Icons.alarm_on_rounded : Icons.alarm_off_rounded,
-                size: 16,
-                color: hasActive
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
+        child: PressScale(
+          pressedScale: 0.96,
+          duration: const Duration(milliseconds: 140),
+          releaseDuration: const Duration(milliseconds: 220),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: pillBg,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: borderColor,
+                width: 0.9,
               ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  text,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: hasActive
-                        ? theme.colorScheme.onSurface
-                        : theme.colorScheme.onSurfaceVariant,
+              boxShadow: [
+                if (hasActive)
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 3),
                   ),
-                  overflow: TextOverflow.ellipsis,
+              ],
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.95, end: 1.0).animate(animation),
+                  child: child,
                 ),
               ),
-            ],
+              child: Row(
+                key: ValueKey('pill_content_${hasActive}_$text'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    hasActive ? Icons.alarm_on_rounded : Icons.alarm_off_rounded,
+                    size: 16,
+                    color: hasActive
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: hasActive
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
