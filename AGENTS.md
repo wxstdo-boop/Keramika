@@ -427,6 +427,14 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   Тот же инвариант в запасном пути плагина: `matchDateTimeComponents` =
   `null` при пустых `repeatDays` (раньше был `DateTimeComponents.time` —
   ежедневный повтор).
+- **Prefs будильников переезжают при ребрендинге.** `PREFS_NAME` менялся
+  `keramika_schedule` → `agysha_schedule` без миграции, и после обновления
+  APK `MY_PACKAGE_REPLACED` будил `BootReceiver`, который читал ПУСТОЙ
+  манифест и не взводил ни одного будильника («поставил на утро, обновилось
+  ночью, утром тишина»). `AlarmSchedulerPlugin.migrateLegacyPrefs` переносит
+  манифест и `fired_one_shots` из legacy-prefs; зовётся и в
+  `registerWith` (Dart-путь), и в `BootReceiver.rescheduleFromManifest` —
+  ДО чтения манифеста. Идемпотентно. Не переименовывать prefs без миграции.
 - **Один звонок за раз.** `AlarmForegroundService.onStartCommand` при уже
   идущем звонке обязан сперва погасить прошлый звук (`resetAudio`): прежний
   `MediaPlayer` терял ссылку и продолжал играть рядом с новым — два звонка

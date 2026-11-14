@@ -28,10 +28,49 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
         const val MANIFEST_KEY = "alarm_manifest"
         const val PREFS_NAME = "agysha_schedule"
 
+        /**
+         * Имя prefs ДО ребрендинга (Keramika → Agysha). Читается один раз
+         * для переезда манифеста: без него обновление APK теряло все
+         * запланированные будильники.
+         */
+        const val LEGACY_PREFS_NAME = "keramika_schedule"
+
         /** Ключ списка прозвеневших одноразовых будильников (id.hashCode). */
         const val FIRED_ONESHOT_KEY = "fired_one_shots"
 
+        /**
+         * Переносит манифест (и отметки прозвеневших) из prefs прежнего
+         * бренда в текущие. Идемпотентно: если в новых prefs манифест уже
+         * есть, ничего не делает.
+         *
+         * Зачем: `PREFS_NAME` был переименован при ребрендинге без миграции.
+         * После обновления APK `MY_PACKAGE_REPLACED` будил [BootReceiver],
+         * тот читал ПУСТОЙ манифест и не взводил ни одного будильника —
+         * «поставил на утро, обновилось ночью, утром тишина». Теперь
+         * манифест переезжает вместе с приложением.
+         */
+        fun migrateLegacyPrefs(context: Context) {
+            try {
+                val app = context.applicationContext
+                val cur = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                if (cur.contains(MANIFEST_KEY)) return
+                val legacy = app.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+                if (!legacy.contains(MANIFEST_KEY)) return
+                val editor = cur.edit()
+                legacy.getString(MANIFEST_KEY, null)?.let {
+                    editor.putString(MANIFEST_KEY, it)
+                }
+                legacy.getString(FIRED_ONESHOT_KEY, null)?.let {
+                    editor.putString(FIRED_ONESHOT_KEY, it)
+                }
+                editor.apply()
+            } catch (_: Exception) {}
+        }
+
         fun registerWith(engine: FlutterEngine, context: Context) {
+            // Переезд prefs прежнего бренда — до первой постановки/отмены,
+            // чтобы свежий манифест не затирался поверх пустого нового.
+            migrateLegacyPrefs(context)
             val channel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
             channel.setMethodCallHandler(AlarmSchedulerPlugin(context))
         }

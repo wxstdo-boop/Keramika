@@ -45,6 +45,9 @@ class BootReceiver : BroadcastReceiver() {
 
     private fun rescheduleFromManifest(ctx: Context, recoverMissed: Boolean) {
         try {
+            // Обновление APK могло переименовать prefs (ребрендинг) —
+            // переносим манифест ДО чтения, иначе будильники «пропадают».
+            AlarmSchedulerPlugin.migrateLegacyPrefs(ctx)
             val prefs = ctx.applicationContext
                 .getSharedPreferences(AlarmSchedulerPlugin.PREFS_NAME, Context.MODE_PRIVATE)
             val raw = prefs.getString(AlarmSchedulerPlugin.MANIFEST_KEY, null)
