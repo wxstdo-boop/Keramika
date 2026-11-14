@@ -37,7 +37,7 @@ void main() {
       2,
       reason: 'и таблетка, и окно входят один раз',
     );
-    expect(src.contains('AgyshaBunny'), isTrue);
+    expect(src.contains('AnimatedBunny'), isTrue);
   });
 
   test('кольцо музыки: расходящиеся волны без градиентных шейдеров', () {

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:agysha/utils/motion_prefs.dart';
+import 'package:agysha/widgets/agysha_bunny.dart';
 import 'package:agysha/widgets/music_pulse_ring.dart';
 
 /// Регресс-тест четырнадцатого круга (правки после 12-го):
@@ -30,9 +32,9 @@ void main() {
   test('значок обновления — свой зайчик Agysha, а не чужая иконка', () {
     final src = read('lib/widgets/update_pill.dart');
     expect(
-      src.contains('AgyshaBunny'),
+      src.contains('AnimatedBunny'),
       isTrue,
-      reason: 'таблетка и окно несут СВОЙ значок Agysha',
+      reason: 'таблетка и окно несут СВОЙ живой значок Agysha',
     );
     expect(
       src.contains('Icons.cruelty_free'),
@@ -45,6 +47,57 @@ void main() {
       reason: 'системная стрелка заменена своим глифом',
     );
     expect(src.contains('class _UpdateGlyphPainter'), isFalse);
+  });
+
+  test('живой зайчик дёшев: растр в слое, движение — Transform', () {
+    final src = read('lib/widgets/agysha_bunny.dart');
+    // Оживление — это НЕ покадровая перерисовка глифа (именно она «лагала»
+    // раньше), а перенос готового растра: глиф лежит в `RepaintBoundary`,
+    // кадры двигают его через `Transform`.
+    expect(
+      src.contains('class AnimatedBunny'),
+      isTrue,
+      reason: 'у зайчика есть живой вариант',
+    );
+    expect(
+      RegExp(r'Transform\.(translate|scale)').hasMatch(src),
+      isTrue,
+      reason: 'движение идёт трансформацией слоя, а не перерисовкой кривых',
+    );
+    expect(
+      src.contains('RepaintBoundary'),
+      isTrue,
+      reason: 'глиф рисуется один раз в постоянный слой',
+    );
+    expect(
+      src.contains('ambientRepeat'),
+      isTrue,
+      reason: 'подскок уважает «убрать анимации»',
+    );
+  });
+
+  testWidgets('при «убрать анимации» зайчик остаётся видимым', (tester) async {
+    final wasEnabled = MotionPrefs.enabled.value;
+    MotionPrefs.enabled.value = true;
+    addTearDown(() => MotionPrefs.enabled.value = wasEnabled);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: const Scaffold(
+          body: Center(
+            child: AnimatedBunny(size: 22, color: Color(0xFFC0182B)),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Вход не запускается при «убрать анимации» — но значок обязан быть
+    // видимым: раньше контроллер стоял на нуле и зайчик пропадал совсем.
+    final opacity = tester.widget<Opacity>(find.byType(Opacity).first);
+    expect(opacity.opacity, 1.0, reason: 'значок не должен исчезать');
+    expect(tester.takeException(), isNull);
   });
 
   test('значок обновления входит один раз, без вечного цикла', () {
@@ -296,7 +349,7 @@ void main() {
       isTrue,
       reason: 'вход идёт один раз при открытии окна',
     );
-    expect(body.contains('AgyshaBunny'), isTrue);
+    expect(body.contains('AnimatedBunny'), isTrue);
   });
 
   test('кольцо музыки не «замерзает» на паузе', () {

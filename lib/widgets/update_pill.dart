@@ -35,6 +35,9 @@ class _UpdatePillState extends State<UpdatePill>
   late final AnimationController _enter = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 520),
+    // При «убрать анимации» вход не запускается — держим его сразу
+    // завершённым, иначе значок остался бы невидимым.
+    value: MotionPrefs.shouldReduceMotion ? 1 : 0,
   );
   late final Animation<double> _enterCurve = CurvedAnimation(
     parent: _enter,
@@ -278,28 +281,17 @@ class _UpdatePillState extends State<UpdatePill>
                     width: 18,
                     height: 18,
                     // Глиф рисуется ОДИН раз в постоянный слой
-                    // (`RepaintBoundary`), а вход — это `Transform` над готовым
-                    // слоем: GPU лишь переносит закэшированную растровую
-                    // картинку. Никакой вечной анимации — кадры не
-                    // растеризуют глиф заново.
-                    child: AnimatedBuilder(
-                      animation: _enterCurve,
-                      builder: (context, child) => Transform.scale(
-                        scale: 0.72 + 0.28 * _enterCurve.value,
-                        child: Opacity(
-                          opacity: _enterCurve.value.clamp(0.0, 1.0),
-                          child: child,
-                        ),
-                      ),
-                      child: RepaintBoundary(
-                        // Значок Agysha — свой зайчик вместо системной
-                        // «стрелки обновления»: чужеродная иконка в мелком
-                        // размере сливалась в пятно.
-                        child: AgyshaBunny(
-                          size: 18,
-                          color: cs.onPrimaryContainer,
-                        ),
-                      ),
+                    // (`RepaintBoundary`), а движение — это `Transform` над
+                    // готовым слоем: GPU лишь переносит закэшированную растровую
+                    // картинку. Зайчик живой (мягкий подскок), но кривые за
+                    // кадр не пересобираются — поэтому он не «лагает».
+                    child: AnimatedBunny(
+                      size: 18,
+                      color: cs.onPrimaryContainer,
+                      enter: _enterCurve,
+                      // В таблетке запас по высоте мал — подскок мягче, чтобы
+                      // уши не задевали край плашки.
+                      lift: 0.10,
                     ),
                   ),
                   const SizedBox(width: 3),
@@ -334,7 +326,8 @@ class _UpdatePillState extends State<UpdatePill>
 /// красном бренда (полупрозрачный, как у клавиатуры), текст подписи курсивом,
 /// а кнопки «отдать» при нажатии ([PressScale]) и «подтвердить» — залитая
 /// акцентом с плавной отдачей. Значок в медальоне — свой зайчик Agysha
-/// ([AgyshaBunny]); он мягко проявляется ОДИН раз при открытии окна.
+/// ([AnimatedBunny] поверх [AgyshaBunny]); он мягко проявляется и оживает
+/// подскоком при открытии окна.
 class _UpdateConfirmDialog extends StatefulWidget {
   final String version;
   final VoidCallback onConfirm;
@@ -357,6 +350,8 @@ class _UpdateConfirmDialogState extends State<_UpdateConfirmDialog>
   late final AnimationController _enter = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 620),
+    // То же, что у таблетки: без запуска вход должен быть завершён.
+    value: MotionPrefs.shouldReduceMotion ? 1 : 0,
   );
   late final Animation<double> _enterCurve = CurvedAnimation(
     parent: _enter,
@@ -461,18 +456,12 @@ class _UpdateConfirmDialogState extends State<_UpdateConfirmDialog>
                             color: BrandColors.red.withValues(alpha: 0.16),
                           ),
                           child: Center(
-                            child: AnimatedBuilder(
-                              animation: _enterCurve,
-                              builder: (context, child) => Transform.scale(
-                                scale: _enterCurve.value,
-                                child: Opacity(
-                                  opacity: _enterCurve.value.clamp(0.0, 1.0),
-                                  child: child,
-                                ),
-                              ),
-                              child: RepaintBoundary(
-                                child: AgyshaBunny(size: 22, color: cs.primary),
-                              ),
+                            child: AnimatedBunny(
+                              size: 22,
+                              color: cs.primary,
+                              enter: _enterCurve,
+                              // В медальоне 40 px запас есть — подскок заметнее.
+                              lift: 0.20,
                             ),
                           ),
                         ),
