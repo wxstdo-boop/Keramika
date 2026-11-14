@@ -596,13 +596,13 @@ class _ProfileScreenState extends State<ProfileScreen>
               const SizedBox(height: Spacing.md),
               _musicCard(theme),
               const SizedBox(height: Spacing.md),
-              _giftsCard(theme),
-              const SizedBox(height: Spacing.md),
               _leaderboardCard(theme),
               const SizedBox(height: Spacing.md),
               // Очки — сразу после рейтинга: «за что» читается рядом с «кто
               // сколько», а карточки музыки и рейтинга остаются на своих местах.
               _scoreCard(theme),
+              const SizedBox(height: Spacing.md),
+              _giftsCard(theme),
               const SizedBox(height: Spacing.md),
               _eventsCard(theme),
             ],
