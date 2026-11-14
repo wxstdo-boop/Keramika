@@ -46,6 +46,10 @@ class AlarmService extends ChangeNotifier {
   }
 
   Future<void> remove(String id) async {
+    try {
+      await AlarmScheduler.cancelAlarmClock(id.hashCode);
+      await AlarmScheduler.stopRingingAlarm(id.hashCode);
+    } catch (_) {}
     _alarms.removeWhere((a) => a.id == id);
     notifyListeners();
     await _save();

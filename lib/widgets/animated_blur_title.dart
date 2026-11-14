@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -53,7 +52,7 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
   }
 
   void _toggle() {
-    Haptics.select();
+    Haptics.heavy();
     setState(() => _hidden = !_hidden);
     globalPrefs.setBool('title_blurred', _hidden);
     if (_hidden) {
@@ -77,27 +76,10 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
-          final t = _controller.value;
-          final opacity = Curves.easeInOutCubic.transform(t);
-          final scale = 0.94 + 0.06 * Curves.easeOutBack.transform(t.clamp(0.0, 1.0));
-          Widget content = Opacity(
-            opacity: opacity,
-            child: Transform.scale(
-              scale: scale,
-              child: child,
-            ),
+          return _CyberGlitchEffect(
+            progress: _controller.value,
+            visibleChild: child!,
           );
-          if (t < 0.999) {
-            final blurSigma = (1.0 - t) * 5.5;
-            content = ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(
-                sigmaX: blurSigma,
-                sigmaY: blurSigma,
-              ),
-              child: content,
-            );
-          }
-          return content;
         },
         child: FittedBox(
           fit: BoxFit.scaleDown,
@@ -137,6 +119,168 @@ class _AnimatedBlurTitleState extends State<AnimatedBlurTitle>
       ),
     );
   }
+}
+
+/// Брутальный киберпанк-эффект скрытия/появления имени: хроматический глитч-сдвиг
+/// (cyan/crimson), построчные сканлайны, лазерная засечка и карточка конфиденциальности.
+class _CyberGlitchEffect extends StatelessWidget {
+  final double progress; // 0.0 = hidden/encrypted, 1.0 = visible
+  final Widget visibleChild;
+
+  const _CyberGlitchEffect({
+    required this.progress,
+    required this.visibleChild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = progress.clamp(0.0, 1.0);
+    // Пик глитча в середине перехода
+    final glitch = math.sin(t * math.pi);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+
+    final visibleOpacity = Curves.easeInOutCubic.transform(t);
+    final hiddenOpacity = Curves.easeInOutCubic.transform(1.0 - t);
+
+    if (t >= 0.999) {
+      return visibleChild;
+    }
+
+    final encryptedBadge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF0F0B10) : const Color(0xFFF3EBEF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFE50914).withValues(alpha: 0.55),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE50914).withValues(alpha: 0.20),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFE50914),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '// CLASSIFIED',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2.2,
+              fontFamily: 'monospace',
+              color: dark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        if (hiddenOpacity > 0.001)
+          Opacity(
+            opacity: hiddenOpacity,
+            child: Transform.scale(
+              scale: 0.90 + 0.10 * (1.0 - t),
+              child: encryptedBadge,
+            ),
+          ),
+        if (visibleOpacity > 0.001)
+          Opacity(
+            opacity: visibleOpacity,
+            child: Transform.scale(
+              scale: 0.92 + 0.08 * t,
+              child: glitch > 0.05
+                  ? Stack(
+                      children: [
+                        Transform.translate(
+                          offset: Offset(-3.2 * glitch, 0),
+                          child: ColorFiltered(
+                            colorFilter: const ColorFilter.mode(
+                              Color(0xFF00E5FF),
+                              BlendMode.srcATop,
+                            ),
+                            child: Opacity(
+                              opacity: 0.45 * glitch,
+                              child: visibleChild,
+                            ),
+                          ),
+                        ),
+                        Transform.translate(
+                          offset: Offset(3.2 * glitch, 0),
+                          child: ColorFiltered(
+                            colorFilter: const ColorFilter.mode(
+                              Color(0xFFFF0055),
+                              BlendMode.srcATop,
+                            ),
+                            child: Opacity(
+                              opacity: 0.45 * glitch,
+                              child: visibleChild,
+                            ),
+                          ),
+                        ),
+                        CustomPaint(
+                          foregroundPainter: _ScanlineGlitchPainter(
+                            glitch: glitch,
+                            phase: t,
+                          ),
+                          child: visibleChild,
+                        ),
+                      ],
+                    )
+                  : visibleChild,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ScanlineGlitchPainter extends CustomPainter {
+  final double glitch;
+  final double phase;
+
+  static final Paint _linePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
+
+  const _ScanlineGlitchPainter({
+    required this.glitch,
+    required this.phase,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (glitch < 0.05 || size.height <= 0) return;
+    _linePaint.color = const Color(0xFF00E5FF).withValues(alpha: 0.35 * glitch);
+    const step = 4.0;
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), _linePaint);
+    }
+    final sweepY = (phase * size.height).clamp(0.0, size.height);
+    _linePaint.color = const Color(0xFFFF0055).withValues(alpha: 0.70 * glitch);
+    _linePaint.strokeWidth = 1.8;
+    canvas.drawLine(Offset(0, sweepY), Offset(size.width, sweepY), _linePaint);
+    _linePaint.strokeWidth = 1.0;
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanlineGlitchPainter oldDelegate) =>
+      oldDelegate.glitch != glitch || oldDelegate.phase != phase;
 }
 
 /// Заголовок с кружком онлайна ВНИЗУ, справа от последней буквы.

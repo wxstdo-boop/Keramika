@@ -420,14 +420,10 @@ class _SectionPillState extends State<SectionPill>
     // растянутое положение. Гасим только захваченную тягу за край.
     _startEdgeSettle();
     final target = _dragSmooth.round().clamp(0, count - 1);
-    // Снимаем ручное ведение ДО заказа перелёта: дальше камень ведёт
-    // пружина Home, которая стартует с текущей страницы PageView.
-    sectionDragPage.value = null;
-    // Хаптик на отпускании не дублируем: его даёт _onTabTap в Home, а
-    // границы разделов уже «щёлкнули» в _dragUpdate.
+    // Сначала фиксируем целевой раздел, чтобы подписчики sectionDragPage.value = null
+    // не улетали на старый индекс.
     sectionCurrentIndex.value = target;
-    // Тап-канал: Home доведёт карусель пружиной от текущего положения, а не
-    // «с нуля», поэтому отпускание после тяги не даёт рывка.
+    sectionDragPage.value = null;
     sectionTabTap.value++;
   }
 
@@ -436,11 +432,13 @@ class _SectionPillState extends State<SectionPill>
     _dragging = false;
     // Отмена (палец ушёл не по сценарию): то же гашение захваченной тяги.
     _startEdgeSettle();
-    sectionDragPage.value = null;
     final count = sectionIconsFor(context).length;
     if (count > 1) {
       final target = sectionRailPage.value.round().clamp(0, count - 1);
       sectionCurrentIndex.value = target;
+    }
+    sectionDragPage.value = null;
+    if (count > 1) {
       sectionTabTap.value++;
     }
   }
@@ -617,9 +615,6 @@ class _SectionPillState extends State<SectionPill>
         // — захваченная _releasePull, затухающая по settle.
         final stretch = _dragging ? _edgePull : _releasePull * (1.0 - settle);
         final edgeStretch = stretch.abs();
-        final transitOffset = p - p.roundToDouble();
-        final transitDir = smoothSign(transitOffset * 2.0);
-        final stretchDir = edgeStretch > 0.001 ? smoothSign(stretch) : transitDir;
         // ОБЪЁМНЫЙ СЛОЙ: «резинка» (wave) — наливка/растяжение выбранной
         // вкладки по ходу к СЛЕДУЮЩЕЙ секции. Под пальцем амплитуда ~0.85,
         // в свободном полёте — 1.0 (см. выше). Это и есть то самое
@@ -672,18 +667,11 @@ final visualStretch = math.min(0.98, edgeStretch + 0.90 * wave);
                   // без дискретных переключений Alignment.center/Left/Right.
                   // Дискретный `_anchorSide` (гистерезис ±0.15) дёргал якорь
                   // вбок у углов.
-                  alignment: Alignment(
-                    math.max(
-                      -1.0,
-                      math.min(1.0, -stretchDir * visualStretch * 2.0),
-                    ),
-                    0,
-                  ),
-                  // Растяжка читается ИЗ visualStretch: под пальцем камень
-                  // вытягивается по ходу секции (wave) и за краем (edgeStretch),
-                  // после отпускания — сползает по _edgeSettle. Единый
-                  // коэффициент, без дискретных переключений.
-                  scaleX: 1.0 + 0.55 * visualStretch,
+                  // Симметричное жидкое растяжение от центра: исключает скачки якоря
+                  // и рывки индикатора при переходе через границы секций.
+                  alignment: Alignment.center,
+                  scaleX: 1.0 + 0.32 * visualStretch,
+                  scaleY: 1.0 - 0.08 * visualStretch,
                   // Layout-ширина — КОНСТАНТА (слот/карантин, не зависит от
                   // breath). Дышащий масштаб идёт через Transform — иначе
                   // каждый кадр пересобирался layout, камень «дёргался».

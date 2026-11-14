@@ -4,16 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../utils/motion_prefs.dart';
 
-/// «Белка в колесе» — живой, стильный и ультра-плавный значок обновления:
-/// колесо непрерывно и плавно вращается на GPU, а белочка бежит внутри него.
+/// «Белка в колесе» / «Бегущий хомяк» — живой, контрастный и ультра-плавный значок
+/// обновления: колесо со спицами и ступеньками плавно вращается на GPU, а пухлый
+/// золотистый хомячок с выразительными щёчками и ушками бежит внутри него.
 ///
-/// Архитектура без лагов:
-/// - Колесо и силуэт белки кэшируются через [RepaintBoundary].
-/// - Вращение колеса осуществляется через [Transform.rotate], исключая
-///   покадровую пересборку векторных путей.
-/// - Вектор белки отрисован единым сглаженным контуром, четко читаемым
-///   как при компактном размере (18x18 в таблетке), так и в модальном окне (40x40).
-/// - Учитывает системную настройку [MotionPrefs.shouldReduceMotion].
+/// Чётко читается на любых темах (включая тёмную OLED/Cyberpunk) и при любых размерах
+/// (от 18x18 в таблетке до 40x40 в окне обновления).
 class SquirrelWheel extends StatefulWidget {
   const SquirrelWheel({
     super.key,
@@ -21,16 +17,16 @@ class SquirrelWheel extends StatefulWidget {
     required this.color,
     this.innerColor,
     this.enter,
-    this.period = const Duration(milliseconds: 2800),
+    this.period = const Duration(milliseconds: 2400),
   });
 
   /// Вписанный квадрат значка, px.
   final double size;
 
-  /// Основной цвет белки и акцентов колеса.
+  /// Основной цвет (используется как ориентир акцента).
   final Color color;
 
-  /// Цвет обода и спиц колеса (по умолчанию полупрозрачный от [color]).
+  /// Цвет обода и спиц колеса.
   final Color? innerColor;
 
   /// Разовый вход (плавное появление и масштабирование).
@@ -63,12 +59,25 @@ class _SquirrelWheelState extends State<SquirrelWheel>
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.color;
-    final inner = widget.innerColor ?? color.withValues(alpha: 0.45);
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final reduceMotion = MotionPrefs.shouldReduceMotion;
     final entered = reduceMotion || widget.enter == null
         ? 1.0
         : widget.enter!.value.clamp(0.0, 1.0);
+
+    // Высококонтрастные цвета для идеальной читаемости на тёмной и светлой темах
+    final wheelRim = widget.innerColor ??
+        (dark
+            ? const Color(0xFFE2E8F0).withValues(alpha: 0.85)
+            : const Color(0xFF334155).withValues(alpha: 0.80));
+    final wheelSpokes = dark
+        ? const Color(0xFF94A3B8).withValues(alpha: 0.55)
+        : const Color(0xFF64748B).withValues(alpha: 0.45);
+    final hubColor = dark ? const Color(0xFFF43F5E) : const Color(0xFFE11D48);
+
+    final furColor = dark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
+    final bellyColor = dark ? const Color(0xFFFFFBEB) : const Color(0xFFFEF3C7);
+    final earColor = dark ? const Color(0xFFFDA4AF) : const Color(0xFFF43F5E);
 
     return RepaintBoundary(
       child: Opacity(
@@ -81,7 +90,7 @@ class _SquirrelWheelState extends State<SquirrelWheel>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // 1. Вращающееся колесо (задний слой)
+                // 1. Вращающееся колесо (обод, перекладины-ступеньки и спицы)
                 RepaintBoundary(
                   child: AnimatedBuilder(
                     animation: _spin,
@@ -93,30 +102,41 @@ class _SquirrelWheelState extends State<SquirrelWheel>
                           isComplex: true,
                           willChange: false,
                           painter: _WheelPainter(
-                            wheelColor: inner,
-                            accentColor: color.withValues(alpha: 0.75),
+                            rimColor: wheelRim,
+                            spokeColor: wheelSpokes,
+                            hubColor: hubColor,
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-                // 2. Бегущая белочка внутри колеса (с мягким легким покачиванием в такт)
+                // 2. Бегущий хомяк внутри колеса с задорным перебором лапок
                 RepaintBoundary(
                   child: AnimatedBuilder(
                     animation: _spin,
                     builder: (context, _) {
-                      final bob = reduceMotion
+                      final scamper = reduceMotion
                           ? 0.0
-                          : math.sin(_spin.value * 4 * math.pi) * (widget.size * 0.025);
+                          : math.sin(_spin.value * 8 * math.pi);
+                      final bobY = scamper * (widget.size * 0.035);
+                      final tilt = scamper * 0.04;
                       return Transform.translate(
-                        offset: Offset(0, bob),
-                        child: RepaintBoundary(
-                          child: CustomPaint(
-                            size: Size(widget.size, widget.size),
-                            isComplex: true,
-                            willChange: false,
-                            painter: _SquirrelPainter(color: color),
+                        offset: Offset(0, bobY),
+                        child: Transform.rotate(
+                          angle: tilt,
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              size: Size(widget.size, widget.size),
+                              isComplex: true,
+                              willChange: false,
+                              painter: _HamsterPainter(
+                                furColor: furColor,
+                                bellyColor: bellyColor,
+                                earColor: earColor,
+                                stepPhase: reduceMotion ? 0.0 : _spin.value,
+                              ),
+                            ),
                           ),
                         ),
                       );
@@ -132,79 +152,107 @@ class _SquirrelWheelState extends State<SquirrelWheel>
   }
 }
 
-/// Элегантное беговое колесо: внешний обод, внутренний трек и 4 спицы-турбины
+/// Высококонтрастное колесо с наружным ободом, ступеньками и спицами турбины
 class _WheelPainter extends CustomPainter {
-  final Color wheelColor;
-  final Color accentColor;
+  final Color rimColor;
+  final Color spokeColor;
+  final Color hubColor;
+
+  static final Paint _rimPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..isAntiAlias = true;
+
+  static final Paint _spokePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..isAntiAlias = true;
+
+  static final Paint _hubPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..isAntiAlias = true;
 
   _WheelPainter({
-    required this.wheelColor,
-    required this.accentColor,
+    required this.rimColor,
+    required this.spokeColor,
+    required this.hubColor,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final s = math.min(size.width, size.height);
     final center = Offset(size.width / 2, size.height / 2);
-    final outerRadius = s * 0.46;
-    final innerRadius = s * 0.40;
+    final outerR = s * 0.46;
+    final innerR = s * 0.38;
 
-    // Внешний обод
-    final outerPaint = Paint()
-      ..color = wheelColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.065
-      ..isAntiAlias = true;
-    canvas.drawCircle(center, outerRadius, outerPaint);
+    // Внешний яркий обод
+    _rimPaint.color = rimColor;
+    _rimPaint.strokeWidth = s * 0.065;
+    canvas.drawCircle(center, outerR, _rimPaint);
 
-    // Внутренний тонкий обод
-    final innerPaint = Paint()
-      ..color = wheelColor.withValues(alpha: 0.35)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.03
-      ..isAntiAlias = true;
-    canvas.drawCircle(center, innerRadius, innerPaint);
+    // Внутренний обод
+    _rimPaint.color = spokeColor;
+    _rimPaint.strokeWidth = s * 0.025;
+    canvas.drawCircle(center, innerR, _rimPaint);
 
-    // 4 изогнутые аэродинамические спицы (симметрия 90° для плавности)
-    final spokePaint = Paint()
-      ..color = wheelColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.05
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = true;
-
+    // 4 изогнутые аэродинамические спицы турбины
+    _spokePaint.color = spokeColor;
+    _spokePaint.strokeWidth = s * 0.045;
     for (var i = 0; i < 4; i++) {
       final angle = i * (math.pi / 2);
-      final pEnd = center + Offset(math.cos(angle), math.sin(angle)) * (innerRadius - s * 0.02);
+      final pEnd = center + Offset(math.cos(angle), math.sin(angle)) * innerR;
       final pMid = center +
           Offset(
-            math.cos(angle + 0.35) * (innerRadius * 0.55),
-            math.sin(angle + 0.35) * (innerRadius * 0.55),
+            math.cos(angle + 0.36) * (innerR * 0.55),
+            math.sin(angle + 0.36) * (innerR * 0.55),
           );
-      final spokePath = Path()
+      final path = Path()
         ..moveTo(center.dx, center.dy)
         ..quadraticBezierTo(pMid.dx, pMid.dy, pEnd.dx, pEnd.dy);
-      canvas.drawPath(spokePath, spokePaint);
+      canvas.drawPath(path, _spokePaint);
+    }
+
+    // 8 радиальных перекладин-ступенек между ободами
+    _spokePaint.strokeWidth = s * 0.035;
+    for (var i = 0; i < 8; i++) {
+      final a = i * (math.pi / 4);
+      final p1 = center + Offset(math.cos(a), math.sin(a)) * innerR;
+      final p2 = center + Offset(math.cos(a), math.sin(a)) * outerR;
+      canvas.drawLine(p1, p2, _spokePaint);
     }
 
     // Центральная ступица (ось колеса)
-    final hubPaint = Paint()
-      ..color = accentColor
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-    canvas.drawCircle(center, s * 0.075, hubPaint);
+    _hubPaint.color = hubColor;
+    canvas.drawCircle(center, s * 0.075, _hubPaint);
+
+    _hubPaint.color = Colors.white.withValues(alpha: 0.90);
+    canvas.drawCircle(center, s * 0.025, _hubPaint);
   }
 
   @override
   bool shouldRepaint(covariant _WheelPainter old) =>
-      old.wheelColor != wheelColor || old.accentColor != accentColor;
+      old.rimColor != rimColor ||
+      old.spokeColor != spokeColor ||
+      old.hubColor != hubColor;
 }
 
-/// Идеально выверенный векторный силуэт бегущей белочки в профиль
-class _SquirrelPainter extends CustomPainter {
-  final Color color;
+/// Выверенный векторный силуэт бегущего хомячка: круглые пухлые щёчки,
+/// торчащие ушки, маленькие лапки и блестящий глазик.
+class _HamsterPainter extends CustomPainter {
+  final Color furColor;
+  final Color bellyColor;
+  final Color earColor;
+  final double stepPhase;
 
-  _SquirrelPainter({required this.color});
+  static final Paint _fillPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..isAntiAlias = true;
+
+  _HamsterPainter({
+    required this.furColor,
+    required this.bellyColor,
+    required this.earColor,
+    required this.stepPhase,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -214,83 +262,117 @@ class _SquirrelPainter extends CustomPainter {
 
     Offset pt(double x, double y) => Offset(ox + x * s, oy + y * s);
 
-    final fillPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-
-    // Пушистый хвост дугой вперед над спинкой
-    final tailPath = Path()
-      ..moveTo(pt(0.36, 0.60).dx, pt(0.36, 0.60).dy)
-      ..cubicTo(
-        pt(0.20, 0.58).dx, pt(0.20, 0.58).dy,
-        pt(0.18, 0.36).dx, pt(0.18, 0.36).dy,
-        pt(0.28, 0.26).dx, pt(0.28, 0.26).dy,
-      )
-      ..cubicTo(
-        pt(0.35, 0.19).dx, pt(0.35, 0.19).dy,
-        pt(0.48, 0.22).dx, pt(0.48, 0.22).dy,
-        pt(0.48, 0.33).dx, pt(0.48, 0.33).dy,
-      )
-      ..cubicTo(
-        pt(0.48, 0.42).dx, pt(0.48, 0.42).dy,
-        pt(0.34, 0.38).dx, pt(0.34, 0.38).dy,
-        pt(0.32, 0.46).dx, pt(0.32, 0.46).dy,
-      )
-      ..cubicTo(
-        pt(0.30, 0.52).dx, pt(0.30, 0.52).dy,
-        pt(0.36, 0.56).dx, pt(0.36, 0.56).dy,
-        pt(0.40, 0.58).dx, pt(0.40, 0.58).dy,
-      )
-      ..close();
-    canvas.drawPath(tailPath, fillPaint);
-
-    // Тело бегущей белки (стремительный наклон вперед к бегу)
+    // 1. Тело хомяка (пухлый, округлый силуэт с наклоном вперёд)
+    _fillPaint.color = furColor;
     final bodyPath = Path()
-      ..moveTo(pt(0.36, 0.62).dx, pt(0.36, 0.62).dy)
+      // Попа и хвостик
+      ..moveTo(pt(0.32, 0.67).dx, pt(0.32, 0.67).dy)
       ..cubicTo(
-        pt(0.42, 0.54).dx, pt(0.42, 0.54).dy,
-        pt(0.52, 0.50).dx, pt(0.52, 0.50).dy,
-        pt(0.60, 0.48).dx, pt(0.60, 0.48).dy,
+        pt(0.24, 0.64).dx, pt(0.24, 0.64).dy,
+        pt(0.24, 0.50).dx, pt(0.24, 0.50).dy,
+        pt(0.33, 0.44).dx, pt(0.33, 0.44).dy,
       )
-      // Голова с ушком
+      // Округлая спинка
       ..cubicTo(
-        pt(0.68, 0.44).dx, pt(0.68, 0.44).dy,
-        pt(0.72, 0.36).dx, pt(0.72, 0.36).dy,
-        pt(0.70, 0.32).dx, pt(0.70, 0.32).dy,
+        pt(0.40, 0.38).dx, pt(0.40, 0.38).dy,
+        pt(0.50, 0.38).dx, pt(0.50, 0.38).dy,
+        pt(0.58, 0.41).dx, pt(0.58, 0.41).dy,
       )
-      // Кончик ушка и мордочка вперед
-      ..lineTo(pt(0.72, 0.38).dx, pt(0.72, 0.38).dy)
+      // Затылок к ушку
+      ..lineTo(pt(0.60, 0.37).dx, pt(0.60, 0.37).dy)
+      // Мордочка и носик
       ..cubicTo(
-        pt(0.77, 0.44).dx, pt(0.77, 0.44).dy,
-        pt(0.76, 0.52).dx, pt(0.76, 0.52).dy,
-        pt(0.70, 0.55).dx, pt(0.70, 0.55).dy,
+        pt(0.68, 0.39).dx, pt(0.68, 0.39).dy,
+        pt(0.74, 0.44).dx, pt(0.74, 0.44).dy,
+        pt(0.75, 0.49).dx, pt(0.75, 0.49).dy,
       )
-      // Передняя лапка вытянута вперед в беге
-      ..lineTo(pt(0.68, 0.65).dx, pt(0.68, 0.65).dy)
-      ..lineTo(pt(0.64, 0.64).dx, pt(0.64, 0.64).dy)
-      ..lineTo(pt(0.62, 0.58).dx, pt(0.62, 0.58).dy)
+      // Пухлая щёчка хомяка
+      ..cubicTo(
+        pt(0.74, 0.58).dx, pt(0.74, 0.58).dy,
+        pt(0.67, 0.63).dx, pt(0.67, 0.63).dy,
+        pt(0.60, 0.63).dx, pt(0.60, 0.63).dy,
+      )
       // Животик
       ..cubicTo(
-        pt(0.54, 0.63).dx, pt(0.54, 0.63).dy,
-        pt(0.46, 0.66).dx, pt(0.46, 0.66).dy,
-        pt(0.38, 0.67).dx, pt(0.38, 0.67).dy,
+        pt(0.52, 0.66).dx, pt(0.52, 0.66).dy,
+        pt(0.42, 0.68).dx, pt(0.42, 0.68).dy,
+        pt(0.35, 0.68).dx, pt(0.35, 0.68).dy,
       )
-      // Задняя лапка отталкивается от колеса
-      ..lineTo(pt(0.35, 0.72).dx, pt(0.35, 0.72).dy)
-      ..lineTo(pt(0.31, 0.70).dx, pt(0.31, 0.70).dy)
-      ..lineTo(pt(0.34, 0.64).dx, pt(0.34, 0.64).dy)
       ..close();
-    canvas.drawPath(bodyPath, fillPaint);
+    canvas.drawPath(bodyPath, _fillPaint);
 
-    // Маленький сияющий глазок
-    final eyePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.95)
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-    canvas.drawCircle(pt(0.68, 0.46), s * 0.022, eyePaint);
+    // 2. Светлое брюшко и щёчка (добавляет объем и контраст)
+    _fillPaint.color = bellyColor;
+    final bellyPath = Path()
+      ..moveTo(pt(0.44, 0.66).dx, pt(0.44, 0.66).dy)
+      ..cubicTo(
+        pt(0.52, 0.64).dx, pt(0.52, 0.64).dy,
+        pt(0.64, 0.61).dx, pt(0.64, 0.61).dy,
+        pt(0.69, 0.54).dx, pt(0.69, 0.54).dy,
+      )
+      ..cubicTo(
+        pt(0.65, 0.50).dx, pt(0.65, 0.50).dy,
+        pt(0.56, 0.54).dx, pt(0.56, 0.54).dy,
+        pt(0.48, 0.60).dx, pt(0.48, 0.60).dy,
+      )
+      ..close();
+    canvas.drawPath(bellyPath, _fillPaint);
+
+    // 3. Круглое ушко с розовой сердцевинкой
+    _fillPaint.color = furColor;
+    canvas.drawOval(
+      Rect.fromCenter(center: pt(0.58, 0.36), width: s * 0.08, height: s * 0.11),
+      _fillPaint,
+    );
+    _fillPaint.color = earColor;
+    canvas.drawOval(
+      Rect.fromCenter(center: pt(0.58, 0.36), width: s * 0.045, height: s * 0.07),
+      _fillPaint,
+    );
+
+    // 4. Лапки в беге (передняя тянется вперед, задняя отталкивается)
+    final legSwing = math.sin(stepPhase * 8 * math.pi);
+    _fillPaint.color = earColor;
+    // Передняя лапка
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: pt(0.65 + 0.03 * legSwing, 0.66),
+          width: s * 0.07,
+          height: s * 0.04,
+        ),
+        Radius.circular(s * 0.02),
+      ),
+      _fillPaint,
+    );
+    // Задняя лапка
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: pt(0.33 - 0.03 * legSwing, 0.69),
+          width: s * 0.08,
+          height: s * 0.04,
+        ),
+        Radius.circular(s * 0.02),
+      ),
+      _fillPaint,
+    );
+
+    // 5. Выразительный сияющий глазик
+    _fillPaint.color = const Color(0xFF1E1B18);
+    canvas.drawCircle(pt(0.65, 0.44), s * 0.026, _fillPaint);
+    _fillPaint.color = Colors.white;
+    canvas.drawCircle(pt(0.642, 0.432), s * 0.010, _fillPaint);
+
+    // 6. Крошечный розовый носик
+    _fillPaint.color = earColor;
+    canvas.drawCircle(pt(0.75, 0.48), s * 0.016, _fillPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _SquirrelPainter old) => old.color != color;
+  bool shouldRepaint(covariant _HamsterPainter old) =>
+      old.furColor != furColor ||
+      old.bellyColor != bellyColor ||
+      old.earColor != earColor ||
+      old.stepPhase != stepPhase;
 }

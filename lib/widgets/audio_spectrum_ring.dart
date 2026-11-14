@@ -35,14 +35,15 @@ class _AudioSpectrumRingState extends State<AudioSpectrumRing>
   @override
   void initState() {
     super.initState();
+    // Непрерывный вечный гармонический цикл без резких срывов
     _phaseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3600),
+      duration: const Duration(milliseconds: 4800),
     );
 
     _playTransition = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 550),
+      duration: const Duration(milliseconds: 650),
       value: _music.playing ? 1.0 : 0.0,
     );
 
@@ -71,7 +72,6 @@ class _AudioSpectrumRingState extends State<AudioSpectrumRing>
     } else {
       _playTransition.reverse();
     }
-    setState(() {});
   }
 
   @override
@@ -141,12 +141,11 @@ class _DelicateSpectrumPainter extends CustomPainter {
   final Paint _glowPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round
-    ..strokeWidth = 2.4
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
+    ..strokeWidth = 3.0;
 
   final Paint _auraPaint = Paint()
     ..style = PaintingStyle.stroke
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0);
+    ..strokeWidth = 2.5;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -158,9 +157,7 @@ class _DelicateSpectrumPainter extends CustomPainter {
     if (playFactor > 0.01) {
       final pulse = math.sin(phase * 1.5) * 1.5;
       final auraRadius = baseRadius + 1.5 + pulse;
-      _auraPaint
-        ..color = primaryColor.withValues(alpha: 0.12 * playFactor)
-        ..strokeWidth = 4.0;
+      _auraPaint.color = primaryColor.withValues(alpha: 0.15 * playFactor);
       canvas.drawCircle(center, auraRadius, _auraPaint);
     }
 
@@ -168,8 +165,8 @@ class _DelicateSpectrumPainter extends CustomPainter {
       final angle = (i / _barCount) * _tau - math.pi / 2;
 
       // Плавная органическая интерполяция волн без резких производных
-      final w1 = (math.sin(phase * 2.4 + i * 0.45) + 1.0) * 0.5;
-      final w2 = (math.cos(phase * 1.6 - i * 0.32) + 1.0) * 0.5;
+      final w1 = (math.sin(phase * 2.0 + i * 0.45) + 1.0) * 0.5;
+      final w2 = (math.cos(phase * 1.5 - i * 0.32) + 1.0) * 0.5;
       final wave = w1 * 0.62 + w2 * 0.38;
 
       // Деликатный размер: в покое 1.0 px, на максимуме до 6.2 px
@@ -196,8 +193,8 @@ class _DelicateSpectrumPainter extends CustomPainter {
       final alpha = 0.22 + 0.68 * playFactor * (0.4 + wave * 0.6);
       _barPaint.color = barColor.withValues(alpha: alpha.clamp(0.0, 1.0));
 
-      if (playFactor > 0.3 && dynamicHeight > 3.0) {
-        _glowPaint.color = barColor.withValues(alpha: 0.25 * playFactor);
+      if (playFactor > 0.25 && dynamicHeight > 2.0) {
+        _glowPaint.color = barColor.withValues(alpha: 0.20 * playFactor);
         canvas.drawLine(p1, p2, _glowPaint);
       }
 

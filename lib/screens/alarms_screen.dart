@@ -7,6 +7,7 @@ import '../widgets/section_pill.dart';
 import '../models/alarm.dart';
 import '../models/app_timer.dart';
 import '../services/alarm_service.dart';
+import '../services/alarm_scheduler.dart';
 import '../services/timer_service.dart';
 import 'wake_task_screen.dart';
 import '../services/settings_service.dart';
@@ -531,28 +532,31 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           pressedScale: 0.96,
           duration: const Duration(milliseconds: 140),
           releaseDuration: const Duration(milliseconds: 220),
-          child: AnimatedContainer(
+          child: AnimatedSize(
             duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: pillBg,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: borderColor,
-                width: 0.9,
+            curve: Curves.easeInOutCubic,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: pillBg,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: borderColor,
+                  width: 0.9,
+                ),
+                boxShadow: [
+                  if (hasActive)
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      blurRadius: 16,
+                      spreadRadius: -4,
+                      offset: const Offset(0, 3),
+                    ),
+                ],
               ),
-              boxShadow: [
-                if (hasActive)
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    blurRadius: 16,
-                    spreadRadius: -4,
-                    offset: const Offset(0, 3),
-                  ),
-              ],
-            ),
-            child: AnimatedSwitcher(
+              child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 280),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
@@ -591,6 +595,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
               ),
             ),
           ),
+        ),
         ),
       ),
     );
@@ -665,9 +670,10 @@ class _AlarmsScreenState extends State<AlarmsScreen>
               destructive: true,
             );
           },
-          onDismissed: (_) {
-            _service.remove(alarm.id);
-            notificationService.cancelAlarm(alarm.id);
+          onDismissed: (_) async {
+            await notificationService.cancelAlarm(alarm.id);
+            await AlarmScheduler.stopRingingAlarm(alarm.id.hashCode);
+            await _service.remove(alarm.id);
           },
           child: SmoothHover(
             // «Вдавливание» при зажатии — карточка мягко уменьшается.

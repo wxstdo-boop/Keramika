@@ -616,226 +616,201 @@ class _ProfileScreenState extends State<ProfileScreen>
         : _service.displayName;
     final talisman = _service.activeTalisman;
 
-    return _Card(
-      child: Column(
-        children: [
-          const SizedBox(height: Spacing.xs),
-          AudioSpectrumRing(
-            radius: 48,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                // Плавно парящий главный талисман на фоне аватарки (плавное появление/смена/исчезновение)
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.82, end: 1.0).animate(anim),
-                      child: child,
+    return Stack(
+      children: [
+        // Талисманы плавно появляются на фоне профиля повсюду, а не за аватаркой
+        Positioned.fill(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 500),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: talisman != null
+                ? RepaintBoundary(
+                    key: ValueKey('bg_talisman_${talisman.id}'),
+                    child: CustomPaint(
+                      painter: _TalismanBackgroundPainter(
+                        color: talisman.rarity.color,
+                        accent: BrandColors.red,
+                      ),
                     ),
-                  ),
-                  child: talisman != null
-                      ? Container(
-                          key: ValueKey('talisman_${talisman.id}'),
-                          width: 124,
-                          height: 124,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              colors: [
-                                BrandColors.red.withValues(alpha: 0.28),
-                                talisman.rarity.color.withValues(alpha: 0.16),
-                                Colors.transparent,
-                              ],
-                              stops: const [0.0, 0.65, 1.0],
-                            ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('no_bg_talisman')),
+          ),
+        ),
+        _Card(
+          child: Column(
+            children: [
+              const SizedBox(height: Spacing.xs),
+              AudioSpectrumRing(
+                radius: 48,
+                child: SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      // Аватарка с тактильным откликом
+                      PressScale(
+                        pressedScale: 0.94,
+                        duration: const Duration(milliseconds: 240),
+                        releaseDuration: const Duration(milliseconds: 320),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _pickAvatar,
+                          onLongPress: _pickAvatar,
+                          child: ProfileAvatar(
+                            index: _service.avatarIndex,
+                            size: 96,
+                            glow: true,
+                            imagePath: _service.avatarImagePath,
+                            motion: _scrollCtrl,
+                            motionOf: () =>
+                                _scrollCtrl.hasClients ? (_scrollCtrl.offset / 140) : 0.0,
                           ),
-                          child: Align(
-                            alignment: const Alignment(0, -0.92),
+                        ),
+                      ),
+                      // Компактный значок смены авы: строго зафиксирован на аватарке, никогда не съезжает
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: PressScale(
+                          pressedScale: 0.88,
+                          child: GestureDetector(
+                            onTap: _pickAvatar,
+                            behavior: HitTestBehavior.opaque,
                             child: Container(
-                              padding: const EdgeInsets.all(4),
+                              width: 24,
+                              height: 24,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF101018),
+                                color: theme.colorScheme.primary,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: BrandColors.red.withValues(alpha: 0.8),
-                                  width: 1.2,
+                                  color: theme.colorScheme.surface,
+                                  width: 1.8,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: BrandColors.red.withValues(alpha: 0.45),
-                                    blurRadius: 8,
+                                    color: theme.colorScheme.primary
+                                        .withValues(alpha: 0.40),
+                                    blurRadius: 5,
                                   ),
                                 ],
                               ),
-                              child: Icon(
-                                talisman.icon,
-                                size: 16,
-                                color: BrandColors.red,
+                              child: const Icon(
+                                Icons.photo_camera_rounded,
+                                size: 13,
+                                color: Colors.white,
                               ),
                             ),
                           ),
-                        )
-                      : const SizedBox.shrink(key: ValueKey('none')),
-                ),
-                // Аватарка с тактильным откликом
-                PressScale(
-                  pressedScale: 0.94,
-                  duration: const Duration(milliseconds: 240),
-                  releaseDuration: const Duration(milliseconds: 320),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _pickAvatar,
-                    onLongPress: _pickAvatar,
-                    child: ProfileAvatar(
-                      index: _service.avatarIndex,
-                      size: 96,
-                      glow: true,
-                      imagePath: _service.avatarImagePath,
-                      motion: _scrollCtrl,
-                      motionOf: () =>
-                          _scrollCtrl.hasClients ? (_scrollCtrl.offset / 140) : 0.0,
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                // Компактный значок смены авы (не заслоняет саму аватарку)
-                Positioned(
-                  right: 2,
-                  bottom: 2,
-                  child: PressScale(
-                    pressedScale: 0.88,
-                    child: GestureDetector(
-                      onTap: _pickAvatar,
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: theme.colorScheme.surface,
-                            width: 1.8,
+              ),
+              const SizedBox(height: Spacing.md),
+              // Кружок слева от имени
+              Center(
+                child: Transform.translate(
+                  offset: Offset(-_dotOverhang, 0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      OnlineDot(size: _dotSize, onTap: _toggleOnline),
+                      const SizedBox(width: 1),
+                      AnimatedSwitcher(
+                        duration: MotionPrefs.shouldReduceMotion
+                            ? Duration.zero
+                            : Motion.normal,
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, anim) => FadeTransition(
+                          opacity: anim,
+                          child: SizeTransition(
+                            axis: Axis.horizontal,
+                            sizeFactor: anim,
+                            child: child,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: theme.colorScheme.primary
-                                  .withValues(alpha: 0.40),
-                              blurRadius: 5,
+                        ),
+                        child: Text(
+                          name,
+                          key: ValueKey(name),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: Weights.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              // Престижный титул (с плавной сменой габаритов и кровавой подсветкой)
+              PressScale(
+                pressedScale: 0.94,
+                child: GestureDetector(
+                  onTap: _showPrestigeTitlePicker,
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeInOutCubic,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: BrandColors.red.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(Radii.pill),
+                        border: Border.all(
+                          color: BrandColors.red.withValues(alpha: 0.42),
+                          width: 0.9,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.bolt_rounded, size: 14, color: BrandColors.red),
+                          const SizedBox(width: 4),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 320),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.2),
+                                  end: Offset.zero,
+                                ).animate(anim),
+                                child: child,
+                              ),
                             ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.photo_camera_rounded,
-                          size: 13,
-                          color: Colors.white,
-                        ),
+                            child: Text(
+                              _service.prestigeTitle,
+                              key: ValueKey(_service.prestigeTitle),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: Spacing.md),
-          // Кружок слева от имени
-          Center(
-            child: Transform.translate(
-              offset: Offset(-_dotOverhang, 0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  OnlineDot(size: _dotSize, onTap: _toggleOnline),
-                  const SizedBox(width: 1),
-                  AnimatedSwitcher(
-                    duration: MotionPrefs.shouldReduceMotion
-                        ? Duration.zero
-                        : Motion.normal,
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: SizeTransition(
-                        axis: Axis.horizontal,
-                        sizeFactor: anim,
-                        child: child,
-                      ),
-                    ),
-                    child: Text(
-                      name,
-                      key: ValueKey(name),
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: Weights.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          // Престижный титул (с плавным переключением и кровавой подсветкой)
-          PressScale(
-            pressedScale: 0.94,
-            child: GestureDetector(
-              onTap: _showPrestigeTitlePicker,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: BrandColors.red.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(Radii.pill),
-                  border: Border.all(
-                    color: BrandColors.red.withValues(alpha: 0.42),
-                    width: 0.9,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.bolt_rounded, size: 14, color: BrandColors.red),
-                    const SizedBox(width: 4),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 320),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, 0.2),
-                            end: Offset.zero,
-                          ).animate(anim),
-                          child: child,
-                        ),
-                      ),
-                      child: Text(
-                        _service.prestigeTitle,
-                        key: ValueKey(_service.prestigeTitle),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ],
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -3075,4 +3050,45 @@ class _TrackRowState extends State<_TrackRow>
       ),
     );
   }
+}
+
+/// Фоновый шейдер активного талисмана на карточке профиля (мягкие кибер-руны и созвездие ауры)
+class _TalismanBackgroundPainter extends CustomPainter {
+  final Color color;
+  final Color accent;
+
+  const _TalismanBackgroundPainter({
+    required this.color,
+    required this.accent,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    final paint1 = Paint()
+      ..color = accent.withValues(alpha: 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    final paint2 = Paint()
+      ..color = color.withValues(alpha: 0.07)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    // Несколько геометрических кибер-рунических кругов по углам фона
+    canvas.drawCircle(Offset(w * 0.12, h * 0.25), 32, paint1);
+    canvas.drawCircle(Offset(w * 0.88, h * 0.35), 44, paint2);
+    canvas.drawCircle(Offset(w * 0.82, h * 0.78), 28, paint1);
+    canvas.drawCircle(Offset(w * 0.18, h * 0.82), 38, paint2);
+
+    // Мягкие диагональные линии созвездия
+    canvas.drawLine(Offset(w * 0.12, h * 0.25), Offset(w * 0.28, h * 0.18), paint1);
+    canvas.drawLine(Offset(w * 0.88, h * 0.35), Offset(w * 0.72, h * 0.48), paint2);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TalismanBackgroundPainter old) =>
+      old.color != color || old.accent != accent;
 }

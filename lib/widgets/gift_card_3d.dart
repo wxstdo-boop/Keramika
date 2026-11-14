@@ -137,7 +137,12 @@ class _GiftCard3DState extends State<GiftCard3D>
             child: Transform(
               transform: transform,
               alignment: FractionalOffset.center,
-              child: child,
+              child: PressScale(
+                pressedScale: 0.94,
+                duration: const Duration(milliseconds: 160),
+                releaseDuration: const Duration(milliseconds: 260),
+                child: child!,
+              ),
             ),
           );
         },
@@ -320,7 +325,7 @@ class _GiftCard3DState extends State<GiftCard3D>
   }
 }
 
-/// Художественный шейдер голографического блика (фольги) с кроваво-неоновым отливом
+/// Художественный шейдер голографического блика (фольги) с мягким спекулярным переливом
 class _HoloFoilPainter extends CustomPainter {
   final Offset tilt;
   final Color rarityColor;
@@ -332,20 +337,22 @@ class _HoloFoilPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final shiftX = tilt.dx * 0.45;
-    final shiftY = tilt.dy * 0.45;
+    final cx = size.width * (0.5 + tilt.dx * 0.40);
+    final cy = size.height * (0.45 + tilt.dy * 0.40);
 
-    final gradient = LinearGradient(
-      begin: Alignment(-1.0 + shiftX, -1.0 + shiftY),
-      end: Alignment(1.0 + shiftX, 1.0 + shiftY),
+    final gradient = RadialGradient(
+      center: Alignment(
+        (cx / size.width - 0.5) * 2.0,
+        (cy / size.height - 0.5) * 2.0,
+      ),
+      radius: 0.95,
       colors: [
-        Colors.white.withValues(alpha: 0.0),
-        rarityColor.withValues(alpha: 0.16),
-        Colors.white.withValues(alpha: 0.32),
-        BrandColors.red.withValues(alpha: 0.18),
-        Colors.white.withValues(alpha: 0.0),
+        Colors.white.withValues(alpha: 0.20),
+        rarityColor.withValues(alpha: 0.14),
+        BrandColors.red.withValues(alpha: 0.09),
+        Colors.transparent,
       ],
-      stops: const [0.0, 0.30, 0.50, 0.70, 1.0],
+      stops: const [0.0, 0.35, 0.65, 1.0],
     );
 
     final rect = Offset.zero & size;
@@ -527,24 +534,15 @@ class _GiftDetailsSheetState extends State<_GiftDetailsSheet> {
               ),
             ),
             const SizedBox(height: 20),
-            // Кнопка «Сделать главным талисманом» с мягкой отдачей
+            // Кнопка «Сделать главным талисманом» с ультра-плавной сменой цвета и размера
             Row(
               children: [
                 Expanded(
                   child: PressScale(
                     pressedScale: 0.94,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _fav ? BrandColors.red : theme.colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: _fav ? 4 : 1,
-                        shadowColor: BrandColors.red.withValues(alpha: 0.5),
-                      ),
-                      onPressed: () async {
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () async {
                         await Haptics.select();
                         await ProfileService().toggleGiftFavorite(widget.gift.id);
                         if (mounted) {
@@ -552,19 +550,57 @@ class _GiftDetailsSheetState extends State<_GiftDetailsSheet> {
                         }
                         widget.onFavoriteToggled?.call();
                       },
-                      icon: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 250),
-                        child: Icon(
-                          _fav ? Icons.star_rounded : Icons.star_outline_rounded,
-                          key: ValueKey(_fav),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeInOutCubic,
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: _fav ? BrandColors.red : theme.colorScheme.primary,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (_fav ? BrandColors.red : theme.colorScheme.primary)
+                                  .withValues(alpha: 0.40),
+                              blurRadius: _fav ? 14 : 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                      ),
-                      label: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 250),
-                        child: Text(
-                          _fav ? 'Главный талисман' : 'Выбрать талисманом',
-                          key: ValueKey(_fav),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        child: Center(
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOutCubic,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 260),
+                                  child: Icon(
+                                    _fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                                    key: ValueKey(_fav),
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 260),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  child: Text(
+                                    _fav ? 'Главный талисман' : 'Выбрать талисманом',
+                                    key: ValueKey(_fav),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),

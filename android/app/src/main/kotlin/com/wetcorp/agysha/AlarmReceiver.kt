@@ -23,6 +23,15 @@ import java.util.Calendar
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_DISMISS) {
+            val id = intent.getIntExtra("alarm_id", 0)
+            AlarmForegroundService.stop(context)
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(id)
+            logToFile(context, "ALARM DISMISSED FROM NOTIFICATION id=$id")
+            return
+        }
+
         acquireWakeLock(context)
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val screenWakeLock = try {
@@ -297,22 +306,21 @@ class AlarmReceiver : BroadcastReceiver() {
             }
             logToFile(ctx, "ACTIVITY START OK id=$id via=pendingIntent")
         } catch (e: Exception) {
-            // Ожидаемо на старых Android: ordinary start из фона режется
-            // системой. Оставляем как запасной путь — на API < 34 он часто
-            // срабатывает, если приложение недавно было на экране.
             logToFile(
                 ctx,
                 "ACTIVITY START BLOCKED id=$id error=${e.javaClass.simpleName}: ${e.message}",
             )
-            try {
-                ctx.startActivity(i)
-                logToFile(ctx, "ACTIVITY START OK id=$id via=direct")
-            } catch (e2: Exception) {
-                logToFile(
-                    ctx,
-                    "ACTIVITY START BLOCKED id=$id direct error=${e2.javaClass.simpleName}",
-                )
-            }
+        }
+
+        // Прямой запуск через AlarmManager setAlarmClock исключение (BAL bypass)
+        try {
+            ctx.startActivity(i)
+            logToFile(ctx, "ACTIVITY START OK id=$id via=direct")
+        } catch (e2: Exception) {
+            logToFile(
+                ctx,
+                "ACTIVITY START BLOCKED id=$id direct error=${e2.javaClass.simpleName}",
+            )
         }
     }
 
@@ -420,6 +428,21 @@ class AlarmReceiver : BroadcastReceiver() {
             .setColor(0xFFFDF2F6.toInt())
             .setDeleteIntent(cancelPi)  // Защита от случайного закрытия
 
+        if (!isRealityCheck) {
+            val dismissIntent = Intent(ctx, AlarmReceiver::class.java).apply {
+                action = ACTION_DISMISS
+                putExtra("alarm_id", id)
+            }
+            val dismissPi = PendingIntent.getBroadcast(
+                ctx, id + 2000, dismissIntent,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                else PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            builder.addAction(R.drawable.ic_notification, "Отключить", dismissPi)
+            builder.addAction(R.drawable.ic_notification, "Открыть", pi)
+        }
+
         if (fallbackSound) {
             resolveSoundUri(ctx, soundName, customPath)?.let { builder.setSound(it) }
         }
@@ -429,12 +452,7 @@ class AlarmReceiver : BroadcastReceiver() {
             builder.setDefaults(NotificationCompat.DEFAULT_VIBRATE)
         }
 
-        // Full-screen intent — ТОЛЬКО когда он реально разрешён. Постить
-        // заведомо отклоняемые full-screen-показы бессмысленно: система
-        // записывает каждый как отказ вокруг права, а само право теперь не
-        // является единственным способом открыть экран (см.
-        // launchAlarmActivity).
-        if (useFullScreen) builder.setFullScreenIntent(pi, true)
+        if (useFullScreen || !isRealityCheck) builder.setFullScreenIntent(pi, true)
 
         try {
             NotificationManagerCompat.from(ctx).notify(id, builder.build())
@@ -479,7 +497,7 @@ class AlarmReceiver : BroadcastReceiver() {
             channelsCleanedUp = true
             // agysha_alarm_ring НЕ трогаем — это канал самого сервиса
             // звонка, удалить его значит снять foreground-уведомление.
-            for (stale in listOf("agysha_alarm_v2", "agysha_alarm_v1")) {
+            for (stale in listOf("agysha_alarm_v3", "agysha_alarm_v2", "agysha_alarm_v1")) {
                 try {
                     if (nm.getNotificationChannel(stale) != null) nm.deleteNotificationChannel(stale)
                 } catch (_: Exception) {}
@@ -521,24 +539,17 @@ class AlarmReceiver : BroadcastReceiver() {
                 } else {
                     "Срабатывания будильников"
                 }
-                if (fallbackSound) {
-                    // Сервис звонка не поднялся — единственный источник звука
-                    // теперь канал, поэтому он создаётся под КОНКРЕТНЫЙ звук
-                    // (id канала тоже зависит от звука, см. fallbackChannelId).
-                    setSound(
-                        resolveSoundUri(ctx, soundName, customPath),
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build(),
-                    )
-                } else {
-                    // ТИХИЙ канал. Звук крутит AlarmForegroundService
-                    // выбранным файлом — он меняется вместе с настройкой
-                    // будильника, а звук канала меняться не умеет.
-                    setSound(null, null)
-                }
-                enableVibration(if (fallbackSound) vibrate else false)
+                val soundUri = resolveSoundUri(ctx, soundName, customPath)
+                    ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                setSound(
+                    soundUri,
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 800, 400, 800, 400, 800)
                 enableLights(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 setBypassDnd(true)
@@ -720,8 +731,10 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "AlarmReceiver"
 
-        /** Канал будильников (тихий — звучит сервис). */
-        const val ALARM_CHANNEL = "agysha_alarm_v3"
+        /** Канал будильников (громкий с вибрацией — гарантирует Heads-Up баннер). */
+        const val ALARM_CHANNEL = "agysha_alarm_v4"
+        /** Действие отключения будильника прямо из всплывающего уведомления */
+        const val ACTION_DISMISS = "com.wetcorp.agysha.action.ALARM_DISMISS"
         /** Канал проверок реальности (системный звук уведомлений). */
         const val RC_CHANNEL = "agysha_rc_v1"
 

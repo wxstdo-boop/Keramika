@@ -55,11 +55,11 @@ class PageSpring {
   void to(double page, {double? maxPage}) {
     if (!controller.hasClients) return;
     if (maxPage != null) _max = maxPage;
-    final current = controller.page;
-    if (current != null && current.isFinite) _pos = current;
     _target = page.clamp(0.0, _max);
     if (!_ticker.isActive) {
-      // Стояли на месте — начинаем с нулевой скорости.
+      // Стояли на месте — начинаем с нулевой скорости и текущего положения.
+      final current = controller.page;
+      if (current != null && current.isFinite) _pos = current;
       _vel = 0;
       _last = Duration.zero;
       _ticker.start();

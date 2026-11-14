@@ -61,7 +61,11 @@ class AlarmForegroundService : Service() {
         val i = StopReceiver()
         stopReceiver = i
         try {
-            registerReceiver(i, IntentFilter(ACTION_STOP))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(i, IntentFilter(ACTION_STOP), RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(i, IntentFilter(ACTION_STOP))
+            }
         } catch (_: Exception) {}
     }
 
@@ -501,10 +505,11 @@ class AlarmForegroundService : Service() {
          */
         fun stop(ctx: Context) {
             try {
-                val i = Intent(ctx, AlarmForegroundService::class.java).apply {
-                    action = ACTION_STOP
+                val i = Intent(ACTION_STOP).apply {
+                    `package` = ctx.packageName
                 }
                 ctx.sendBroadcast(i)
+                ctx.stopService(Intent(ctx, AlarmForegroundService::class.java))
             } catch (_: Exception) {}
         }
 
@@ -518,11 +523,12 @@ class AlarmForegroundService : Service() {
          */
         fun stopFor(ctx: Context, ringCode: Int) {
             try {
-                val i = Intent(ctx, AlarmForegroundService::class.java).apply {
-                    action = ACTION_STOP
+                val i = Intent(ACTION_STOP).apply {
+                    `package` = ctx.packageName
                     putExtra("ring_code", ringCode)
                 }
                 ctx.sendBroadcast(i)
+                ctx.stopService(Intent(ctx, AlarmForegroundService::class.java))
             } catch (_: Exception) {}
         }
     }

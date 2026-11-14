@@ -1553,13 +1553,9 @@ class _NyMarkButtonState extends State<_NyMarkButton> {
               // набором, а не двумя разными рамками.
               border: Border.all(
                 color: widget.marked
-                    ? Color.lerp(
-                        BrandColors.red,
-                        cs.outlineVariant,
-                        0.35,
-                      )!.withValues(alpha: dark ? 0.42 : 0.32)
-                    : Colors.white.withValues(alpha: 0.34),
-                width: 1,
+                    ? BrandColors.red.withValues(alpha: dark ? 0.65 : 0.50)
+                    : Colors.white.withValues(alpha: dark ? 0.55 : 0.45),
+                width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
@@ -1736,25 +1732,16 @@ class _SwapBox extends StatelessWidget {
         layoutBuilder: (current, previous) =>
             Stack(alignment: align, children: <Widget>[...previous, ?current]),
         transitionBuilder: (child, anim) {
-          // Уходящая строка доезжает до нуля ВВЕРХ, откуда пришла новая.
-          // С одним Tween на оба направления у старого слоя прогресс идёт
-          // 1 → 0, то есть он уехал бы на +0.45 вниз — строки менялись бы
-          // местами, расходясь в разные стороны, вместо перелистывания.
           final leaving = anim.status == AnimationStatus.reverse;
-          // Ход отдельно от прозрачности: движение по easeOutCubic, иначе
-          // смещение «догоняет» к концу и последние кадры выглядят рывком.
           final slide = CurvedAnimation(
             parent: anim,
-            curve: Curves.easeOutCubic,
+            curve: Curves.easeInOutCubic,
           );
           return FadeTransition(
             opacity: anim,
             child: SlideTransition(
-              // 0.45 строки (≈5px для 12px подписи) глаз не ловил вовсе:
-              // перелистывание выглядело как обычный фейд. ~0.9 строки —
-              // видно, что строка именно сошла/пришла, а не мигнула.
               position: Tween<Offset>(
-                begin: Offset(0, leaving ? -0.9 : 0.9),
+                begin: Offset(0, leaving ? -0.28 : 0.28),
                 end: Offset.zero,
               ).animate(slide),
               child: child,
