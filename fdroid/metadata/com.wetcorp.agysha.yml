@@ -19,9 +19,9 @@ RepoType: git
 Repo: https://github.com/wxstdo-boop/agysha.git
 
 Builds:
-  - versionName: 1.6.169
-    versionCode: 45241
-    commit: 125fc99cf9a6f59b805d83eb4c70681c622f6966
+  - versionName: 1.6.170
+    versionCode: 45242
+    commit: a85448f4d6836bc8e4961711941817d9db5096c7
     timeout: 10800
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
@@ -55,5 +55,5 @@ Builds:
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+\+[0-9]+$
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.6.169
-CurrentVersionCode: 45241
+CurrentVersion: 1.6.170
+CurrentVersionCode: 45242
