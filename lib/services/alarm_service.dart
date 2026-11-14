@@ -101,9 +101,11 @@ class AlarmService extends ChangeNotifier {
 
   Future<void> reorder(int oldIndex, int newIndex) async {
     if (oldIndex < 0 || oldIndex >= _alarms.length) return;
-    if (newIndex < 0 || newIndex >= _alarms.length) return;
+    if (newIndex < 0) return;
+    if (oldIndex == newIndex) return;
     final item = _alarms.removeAt(oldIndex);
-    _alarms.insert(newIndex, item);
+    final targetIndex = newIndex.clamp(0, _alarms.length);
+    _alarms.insert(targetIndex, item);
     notifyListeners();
     await _save();
   }

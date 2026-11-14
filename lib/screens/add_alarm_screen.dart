@@ -506,16 +506,16 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
             children: [
               StaggerIn(
                 index: 0,
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: PressScale(
-                    // Плитка времени — плавная отдача-«вдавливание».
-                    pressedScale: 0.98,
-                    duration: const Duration(milliseconds: 160),
-                    releaseDuration: const Duration(milliseconds: 220),
+                child: PressScale(
+                  // Плитка времени — плавная отдача-«вдавливание» всей карточки целиком.
+                  pressedScale: 0.98,
+                  duration: const Duration(milliseconds: 160),
+                  releaseDuration: const Duration(milliseconds: 220),
+                  child: Card(
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: ListTile(
                       leading: const Icon(Icons.access_time),
                       title: ClipRect(
@@ -740,16 +740,16 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
               const SizedBox(height: 16),
               StaggerIn(
                 index: 4,
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: PressScale(
-                    // Строка «Вибрация» — плавная отдача-«вдавливание».
-                    pressedScale: 0.98,
-                    duration: const Duration(milliseconds: 160),
-                    releaseDuration: const Duration(milliseconds: 220),
+                child: PressScale(
+                  // Строка «Вибрация» — плавная отдача-«вдавливание» всей карточки целиком.
+                  pressedScale: 0.98,
+                  duration: const Duration(milliseconds: 160),
+                  releaseDuration: const Duration(milliseconds: 220),
+                  child: Card(
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: ListTile(
                       title: Text(Translations.vibrateOf(context)),
                       leading: const Icon(Icons.vibration),
@@ -758,7 +758,7 @@ class _AddAlarmScreenState extends State<AddAlarmScreen> {
                         value: _vibrate,
                         onChanged: (v) => setState(() => _vibrate = v),
                         activeColor: Theme.of(context).colorScheme.primary,
-                        ),
+                      ),
                     ),
                   ),
                 ),

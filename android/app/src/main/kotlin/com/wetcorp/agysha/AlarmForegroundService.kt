@@ -119,6 +119,9 @@ class AlarmForegroundService : Service() {
         resetAudio()
 
         acquireWakeLock()
+        // Передача удержания CPU завершена: сервис надёжно держит свой WakeLock,
+        // отпускаем страховку приёмника без зазора для засыпания системы.
+        AlarmReceiver.releaseWakeLock()
         playLoop(soundName, customPath)
         if (vibrate) startVibrationLoop()
 

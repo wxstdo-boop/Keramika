@@ -611,9 +611,6 @@ class _AlarmsScreenState extends State<AlarmsScreen>
           buildDragProxy(child, theme, animation),
       itemBuilder: (context, i) {
         final alarm = alarms[i];
-        // Значок «Тест» живёт на первом будильнике — и только когда ничего
-        // не перетаскивается (см. onReorderStart выше).
-        final showBell = i == 0 && !_draggingAlarm;
         return SwipeToDelete(
           // Ключ на ВНЕШНЕМ виджете: ReorderableListView берёт key от него.
           key: ValueKey('item_alarm_${alarm.id}'),
@@ -734,57 +731,59 @@ class _AlarmsScreenState extends State<AlarmsScreen>
                                 ),
                                 // Тестовый будильник — значок ТОЛЬКО на первом
                                 // будильнике, и только вне перетаскивания.
-                                // Замер в виджет-тесте: onReorderItem приходит
-                                // на ОТПУСКАНИИ, а не «живо», поэтому во время
-                                // драга данные ещё старые — значок на карточке,
-                                // которая уехала с первого слота, врал бы и
-                                // запускал прошлый будильник. На время драга он
-                                // гаснет, после — плавно проявляется на новом
-                                // первом (кроссфейд 220 мс, а не «телепорт»
-                                // между карточками). Невидимая кнопка тапы не
-                                // ловит (IgnorePointer).
-                                IgnorePointer(
-                                  ignoring: !showBell,
-                                  child: SizedBox(
-                                    width: 32,
-                                    height: 32,
-                                    child: AnimatedOpacity(
-                                      duration: const Duration(
-                                        milliseconds: 220,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      opacity: showBell ? 1.0 : 0.0,
-                                      child: SmoothTooltip(
-                                        message: Translations.t(
-                                          'testAlarm',
-                                          context,
-                                          'Тест будильника',
+                                // На время драга значок гаснет мгновенно и не
+                                // мешает перетаскиванию. При нажатии всегда
+                                // берётся актуальный первый будильник из сервиса.
+                                if (i == 0)
+                                  IgnorePointer(
+                                    ignoring: _draggingAlarm,
+                                    child: SizedBox(
+                                      width: 32,
+                                      height: 32,
+                                      child: AnimatedOpacity(
+                                        duration: const Duration(
+                                          milliseconds: 180,
                                         ),
-                                        preferredAbove: true,
-                                        child: IconButton(
-                                          onPressed: () => _testAlarm(alarm),
-                                          icon: const Icon(
-                                            Icons.notifications_active_outlined,
-                                            size: 18,
+                                        curve: Curves.easeOutCubic,
+                                        opacity: _draggingAlarm ? 0.0 : 1.0,
+                                        child: SmoothTooltip(
+                                          message: Translations.t(
+                                            'testAlarm',
+                                            context,
+                                            'Тест будильника',
                                           ),
-                                          color: theme
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                          visualDensity: VisualDensity.compact,
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 32,
-                                            minHeight: 32,
-                                          ),
-                                          style: IconButton.styleFrom(
-                                            tapTargetSize: MaterialTapTargetSize
-                                                .shrinkWrap,
+                                          preferredAbove: true,
+                                          child: IconButton(
+                                            onPressed: () {
+                                              final firstAlarm =
+                                                  _service.alarms.isNotEmpty
+                                                      ? _service.alarms.first
+                                                      : alarm;
+                                              _testAlarm(firstAlarm);
+                                            },
+                                            icon: const Icon(
+                                              Icons.notifications_active_outlined,
+                                              size: 18,
+                                            ),
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 32,
+                                              minHeight: 32,
+                                            ),
+                                            style: IconButton.styleFrom(
+                                              tapTargetSize: MaterialTapTargetSize
+                                                  .shrinkWrap,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
                               ],
                             ),
                             // Метка будильника (если есть)

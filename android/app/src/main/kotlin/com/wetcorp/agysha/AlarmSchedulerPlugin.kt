@@ -202,56 +202,36 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
         }
         val pendingIntent = PendingIntent.getBroadcast(context, id, intent, flags)
 
+        val showIntent = Intent(context, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val showPendingIntent = PendingIntent.getActivity(context, id, showIntent, flags)
+
         try {
-            // setAlarmClock/setExact silently fail on some MIUI builds when
-            // SCHEDULE_EXACT_ALARM is not granted. In that case deliberately
-            // use the inexact idle-safe API instead of returning a false alarm
-            // that never fires at all.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                !alarmManager.canScheduleExactAlarms()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        fireTimestamp,
-                        pendingIntent,
-                    )
-                } else {
-                    alarmManager.set(
-                        AlarmManager.RTC_WAKEUP,
-                        fireTimestamp,
-                        pendingIntent,
-                    )
-                }
-                Log.w(TAG, "Scheduled inexact alarm id=$id at $fireTimestamp")
-                AlarmLog.write(
-                    appContext,
-                    "SCHEDULE id=$id api=whileIdle fire=${AlarmLog.time(fireTimestamp)} " +
-                        "exactPerm=false title=${title.take(28)}",
-                )
-            } else {
-                val alarmClockInfo = AlarmManager.AlarmClockInfo(fireTimestamp, pendingIntent)
-                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
-                Log.d(TAG, "Scheduled exact alarm id=$id at $fireTimestamp")
-                AlarmLog.write(
-                    appContext,
-                    "SCHEDULE id=$id api=alarmClock fire=${AlarmLog.time(fireTimestamp)} " +
-                        "exactPerm=true title=${title.take(28)}",
-                )
-            }
+            val alarmClockInfo = AlarmManager.AlarmClockInfo(fireTimestamp, showPendingIntent)
+            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            Log.d(TAG, "Scheduled exact alarm id=$id at $fireTimestamp")
+            AlarmLog.write(
+                appContext,
+                "SCHEDULE id=$id api=alarmClock fire=${AlarmLog.time(fireTimestamp)} " +
+                    "exactPerm=true title=${title.take(28)}",
+            )
             saveManifestEntry(
                 id, title, body, hour, minute, repeatDays,
                 soundName, vibrate, payload, customSoundPath,
             )
             result.success(true)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Exact alarm denied, falling back to idle-safe alarm for id=$id", e)
+            Log.e(TAG, "Exact alarm denied, trying setExactAndAllowWhileIdle for id=$id", e)
             AlarmLog.write(
                 appContext,
-                "SCHEDULE DENIED id=$id error=${e.javaClass.simpleName} — пробую whileIdle",
+                "SCHEDULE DENIED id=$id error=${e.javaClass.simpleName} — пробую exactWhileIdle",
             )
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setAndAllowWhileIdle(
+                    alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         fireTimestamp,
                         pendingIntent,
@@ -264,6 +244,35 @@ class AlarmSchedulerPlugin private constructor(private val context: Context) :
                     soundName, vibrate, payload, customSoundPath,
                 )
                 result.success(true)
+            } catch (e2: SecurityException) {
+                Log.e(TAG, "exactWhileIdle denied, falling back to setAndAllowWhileIdle for id=$id", e2)
+                AlarmLog.write(
+                    appContext,
+                    "SCHEDULE DENIED id=$id error=${e2.javaClass.simpleName} — пробую whileIdle",
+                )
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            fireTimestamp,
+                            pendingIntent,
+                        )
+                    } else {
+                        alarmManager.set(AlarmManager.RTC_WAKEUP, fireTimestamp, pendingIntent)
+                    }
+                    saveManifestEntry(
+                        id, title, body, hour, minute, repeatDays,
+                        soundName, vibrate, payload, customSoundPath,
+                    )
+                    result.success(true)
+                } catch (e3: Exception) {
+                    Log.e(TAG, "All alarm scheduling APIs failed for id=$id", e3)
+                    AlarmLog.write(
+                        appContext,
+                        "SCHEDULE FAILED id=$id error=${e3.javaClass.simpleName}",
+                    )
+                    result.success(false)
+                }
             } catch (e2: Exception) {
                 Log.e(TAG, "Fallback alarm failed for id=$id", e2)
                 AlarmLog.write(

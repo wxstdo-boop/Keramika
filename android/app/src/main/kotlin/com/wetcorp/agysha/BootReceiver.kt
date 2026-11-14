@@ -166,28 +166,57 @@ class BootReceiver : BroadcastReceiver() {
         else
             PendingIntent.FLAG_UPDATE_CURRENT
         val pi = PendingIntent.getBroadcast(ctx, code, intent, flags)
-        val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
-        return try {
-            if (exact) {
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(atMillis, pi), pi)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
-            } else {
-                am.set(AlarmManager.RTC_WAKEUP, atMillis, pi)
-            }
+
+        val showIntent = Intent(ctx, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val showPi = PendingIntent.getActivity(ctx, code, showIntent, flags)
+
+        try {
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(atMillis, showPi), pi)
             AlarmLog.write(
                 ctx,
-                "$tag SCHEDULE id=$code fire=${AlarmLog.time(atMillis)} " +
-                    "api=${if (exact) "alarmClock" else "whileIdle"}",
+                "$tag SCHEDULE id=$code fire=${AlarmLog.time(atMillis)} api=alarmClock",
             )
-            true
+            return true
+        } catch (e: SecurityException) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+                } else {
+                    am.set(AlarmManager.RTC_WAKEUP, atMillis, pi)
+                }
+                AlarmLog.write(
+                    ctx,
+                    "$tag SCHEDULE id=$code fire=${AlarmLog.time(atMillis)} api=exactWhileIdle",
+                )
+                return true
+            } catch (e2: SecurityException) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+                    } else {
+                        am.set(AlarmManager.RTC_WAKEUP, atMillis, pi)
+                    }
+                    AlarmLog.write(
+                        ctx,
+                        "$tag SCHEDULE id=$code fire=${AlarmLog.time(atMillis)} api=whileIdle",
+                    )
+                    return true
+                } catch (e3: Exception) {
+                    AlarmLog.write(ctx, "$tag SCHEDULE FAILED id=$code error=${e3.javaClass.simpleName}")
+                    return false
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Reschedule failed code=$code", e)
             AlarmLog.write(
                 ctx,
                 "$tag SCHEDULE FAILED id=$code error=${e.javaClass.simpleName}: ${e.message}",
             )
-            false
+            return false
         }
     }
 

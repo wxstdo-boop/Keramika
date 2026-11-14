@@ -23,10 +23,24 @@ import java.util.Calendar
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        acquireWakeLock(context)
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "agysha:alarm")
-        wakeLock.acquire(300_000)  // 5 минут — хватает для разблокировки и решения задачи
+        val screenWakeLock = try {
+            @Suppress("DEPRECATION")
+            pm.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                "agysha:alarm_screen_wake",
+            ).apply {
+                setReferenceCounted(false)
+                acquire(10_000)
+            }
+        } catch (_: Exception) {
+            null
+        }
 
+        var ringStarted = false
         try {
             val id = intent.getIntExtra("alarm_id", 0)
             val title = intent.getStringExtra("title") ?: "Alarm"
@@ -88,7 +102,6 @@ class AlarmReceiver : BroadcastReceiver() {
             // ни от права full-screen intent, ни от настроек канала.
             // Проверки реальности (payload == "rc") не звенят — у них тихий
             // пуш со звуком своего канала.
-            var ringStarted = false
             if (!isRealityCheck) {
                 ringStarted = AlarmForegroundService.start(
                     ctx = context,
@@ -108,7 +121,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
             showNotification(
                 context, id, shownTitle, shownBody, channelName, soundName,
-                vibrate, payload, fullscreen && fsGranted, customPath,
+                vibrate, payload, fullscreen, customPath,
                 isRealityCheck,
                 // Сервис — основной звонок. Если система отказала ему в
                 // старте (ограничения фоновых сервисов Android 12+), звук
@@ -154,7 +167,12 @@ class AlarmReceiver : BroadcastReceiver() {
                     "error=${e.javaClass.simpleName}: ${e.message}",
             )
         } finally {
-            try { wakeLock.release() } catch (_: Exception) {}
+            try {
+                if (screenWakeLock?.isHeld == true) screenWakeLock.release()
+            } catch (_: Exception) {}
+            if (!ringStarted) {
+                releaseWakeLock()
+            }
         }
     }
 
@@ -643,23 +661,50 @@ class AlarmReceiver : BroadcastReceiver() {
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_UPDATE_CURRENT
         val pi = PendingIntent.getBroadcast(ctx, alarmId, intent, flags)
+
+        val showIntent = Intent(ctx, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val showPi = PendingIntent.getActivity(ctx, alarmId, showIntent, flags)
+
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                !am.canScheduleExactAlarms()) {
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(next.timeInMillis, showPi), pi)
+            Log.d(TAG, "Rescheduled id=$alarmId api=alarmClock")
+            AlarmLog.write(
+                ctx,
+                "SCHEDULE id=$alarmId api=alarmClock fire=${AlarmLog.time(next.timeInMillis)}",
+            )
+        } catch (e: SecurityException) {
+            try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.timeInMillis, pi)
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.timeInMillis, pi)
                 } else {
                     am.set(AlarmManager.RTC_WAKEUP, next.timeInMillis, pi)
                 }
-            } else {
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(next.timeInMillis, pi), pi)
+                Log.d(TAG, "Rescheduled id=$alarmId api=exactWhileIdle")
+                AlarmLog.write(
+                    ctx,
+                    "SCHEDULE id=$alarmId api=exactWhileIdle fire=${AlarmLog.time(next.timeInMillis)}",
+                )
+            } catch (e2: SecurityException) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.timeInMillis, pi)
+                    } else {
+                        am.set(AlarmManager.RTC_WAKEUP, next.timeInMillis, pi)
+                    }
+                    Log.d(TAG, "Rescheduled id=$alarmId api=whileIdle")
+                    AlarmLog.write(
+                        ctx,
+                        "SCHEDULE id=$alarmId api=whileIdle fire=${AlarmLog.time(next.timeInMillis)}",
+                    )
+                } catch (e3: Exception) {
+                    Log.e(TAG, "Could not reschedule id=$alarmId", e3)
+                    AlarmLog.write(ctx, "SCHEDULE FAILED id=$alarmId error=${e3.javaClass.simpleName}")
+                }
             }
-            Log.d(TAG, "Rescheduled id=$alarmId")
-            AlarmLog.write(
-                ctx,
-                "SCHEDULE id=$alarmId api=${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) "whileIdle" else "alarmClock"} " +
-                    "fire=${AlarmLog.time(next.timeInMillis)}",
-            )
         } catch (e: Exception) {
             Log.e(TAG, "Could not reschedule id=$alarmId", e)
             AlarmLog.write(ctx, "SCHEDULE FAILED id=$alarmId error=${e.javaClass.simpleName}")
@@ -689,5 +734,36 @@ class AlarmReceiver : BroadcastReceiver() {
          * считает его отдельным будильником и он не затирает основной.
          */
         const val ACTION_MISSED = "com.wetcorp.agysha.action.ALARM_MISSED"
+
+        // Static WakeLock for safe handover from AlarmReceiver to AlarmForegroundService
+        private var sWakeLock: PowerManager.WakeLock? = null
+        private val sLock = Any()
+
+        fun acquireWakeLock(context: Context) {
+            synchronized(sLock) {
+                try {
+                    if (sWakeLock == null) {
+                        val pm = context.applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+                        sWakeLock = pm.newWakeLock(
+                            PowerManager.PARTIAL_WAKE_LOCK,
+                            "agysha:alarm_receiver_handover",
+                        ).apply {
+                            setReferenceCounted(false)
+                        }
+                    }
+                    sWakeLock?.acquire(60_000)
+                } catch (_: Exception) {}
+            }
+        }
+
+        fun releaseWakeLock() {
+            synchronized(sLock) {
+                try {
+                    if (sWakeLock?.isHeld == true) {
+                        sWakeLock?.release()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
     }
 }
