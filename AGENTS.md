@@ -1082,6 +1082,19 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
 - **Скриншоты** рисуются из кода: `flutter test tool/screenshots/render_screenshots.dart`
   (в CI не гоняется). Складывает PNG в `docs/screenshots/` и
   `fastlane/.../phoneScreenshots/`.
+- **Готовый текст заявки** — в `docs/publishing-fdroid.md`, раздел «Готовый
+  пакет подачи»: вариант A (RFP-issue в `fdroid/rfp`) и вариант B (сразу MR).
+  Подача требует ЛИЧНОГО аккаунта GitLab: проектный токен-бот (`project_…_bot_…`,
+  как в зеркале ниже) форк `fdroid/fdroiddata` создать не может — форк и MR
+  делаются вручную через веб-интерфейс. Файл рецепта от этого не меняется,
+  копируется как есть.
+- **Зеркало на GitLab.** Репозиторий зеркалируется в приватный
+  `https://gitlab.com/wxstdo/keramika` (тот же код, имя проекта осталось
+  «keramika»). `main` там защищена от force-push: чтобы залить разошедшуюся
+  историю, надо временно снять защиту (`DELETE /projects/:id/protected_branches/main`),
+  сделать `git push --force`, затем вернуть её
+  (`POST ... name=main&push_access_level=40&merge_access_level=40&allow_force_push=false`).
+  Теги и ветки заливать обычным `git push gitlab --all` + `git push gitlab --tags`.
 
 
 ## Кузница (Forge) — ИИ-агент внутри приложения

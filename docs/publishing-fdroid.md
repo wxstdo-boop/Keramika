@@ -41,6 +41,8 @@ Neo Store, Droid-ify и других клиентах F-Droid.
 точные команды.
 
 1. Форк `https://gitlab.com/fdroid/fdroiddata` (кнопка Fork) и клон форка.
+   Форк нужен именно от личного аккаунта: проектный токен-бот (`project_…_bot_…`)
+   форк создать не может, поэтому шаг делается вручную в веб-интерфейсе.
 2. Скопировать рецепт и прогнать проверки:
    ```
    pip install fdroidserver
@@ -56,6 +58,36 @@ Neo Store, Droid-ify и других клиентах F-Droid.
    ссылка «Create merge request»). Заголовок: `New app: com.wetcorp.agysha`.
 4. Отвечать на замечания ревьюеров — обычно просят уточнить, где хранятся
    ключи подписи и почему в рецепте такие `rm`/`prebuild`.
+
+#### Проверено локально (на этот рецепт)
+
+Рецепт уже прогнан через настоящий пайплайн F-Droid, повторять шаг 2 не
+обязательно:
+
+- `fdroid readmeta` — рецепт читается, `proper_format=True` (нулевой diff
+  `fdroid rewritemeta`), CI-гейт формата проходит.
+- `fdroid checkupdates com.wetcorp.agysha` — расхождения версии нет: `commit:`
+  совпадает с тегом `v1.6.170+45242`, `versionName`/`versionCode` совпадают с
+  `pubspec.yaml`.
+- `fdroid lint com.wetcorp.agysha` — замечаний нет.
+- Полная сборка по шагам рецепта (Flutter 3.47.5, NDK 28.2.13676358,
+  `flutter pub get --enforce-lockfile`, `flutter build apk --release
+  --dart-define=AGYSHA_NO_SELF_UPDATE=true`) — успешно, unsigned APK ~70 МБ
+  (arm64-v8a + armeabi-v7a + x86_64), `versionCode=45242`.
+- `REQUEST_INSTALL_PACKAGES` и `ENFORCE_UPDATE_OWNERSHIP` из манифеста
+  вырезаются `prebuild`-шагами; проверено по `aapt2 dump badging`.
+
+#### Грабли: `android/key.properties` и подпись
+
+`android/key.properties` в `.gitignore` и в тег не попадает. Строка
+`storeFile = file(keystoreProperties.getProperty("storeFile", ""))` в
+`android/app/build.gradle.kts` при пустом значении падает с
+`Cannot convert '' to File` — на чистом клоне `flutter build apk` без
+дополнительных шагов ломается. F-Droid это лечит сам: перед сборкой он вызывает
+`remove_signing_keys()`, который вырезает блок `signingConfigs { … }` и строку
+`signingConfig = …`. Поэтому в рецепте **не нужно** ничего дописывать под
+подпись; проверено, что после `remove_signing_keys` сборка проходит.
+
 
 ### Что ревьюеры почти наверняка спросят
 
@@ -164,19 +196,21 @@ PR в `main` по их шаблону.
 
 ## Чек-лист перед подачей
 
-- [ ] Релиз на GitHub собран и подписан, тег вида `vX.Y.Z+NNNNN` проставлен.
-- [ ] `version` в `pubspec.yaml` на `main` совпадает с последним релизом.
-- [ ] `fastlane/metadata/android/{en-US,ru,fr}/` заполнены: title, short/full
+- [x] Релиз на GitHub собран и подписан, тег вида `vX.Y.Z+NNNNN` проставлен
+      (последний — `v1.6.170+45242`).
+- [x] `version` в `pubspec.yaml` на `main` совпадает с последним релизом.
+- [x] `fastlane/metadata/android/{en-US,ru,fr}/` заполнены: title, short/full
       description, icon, phoneScreenshots, changelog с номером текущего
       `versionCode`.
-- [ ] `short_description.txt` — не длиннее 80 символов и **без точки в конце**
+- [x] `short_description.txt` — не длиннее 80 символов и **без точки в конце**
       (F-Droid это проверяет, ревьюеры Izzy ловят первым делом).
-- [ ] `changelogs/<versionCode>.txt` — не длиннее 500 символов.
-- [ ] В репозитории есть LICENSE (MIT — есть), README с описанием.
-- [ ] Коммит в рецепте (`commit:`) указывает на тот же код, что и релиз, и
+- [x] `changelogs/<versionCode>.txt` — не длиннее 500 символов.
+- [x] В репозитории есть LICENSE (MIT — есть), README с описанием.
+- [x] Коммит в рецепте (`commit:`) указывает на тот же код, что и релиз, и
       содержит `fastlane/` (F-Droid читает метаданные из этого коммита).
-- [ ] `fdroid build` локально проходит.
-- [ ] Самообновление в F-Droid-сборке выключено (`AGYSHA_NO_SELF_UPDATE`).
+- [x] `fdroid build` локально проходит (см. «Проверено локально»).
+- [x] Самообновление в F-Droid-сборке выключено (`AGYSHA_NO_SELF_UPDATE`).
+- [ ] MR в `fdroiddata` открыт (шаги 1-3 выше).
 
 ### Важная зависимость порядка
 
@@ -236,8 +270,9 @@ anti-feature). Everything else works fully offline.
 A ready metadata file is provided at
 https://github.com/wxstdo-boop/agysha/blob/main/fdroid/metadata/com.wetcorp.agysha.yml
 It is validated against fdroiddata CI: `fdroid lint` clean,
-`fdroid rewritemeta` canonical, `fdroid checkupdates --auto` resolves the
-latest release with no diff.
+`fdroid rewritemeta` canonical (zero diff), `fdroid checkupdates` resolves
+`v1.6.170+45242` with no diff. The build was reproduced locally with the exact
+recipe steps and produced the unsigned release APK.
 
 Build notes:
 - Flutter app, built with srclib `flutter@3.47.5`.
@@ -248,6 +283,10 @@ Build notes:
   and strips `REQUEST_INSTALL_PACKAGES` and `ENFORCE_UPDATE_OWNERSHIP`, so no
   in-app APK installation.
 - Signing config is removed automatically by fdroidserver; no keystore needed.
+  (`android/key.properties` is gitignored and absent from the tag, and the
+  `signingConfigs` block would fail on an empty path — fdroidserver's
+  `remove_signing_keys()` handles this, so nothing extra is required in the
+  recipe.)
 ```
 
 ### Вариант B — сразу merge request
@@ -288,7 +327,8 @@ MR по шаблону (шаблон обязателен — ревьюеры �
 
 1. Убедиться, что на `main` версия и метаданные синхронны с релизом.
 2. Скопировать `fdroid/metadata/com.wetcorp.agysha.yml` в форк `fdroiddata`.
-3. Прогнать `fdroid build` локально, исправить ошибки.
-4. Открыть MR в `fdroiddata`.
+3. Прогнать `fdroid build` локально, исправить ошибки. — **уже сделано**
+   (см. «Проверено локально»): сборка воспроизведена, APK получен.
+4. Открыть MR в `fdroiddata` (или RFP-issue, вариант A).
 5. После приёма — добавить бейдж F-Droid в README и анонсировать.
 6. Решить, нужна ли отдельная сборка без Ады для IzzyOnDroid.
