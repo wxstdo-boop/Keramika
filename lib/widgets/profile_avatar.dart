@@ -164,7 +164,13 @@ class ProfileAvatar extends StatelessWidget {
   /// прокрутки) либо статический [blur].
   double get _sigma {
     if (motion != null && motionOf != null) {
-      final t = Curves.easeInOut.transform(motionOf!().clamp(0.0, 1.0));
+      // Пентак: нулевая скорость и УСКОРЕНИЕ на обоих концах хода.
+      // `easeInOut` (квадратичная) всё равно «выстреливала» в первый кадр
+      // прокрутки — расфокус появлялся скачком и читался «неплавно». Пятая
+      // степень сглаживает старт и финиш вдвое лучше: размытие «наползает»
+      // и так же мягко уходит, без видимых стыков.
+      final t0 = motionOf!().clamp(0.0, 1.0);
+      final t = t0 * t0 * t0 * (t0 * (t0 * 6 - 15) + 10);
       return t * _maxBlurSigma;
     }
     return blur;
@@ -441,7 +447,15 @@ class ProfileAvatar extends StatelessWidget {
               // ветки своей картинки `_generatedAvatar` играет роль
               // заглушки на время декода кадра — там расфокус не нужен
               // (и добавил бы второй `ImageFiltered` поверх настоящего).
-              imagePath == null && _sigma > 0.2 ? _sigma.roundToDouble() : 0.0,
+              // Квантование до целых — только для СТАТИЧного [blur]: там
+              // `ImageFiltered` пересобирает фильтр при каждом новом значении
+              // сигмы. В режиме [motion] кросс-фейд идёт по ПОСТОЯННОЙ
+              // сигме (фильтр кэширован, меняется только прозрачность
+              // слоёв), поэтому передаём полную дробную сигму — иначе
+              // расфокус шёл ступенями и читался «неплавно».
+              imagePath == null && _sigma > 0.2
+                  ? (motion != null ? _sigma : _sigma.roundToDouble())
+                  : 0.0,
               animated: motion != null,
             ),
           ),

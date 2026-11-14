@@ -2147,9 +2147,17 @@ class _DayHeader extends StatefulWidget {
 
 class _DayHeaderState extends State<_DayHeader>
     with SingleTickerProviderStateMixin {
+  /// Заголовок дня движется ТОЙ ЖЕ волной, что и блок истории: та же
+  /// длительность ([_mealCollapse]) и та же кривая ([_mealCollapseCurve]),
+  /// что у карточек приёмов пищи и пустой подсказки. Раньше здесь была
+  /// своя 300 мс-анимация, и когда уходил последний приём пищи, «Сегодня»
+  /// гасло со своей скоростью, а блок и подсказка «Пока нет приёмов
+  /// пищи» — со своей (320 мс): две раскладка и два тайминга шли вразнобой,
+  /// и тексты «появлялись/исчезали неплавно» (владелец жаловался именно на
+  /// этот разрыв). Теперь всё одна волна.
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 300),
+    duration: _NutritionScreenState._mealCollapse,
     value: widget.removing ? 1.0 : 0.0,
   );
 
@@ -2190,7 +2198,8 @@ class _DayHeaderState extends State<_DayHeader>
     return AnimatedBuilder(
       animation: _c,
       builder: (context, child) {
-        final t = Curves.easeOutCubic.transform(_c.value.clamp(0.0, 1.0));
+        final t = _NutritionScreenState._mealCollapseCurve
+            .transform(_c.value.clamp(0.0, 1.0));
         return ClipRect(
           child: Align(
             alignment: Alignment.topCenter,

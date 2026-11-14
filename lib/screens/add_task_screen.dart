@@ -111,13 +111,23 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(Translations.cancelOf(context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(Translations.cancelOf(context)),
+            ),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text(Translations.t('createCategory', context)),
+          PressScale(
+            pressedScale: 0.94,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text(Translations.t('createCategory', context)),
+            ),
           ),
         ],
       ),
@@ -181,13 +191,23 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(Translations.cancelOf(context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(Translations.cancelOf(context)),
+            ),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text(Translations.saveOf(context)),
+          PressScale(
+            pressedScale: 0.94,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text(Translations.saveOf(context)),
+            ),
           ),
         ],
       ),
@@ -546,9 +566,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         leading: const BackButtonTooltip(),
         centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: _save,
-            child: Text(Translations.saveOf(context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: _save,
+              child: Text(Translations.saveOf(context)),
+            ),
           ),
         ],
       ),

@@ -24,7 +24,16 @@ void main() {
       isTrue,
       reason: '$path не найден — тест не из корня',
     );
-    return f.readAsStringSync();
+    final text = f.readAsStringSync();
+    if (path == 'lib/l10n/translations.dart') {
+      final parts = ['translations_en.dart', 'translations_ru.dart', 'translations_fr.dart'];
+      final extra = parts
+          .map((p) => File('lib/l10n/$p'))
+          .where((file) => file.existsSync())
+          .map((file) => file.readAsStringSync());
+      return [text, ...extra].join('\n');
+    }
+    return text;
   }
 
   /// Код без строк-комментариев: иначе проверки «нет MaskFilter» ловят сами
@@ -126,32 +135,25 @@ void main() {
     );
   });
 
-  test('окно «Сбросить ивент» — своя карточка с мягкой отдачей', () {
+  test('сброс ивента идёт сразу, без диалога подтверждения', () {
     final src = read('lib/widgets/new_year_event_banner.dart');
-    expect(src.contains('class _ResetEventDialog'), isTrue);
     expect(
-      src.contains('_ResetEventDialog('),
-      isTrue,
-      reason: 'сброс открывает свою карточку, а не системный AlertDialog',
-    );
-    final start = src.indexOf('class _ResetEventDialog');
-    final body = src.substring(start);
-    expect(
-      body.contains('PressScale('),
-      isTrue,
-      reason: 'кнопки окна обязаны отдавать под пальцем',
-    );
-    expect(
-      body.contains('pressedScale: 0.97'),
-      isTrue,
-      reason: 'отдача нарочно слабая — окно не «прыгает»',
-    );
-    // В самом баннере системного AlertDialog больше нет.
-    final banner = src.substring(0, start);
-    expect(
-      banner.contains('AlertDialog('),
+      src.contains('class _ResetEventDialog'),
       isFalse,
-      reason: 'системное окно выбивалось из «кровавой» семьи',
+      reason:
+          'диалог подтверждения убран: долгое нажатие крестика сбрасывает '
+          'сразу',
+    );
+    expect(
+      src.contains('NewYearEventService().reset()'),
+      isTrue,
+      reason: 'сброс идёт прямым вызовом сервиса',
+    );
+    // Сам баннер без единого системного/собственного диалога сброса.
+    expect(
+      src.contains('showGeneralDialog'),
+      isFalse,
+      reason: 'подтверждение больше не показывается',
     );
   });
 

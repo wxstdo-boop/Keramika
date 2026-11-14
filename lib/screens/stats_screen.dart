@@ -40,6 +40,43 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
   /// надпись. Список-кэш + сравнение по содержимому убирают эту перерисовку.
   List<DayCompletion> _monthDays = const <DayCompletion>[];
 
+  /// Лёгкая «подпись» видимых чисел экрана (счётчики привычек/задач/проверок
+  /// + содержимое графика). При открытии экрана `initState` шлёт четыре
+  /// `load()` и `recordToday`, каждый триггерит `notifyListeners` → [_onData].
+  /// Раньше каждый из пяти вызовов делал полный `setState` + [_recomputeMonth],
+  /// и экран пересобирался (тяжёлые градиентные карточки с тенями) пять раз
+  /// подряд — это и читалось как «подтормоз дико». Теперь [_onData]
+  /// пересчитывает подписи и пропускает пересборку, пока она не изменилась.
+  int _lastSig = 0;
+
+  int _chartSig() {
+    var hDone = 0;
+    for (final h in _habitSvc.habits) {
+      if (h.doneToday) hDone++;
+    }
+    var tDone = 0;
+    for (final t in _taskSvc.tasks) {
+      if (t.done) tDone++;
+    }
+    final rcToday = _rcSvc.enabled ? _rcSvc.totalChecksToday : 0;
+    // Содержимое графика: DayCompletion имеет ==/hashCode, поэтому
+    // подписью служит сумма хешей — меняется только когда реально
+    // изменились числа по дням, а не на каждом notify.
+    var chartHash = 0;
+    for (final d in _monthDays) {
+      chartHash = chartHash * 31 + d.hashCode;
+    }
+    return Object.hash(
+      hDone,
+      _habitSvc.habits.length,
+      tDone,
+      _taskSvc.tasks.length,
+      rcToday,
+      _rcSvc.checksPerDay,
+      chartHash,
+    );
+  }
+
   void _recomputeMonth() {
     _monthDays = _logSvc.lastDays(30);
   }
@@ -48,6 +85,7 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
   void initState() {
     super.initState();
     _recomputeMonth();
+    _lastSig = _chartSig();
     // Перерисовываем экран, когда данные догрузились: без этого график и
     // карточки могли показаться «пустыми» и «прогружались» только при
     // следующем действии — на медленном старте это читалось как «график не
@@ -64,7 +102,13 @@ class _RealityCheckStatsScreenState extends State<RealityCheckStatsScreen> {
 
   void _onData() {
     if (!mounted) return;
+    // Пересчитываем график СНАЧАЛА (дешёво: один проход по 30 дням),
+    // а потом сравниваем подпись. Если видимые числа не изменились —
+    // тяжёлый setState (градиентные карточки с тенями) пропускается.
     _recomputeMonth();
+    final sig = _chartSig();
+    if (sig == _lastSig) return;
+    _lastSig = sig;
     setState(() {});
   }
 

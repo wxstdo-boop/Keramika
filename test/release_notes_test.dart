@@ -10,7 +10,18 @@ import 'package:flutter_test/flutter_test.dart';
 /// «docs(AGENTS): …» — пользователь видел внутреннюю кухню. Теперь фильтр
 /// живёт в `tool/release_notes.sh` и проверяется здесь на реальном запуске.
 void main() {
+  /// Есть ли в системе настоящий `bash`.
+  ///
+  /// Скрипт фильтра — POSIX-shell, и на Windows (`bash` нет в PATH) проверка
+  /// не запускается, а падала бы тройным падением «exit code 1» с пустым
+  /// выводом: тест выглядел красным, хотя код в порядке. В CI (ubuntu) bash
+  /// есть, поэтому там проверки идут в полном объёме; локально на Windows
+  /// они честно помечаются как пропущенные, а не «сломанные».
+  final skipWithoutBash = _bashAvailable() ? null : 'нужен bash (есть в CI)';
+
   /// Прогоняет настоящий скрипт (не мок) и возвращает его stdout.
+  ///
+  /// Вызывается только когда bash доступен (см. [skipWithoutBash]).
   String filter(String input) {
     final script = File('tool/release_notes.sh');
     expect(script.existsSync(), isTrue,
@@ -64,13 +75,13 @@ void main() {
       '- Питание: строка БЖУ без переполнения',
       '- Полировка 12-го круга: канты и свечение',
     ]);
-  });
+  }, skip: skipWithoutBash);
 
   test('пустой вход — пустой выход и нулевой код возврата', () {
     // Пустой changelog F-Droid отбрасывает; вызывающая сторона подставляет
     // «- Обновление». Скрипт при этом не должен падать.
     expect(filter(''), '');
-  });
+  }, skip: skipWithoutBash);
 
   test('в репозитории нет changelog со служебными пунктами', () {
     // Историю уже чистили вручную: до появления фильтра в changelog успели
@@ -79,7 +90,12 @@ void main() {
     final files = dir
         .listSync(recursive: true)
         .whereType<File>()
-        .where((f) => f.path.contains('/changelogs/') && f.path.endsWith('.txt'))
+        // Путь под Windows приходит с обратными слэшами: без нормализации
+        // список файлов оказывался пустым и тест падал на «не нашли ни
+        // одного changelog» вместо проверки содержимого.
+        .where((f) =>
+            f.path.replaceAll('\\', '/').contains('/changelogs/') &&
+            f.path.endsWith('.txt'))
         .toList();
     expect(files, isNotEmpty, reason: 'не нашли ни одного changelog');
 
@@ -94,5 +110,17 @@ void main() {
       }
     }
     expect(dirty, isEmpty, reason: 'служебные пункты в changelog: $dirty');
-  });
+  }, skip: skipWithoutBash);
+}
+
+/// Проверяет, что `bash` реально запускается.
+///
+/// `Process.runSync` бросает `ProcessException`, если бинарника нет в PATH
+/// (типичный Windows без Git Bash) — это и есть сигнал «пропустить прогон».
+bool _bashAvailable() {
+  try {
+    return Process.runSync('bash', ['-c', 'exit 0']).exitCode == 0;
+  } catch (_) {
+    return false;
+  }
 }

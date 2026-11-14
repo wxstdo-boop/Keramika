@@ -121,36 +121,38 @@ class _AnimatedBunnyState extends State<AnimatedBunny>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge(<Listenable?>[_idle, widget.enter]),
-      builder: (context, child) {
-        final t = _idle.value;
-        final hop = _hop(t);
-        // Мягкое «дыхание» на покое, чтобы заяц не замирал между прыжками.
-        final breathe = 0.5 - 0.5 * math.cos(t * 2 * math.pi);
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: Listenable.merge(<Listenable?>[_idle, widget.enter]),
+        builder: (context, child) {
+          final t = _idle.value;
+          final hop = _hop(t);
+          // Мягкое «дыхание» на покое, чтобы заяц не замирал между прыжками.
+          final breathe = 0.5 - 0.5 * math.cos(t * 2 * math.pi);
 
-        final dy = -(hop * widget.lift + breathe * 0.03) * widget.size;
-        final stretch = 1 + 0.14 * hop;
-        final squash = 1 - 0.10 * hop;
+          final dy = -(hop * widget.lift + breathe * 0.03) * widget.size;
+          final stretch = 1 + 0.14 * hop;
+          final squash = 1 - 0.10 * hop;
 
-        final enterV = widget.enter?.value ?? 1.0;
-        return Opacity(
-          opacity: enterV.clamp(0.0, 1.0),
-          child: Transform.translate(
-            offset: Offset(0, dy),
-            child: Transform.scale(
-              scaleX: enterV * squash,
-              scaleY: enterV * stretch,
-              child: child,
+          final enterV = widget.enter?.value ?? 1.0;
+          return Opacity(
+            opacity: enterV.clamp(0.0, 1.0),
+            child: Transform.translate(
+              offset: Offset(0, dy),
+              child: Transform.scale(
+                scaleX: enterV * squash,
+                scaleY: enterV * stretch,
+                child: child,
+              ),
             ),
+          );
+        },
+        child: RepaintBoundary(
+          child: AgyshaBunny(
+            size: widget.size,
+            color: widget.color,
+            innerColor: widget.innerColor,
           ),
-        );
-      },
-      child: RepaintBoundary(
-        child: AgyshaBunny(
-          size: widget.size,
-          color: widget.color,
-          innerColor: widget.innerColor,
         ),
       ),
     );

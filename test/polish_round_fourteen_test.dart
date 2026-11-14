@@ -9,6 +9,8 @@ import 'package:agysha/utils/motion_prefs.dart';
 import 'package:agysha/widgets/agysha_bunny.dart';
 import 'package:agysha/widgets/music_pulse_ring.dart';
 
+import 'source_scope.dart';
+
 /// Регресс-тест четырнадцатого круга (правки после 12-го):
 ///  * значок таблетки обновления — не зайчик, а «стрелка обновления», и он
 ///    «дышит» вечным циклом с плавными началом/концом;
@@ -288,7 +290,7 @@ void main() {
   });
 
   test('кнопки ПИН в настройках отдают нажатие вдавливанием', () {
-    final src = read('lib/screens/settings_screen.dart');
+    final src = readSettingsLibrary();
     final lock = src.indexOf("ValueKey('pin_lock_\$_hasPin')");
     expect(lock, greaterThan(0));
     expect(

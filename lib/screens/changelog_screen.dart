@@ -394,21 +394,23 @@ class _LatestVersionState extends State<_LatestVersion>
           left: 0,
           right: 0,
           bottom: -4,
-          child: AnimatedBuilder(
-            animation: _ctrl,
-            builder: (context, _) {
-              // Прочерка слева направо: к моменту окончания контроллера
-              // волнистая линия нарисована целиком.
-              return SizedBox(
-                height: 5,
-                child: CustomPaint(
-                  painter: _WavyUnderlinePainter(
-                    progress: Curves.easeOutCubic.transform(_ctrl.value),
-                    color: _blood.withValues(alpha: 0.5),
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _ctrl,
+              builder: (context, _) {
+                // Прочерка слева направо: к моменту окончания контроллера
+                // волнистая линия нарисована целиком.
+                return SizedBox(
+                  height: 5,
+                  child: CustomPaint(
+                    painter: _WavyUnderlinePainter(
+                      progress: Curves.easeOutCubic.transform(_ctrl.value),
+                      color: _blood.withValues(alpha: 0.5),
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ],

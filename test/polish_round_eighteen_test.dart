@@ -111,11 +111,17 @@ void main() {
   test('капсула подарка перетекает, а не переключается кадром', () {
     final src = read('lib/widgets/new_year_event_banner.dart');
     final anchor = src.indexOf("Translations.t('nyGiftHint'");
-    final gift = src.substring((anchor - 700).clamp(0, src.length), anchor);
+    expect(anchor, greaterThan(0), reason: 'подсказка подарка обязана остаться');
+    // Окно ищем от БЛИЖАЙШЕГО `_SwapBox(` до текста, а не по фиксированному
+    // числу символов: длинная русская подсказка отправляла открытие обёртки
+    // дальше любого «магического» окна (700 символов), и тест падал на самом
+    // себе, хотя кроссфейд на месте.
+    final box = src.lastIndexOf('_SwapBox(', anchor);
+    expect(box, greaterThan(0), reason: 'текст подарка меняется кроссфейдом');
     expect(
-      gift.contains('_SwapBox('),
+      src.substring(box, anchor).contains('swapKey: _prize'),
       isTrue,
-      reason: 'текст подарка меняется кроссфейдом',
+      reason: 'переход привязан к тому, открыт ли подарок',
     );
   });
 

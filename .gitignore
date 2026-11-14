@@ -63,6 +63,11 @@ android/.kotlin/
 /*.pid
 /*.jpeg
 /*.jpg
+/.*.ps1
+/.*.txt
+/.tmp_*
+/actionlint
+/actionlint.exe
 
 # Отладочные скриншоты в корне (не для репозитория; уже отслеживаемые файлы не затрагивает).
 /agysha_shot*.png

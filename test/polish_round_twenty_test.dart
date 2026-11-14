@@ -145,18 +145,17 @@ void main() {
     );
   });
 
-  test('окно сброса ивента — одна ровная кромка, без диагонального градиента', () {
+  test('сброс ивента без окна: подтверждение удалено', () {
     final src = read('lib/widgets/new_year_event_banner.dart');
-    final dialog = src.substring(src.indexOf('class _ResetEventDialog'));
     expect(
-      dialog.contains('LinearGradient'),
+      src.contains('class _ResetEventDialog'),
       isFalse,
-      reason: 'градиент по периметру давал разный тон на каждой стороне',
+      reason: 'окно подтверждения убрано — сброс идёт сразу',
     );
     expect(
-      dialog.contains('BrandColors.red.withValues(alpha: 0.34)'),
-      isTrue,
-      reason: 'кромка — полупрозрачно-алая, волосяная',
+      src.contains('showGeneralDialog'),
+      isFalse,
+      reason: 'нигде в баннере диалога подтверждения нет',
     );
   });
 

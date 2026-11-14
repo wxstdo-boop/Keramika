@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import '../models/app_timer.dart';
@@ -135,14 +136,24 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(Translations.cancelOf(context)),
+                PressScale(
+                  pressedScale: 0.96,
+                  duration: const Duration(milliseconds: 200),
+                  releaseDuration: const Duration(milliseconds: 340),
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(Translations.cancelOf(context)),
+                  ),
                 ),
-                FilledButton(
-                  onPressed: () =>
-                      Navigator.pop(ctx, {'h': th, 'm': tm, 's': ts}),
-                  child: Text(Translations.okOf(context)),
+                PressScale(
+                  pressedScale: 0.94,
+                  duration: const Duration(milliseconds: 200),
+                  releaseDuration: const Duration(milliseconds: 340),
+                  child: FilledButton(
+                    onPressed: () =>
+                        Navigator.pop(ctx, {'h': th, 'm': tm, 's': ts}),
+                    child: Text(Translations.okOf(context)),
+                  ),
                 ),
               ],
             );
@@ -282,9 +293,14 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
         leading: const BackButtonTooltip(),
         centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: _save,
-            child: Text(Translations.saveOf(context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: _save,
+              child: Text(Translations.saveOf(context)),
+            ),
           ),
         ],
       ),
@@ -308,9 +324,12 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    FilledButton.tonal(
-                      onPressed: _pickDuration,
-                      child: Text(Translations.t('timerDuration', context)),
+                    PressScale(
+                      pressedScale: 0.96,
+                      child: FilledButton.tonal(
+                        onPressed: _pickDuration,
+                        child: Text(Translations.t('timerDuration', context)),
+                      ),
                     ),
                   ],
                 ),
@@ -420,11 +439,16 @@ class _AddTimerScreenState extends State<AddTimerScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _totalSeconds > 0 ? _save : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(Translations.saveOf(context)),
+            PressScale(
+              pressedScale: 0.97,
+              duration: const Duration(milliseconds: 260),
+              releaseDuration: const Duration(milliseconds: 380),
+              child: FilledButton(
+                onPressed: _totalSeconds > 0 ? _save : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(Translations.saveOf(context)),
+                ),
               ),
             ),
           ],

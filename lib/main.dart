@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:path_provider/path_provider.dart';
 import 'screens/splash_screen.dart';
 import 'utils/android_settings.dart' show setSecureWindow;
 import 'screens/lock_screen.dart';
@@ -58,8 +56,8 @@ import 'utils/jank_probe.dart';
 import 'services/update_service.dart';
 import 'services/installer.dart';
 import 'services/app_version.dart';
-
-part 'services/backup_service.dart';
+export 'services/backup_service.dart';
+import 'services/backup_service.dart';
 
 final NotificationService notificationService = NotificationService();
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -284,11 +282,6 @@ void _showInstallOutcome(InstallOutcome outcome, [int attempt = 0]) {
   }
 }
 
-Timer? _autoExportTimer;
-bool _isAutoExporting = false;
-bool _autoExportEnabled = false;
-// Время последнего автоэкспорта — чтобы не «забывать» час, пока приложение
-// было закрыто, и не делать лишние бэкапы при каждом запуске.
 String? _pendingAlarmPayload;
 // Канал будильника: getAlarmPayload / stopAlarmSound / onNewAlarmPayload.
 // Создаётся СРАЗУ (см. комментарий у [_backupChannel]) — иначе первый invoke
@@ -1010,7 +1003,7 @@ void _listenForAlarmPayloads() {
   // userLeaveHint/windowFocus для PIN-размытия в «недавных» — размытие
   // удалено, нативные вызовы больше не нужны. Обработчик оставлен, чтобы
   // invoke не падал в MissingPluginException.
-  _lifecycleChannel.setMethodCallHandler((call) async {});
+  lifecycleChannel.setMethodCallHandler((call) async {});
 }
 
 /// Поведение скролла для всего приложения: iOS-стиль «баунса»/натяжения
@@ -1123,6 +1116,8 @@ class AgyshaAppState extends State<AgyshaApp>
       case 'light':
         return ThemeMode.light;
       case 'dark':
+        return ThemeMode.dark;
+      case 'oled':
         return ThemeMode.dark;
       case 'grok':
         return ThemeMode.light;
@@ -1635,14 +1630,17 @@ class AgyshaAppState extends State<AgyshaApp>
                 // додумывает их как `secondary` и `surface`, и карточки
                 // получились бы одного цвета с фоном.
                 if (_themeKey == 'metel') {
+                  // Палитра совпадает с оверлеем «Метели»: мята → лазурь →
+                  // лаванда, как ленты северного сияния. Акценты чуть ярче,
+                  // чем прежние, чтобы тема не читалась бледной серой стеной.
                   return const ColorScheme.light(
-                    primary: Color(0xFF0E7C6B),
+                    primary: Color(0xFF0E9B82),
                     onPrimary: Color(0xFFFFFFFF),
-                    primaryContainer: Color(0xFFC9EFE6),
+                    primaryContainer: Color(0xFFB7ECDF),
                     onPrimaryContainer: Color(0xFF00201A),
-                    secondary: Color(0xFF3A6FA8),
+                    secondary: Color(0xFF3E86C8),
                     onSecondary: Color(0xFFFFFFFF),
-                    secondaryContainer: Color(0xFFD6E9FA),
+                    secondaryContainer: Color(0xFFCFE6FA),
                     onSecondaryContainer: Color(0xFF001E33),
                     tertiary: Color(0xFF6B5BC4),
                     onTertiary: Color(0xFFFFFFFF),
@@ -1688,6 +1686,28 @@ class AgyshaAppState extends State<AgyshaApp>
         final darkScheme = (useDynamic && _darkDynamic != null)
             ? _darkDynamic!
             : (() {
+                if (_themeKey == 'oled') {
+                  return const ColorScheme.dark(
+                    primary: Color(0xFFFF5252),
+                    onPrimary: Colors.black,
+                    primaryContainer: Color(0xFF2E1216),
+                    onPrimaryContainer: Color(0xFFFFDADA),
+                    secondary: Color(0xFFE2E2E8),
+                    onSecondary: Colors.black,
+                    secondaryContainer: Color(0xFF1E1F24),
+                    onSecondaryContainer: Color(0xFFD6D6DF),
+                    surface: Color(0xFF000000),
+                    surfaceContainerLowest: Color(0xFF000000),
+                    surfaceContainerLow: Color(0xFF0D0E12),
+                    surfaceContainer: Color(0xFF131418),
+                    surfaceContainerHigh: Color(0xFF1A1B20),
+                    surfaceContainerHighest: Color(0xFF22242B),
+                    onSurface: Color(0xFFF2F2F5),
+                    onSurfaceVariant: Color(0xFFA6AAB4),
+                    outline: Color(0xFF32343D),
+                    outlineVariant: Color(0xFF1E2026),
+                  );
+                }
                 if (isDarkGrok) {
                   // Grok Dark (xAI) — настоящие цвета grok.com: плоский
                   // нейтральный тёмный #17181C, карточки чуть светлее,

@@ -43,7 +43,7 @@ void main() {
     } catch (_) {}
   });
 
-  test('в подборку влезает ровно 15 треков, 16-й не добавляется', () async {
+  test('в подборку влезает ровно 99 треков, 100-й не добавляется', () async {
     final svc = ProfileService();
     await svc.load();
     await svc.clearTracks();

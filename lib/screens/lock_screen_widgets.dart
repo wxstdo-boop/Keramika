@@ -892,11 +892,13 @@ class _AnimatedGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(
-        painter: _GlassPainter(loop: loop, color: color, isDark: isDark),
+    return RepaintBoundary(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(
+          painter: _GlassPainter(loop: loop, color: color, isDark: isDark),
+        ),
       ),
     );
   }
@@ -1186,9 +1188,10 @@ class _KeyButtonState extends State<_KeyButton> with TickerProviderStateMixin {
       onPointerDown: (_) => _down(),
       onPointerUp: (_) => _up(),
       onPointerCancel: (_) => _up(),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedBuilder(
+      child: RepaintBoundary(
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedBuilder(
           animation: Listenable.merge([_in, _out]),
           builder: (context, _) {
             final level = _level(_in.value);
@@ -1232,7 +1235,8 @@ class _KeyButtonState extends State<_KeyButton> with TickerProviderStateMixin {
           },
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -1358,12 +1362,12 @@ class _SplatHighlightPainter extends CustomPainter {
 }
 
 /// Палитра подарочного скина «Метель»: северное сияние по белому снегу —
-/// мята, ледяная лазурь и фиолет. Только для скина ПИН-скважины; обычные
-/// темы остаются на акценте темы.
+/// ледяная мята, лазурь и лаванда. Те же цвета, что и оверлей «Метели»
+/// (см. metel_overlay.dart), чтобы подарок читался одним набором.
 const List<Color> _kAurora = [
-  Color(0xFF2FBF94),
-  Color(0xFF4FB6E8),
-  Color(0xFF7C6BE0),
+  Color(0xFF5FD6A8),
+  Color(0xFF6FB8E8),
+  Color(0xFF9C86E8),
 ];
 
 /// Цвет сияния по позиции 0 → 1 по кругу (стык плавный: конец = начало).

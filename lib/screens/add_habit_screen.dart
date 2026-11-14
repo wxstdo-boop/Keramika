@@ -200,16 +200,29 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(Translations.cancelOf(context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(Translations.cancelOf(context)),
+            ),
           ),
-          FilledButton(
-            onPressed: () {
-              setState(() => _statusCtrl.text = ctrl.text.trim());
-              Navigator.pop(ctx);
-            },
-            child: Text(Translations.saveOf(context)),
+          // Отдача «вдавливанием» у кнопки окна: палец чувствует нажатие,
+          // а не «щёлкает» по плоской плашке (та же рецептура, что в
+          // остальных окнах добавления — см. add_alarm_screen).
+          PressScale(
+            pressedScale: 0.94,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: FilledButton(
+              onPressed: () {
+                setState(() => _statusCtrl.text = ctrl.text.trim());
+                Navigator.pop(ctx);
+              },
+              child: Text(Translations.saveOf(context)),
+            ),
           ),
         ],
       ),
@@ -266,9 +279,14 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
           leading: const BackButtonTooltip(),
           centerTitle: true,
           actions: [
-            TextButton(
-              onPressed: _save,
-              child: Text(Translations.saveOf(context)),
+            PressScale(
+              pressedScale: 0.96,
+              duration: const Duration(milliseconds: 200),
+              releaseDuration: const Duration(milliseconds: 340),
+              child: TextButton(
+                onPressed: _save,
+                child: Text(Translations.saveOf(context)),
+              ),
             ),
           ],
         ),

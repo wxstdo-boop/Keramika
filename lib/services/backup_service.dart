@@ -1,4 +1,23 @@
-part of '../main.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../l10n/translations.dart';
+import '../main.dart' show navigatorKey;
+import '../utils/snackbar.dart';
+import 'json_file.dart';
+import 'pin_service.dart';
+import 'prefs.dart';
+import 'settings_service.dart';
+
+Timer? _autoExportTimer;
+bool _isAutoExporting = false;
+bool _autoExportEnabled = false;
 
 const _lastAutoExportKey = 'last_auto_export_at';
 // Нативка слушает saveToDownloads на канале alarm_payload (MainActivity).
@@ -17,7 +36,7 @@ final MethodChannel _backupChannel = const MethodChannel(
   'com.wetcorp.agysha/alarm_payload',
 );
 // Канал сигналов жизненного цикла Activity → Dart (onNewIntent и т.п.).
-final MethodChannel _lifecycleChannel = const MethodChannel(
+const MethodChannel lifecycleChannel = MethodChannel(
   'com.wetcorp.agysha/lifecycle',
 );
 

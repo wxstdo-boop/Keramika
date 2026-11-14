@@ -8,7 +8,6 @@ import '../services/new_year_event_service.dart';
 import '../services/haptics.dart';
 import '../utils/design_tokens.dart';
 import '../utils/snackbar.dart';
-import '../widgets/press_scale.dart';
 
 /// Компактное окно ивента «Каждый день дарят шапку». Открывается по тапу на
 /// Деду Морозу в заголовке: за каждый день ивента выдаётся одна шапка, и к
@@ -322,7 +321,7 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
     // «Полярный набор» — это тема «Метель» и скин скважины на ПИН-экране.
     // Тему включаем сразу: 12-й день должен ощущаться открытым подарком, а
     // не строчкой в настройках, которую ещё надо найти. Откатывается так же
-    // штатно — каруселью тем, а при сбросе события гаснет сама (см. _reset).
+    // штатно — каруселью тем, а при сбросе события гаснет сама (см. _onReset).
     _state()?.setThemeMode('metel');
     if (!announce) return;
     _say(
@@ -377,41 +376,13 @@ class _NewYearEventBannerState extends State<NewYearEventBanner>
   /// Долгое нажатие на крестик — скрытый сброс прогресса (ивент привязан к
   /// календарю, иначе его нельзя перепроверить в одну дату).
   ///
-  /// Сброс СПРАШИВАЕТСЯ: порог долгого нажатия — 500 мс, а этим же крестиком
-  /// человек закрывает окно. Без подтверждения случайная задержка пальца
-  /// молча стирала всю коллекцию — это и выглядело как «шапки не сохраняются».
+  /// Подтверждение УБРАНО: порог 500 мс и сам жест «зажать крестик» —
+  /// уже достаточная защита от случайного сброса (нужно специально
+  /// прижать и держать), а диалог в середине жеста только рвал плавность.
   Future<void> _onReset() async {
     if (_closing) return;
     Haptics.heavy();
     final before = _hats;
-    final sure = await showGeneralDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      // Затемняет фон сам маршрут, поэтому отдельного скрима внутри окна нет:
-      // окно не «вспыхивает» двойным затемнением на входе.
-      barrierColor: Colors.black.withValues(alpha: 0.42),
-      transitionDuration: const Duration(milliseconds: 340),
-      pageBuilder: (ctx, _, _) => _ResetEventDialog(
-        onConfirm: () => Navigator.of(ctx).pop(true),
-        onCancel: () => Navigator.of(ctx).pop(false),
-      ),
-      transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(
-          parent: anim,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
-            child: child,
-          ),
-        );
-      },
-    );
-    if (sure != true || !mounted) return;
     try {
       await NewYearEventService().reset();
     } catch (_) {
@@ -2021,185 +1992,6 @@ class _DigitSlot extends StatelessWidget {
               child: Text('$d1', style: at(eased), maxLines: 1),
             ),
         ],
-      ),
-    );
-  }
-}
-
-/// Окно подтверждения сброса ивента — своя «стеклянная» карточка вместо
-/// системного [AlertDialog].
-///
-/// Вид тот же, что у окна обновления: полупрозрачный алый кант бренда,
-/// подложка с красным отливом (сквозь неё просвечивает фон) и мягкие тени.
-/// Системный `AlertDialog` на дефолтной палитре выходил плоской серой
-/// плашкой и выбивался из «кровавой» семьи, а его кнопки не отдавали под
-/// пальцем.
-///
-/// Раскладка нарочно простая: одна колонка, одинаковые поля, кнопки в общей
-/// строке равной ширины — окно не «косит» ни на узком экране, ни при
-/// увеличенном системном шрифте.
-class _ResetEventDialog extends StatelessWidget {
-  final VoidCallback onConfirm;
-  final VoidCallback onCancel;
-
-  const _ResetEventDialog({required this.onConfirm, required this.onCancel});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Container(
-            padding: const EdgeInsets.all(0.9),
-            decoration: BoxDecoration(
-              // ОДНА ровная алая кромка вместо диагонального градиента: тот
-              // по периметру давал разный тон на каждой стороне и читался
-              // пёстрой кривой рамкой («окно криво»). Толщина — волосяная.
-              borderRadius: BorderRadius.circular(Radii.xl),
-              color: BrandColors.red.withValues(alpha: 0.34),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.shadowColor.withValues(alpha: 0.18),
-                  blurRadius: 34,
-                  spreadRadius: -4,
-                  offset: const Offset(0, 16),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              // Радиус подложки на толщину канта меньше внешнего: иначе кант
-              // «съедается» и кромка читается неровной.
-              borderRadius: BorderRadius.circular(Radii.xl - 0.9),
-              child: Container(
-                decoration: BoxDecoration(
-                  // Полупрозрачная подложка с красным отливом, как у окна
-                  // обновления: фон просвечивает, но под ней достаточно
-                  // плотности, чтобы текст читался. Без `BackdropFilter` —
-                  // размытие под анимацией всплытия мерцает.
-                  color: Color.alphaBlend(
-                    BrandColors.red.withValues(alpha: 0.20),
-                    cs.surfaceContainerHigh.withValues(alpha: 0.86),
-                  ),
-                  borderRadius: BorderRadius.circular(Radii.xl - 0.9),
-                ),
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg,
-                  Spacing.lg,
-                  Spacing.lg,
-                  Spacing.md,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: BrandColors.red.withValues(alpha: 0.16),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.restart_alt_rounded,
-                              size: 20,
-                              color: BrandColors.red,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: Text(
-                            Translations.t(
-                              'nyResetTitle',
-                              context,
-                              'Сбросить ивент?',
-                            ),
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: Weights.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: Spacing.sm),
-                    Text(
-                      Translations.t(
-                        'nyResetBody',
-                        context,
-                        'Все собранные шапки и подарок исчезнут навсегда.',
-                      ),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: Spacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: PressScale(
-                            // Отдача нарочно СЛАБАЯ (0.97) и мягкая на
-                            // отпускании: на окне сброса прежний заметный
-                            // «провал» кнопки читался лишней суетой.
-                            pressedScale: 0.97,
-                            duration: const Duration(milliseconds: 180),
-                            releaseDuration: const Duration(milliseconds: 300),
-                            child: TextButton(
-                              onPressed: onCancel,
-                              style: TextButton.styleFrom(
-                                minimumSize: const Size(0, 46),
-                                shape: const StadiumBorder(),
-                              ),
-                              child: Text(Translations.cancelOf(context)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: PressScale(
-                            pressedScale: 0.97,
-                            duration: const Duration(milliseconds: 180),
-                            releaseDuration: const Duration(milliseconds: 300),
-                            child: FilledButton(
-                              onPressed: onConfirm,
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(0, 46),
-                                shape: const StadiumBorder(),
-                                // Кнопка подтверждения — в брендовом алом, а не
-                                // в сиреневом `primary`: на дефолтной палитре
-                                // она читалась чужеродной синей плашкой.
-                                backgroundColor: Color.lerp(
-                                  BrandColors.red,
-                                  cs.primary,
-                                  0.18,
-                                ),
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(
-                                Translations.t(
-                                  'nyResetConfirm',
-                                  context,
-                                  'Сбросить',
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

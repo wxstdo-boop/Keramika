@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/press_scale.dart';
 import '../widgets/smooth_tooltip.dart' show BackButtonTooltip;
 import 'package:uuid/uuid.dart';
 import '../models/reality_check.dart';
@@ -78,9 +79,14 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
         leading: const BackButtonTooltip(),
         centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: _save,
-            child: Text(Translations.saveOf(context)),
+          PressScale(
+            pressedScale: 0.96,
+            duration: const Duration(milliseconds: 200),
+            releaseDuration: const Duration(milliseconds: 340),
+            child: TextButton(
+              onPressed: _save,
+              child: Text(Translations.saveOf(context)),
+            ),
           ),
         ],
       ),
@@ -90,28 +96,31 @@ class _AddRealityCheckScreenState extends State<AddRealityCheckScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             Center(
-              child: GestureDetector(
-                onTap: _pickIcon,
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    switchInCurve: Curves.easeOutBack,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, animation) => ScaleTransition(
-                      scale: animation,
-                      child: FadeTransition(opacity: animation, child: child),
+              child: PressScale(
+                pressedScale: 0.92,
+                child: GestureDetector(
+                  onTap: _pickIcon,
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      iconDataForCodePoint(_iconCodePoint),
-                      key: ValueKey(_iconCodePoint),
-                      size: 32,
-                      color: theme.colorScheme.primary,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutBack,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) => ScaleTransition(
+                        scale: animation,
+                        child: FadeTransition(opacity: animation, child: child),
+                      ),
+                      child: Icon(
+                        iconDataForCodePoint(_iconCodePoint),
+                        key: ValueKey(_iconCodePoint),
+                        size: 32,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),

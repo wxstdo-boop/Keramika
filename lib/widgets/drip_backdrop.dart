@@ -286,7 +286,7 @@ class _DripBackdropState extends State<DripBackdrop>
                   t: _liveActive
                       ? _ctrl.value
                       : (_ctrl.value * 140).roundToDouble() / 140,
-                  live: List<_Live>.unmodifiable(_live),
+                  live: _live,
                   now: now,
                   liveAlphaFor: _liveAlphaFor,
                   blobShaderFor: _blobShader,

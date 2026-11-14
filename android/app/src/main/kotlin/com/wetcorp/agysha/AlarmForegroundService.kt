@@ -283,6 +283,7 @@ class AlarmForegroundService : Service() {
                     prepare()
                     start()
                 }
+                startVolumeRamp(player)
                 AlarmLog.write(this, "RING PLAYER OK uri=$uri")
                 return
             } catch (e: Exception) {
@@ -319,6 +320,40 @@ class AlarmForegroundService : Service() {
         } catch (e: Exception) {
             AlarmLog.write(this, "RING FALLBACK FAILED error=${e.javaClass.simpleName}")
         }
+    }
+
+    /**
+     * Плавное нарастание звука (crescendo): стартует с едва слышимого уровня
+     * (0.05) и мягко по квадратичной кривой выходит на 100% за 25 секунд.
+     * Защищает от утреннего испуга при звонке.
+     */
+    private fun startVolumeRamp(mp: MediaPlayer?) {
+        if (mp == null) return
+        var elapsed = 0L
+        val rampDurationMs = 25_000L
+        val stepMs = 500L
+        val startVol = 0.05f
+        val targetVol = 1.0f
+        try {
+            mp.setVolume(startVol, startVol)
+        } catch (_: Exception) {}
+
+        val rampRunnable = object : Runnable {
+            override fun run() {
+                val currentMp = player ?: return
+                if (currentMp != mp) return
+                elapsed += stepMs
+                val progress = (elapsed.toFloat() / rampDurationMs).coerceIn(0.0f, 1.0f)
+                val currentVol = startVol + (targetVol - startVol) * (progress * progress)
+                try {
+                    currentMp.setVolume(currentVol, currentVol)
+                } catch (_: Exception) {}
+                if (progress < 1.0f) {
+                    handler.postDelayed(this, stepMs)
+                }
+            }
+        }
+        handler.postDelayed(rampRunnable, stepMs)
     }
 
     // ── Вибрация ──────────────────────────────────────────

@@ -421,6 +421,144 @@ class _AlarmsScreenState extends State<AlarmsScreen>
     );
   }
 
+  DateTime? _findNextAlarmTime(List<Alarm> alarms, DateTime now) {
+    DateTime? earliest;
+    for (final alarm in alarms) {
+      if (!alarm.enabled) continue;
+      final hour = alarm.time.hour;
+      final minute = alarm.time.minute;
+
+      if (alarm.repeatDays.isEmpty) {
+        var target = DateTime(now.year, now.month, now.day, hour, minute);
+        if (!target.isAfter(now)) {
+          target = target.add(const Duration(days: 1));
+        }
+        if (earliest == null || target.isBefore(earliest)) {
+          earliest = target;
+        }
+      } else {
+        for (int i = 0; i <= 7; i++) {
+          final candidate = now.add(Duration(days: i));
+          if (alarm.repeatDays.contains(candidate.weekday)) {
+            final target = DateTime(
+              candidate.year,
+              candidate.month,
+              candidate.day,
+              hour,
+              minute,
+            );
+            if (target.isAfter(now)) {
+              if (earliest == null || target.isBefore(earliest)) {
+                earliest = target;
+              }
+            }
+          }
+        }
+      }
+    }
+    return earliest;
+  }
+
+  Widget _buildNextAlarmPill(
+    BuildContext context,
+    ThemeData theme,
+    List<Alarm> alarms,
+  ) {
+    final now = DateTime.now();
+    final next = _findNextAlarmTime(alarms, now);
+    final hasActive = next != null;
+
+    final String text;
+    if (!hasActive) {
+      text = Translations.t(
+        'allAlarmsDisabled',
+        context,
+        'Все будильники выключены',
+      );
+    } else {
+      final diff = next.difference(now);
+      final hours = diff.inHours;
+      final minutes = diff.inMinutes % 60;
+      final timeStr =
+          '${next.hour.toString().padLeft(2, '0')}:${next.minute.toString().padLeft(2, '0')}';
+
+      final String when;
+      if (next.day == now.day) {
+        when = Translations.t('todayAt', context, 'Сегодня в');
+      } else {
+        final tomorrow = now.add(const Duration(days: 1));
+        if (next.day == tomorrow.day) {
+          when = Translations.t('tomorrowAt', context, 'Завтра в');
+        } else {
+          final weekdays = [
+            Translations.t('dayMon', context, 'Пн'),
+            Translations.t('dayTue', context, 'Вт'),
+            Translations.t('dayWed', context, 'Ср'),
+            Translations.t('dayThu', context, 'Чт'),
+            Translations.t('dayFri', context, 'Пт'),
+            Translations.t('daySat', context, 'Сб'),
+            Translations.t('daySun', context, 'Вс'),
+          ];
+          when = weekdays[(next.weekday - 1).clamp(0, 6)];
+        }
+      }
+
+      final String durationStr;
+      if (hours == 0) {
+        durationStr = '$minutes мин';
+      } else if (minutes == 0) {
+        durationStr = '$hours ч';
+      } else {
+        durationStr = '$hours ч $minutes мин';
+      }
+
+      text = '$when $timeStr · через $durationStr';
+    }
+
+    return Padding(
+      key: const ValueKey('next_alarm_hero_pill'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+              width: 0.8,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                hasActive ? Icons.alarm_on_rounded : Icons.alarm_off_rounded,
+                size: 16,
+                color: hasActive
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  text,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: hasActive
+                        ? theme.colorScheme.onSurface
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAlarmList(
     BuildContext context,
     ThemeData theme,
@@ -439,6 +577,7 @@ class _AlarmsScreenState extends State<AlarmsScreen>
         : 8.0 + kSectionPillSlotHeight;
     return ReorderableListView.builder(
       scrollController: _pillCtrl,
+      header: _buildNextAlarmPill(context, theme, alarms),
       // Медленнее штатного автоскролла (по умолчанию 50 → ~1000 px/с):
       // 18 → ~360 px/с — при подтаскивании карточки к кромке список едет
       // спокойно и плавно, а не «улетает» рывком.

@@ -56,24 +56,26 @@ class _AdaIconState extends State<AdaIcon> with SingleTickerProviderStateMixin {
       onTap: _onTap,
       child: Padding(
         padding: const EdgeInsets.all(2),
-        child: AnimatedBuilder(
-          animation: _ctrl,
-          builder: (context, _) {
-            final t = _ctrl.value;
-            final pulse = math.sin(math.pi * t);
-            final scale = 1.0 + 0.14 * pulse;
-            final wiggle = 0.15 * math.sin(2 * math.pi * t) * (1 - t);
-            return Transform.rotate(
-              angle: wiggle,
-              child: Transform.scale(
-                scale: scale,
-                child: CustomPaint(
-                  size: Size.square(widget.size),
-                  painter: _AdaSparkPainter(glow: pulse),
+        child: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (context, _) {
+              final t = _ctrl.value;
+              final pulse = math.sin(math.pi * t);
+              final scale = 1.0 + 0.14 * pulse;
+              final wiggle = 0.15 * math.sin(2 * math.pi * t) * (1 - t);
+              return Transform.rotate(
+                angle: wiggle,
+                child: Transform.scale(
+                  scale: scale,
+                  child: CustomPaint(
+                    size: Size.square(widget.size),
+                    painter: _AdaSparkPainter(glow: pulse),
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );

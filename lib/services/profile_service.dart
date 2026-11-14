@@ -169,8 +169,10 @@ class ProfileService extends ChangeNotifier {
   /// Подпись первого трека.
   String? get musicTitle => firstTrack?.title;
 
-  /// Предел подборки: дальше список не принимает треки.
-  static const int maxTracks = 15;
+  /// Предел подборки: дальше список не принимает треки. 99 — «почти
+  /// безлимит» для личного плейлиста: подборка живёт в памяти и на
+  /// диске (JSON), а не на экране, поэтому большой список дешёвый.
+  static const int maxTracks = 99;
 
   /// Есть ли ещё место в подборке.
   bool get canAddTrack => _tracks.length < maxTracks;

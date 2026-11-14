@@ -55,6 +55,8 @@ class SettingsService {
         return 'light';
       case 'dark':
         return 'dark';
+      case 'oled':
+        return 'oled';
       case 'grok':
         return 'grok';
       case 'darkGrok':

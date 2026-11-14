@@ -56,28 +56,36 @@ class _MetelAuroraState extends State<MetelAurora>
     // лент по три сегмента давал четырнадцать заливок на кадр и читался на
     // экране цветной кашей поверх контента. Теперь небо — фон, а не сцена:
     // плотность вдвое ниже, поэтому текст и карточки остаются читаемыми.
+    // СЕЙЧАС: небо — фон, а не сцена. Одна широкая подсветка неба сверху,
+    // две широкие вертикальные ленты-«занавеси» и мягкое лунное поле снега
+    // снизу. Полотна шире и ярче, чем раньше: прежние узкие ленты читались
+    // бледными «полосами», а не северным сиянием. Цвета — чистое зимнее
+    // небо (мята → ледяная лазурь → лаванда).
     _bands = [
-      const _Band(dy: 0.05, wf: 1.60, hf: 0.34, hue: 0.10, alpha: 0.11),
+      // Широкая подсветка неба вверху.
+      const _Band(dy: 0.04, wf: 1.90, hf: 0.42, hue: 0.10, alpha: 0.11),
+      // Левая лента-занавесь: широкая, от зелёного к бирюзовому.
       const _Band(
         curtain: true,
-        dx: 0.30,
-        dy: 0.22,
-        wf: 0.15,
-        hf: 0.34,
-        tilt: -0.12,
+        dx: 0.26,
+        dy: 0.24,
+        wf: 0.26,
+        hf: 0.46,
+        tilt: -0.14,
         hue: 0.02,
-        alpha: 0.13,
+        alpha: 0.15,
         segs: 2,
       ),
+      // Правая лента-занавесь: широкая, от лазури к лаванде.
       const _Band(
         curtain: true,
-        dx: 0.68,
-        dy: 0.16,
-        wf: 0.13,
-        hf: 0.32,
-        tilt: 0.10,
-        hue: 0.22,
-        alpha: 0.12,
+        dx: 0.74,
+        dy: 0.18,
+        wf: 0.24,
+        hf: 0.44,
+        tilt: 0.12,
+        hue: 0.18,
+        alpha: 0.14,
         segs: 2,
       ),
     ];
@@ -126,6 +134,46 @@ class _MetelAuroraState extends State<MetelAurora>
     return Stack(
       children: [
         widget.child,
+        // Статичные слои «ночи»: лунный свет и снежное поле. Живут ПОД
+        // оверлеем сияния, рисуются один раз при сборке (не каждый кадр):
+        // `BoxDecoration` со статичными градиентами — ноль работы в кадре.
+        // Дают «Метели» глубину: над лентами сияния висит мягкое лунное
+        // пятно, снизу — белое поле снега. Без них сцена читалась плоской
+        // «полосатой» стеной.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0.85, -0.28),
+                  radius: 0.55,
+                  colors: [
+                    Color(0xFFEAF4FF).withValues(alpha: 0.22),
+                    Color(0xFFEAF4FF).withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Color(0xFFDCE9F5).withValues(alpha: 0.34),
+                    Color(0xFFDCE9F5).withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.42],
+                ),
+              ),
+            ),
+          ),
+        ),
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
@@ -147,12 +195,14 @@ class _MetelAuroraState extends State<MetelAurora>
   }
 }
 
-/// Северное сияние: мята → лазурь → фиолет, тот же круг, что и у скина
-/// скважины на ПИН-экране, чтобы подарок читался одним набором.
+/// Северное сияние по белому снегу: чистые зимние тона — ледяная мята,
+/// лазурь и лаванда. Те же цвета, что и скин скважины ПИН-экрана, чтобы
+/// подарок читался одним набором. Яркче прежних: «Метель» обязана ощущаться
+/// северным сиянием, а не серой полосой.
 const List<Color> _kAurora = [
-  Color(0xFF2FBF94),
-  Color(0xFF4FB6E8),
-  Color(0xFF7C6BE0),
+  Color(0xFF5FD6A8), // ледяная мята
+  Color(0xFF6FB8E8), // лазурь
+  Color(0xFF9C86E8), // лаванда
 ];
 
 Color _auroraAt(double x) {
