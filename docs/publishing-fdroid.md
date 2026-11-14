@@ -210,7 +210,9 @@ PR в `main` по их шаблону.
       содержит `fastlane/` (F-Droid читает метаданные из этого коммита).
 - [x] `fdroid build` локально проходит (см. «Проверено локально»).
 - [x] Самообновление в F-Droid-сборке выключено (`AGYSHA_NO_SELF_UPDATE`).
-- [ ] MR в `fdroiddata` открыт (шаги 1-3 выше).
+- [x] RFP-заявка в `fdroid/rfp` открыта: issue #4794.
+- [ ] MR в `fdroiddata` открыт (шаги 1-3 выше) — нужен личный аккаунт GitLab,
+      проектный токен-бот форк/MR создать не может.
 
 ### Важная зависимость порядка
 
@@ -237,57 +239,33 @@ PR в `main` по их шаблону.
 
 ## Готовый пакет подачи (осталось только отправить)
 
-Всё, что нужно F-Droid, уже лежит в репозитории и проверено. Подача требует
-аккаунта GitLab — его у агента нет, поэтому ниже готовый текст, который надо
-вставить руками.
+Всё, что нужно F-Droid, уже лежит в репозитории и проверено.
+
+> **Статус подачи (обновлено):** RFP-заявка отправлена —
+> **https://gitlab.com/fdroid/rfp/-/issues/4794** (2026-11-14), состояние
+> `opened`. Полный MR в `fdroiddata` пока открыть нельзя: токен, который был
+> под рукой, — это **проектный токен-бот** (`project_…_bot_…`, создаётся для
+> проекта автоматизации). Он может открыть issue в трекере RFP, но не может
+> ни форкнуть `fdroiddata`, ни создать в нём ветку/MR (GitLab отвечает
+> `409 Namespace is not valid` на форк и `403` на ветку/MR). Для MR нужен
+> **личный** аккаунт GitLab (шаг 1 ниже, вариант B).
 
 ### Вариант A (рекомендуется для первого раза) — RFP-issue
 
-Открыть новое issue (заголовок уже подставлен, надо только войти и вставить
-описание ниже): https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Agysha%20(com.wetcorp.agysha)
+**Подано:** https://gitlab.com/fdroid/rfp/-/issues/4794 — заголовок
+`Agysha (com.wetcorp.agysha) — offline alarm clock with tasks, habits and nutrition`.
+Заявка заполнена по шаблону RFP (все галочки, кроме доната), в неё вложены
+application ID, готовый `metadata`-YAML, summary/description из fastlane и
+заметки по сборке (Flutter, NDK, выключенное самообновление, `NonFreeNet`).
 
-Без подстановки: https://gitlab.com/fdroid/rfp/-/issues/new
+Если нужно переоткрыть заявку вручную (например, с другого аккаунта):
+https://gitlab.com/fdroid/rfp/-/issues/new?issue%5Btitle%5D=Agysha%20(com.wetcorp.agysha)
 
 **Title:** `Agysha (com.wetcorp.agysha)`
 
-**Description:**
-
-```markdown
-### App information
-- Name: Agysha
-- Package ID: com.wetcorp.agysha
-- Source: https://github.com/wxstdo-boop/agysha
-- License: MIT
-- Categories: Alarm Clock, Habit Tracker, Task
-
-### Description
-A privacy-friendly offline alarm clock, habit tracker, task list and focus
-timer in one Flutter app. Optional AI assistant "Ada" is disabled by default
-and talks to third-party model providers (declared as the NonFreeNet
-anti-feature). Everything else works fully offline.
-
-### Build
-A ready metadata file is provided at
-https://github.com/wxstdo-boop/agysha/blob/main/fdroid/metadata/com.wetcorp.agysha.yml
-It is validated against fdroiddata CI: `fdroid lint` clean,
-`fdroid rewritemeta` canonical (zero diff), `fdroid checkupdates` resolves
-`v1.6.170+45242` with no diff. The build was reproduced locally with the exact
-recipe steps and produced the unsigned release APK.
-
-Build notes:
-- Flutter app, built with srclib `flutter@3.47.5`.
-- Needs Android SDK `platforms;android-37.0` and `build-tools;36.0.0`
-  (AGP 9.1.1 default), installed in prebuild via sdkmanager.
-- NDK 28.2.13676358.
-- F-Droid build disables self-update with `--dart-define=AGYSHA_NO_SELF_UPDATE=true`
-  and strips `REQUEST_INSTALL_PACKAGES` and `ENFORCE_UPDATE_OWNERSHIP`, so no
-  in-app APK installation.
-- Signing config is removed automatically by fdroidserver; no keystore needed.
-  (`android/key.properties` is gitignored and absent from the tag, and the
-  `signingConfigs` block would fail on an empty path — fdroidserver's
-  `remove_signing_keys()` handles this, so nothing extra is required in the
-  recipe.)
-```
+**Description:** (текст, который был отправлен, — в
+`fdroid/rfp-issue-body.md` репозитория; он же дублирует содержимое варианта B
+ниже).
 
 ### Вариант B — сразу merge request
 

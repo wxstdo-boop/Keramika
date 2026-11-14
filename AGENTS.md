@@ -1092,9 +1092,13 @@ Play Protect, file an appeal», support.google.com/googleplay/answer/2812853).
   `fastlane/.../phoneScreenshots/`.
 - **Готовый текст заявки** — в `docs/publishing-fdroid.md`, раздел «Готовый
   пакет подачи»: вариант A (RFP-issue в `fdroid/rfp`) и вариант B (сразу MR).
-  Подача требует ЛИЧНОГО аккаунта GitLab: проектный токен-бот (`project_…_bot_…`,
-  как в зеркале ниже) форк `fdroid/fdroiddata` создать не может — форк и MR
-  делаются вручную через веб-интерфейс. Файл рецепта от этого не меняется,
+  Точный отправленный текст RFP лежит в `fdroid/rfp-issue-body.md`.
+  Подача MR требует ЛИЧНОГО аккаунта GitLab: проектный токен-бот
+  (`project_…_bot_…`, как в зеркале ниже) форк `fdroid/fdroiddata` создать не
+  может — GitLab отвечает `409 Namespace is not valid` на форк и `403` на
+  ветку/MR. Такой бот МОЖЕТ открыть issue в `fdroid/rfp` (проверено: заявка
+  #4794 создана, `403` только на удаление чужого issue — вместо удаления
+  закрывать через `state_event=close`). Файл рецепта от этого не меняется,
   копируется как есть.
 - **Зеркало на GitLab.** Репозиторий зеркалируется в приватный
   `https://gitlab.com/wxstdo/keramika` (тот же код, имя проекта осталось
